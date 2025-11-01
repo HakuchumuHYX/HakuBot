@@ -41,7 +41,7 @@ __plugin_meta__ = PluginMetadata(
 # --- 3. 定义全局变量和初始化服务 ---
 PLUGIN_VERSION = "1.1.3"
 plugin_dir = Path(__file__).parent
-resources_dir = plugin_dir / "resources"
+resources_dir = data_dir / "resources"
 output_dir = data_dir / "output"
 output_dir.mkdir(parents=True, exist_ok=True)
 
