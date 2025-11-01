@@ -1,5 +1,5 @@
 # HakuBot
-**这是一个自用bot，如果直接下载源码进行部署，可能需要自行补充缺失资源、依赖以及配置文件。**  
+**这是一个基于[NoneBot](https://nonebot.dev)的自用bot，如果直接下载源码进行部署，可能需要自行补充缺失资源、依赖以及配置文件。**  
 plugin列表中所使用的部分插件来自于[NoneBot](https://nonebot.dev)插件商店以及[AstrBot](https://docs.astrbot.app/)插件商店，并由我进行了一些魔改。  
 ### 特别感谢
 [NoneBot](https://github.com/nonebot/nonebot2)  
