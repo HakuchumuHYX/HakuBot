@@ -170,9 +170,7 @@ class ImageService:
                     text_x = circle_center[0] - text_w / 2
                     text_y = circle_center[1] - text_h_bbox / 2
 
-                    # 进一步微调垂直位置，使数字在圆圈中更居中
-                    # 不同字体可能需要不同的微调值，这里使用-2像素
-                    text_y_adjusted = text_y - 5
+                    text_y_adjusted = text_y - 6
 
                     jacket_draw.text((text_x, text_y_adjusted), num_text, font=num_font, fill=(255, 255, 255))
 
