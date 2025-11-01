@@ -1,6 +1,10 @@
 # NoneBot 插件数据和缓存
 data/
 *.json
+plugins/poke_reply/config_files
+plugins/poke_reply/image_files
+plugins/poke_reply/text_files
+plugins/identify/data/
 
 # Python 虚拟环境
 .venv/
@@ -15,3 +19,5 @@ __pycache__/
 *.db
 *.sqlite3
 
+#自用
+plugins_todo_&_backup
