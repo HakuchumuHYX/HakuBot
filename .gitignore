@@ -5,6 +5,7 @@ plugins/poke_reply/config_files
 plugins/poke_reply/image_files
 plugins/poke_reply/text_files
 plugins/identify/data/
+plugins/buaa_msm
 
 # Python 虚拟环境
 .venv/
