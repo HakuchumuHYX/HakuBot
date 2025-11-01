@@ -46,8 +46,6 @@ class ImageService:
         self.executor = executor
         self.config = config  # 存储 config 对象
 
-    # --- [修改] 结束 ---
-
     async def create_options_image(self, options: List[Dict]) -> Optional[str]:
         """为12个歌曲选项创建一个3x4的图鉴"""
         if not options or len(options) != 12: return None
@@ -61,26 +59,73 @@ class ImageService:
             logger.error(f"在executor中创建选项图片失败: {e}", exc_info=True)
             return None
 
+    # pjsk_guess_song/services/image_service.py
+
     def _draw_options_image_sync(self, options: List[Dict], jacket_images: List[Optional[Image.Image]]) -> Optional[
         str]:
         """[同步] 选项图片绘制函数"""
-        jacket_w, jacket_h = 128, 128
-        padding = 15
+        jacket_w, jacket_h = 140, 140
+        padding = 20
         text_h = 50
         cols, rows = 3, 4
-        img_w = cols * jacket_w + (cols + 1) * padding
-        img_h = rows * (jacket_h + text_h) + (rows + 1) * padding
-        img = Image.new('RGBA', (img_w, img_h), (245, 245, 245, 255))
+
+        extra_width = 100
+        content_area_width = cols * jacket_w + (cols + 1) * padding
+        content_width = content_area_width + extra_width
+        content_height = rows * (jacket_h + text_h) + (rows + 1) * padding
+
+        watermark_height = 80
+        img_w = content_width
+        img_h = content_height + watermark_height
+
+        # 创建主画布
+        img = Image.new("RGBA", (img_w, img_h), (245, 245, 245, 255))
+
+        # 添加渐变背景
+        try:
+            bg_color_start, bg_color_end = (230, 240, 255), (200, 210, 240)
+            for y in range(img_h):
+                r = int(bg_color_start[0] + (bg_color_end[0] - bg_color_start[0]) * y / img_h)
+                g = int(bg_color_start[1] + (bg_color_end[1] - bg_color_start[1]) * y / img_h)
+                b = int(bg_color_start[2] + (bg_color_end[2] - bg_color_start[2]) * y / img_h)
+                draw_bg = ImageDraw.Draw(img)
+                draw_bg.line([(0, y), (img_w, y)], fill=(r, g, b, 255))
+        except Exception as e:
+            logger.warning(f"绘制渐变背景失败: {e}")
+
+        # 添加背景图片（如果存在）
+        background_path = self.resources_dir / "ranking_bg.png"
+        if background_path.exists():
+            try:
+                custom_bg = Image.open(background_path).convert("RGBA")
+                custom_bg = custom_bg.resize((img_w, img_h), LANCZOS)
+                custom_bg.putalpha(128)
+                img = Image.alpha_composite(img, custom_bg)
+            except Exception as e:
+                logger.warning(f"加载或混合自定义背景图片失败: {e}")
+
+        # 添加白色半透明覆盖层
+        white_overlay = Image.new("RGBA", (img_w, img_h), (255, 255, 255, 100))
+        img = Image.alpha_composite(img, white_overlay)
+
+        # 创建绘图对象
+        draw = ImageDraw.Draw(img)
+
         try:
             font_path = str(self.resources_dir / "font.ttf")
             title_font = ImageFont.truetype(font_path, 16)
-            num_font = ImageFont.truetype(font_path, 22)
+            num_font = ImageFont.truetype(font_path, 24)
+            id_font = ImageFont.truetype(font_path, 14)
         except IOError:
             logger.warning("未找到字体文件 font.ttf，将使用默认字体。")
             title_font = ImageFont.load_default()
             num_font = ImageFont.load_default()
+            id_font = ImageFont.load_default()
 
-        draw = ImageDraw.Draw(img)
+        # 调整内容区域居中位置
+        content_start_x = (img_w - content_area_width) // 2
+
+        # 绘制选项内容
         for i, option in enumerate(options):
             jacket_img = jacket_images[i]
             if not jacket_img:
@@ -88,42 +133,137 @@ class ImageService:
                 continue
 
             row_idx, col_idx = i // cols, i % cols
-            x = padding + col_idx * (jacket_w + padding)
+            x = content_start_x + padding + col_idx * (jacket_w + padding)
             y = padding + row_idx * (jacket_h + text_h + padding)
-            try:
-                jacket = jacket_img.convert("RGBA").resize((jacket_w, jacket_h), LANCZOS)
-                img.paste(jacket, (x, y), jacket)
-                num_text = f"{i + 1}"
-                circle_radius = 16
-                circle_center = (x + circle_radius, y + circle_radius)
-                draw.ellipse((circle_center[0] - circle_radius, circle_center[1] - circle_radius,
-                              circle_center[0] + circle_radius, circle_center[1] + circle_radius),
-                             fill=(0, 0, 0, 180))
 
+            try:
+                # 处理封面图片
+                jacket = jacket_img.convert("RGBA").resize((jacket_w, jacket_h), LANCZOS)
+
+                # 创建一个临时画布来绘制封面和编号
+                jacket_canvas = Image.new("RGBA", (jacket_w, jacket_h), (0, 0, 0, 0))
+                jacket_canvas.paste(jacket, (0, 0))
+
+                # 绘制编号圆圈
+                circle_radius = 18
+                circle_center = (circle_radius, circle_radius)
+                jacket_draw = ImageDraw.Draw(jacket_canvas)
+                jacket_draw.ellipse((circle_center[0] - circle_radius, circle_center[1] - circle_radius,
+                                     circle_center[0] + circle_radius, circle_center[1] + circle_radius),
+                                    fill=(0, 0, 0, 180))
+
+                # 绘制编号
+                num_text = f"{i + 1}"
                 if Pilmoji:
-                    with Pilmoji(img) as pilmoji_drawer:
+                    with Pilmoji(jacket_canvas) as pilmoji_drawer:
+                        # --- [修改] 使用 anchor="mm" 确保文本在指定点居中 ---
                         pilmoji_drawer.text(circle_center, num_text, font=num_font, fill=(255, 255, 255), anchor="mm")
                 else:
-                    text_bbox = draw.textbbox((0, 0), num_text, font=num_font)
+                    # --- [修改] 改进文本居中算法 ---
+                    # 获取文本的精确边界框
+                    text_bbox = jacket_draw.textbbox((0, 0), num_text, font=num_font)
                     text_w = text_bbox[2] - text_bbox[0]
-                    text_h = text_bbox[3] - text_bbox[1]
-                    text_x = circle_center[0] - text_w / 2
-                    text_y = circle_center[1] - text_h / 2
-                    draw.text((text_x, text_y), num_text, font=num_font, fill=(255, 255, 255))
+                    text_h_bbox = text_bbox[3] - text_bbox[1]
 
+                    # 计算文本应该放置的位置，使其在圆圈中心
+                    # 使用更精确的居中计算，考虑字体基线
+                    text_x = circle_center[0] - text_w / 2
+                    text_y = circle_center[1] - text_h_bbox / 2
+
+                    # 进一步微调垂直位置，使数字在圆圈中更居中
+                    # 不同字体可能需要不同的微调值，这里使用-2像素
+                    text_y_adjusted = text_y - 5
+
+                    jacket_draw.text((text_x, text_y_adjusted), num_text, font=num_font, fill=(255, 255, 255))
+
+                # 将封面合成到主图片
+                img.paste(jacket_canvas, (x, y), jacket_canvas)
+
+                # 绘制歌曲标题
                 title = option['title']
                 if title_font.getbbox(title)[2] > jacket_w:
                     while title_font.getbbox(title + "...")[2] > jacket_w and len(title) > 1:
                         title = title[:-1]
                     title += "..."
+
                 title_bbox = draw.textbbox((0, 0), title, font=title_font)
                 title_w = title_bbox[2] - title_bbox[0]
                 text_x = x + (jacket_w - title_w) / 2
                 text_y = y + jacket_h + 8
                 draw.text((text_x, text_y), title, font=title_font, fill=(30, 30, 50))
+
             except Exception as e:
                 logger.error(f"处理歌曲封面失败: {option.get('title')}, 错误: {e}")
                 continue
+
+        # 水印部分保持不变
+        center_x = img_w // 2
+        font_color = (80, 90, 120)
+
+        from datetime import datetime
+        footer_text_1 = f"GuessSong v{self.plugin_version} | Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        footer_text_2 = self.config.custom_footer_text
+
+        footer_y_1 = img_h - 55
+        footer_y_2 = img_h - 35
+
+        def draw_centered_text_with_wrap(y, text, font, fill_color, max_width=None):
+            if max_width is None:
+                max_width = img_w - 40
+
+            try:
+                bbox = font.getbbox(text)
+                text_width = bbox[2] - bbox[0]
+            except:
+                text_width = len(text) * (font.size // 2)
+
+            if text_width <= max_width:
+                try:
+                    bbox = font.getbbox(text)
+                    w = bbox[2] - bbox[0]
+                    draw.text((center_x - w / 2, y), text, font=font, fill=fill_color)
+                except:
+                    text_width = len(text) * (font.size // 2)
+                    draw.text((center_x - text_width / 2, y), text, font=font, fill=fill_color)
+            else:
+                words = text.split()
+                lines = []
+                current_line = []
+
+                for word in words:
+                    test_line = ' '.join(current_line + [word])
+                    try:
+                        bbox = font.getbbox(test_line)
+                        test_width = bbox[2] - bbox[0]
+                    except:
+                        test_width = len(test_line) * (font.size // 2)
+
+                    if test_width <= max_width:
+                        current_line.append(word)
+                    else:
+                        if current_line:
+                            lines.append(' '.join(current_line))
+                        current_line = [word]
+
+                if current_line:
+                    lines.append(' '.join(current_line))
+
+                line_height = font.size + 2
+                for i, line in enumerate(lines):
+                    line_y = y + i * line_height
+                    try:
+                        bbox = font.getbbox(line)
+                        w = bbox[2] - bbox[0]
+                        draw.text((center_x - w / 2, line_y), line, font=font, fill=fill_color)
+                    except:
+                        text_width = len(line) * (font.size // 2)
+                        draw.text((center_x - text_width / 2, line_y), line, font=font, fill=fill_color)
+
+        draw_centered_text_with_wrap(footer_y_1, footer_text_1, id_font, font_color)
+
+        if footer_text_2:
+            draw_centered_text_with_wrap(footer_y_2, footer_text_2, id_font, font_color)
+
         img_path = self.output_dir / f"song_options_{int(time.time())}.png"
         img.save(img_path)
         return str(img_path)
@@ -220,7 +360,6 @@ class ImageService:
             logger.error(f"生成帮助图片时出错: {e}", exc_info=True)
             return None
 
-    # --- [修改] ---
     def _draw_help_text(self, draw_func, img, title_font, section_font, body_font, id_font, special_font, help_text,
                         font_color, shadow_color, header_color, config: PluginConfig):  # 添加 config 参数
         # --- [修改] 结束 ---
