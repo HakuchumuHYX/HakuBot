@@ -1,0 +1,18 @@
+# NoneBot 插件数据和缓存
+data/
+logs/
+
+# Python 虚拟环境
+.venv/
+venv/
+env/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 数据库文件
+*.db
+*.sqlite3

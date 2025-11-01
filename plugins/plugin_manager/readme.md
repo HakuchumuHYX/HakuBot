@@ -1,0 +1,16 @@
+目前接入了管理插件的有
+赛博浅草寺：draw_lots
+鹿签到：deer_pipe
+B站链接解析：analysis_bilibili
+帮助文档：help_plugin
+二择：two_choices
+欢迎新群员：welcome
+今日人品：jrrp
+复读姬：plus_one
+动画表情保存：sticker_saver
+呼叫ATRI：atri_reply
+定时消息：daily_message
+鉴定：identify
+群聊消息统计：group_statistics
+娶群友：groupmate_waifu
+PJSK猜歌：pjsk_guess_song
