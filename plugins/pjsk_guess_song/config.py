@@ -27,7 +27,7 @@ class PluginConfig(BaseModel, extra=Extra.ignore):
     debug_mode: bool = False
     daily_listen_limit: int = 5
     use_local_resources: bool = False
-    remote_resource_url_base: str = "http://47.110.56.9"
+    remote_resource_url_base: str = ""
     lightweight_mode: bool = False
     disable_guess_song_periods: List[Dict[str, str]] = [
         # 示例: {"start": "00:00", "end": "06:00", "message": "Zzz...这个时间点机器人需要休息..."}
