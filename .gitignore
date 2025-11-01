@@ -20,4 +20,5 @@ __pycache__/
 *.sqlite3
 
 #自用
-plugins_todo_&_backup
+plugins_todo_&_backup/
+.idea/
