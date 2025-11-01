@@ -1,7 +1,46 @@
 from typing import List, Set
+import json
+import os
+from pathlib import Path
+from nonebot.log import logger
 
-# 自动同意好友请求的群聊列表
-AUTO_APPROVE_GROUPS: Set[str] = {"254612419", "819157441"}  # 请替换为你的指定群聊号
+# 配置文件路径
+CONFIG_FILE = Path(__file__).parent / "config.json"
+
+def load_auto_approve_groups() -> Set[str]:
+    """从 config.json 加载自动同意群组列表"""
+    try:
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+                groups = set(config_data.get("auto_approve_groups", []))
+                logger.info(f"从配置文件加载了 {len(groups)} 个自动同意群组")
+                return groups
+        else:
+            # 如果配置文件不存在，创建默认配置
+            default_config = {"auto_approve_groups": []}
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, indent=4, ensure_ascii=False)
+            logger.warning("配置文件不存在，已创建默认配置文件")
+            return set(default_config["auto_approve_groups"])
+    except Exception as e:
+        logger.error(f"加载配置文件失败: {e}，使用默认配置")
+        return {"254612419", "819157441"}
+
+def save_auto_approve_groups(groups: Set[str]) -> bool:
+    """保存自动同意群组列表到配置文件"""
+    try:
+        config_data = {"auto_approve_groups": list(groups)}
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, indent=4, ensure_ascii=False)
+        logger.info(f"已保存 {len(groups)} 个自动同意群组到配置文件")
+        return True
+    except Exception as e:
+        logger.error(f"保存配置文件失败: {e}")
+        return False
+
+# 自动同意好友请求的群聊列表（从配置文件加载）
+AUTO_APPROVE_GROUPS: Set[str] = load_auto_approve_groups()
 
 # 群号提取正则表达式模式
 GROUP_PATTERNS: List[str] = [
