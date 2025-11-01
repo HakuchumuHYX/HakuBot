@@ -1,4 +1,4 @@
-目前接入了管理插件的有
+目前接入了管理插件的有  
 赛博浅草寺：draw_lots  
 鹿签到：deer_pipe  
 B站链接解析：analysis_bilibili  

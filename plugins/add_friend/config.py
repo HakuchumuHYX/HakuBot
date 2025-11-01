@@ -25,7 +25,7 @@ def load_auto_approve_groups() -> Set[str]:
             return set(default_config["auto_approve_groups"])
     except Exception as e:
         logger.error(f"加载配置文件失败: {e}，使用默认配置")
-        return {"254612419", "819157441"}
+        return {"123456789"}
 
 def save_auto_approve_groups(groups: Set[str]) -> bool:
     """保存自动同意群组列表到配置文件"""
