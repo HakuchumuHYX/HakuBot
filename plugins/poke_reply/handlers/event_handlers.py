@@ -20,9 +20,7 @@ from ..services.text_image_cache import text_image_cache
 from ..managers.cache_manager import message_cache
 from ..managers.poke_cd_manager import poke_cd_manager
 from ..utils.common import download_image, get_group_id, extract_image_data, ensure_at_me
-
-
-
+from ...plugin_manager import is_plugin_enabled
 
 # 注册事件处理器
 poke = on_notice()
@@ -52,6 +50,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
     """
     处理戳一戳事件 - 集成CD检查功能
     """
+
     # 确保事件类型为戳一戳，并且目标是机器人自己
     if event.notice_type != "notify" or event.sub_type != "poke" or event.target_id != event.self_id:
         return
@@ -59,6 +58,11 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
     group_id = get_group_id(event)
     if group_id == 0:
         return  # 私聊戳一戳不处理
+
+    # 检查插件是否启用
+    if not is_plugin_enabled("poke_reply", str(group_id)):
+        await poke.finish("本群未开启戳一戳功能！")
+        return  # 插件被禁用，直接返回不处理
 
     # CD检查（只对非superuser用户生效）
     user_id = event.user_id
@@ -198,6 +202,11 @@ async def handle_contribute(bot: Bot, event: GroupMessageEvent, args: Message = 
     group_id = get_group_id(event)
     if group_id == 0:
         await contribute.finish("请在群聊中使用投稿功能喵！")
+        return
+
+    # 检查插件是否启用
+    if not is_plugin_enabled("poke_reply", str(group_id)):
+        await contribute.finish("戳一戳投稿功能未开启！")
         return
 
     # 检查消息中是否包含图片

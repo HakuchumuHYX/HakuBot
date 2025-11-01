@@ -116,7 +116,7 @@ for cmd, mode in listen_commands.items():
     on_command(cmd, priority=10, block=True).handle()(create_handler(mode))
 
 # --- 听anvo 指令 ---
-listen_anvo = on_command("听anvo", aliases={"anvo", "listen_anvo", "anov", "listen_anov", "听anov"}, priority=10,
+listen_anvo = on_command("听anvo", aliases={"listen_anvo", "listen_anov", "听anov"}, priority=10,
                          block=True)
 
 
