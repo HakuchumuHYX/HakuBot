@@ -11,19 +11,21 @@ from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment, Bot
 
-# [重构] 导入 game_service (原 audio_service)
 from .. import db_service, cache_service, game_service
-# 导入全局状态和锁
 from ..game_data import game_session_locks, active_game_sessions, last_game_end_time
-# 导入辅助函数
 from ..utils import (
     get_session_id, get_user_id, get_user_name,
     _is_group_allowed, _get_setting_for_group
 )
-
+from ...plugin_manager import *
 
 async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent, mode: str,
                                  search_term: Optional[str]):
+    # 检查听歌子功能是否启用
+    if isinstance(event, GroupMessageEvent):
+        if not is_feature_enabled("pjsk_guess_song", "listen", str(event.group_id)):
+            await matcher.finish("听歌功能在此群无法使用！")
+            return
     """
     (重构) 统一处理所有"听歌"类指令的通用逻辑。
     """
@@ -119,9 +121,15 @@ for cmd, mode in listen_commands.items():
 listen_anvo = on_command("听anvo", aliases={"listen_anvo", "listen_anov", "听anov"}, priority=10,
                          block=True)
 
-
 @listen_anvo.handle()
 async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+
+    # 检查听歌子功能是否启用
+    if isinstance(event, GroupMessageEvent):
+        if not is_feature_enabled("pjsk_guess_song", "listen", str(event.group_id)):
+            await matcher.finish("听歌功能在此群无法使用！")
+            return
+
     if not await _is_group_allowed(event): return
 
     session_id = get_session_id(event)

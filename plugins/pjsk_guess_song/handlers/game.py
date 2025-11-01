@@ -9,7 +9,7 @@ from pathlib import Path
 from nonebot import on_command
 from nonebot.log import logger
 from nonebot.typing import T_State
-from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment, Bot
+from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment, Bot, GroupMessageEvent
 
 # [重构] 导入 game_service (原 audio_service) 和 image_service
 from .. import db_service, cache_service, plugin_config, game_service, image_service
@@ -22,6 +22,7 @@ from ..utils import (
 )
 # 导入核心游戏会话
 from ..game_session import _run_game_session
+from ...plugin_manager import is_plugin_enabled
 
 # --- 猜歌指令 ---
 start_guess_song_unified = on_command(
@@ -38,6 +39,12 @@ start_guess_song_unified = on_command(
 
 @start_guess_song_unified.handle()
 async def _(bot: Bot, event: MessageEvent, state: T_State):
+
+    if isinstance(event, GroupMessageEvent):
+        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id)):
+            await start_guess_song_unified.finish("猜歌功能在此群无法使用！")
+            return
+
     session_id = get_session_id(event)
     lock = game_session_locks[session_id]
 
@@ -148,6 +155,11 @@ start_random_guess_song = on_command("随机猜歌", aliases={"rgs"}, priority=1
 
 @start_random_guess_song.handle()
 async def _(bot: Bot, event: MessageEvent):
+    if isinstance(event, GroupMessageEvent):
+        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id)):
+            await start_random_guess_song.finish("随机猜歌功能在此群无法使用！")
+            return
+
     session_id = get_session_id(event)
     lock = game_session_locks[session_id]
 
@@ -239,6 +251,11 @@ start_vocalist_game = on_command("猜歌手", priority=10, block=True)
 
 @start_vocalist_game.handle()
 async def _(bot: Bot, event: MessageEvent):
+    if isinstance(event, GroupMessageEvent):
+        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id)):
+            await start_vocalist_game.finish("猜歌手功能在此群无法使用！")
+            return
+
     if not cache_service.another_vocal_songs:
         await start_vocalist_game.finish("......抱歉，没有找到包含 another_vocal 的歌曲，无法开始游戏。")
         return

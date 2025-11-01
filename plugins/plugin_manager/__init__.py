@@ -82,6 +82,28 @@ def set_plugin_status(plugin_name: str, group_id: str, enabled: bool):
     plugin_status[plugin_name][group_id] = enabled
     save_plugin_status(plugin_status)
 
+def is_feature_enabled(plugin_name: str, feature_name: str, group_id: str) -> bool:
+    """检查插件的特定功能是否启用"""
+    # 先检查整个插件是否启用
+    if not is_plugin_enabled(plugin_name, group_id):
+        return False
+
+    # 检查特定功能状态
+    feature_key = f"{plugin_name}:{feature_name}"
+    if feature_key not in plugin_status:
+        return True  # 默认启用
+    if group_id not in plugin_status[feature_key]:
+        return True  # 默认启用
+    return plugin_status[feature_key][group_id]
+
+def set_feature_status(plugin_name: str, feature_name: str, group_id: str, enabled: bool):
+    """设置插件特定功能状态"""
+    feature_key = f"{plugin_name}:{feature_name}"
+    if feature_key not in plugin_status:
+        plugin_status[feature_key] = {}
+    plugin_status[feature_key][group_id] = enabled
+    save_plugin_status(plugin_status)
+
 
 # 启用插件命令 - 仅SU可用
 enable_plugin = on_command("启用", permission=SUPERUSER, priority=1, block=True)
@@ -89,7 +111,8 @@ disable_plugin = on_command("禁用", permission=SUPERUSER, priority=1, block=Tr
 list_plugins = on_command("插件列表", permission=SUPERUSER, priority=1, block=True)
 enable_all = on_command("启用all", permission=SUPERUSER, priority=1, block=True)
 disable_all = on_command("禁用all", permission=SUPERUSER, priority=1, block=True)
-
+enable_feature = on_command("启用功能", permission=SUPERUSER, priority=1, block=True)
+disable_feature = on_command("禁用功能", permission=SUPERUSER, priority=1, block=True)
 
 @enable_plugin.handle()
 async def handle_enable(bot: Bot, event: MessageEvent):
@@ -139,7 +162,7 @@ async def handle_disable(bot: Bot, event: MessageEvent):
 
 @list_plugins.handle()
 async def handle_list(bot: Bot, event: MessageEvent):
-    """显示插件列表"""
+    """显示插件列表 - 以合并转发形式"""
     if not isinstance(event, GroupMessageEvent):
         await list_plugins.finish("请在群聊中使用此命令")
 
@@ -160,7 +183,34 @@ async def handle_list(bot: Bot, event: MessageEvent):
     else:
         message = "暂无其他插件"
 
-    await list_plugins.finish(message)
+    # 构建合并转发消息
+    try:
+        # 获取机器人自己的信息
+        bot_info = await bot.get_login_info()
+        bot_uin = bot_info['user_id']
+        bot_nickname = bot_info['nickname']
+
+        # 创建合并转发消息节点
+        forward_nodes = [
+            {
+                "type": "node",
+                "data": {
+                    "name": bot_nickname,
+                    "uin": str(bot_uin),
+                    "content": message
+                }
+            }
+        ]
+
+        # 发送合并转发消息
+        await bot.send_forward_msg(
+            group_id=event.group_id,
+            messages=forward_nodes
+        )
+    except Exception as e:
+        # 如果合并转发失败，回退到普通消息
+        print(f"合并转发失败: {e}")
+        await list_plugins.finish(message)
 
 
 @enable_all.handle()
@@ -215,3 +265,43 @@ async def handle_disable_all(bot: Bot, event: MessageEvent):
             disabled_count += 1
 
     await disable_all.finish(f"已禁用 {disabled_count} 个插件")
+
+
+@enable_feature.handle()
+async def handle_enable_feature(bot: Bot, event: MessageEvent):
+    """启用插件特定功能"""
+    if not isinstance(event, GroupMessageEvent):
+        await enable_feature.finish("请在群聊中使用此命令")
+        return
+
+    msg = event.get_plaintext().strip()
+    parts = msg.replace("启用功能", "").strip().split()
+
+    if len(parts) != 2:
+        await enable_feature.finish("格式：启用功能 插件名 功能名")
+        return
+
+    plugin_name, feature_name = parts
+
+    set_feature_status(plugin_name, feature_name, str(event.group_id), True)
+    await enable_feature.finish(f"已启用插件 {plugin_name} 的 {feature_name} 功能")
+
+
+@disable_feature.handle()
+async def handle_disable_feature(bot: Bot, event: MessageEvent):
+    """禁用插件特定功能"""
+    if not isinstance(event, GroupMessageEvent):
+        await disable_feature.finish("请在群聊中使用此命令")
+        return
+
+    msg = event.get_plaintext().strip()
+    parts = msg.replace("禁用功能", "").strip().split()
+
+    if len(parts) != 2:
+        await disable_feature.finish("格式：禁用功能 插件名 功能名")
+        return
+
+    plugin_name, feature_name = parts
+
+    set_feature_status(plugin_name, feature_name, str(event.group_id), False)
+    await disable_feature.finish(f"已禁用插件 {plugin_name} 的 {feature_name} 功能")
