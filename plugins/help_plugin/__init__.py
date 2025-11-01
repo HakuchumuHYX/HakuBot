@@ -3,7 +3,47 @@ from nonebot.rule import Rule
 from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, Bot
 import random
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
+import json
+from pathlib import Path
+from nonebot.log import logger
+
 from ..plugin_manager import is_plugin_enabled
+
+# 配置文件路径
+CONFIG_FILE = Path(__file__).parent / "config.json"
+
+
+def load_help_config():
+    """加载帮助文档配置"""
+    try:
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+                logger.info("成功加载帮助文档配置")
+                return config_data
+        else:
+            # 如果配置文件不存在，创建默认配置
+            default_config = {
+                "help_segments": [
+                    "test_text1",
+                    "test_text2"
+                ],
+                "keywords": ["help", "帮助", "功能"],
+                "bot_name": "ATRI帮助文档"
+            }
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, indent=2, ensure_ascii=False)
+            logger.warning("配置文件不存在，已创建默认配置文件")
+            return default_config
+    except Exception as e:
+        logger.error(f"加载配置文件失败: {e}，使用默认配置")
+        # 返回默认配置
+        return {
+            "help_segments": ["默认帮助文档，请检查配置文件"],
+            "keywords": ["help", "帮助", "功能"],
+            "bot_name": "ATRI帮助文档"
+        }
+
 
 # 创建精确匹配规则，支持多个关键词
 def exact_match_keywords(keywords: list) -> Rule:
@@ -20,42 +60,23 @@ def exact_match_keywords(keywords: list) -> Rule:
     return Rule(_exact_match)
 
 
+# 加载配置
+config = load_help_config()
+keywords = config.get("keywords", ["help", "帮助", "功能"])
+bot_name = config.get("bot_name", "ATRI帮助文档")
+
 # 创建消息处理器，使用精确匹配规则
-keywords = ["help", "帮助", "功能"]
 help_handler = on_message(rule=exact_match_keywords(keywords), priority=10, block=True)
 
 
 @help_handler.handle()
 async def handle_help(bot: Bot, event: MessageEvent):
-    # 将长文本分割成多个段落
-    help_segments = [
-        "欢迎使用群高性能萝卜子ATRI！",
-        
-        "ATRI挂载了HarukiBot\n"
-        "帮助文档：https://docs.haruki.seiunx.com",
+    # 从配置中获取帮助文档段落
+    help_segments = config.get("help_segments", [])
 
-        "ATRI挂载了SakuraBot的部分娱乐功能与Project Sekai相关功能\n"
-        "帮助文档：https://help.mikuware.top\n"
-        "数据上传链接：http://go.mikuware.top",
-
-        "ATRI还有部分其他功能：\n"
-        "1. 表情制作：可通过发送\"pjsk\"或\"arc\"制作相应表情\n"
-        "2. 赛博浅草寺：可通过发送\"抽签\"看看你今天的赛博签运\n"
-        "3. 今日人品：可通过发送\"jrrp\"查看你今天的人品值（每日一次）\n"
-        "4. 表情保存：可通过对动画表情回复\"save/保存\"来获取可保存的图片形式的动画表情\n"
-        "5. 复读姬、分析B站视频链接",
-
-        "6. 戳一戳回复功能。可通过戳一戳ATRI来获取一段神秘文字（或图片）。\n可通过“@ATRI 投稿+内容”的方式来增加回复，可通过“@ATRI 查看投稿统计”来查看本群的回复文本以及图片数量\n为了满足可能存在的复制需求，对于长文本转化的图片，可通过回复”转文字“来获取原文~\n"
-        "7. （也许可以正常工作的）Bilibili动态推送！目前暂不支持非su增加订阅喵！\n"
-        "8. BUAAMSM！私聊发送buaamshelp获取详细帮助文档。特别鸣谢热心群友@吃井不忘挖水人 提供的代码！\n"
-        "9.群聊消息统计！来看看今天大家都聊了多少吧~\n"
-        "10.PJSK猜歌模块！发送“猜歌帮助”获取更多详细信息\n",
-
-        "关于BUAAMSM插件：\n"
-        "该功能由于不可抗力以及技术原因，仅在***私聊***中使用，请添加ATRI好友发送“buaamshelp”查看完整帮助文档。\n"
-        "在添加好友时，请在验证信息内填写***本群群号或群名***，ATRI会自动通过好友申请。\n"
-        "如果你在***正确填写了验证信息***后，发现ATRI未通过好友申请，可能是插件出问题或是bot出问题，请一段时间后再试一次。若相同问题持续出现，请联系bot主。"
-    ]
+    if not help_segments:
+        await help_handler.finish("帮助文档配置为空，请联系管理员")
+        return
 
     # 创建转发消息节点列表
     forward_nodes = []
@@ -65,7 +86,7 @@ async def handle_help(bot: Bot, event: MessageEvent):
         node = {
             "type": "node",
             "data": {
-                "name": "ATRI帮助文档",
+                "name": bot_name,
                 "uin": bot.self_id,  # 使用机器人自己的QQ号
                 "content": segment
             }
@@ -88,5 +109,6 @@ async def handle_help(bot: Bot, event: MessageEvent):
             )
     except Exception as e:
         # 如果转发消息发送失败，回退到普通消息
+        logger.error(f"发送合并转发消息失败: {e}，回退到普通消息")
         fallback_text = "\n\n".join(help_segments)
         await help_handler.finish(fallback_text)

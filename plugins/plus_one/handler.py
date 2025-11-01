@@ -5,6 +5,7 @@ from nonebot_plugin_session import extract_session, SessionIdType
 
 from .config import config
 from ..plugin_manager import is_plugin_enabled
+
 plus = on_message(rule=regex(""), priority=config.plus_one_priority, block=False)
 msg_dict = {}
 
@@ -20,8 +21,8 @@ def is_equal(msg1: Message, msg2: Message):
 
 def contains_blocked_words(text: str) -> bool:
     """检查是否包含屏蔽词"""
-    # 从配置中获取屏蔽词列表
-    blocked_words = getattr(config, 'blocked_words', [])
+    # 从配置中获取屏蔽词集合
+    blocked_words = config.blocked_words
 
     # 如果没有设置屏蔽词，直接返回 False
     if not blocked_words:
@@ -57,7 +58,6 @@ async def plush_handler(bot: Bot, event: Event):
     if group_id in config.plus_one_black_list:
         return
 
-
     # 获取当前信息
     msg = event.get_message()
 
@@ -71,8 +71,6 @@ async def plush_handler(bot: Bot, event: Event):
     if not text_list:
         text_list = []
         msg_dict[group_id] = text_list
-
-
 
     try:
         if not is_equal(text_list[-1], msg):
