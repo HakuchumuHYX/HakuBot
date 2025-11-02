@@ -16,11 +16,11 @@ from nonebot.rule import to_me
 from nonebot.params import CommandArg
 import hashlib
 
-from ..config import PLUGIN_DIR
+from ..config import PLUGIN_DIR, data_dir
 from ..utils.common import download_and_hash_image
 
 # 缓存文件路径
-CACHE_FILE = PLUGIN_DIR / "text_image_cache.json"
+CACHE_FILE = data_dir / "text_image_cache.json"
 # 缓存过期时间（10分钟）
 CACHE_EXPIRE_TIME = 10 * 60
 

@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import Dict, Optional
 from nonebot import logger
 
-from ..config import PLUGIN_DIR
+from ..config import data_dir
 from ..utils.common import get_group_id
 
 # 文件路径
-MESSAGE_CACHE_FILE = PLUGIN_DIR / "message_cache.json"
+MESSAGE_CACHE_FILE = data_dir / "message_cache.json"
 
 # 缓存过期时间（10分钟）
 CACHE_EXPIRE_TIME = 10 * 60

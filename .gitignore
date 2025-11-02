@@ -1,9 +1,6 @@
 # NoneBot 插件数据和缓存
 data/
 *.json
-plugins/poke_reply/config_files
-plugins/poke_reply/image_files
-plugins/poke_reply/text_files
 plugins/identify/data/
 plugins/buaa_msm
 .env.prod

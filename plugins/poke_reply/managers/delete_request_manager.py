@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Dict, Optional, List
 from nonebot import logger
 
-from ..config import PLUGIN_DIR
+from ..config import PLUGIN_DIR, data_dir
 from ..utils.common import get_group_id
 
 # 文件路径
-DELETE_REQUESTS_FILE = PLUGIN_DIR / "delete_requests.json"
+DELETE_REQUESTS_FILE = data_dir / "delete_requests.json"
 
 
 class DeleteRequestManager:
