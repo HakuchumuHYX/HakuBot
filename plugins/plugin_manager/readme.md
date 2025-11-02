@@ -18,4 +18,5 @@ B站链接解析：analysis_bilibili
 戳一戳回复：poke_reply:poke  
 戳一戳投稿：poke_reply:contribute  
 PJSK猜歌：pjsk_guess_song  
-PJSK听歌：pjsk_guess_song:listen
+PJSK听歌：pjsk_guess_song:listen  
+私戳bot主：send_and_reply

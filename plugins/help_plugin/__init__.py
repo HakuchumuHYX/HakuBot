@@ -1,4 +1,4 @@
-from nonebot import on_message
+from nonebot import on_message, on_command
 from nonebot.rule import Rule
 from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, Bot
 import random
@@ -6,6 +6,8 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 import json
 from pathlib import Path
 from nonebot.log import logger
+from nonebot.permission import SUPERUSER
+from nonebot.exception import FinishedException
 
 from ..plugin_manager import is_plugin_enabled
 
@@ -35,6 +37,9 @@ def load_help_config():
                 json.dump(default_config, f, indent=2, ensure_ascii=False)
             logger.warning("配置文件不存在，已创建默认配置文件")
             return default_config
+    except FinishedException:
+        # 忽略 FinishedException，这是正常的结束流程
+        raise
     except Exception as e:
         logger.error(f"加载配置文件失败: {e}，使用默认配置")
         # 返回默认配置
@@ -45,8 +50,29 @@ def load_help_config():
         }
 
 
+# 全局配置变量，可以在运行时更新
+config = load_help_config()
+
+
+def reload_help_config():
+    """重载帮助文档配置"""
+    global config
+    try:
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                new_config = json.load(f)
+                config = new_config
+                logger.info("成功重载帮助文档配置")
+                return True, "帮助文档重载成功"
+        else:
+            return False, "配置文件不存在"
+    except Exception as e:
+        logger.error(f"重载配置文件失败: {e}")
+        return False, f"重载配置文件失败: {e}"
+
+
 # 创建精确匹配规则，支持多个关键词
-def exact_match_keywords(keywords: list) -> Rule:
+def exact_match_keywords() -> Rule:
     async def _exact_match(event: MessageEvent) -> bool:
         if isinstance(event, GroupMessageEvent):
             group_id = str(event.group_id)
@@ -54,25 +80,43 @@ def exact_match_keywords(keywords: list) -> Rule:
                 return False
         # 获取纯文本消息并去除首尾空格
         msg = event.get_plaintext().strip()
+        # 使用最新的配置中的关键词
+        current_keywords = config.get("keywords", ["help", "帮助", "功能"])
         # 精确匹配关键词列表中的任何一个
-        return msg in keywords
+        return msg in current_keywords
 
     return Rule(_exact_match)
 
 
-# 加载配置
-config = load_help_config()
-keywords = config.get("keywords", ["help", "帮助", "功能"])
-bot_name = config.get("bot_name", "ATRI帮助文档")
+# 创建重载命令处理器，仅超级用户可用
+reload_handler = on_command(
+    "重载帮助文本",
+    aliases={"重载帮助", "reload_help"},
+    permission=SUPERUSER,
+    priority=5,
+    block=True
+)
+
+
+@reload_handler.handle()
+async def handle_reload(bot: Bot, event: MessageEvent):
+    """处理重载命令"""
+    success, message = reload_help_config()
+    if success:
+        await reload_handler.finish(f"✅ {message}")
+    else:
+        await reload_handler.finish(f"❌ {message}")
+
 
 # 创建消息处理器，使用精确匹配规则
-help_handler = on_message(rule=exact_match_keywords(keywords), priority=10, block=True)
+help_handler = on_message(rule=exact_match_keywords(), priority=10, block=True)
 
 
 @help_handler.handle()
 async def handle_help(bot: Bot, event: MessageEvent):
-    # 从配置中获取帮助文档段落
+    # 从最新的配置中获取帮助文档段落
     help_segments = config.get("help_segments", [])
+    bot_name = config.get("bot_name", "ATRI帮助文档")
 
     if not help_segments:
         await help_handler.finish("帮助文档配置为空，请联系管理员")
