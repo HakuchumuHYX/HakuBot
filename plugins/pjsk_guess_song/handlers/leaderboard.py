@@ -12,8 +12,14 @@ from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, Bot, Group
 # [重构] 导入 db_service 和 image_service
 from .. import db_service, image_service
 from ...plugin_manager import is_plugin_enabled
+from ...utils.common import create_exact_command_rule
 
-leaderboard_handler = on_command("群聊猜歌排行", aliases={"猜歌排行", "pjsk排行"}, priority=10, block=True)
+leaderboard_handler = on_command("群聊猜歌排行",
+                                 aliases={"猜歌排行", "pjsk排行"},
+                                 priority=10,
+                                 block=True,
+                                 rule=create_exact_command_rule("群聊猜歌排行", {"猜歌排行", "pjsk排行"})
+                                 )
 
 
 @leaderboard_handler.handle()

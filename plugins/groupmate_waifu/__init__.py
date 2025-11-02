@@ -1,5 +1,5 @@
 from nonebot import require
-from nonebot.plugin.on import on_command,on_message
+from nonebot.plugin.on import on_command, on_message
 from nonebot.permission import SUPERUSER
 from nonebot.typing import T_State
 from nonebot.adapters.onebot.v11 import (
@@ -28,6 +28,7 @@ from nonebot import get_loaded_plugins
 from nonebot.plugin import Plugin
 from ..plugin_manager import is_plugin_enabled as check_plugin
 from ..plugin_manager import is_feature_enabled
+from ..utils.common import create_exact_command_rule
 
 # 添加插件标识符（用于插件管理器）
 PLUGIN_NAME = "groupmate_waifu"
@@ -164,7 +165,11 @@ scheduler.add_job(reset_record,"cron",hour = 0, misfire_grace_time = 120)
 
 #设置保护名单
 
-protect = on_command("娶群友保护", priority=10, block=True, rule=check_plugin_enabled)
+protect = on_command("娶群友保护",
+                     priority=10,
+                     block=True,
+                     rule=create_exact_command_rule("娶群友保护", extra_rule=check_plugin_enabled)
+                     )
 
 @protect.handle()
 async def _(bot:Bot, event: GroupMessageEvent, permission = SUPERUSER | GROUP_ADMIN | GROUP_OWNER):
@@ -185,7 +190,11 @@ async def _(bot:Bot, event: GroupMessageEvent, permission = SUPERUSER | GROUP_AD
 
 #移出保护名单
 
-unprotect = on_command("解除娶群友保护", priority=10, block=True, rule=check_plugin_enabled)
+unprotect = on_command("解除娶群友保护",
+                       priority=10,
+                       block=True,
+                       rule=create_exact_command_rule("解除娶群友保护", extra_rule=check_plugin_enabled)
+                       )
 
 @unprotect.handle()
 async def _(bot:Bot, event: GroupMessageEvent, permission = SUPERUSER | GROUP_ADMIN | GROUP_OWNER):
@@ -212,7 +221,11 @@ async def _(bot:Bot, event: GroupMessageEvent, permission = SUPERUSER | GROUP_AD
         await unprotect.finish("解除保护失败。你无法为其他人解除保护。", at_sender =True)
 
 # 查看保护名单
-show_protect = on_command("查看保护名单", priority=10, block=True, rule=check_plugin_enabled)
+show_protect = on_command("查看保护名单",
+                          priority=10,
+                          block=True,
+                          rule=create_exact_command_rule("查看保护名单", extra_rule=check_plugin_enabled)
+                          )
 
 
 @show_protect.handle()
@@ -249,7 +262,7 @@ async def waifu_rule(bot:Bot, event:GroupMessageEvent, state:T_State)-> bool:
         return False
 
     msg = event.message.extract_plain_text()
-    if not msg.startswith("娶群友"):
+    if msg != "娶群友" and not (msg.startswith("娶群友") and get_message_at(event.message)):
         return False
     group_id = event.group_id
     user_id = event.user_id
@@ -364,12 +377,22 @@ if waifu_cd_bye > -1:
         """离婚命令规则"""
         if not check_plugin_enabled(event):
             return False
+
+        msg = event.message.extract_plain_text().strip()
+        if msg not in ["离婚", "分手"]:
+            return False
+
         return (isinstance(event, GroupMessageEvent) and
                 event.group_id in record_CP and
                 record_CP[event.group_id].get(event.user_id, event.user_id) != event.user_id)
 
 
-    bye = on_command("离婚", aliases={"分手"}, rule=bye_rule, priority=10, block=True)
+    bye = on_command("离婚",
+                     aliases={"分手"},
+                     rule=create_exact_command_rule("离婚", {"分手"}, extra_rule=bye_rule),
+                     priority=10,
+                     block=True
+                     )
     @bye.handle()
     async def _(event: GroupMessageEvent):
         group_id = event.group_id
@@ -421,7 +444,12 @@ if waifu_cd_bye > -1:
 
 # 查看娶群友卡池
 
-waifu_list = on_command("查看群友卡池", aliases={"群友卡池"}, priority=10, block=True, rule=check_plugin_enabled)
+waifu_list = on_command("查看群友卡池",
+                        aliases={"群友卡池"},
+                        priority=10,
+                        block=True,
+                        rule=create_exact_command_rule("查看群友卡池", {"群友卡池"}, extra_rule=check_plugin_enabled)
+                        )
 
 @waifu_list.handle()
 async def _(bot:Bot, event: GroupMessageEvent):
@@ -442,7 +470,12 @@ async def _(bot:Bot, event: GroupMessageEvent):
 
 # 查看本群CP
 
-cp_list = on_command("本群CP", aliases={"本群cp"}, priority=10, block=True, rule=check_plugin_enabled)
+cp_list = on_command("本群CP",
+                     aliases={"本群cp"},
+                     priority=10,
+                     block=True,
+                     rule=create_exact_command_rule("本群CP", {"本群cp"}, extra_rule=check_plugin_enabled)
+                     )
 
 @cp_list.handle()
 async def _(bot:Bot, event: GroupMessageEvent):
@@ -478,7 +511,7 @@ async def yinpa_rule(bot:Bot, event:GroupMessageEvent, state:T_State)-> bool:
         return False
 
     msg = event.message.extract_plain_text()
-    if not msg.startswith("透群友"):
+    if msg != "透群友" and not (msg.startswith("透群友") and get_message_at(event.message)):
         return False
     group_id = event.group_id
     user_id = event.user_id
@@ -545,7 +578,12 @@ async def _(bot:Bot, event: GroupMessageEvent, state:T_State):
 
 # 查看涩涩记录
 
-yinpa_list = on_command("涩涩记录", aliases={"色色记录"}, priority=10, block=True, rule=check_plugin_enabled)
+yinpa_list = on_command("涩涩记录",
+                        aliases={"色色记录"},
+                        priority=10,
+                        block=True,
+                        rule=create_exact_command_rule("涩涩记录", {"色色记录"}, extra_rule=check_plugin_enabled)
+                        )
 
 @yinpa_list.handle()
 async def _(bot:Bot, event: GroupMessageEvent):

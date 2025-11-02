@@ -14,6 +14,7 @@ from typing import Dict, Any
 
 # 新增：导入管理模块
 from ..plugin_manager import is_plugin_enabled
+from ..utils.common import create_exact_command_rule
 
 # 新增：数据存储路径
 DATA_FILE = Path("data/draw_lots/records.json")
@@ -67,7 +68,7 @@ def save_today_sign(user_id: str, sign: str):
     save_records(records)
 
 
-command = on_command('抽签', priority=6)
+command = on_command('抽签', priority=6, rule=create_exact_command_rule("抽签"))
 
 
 @command.handle()

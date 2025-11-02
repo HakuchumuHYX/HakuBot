@@ -13,12 +13,12 @@ from nonebot.params import CommandArg
 
 # 导入管理模块
 from ..plugin_manager import is_plugin_enabled
-
+from ..utils.common import create_exact_command_rule
 from .data_manager import daily_record_manager
 from nonebot.exception import FinishedException
 
 # 注册命令处理器 - 移除原有的启用/禁用命令，只保留鉴定命令
-identify = on_command("鉴定", priority=5, block=True)
+identify = on_command("鉴定", priority=5, block=True, rule=create_exact_command_rule("鉴定"))
 
 
 async def create_identify_message(bot: Bot, group_id: int, user_id: int, image_path: str) -> list:

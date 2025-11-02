@@ -18,6 +18,7 @@ from ..utils import (
     _is_group_allowed, _get_setting_for_group
 )
 from ...plugin_manager import *
+from ...utils.common import create_exact_command_rule
 
 async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent, mode: str,
                                  search_term: Optional[str]):
@@ -115,11 +116,15 @@ for cmd, mode in listen_commands.items():
         return handler
 
 
-    on_command(cmd, priority=10, block=True).handle()(create_handler(mode))
+    on_command(cmd, priority=10, block=True, rule=create_exact_command_rule(cmd)).handle()(create_handler(mode))
 
 # --- 听anvo 指令 ---
-listen_anvo = on_command("听anvo", aliases={"listen_anvo", "listen_anov", "听anov"}, priority=10,
-                         block=True)
+listen_anvo = on_command("听anvo",
+                         aliases={"listen_anvo", "listen_anov", "听anov", "anvo", "anov"},
+                         priority=10,
+                         block=True,
+                         rule=create_exact_command_rule("听anvo", {"listen_anvo", "listen_anov", "听anov", "anvo", "anov"})
+                         )
 
 @listen_anvo.handle()
 async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = CommandArg()):

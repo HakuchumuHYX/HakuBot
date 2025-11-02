@@ -11,8 +11,13 @@ from .. import image_service
 # 导入辅助函数
 from ..utils import _is_group_allowed
 from ...plugin_manager import *
+from ...utils.common import create_exact_command_rule
 # --- 帮助 ---
-show_guess_song_help = on_command("猜歌帮助", priority=10, block=True)
+show_guess_song_help = on_command("猜歌帮助",
+                                  priority=10,
+                                  block=True,
+                                  rule=create_exact_command_rule("猜歌帮助")
+                                  )
 
 @show_guess_song_help.handle()
 async def _(bot: Bot, event: MessageEvent):

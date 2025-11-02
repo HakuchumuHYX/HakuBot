@@ -11,18 +11,15 @@ from nonebot.log import logger
 from nonebot.typing import T_State
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment, Bot, GroupMessageEvent
 
-# [重构] 导入 game_service (原 audio_service) 和 image_service
 from .. import db_service, cache_service, plugin_config, game_service, image_service
-# 导入全局状态和锁
 from ..game_data import game_session_locks, active_game_sessions, last_game_end_time
-# 导入辅助函数
 from ..utils import (
     get_session_id, get_user_id, get_user_name,
     _check_game_start_conditions, _get_setting_for_group
 )
-# 导入核心游戏会话
 from ..game_session import _run_game_session
 from ...plugin_manager import is_plugin_enabled
+from ...utils.common import create_exact_command_rule
 
 # --- 猜歌指令 ---
 start_guess_song_unified = on_command(
@@ -33,7 +30,8 @@ start_guess_song_unified = on_command(
         "gs1", "gs2", "gs3", "gs4", "gs5", "gs6", "gs7"
     },
     priority=10,
-    block=True
+    block=True,
+    rule=create_exact_command_rule("猜歌", {"gs", "猜歌1", "猜歌2", "猜歌3", "猜歌4", "猜歌5", "猜歌6", "猜歌7", "gs1", "gs2", "gs3", "gs4", "gs5", "gs6", "gs7"})
 )
 
 
@@ -150,7 +148,12 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
 
 
 # --- 随机猜歌 ---
-start_random_guess_song = on_command("随机猜歌", aliases={"rgs"}, priority=10, block=True)
+start_random_guess_song = on_command("随机猜歌",
+                                     aliases={"rgs"},
+                                     priority=10,
+                                     block=True,
+                                     rule=create_exact_command_rule("随机猜歌", {"rgs"})
+                                     )
 
 
 @start_random_guess_song.handle()
@@ -246,7 +249,11 @@ async def _(bot: Bot, event: MessageEvent):
 
 
 # --- 猜歌手 ---
-start_vocalist_game = on_command("猜歌手", priority=10, block=True)
+start_vocalist_game = on_command("猜歌手",
+                                 priority=10,
+                                 block=True,
+                                 rule=create_exact_command_rule("猜歌手")
+                                 )
 
 
 @start_vocalist_game.handle()
