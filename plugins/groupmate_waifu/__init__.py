@@ -27,6 +27,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot import get_loaded_plugins
 from nonebot.plugin import Plugin
 from ..plugin_manager import is_plugin_enabled as check_plugin
+from ..plugin_manager import is_feature_enabled
 
 # 添加插件标识符（用于插件管理器）
 PLUGIN_NAME = "groupmate_waifu"
@@ -74,6 +75,20 @@ def is_plugin_enabled(group_id: str) -> bool:
 async def check_plugin_enabled(event: GroupMessageEvent) -> bool:
     """检查插件是否在当前群启用"""
     return is_plugin_enabled(str(event.group_id))
+
+# 添加子功能检查函数
+def is_yinpa_enabled(group_id: str) -> bool:
+    """检查透群友功能是否在指定群启用"""
+    try:
+        return is_feature_enabled(PLUGIN_NAME, "yinpa", group_id)
+    except ImportError:
+        # 如果插件管理器未安装，默认启用
+        return True
+
+async def check_yinpa_enabled(event: GroupMessageEvent) -> bool:
+    """检查透群友功能是否在当前群启用"""
+    return is_yinpa_enabled(str(event.group_id))
+
 
 def load(file,waifu_reset):
     if waifu_reset and file.exists() and os.path.getmtime(file) > Zero_today:
@@ -509,6 +524,11 @@ yinpa = on_message(rule = yinpa_rule, priority = 10, block = True)
 
 @yinpa.handle()
 async def _(bot:Bot, event: GroupMessageEvent, state:T_State):
+
+    if not is_yinpa_enabled(str(event.group_id)):
+        await yinpa.finish("本群禁止涩涩！")
+        return False
+
     group_id = event.group_id
     user_id = event.user_id
     yinpa_id, tips = state["yinpa"]
@@ -529,6 +549,9 @@ yinpa_list = on_command("涩涩记录", aliases={"色色记录"}, priority=10, b
 
 @yinpa_list.handle()
 async def _(bot:Bot, event: GroupMessageEvent):
+    if not is_yinpa_enabled(str(event.group_id)):
+        await yinpa_list.finish("本群禁止涩涩！")
+        return False
     group_id = event.group_id
     msg_list =[]
     # 输出卡池

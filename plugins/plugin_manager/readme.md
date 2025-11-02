@@ -13,6 +13,7 @@ B站链接解析：analysis_bilibili
 鉴定：identify  
 群聊消息统计：group_statistics  
 娶群友：groupmate_waifu  
+涩群友：groupmate_waifu:yinpa  
 戳一戳：poke_reply  
 戳一戳回复：poke_reply:poke  
 戳一戳投稿：poke_reply:contribute  
