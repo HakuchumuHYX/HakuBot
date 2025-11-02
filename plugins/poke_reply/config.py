@@ -2,12 +2,16 @@ from pathlib import Path
 from typing import List, Set
 import json
 from nonebot import logger
+import nonebot_plugin_localstore as localstore
 
 # 文件路径配置
 PLUGIN_DIR = Path(__file__).parent
-TEXT_FILES_DIR = PLUGIN_DIR / "text_files"  # 改为目录存储多个文件
-IMAGE_FILES_DIR = PLUGIN_DIR / "image_files"  # 新增：图片存储目录
-CONFIG_FILES_DIR = PLUGIN_DIR / "config_files"  # 新增：配置文件目录
+PLUGIN_NAME = "poke_reply"
+data_dir = localstore.get_data_dir(PLUGIN_NAME)
+data_dir.mkdir(parents=True, exist_ok=True)
+TEXT_FILES_DIR = data_dir / "text_files"  # 改为目录存储多个文件
+IMAGE_FILES_DIR = data_dir / "image_files"  # 新增：图片存储目录
+CONFIG_FILES_DIR = data_dir / "config_files"  # 新增：配置文件目录
 
 # 确保目录存在
 TEXT_FILES_DIR.mkdir(exist_ok=True)
