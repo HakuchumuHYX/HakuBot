@@ -103,9 +103,9 @@ async def handle_reload(bot: Bot, event: MessageEvent):
     """处理重载命令"""
     success, message = reload_help_config()
     if success:
-        await reload_handler.finish(f"✅ {message}")
+        await reload_handler.finish(f"{message}")
     else:
-        await reload_handler.finish(f"❌ {message}")
+        await reload_handler.finish(f"{message}")
 
 
 # 创建消息处理器，使用精确匹配规则
