@@ -389,7 +389,7 @@ if waifu_cd_bye > -1:
 
     bye = on_command("离婚",
                      aliases={"分手"},
-                     rule=create_exact_command_rule("离婚", {"分手"}, extra_rule=bye_rule),
+                     rule=bye_rule,
                      priority=10,
                      block=True
                      )
