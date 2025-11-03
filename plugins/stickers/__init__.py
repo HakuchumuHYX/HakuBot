@@ -1,52 +1,13 @@
-import random
-from pathlib import Path
-from typing import Dict, List
-
+import asyncio
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
-from nonebot_plugin_localstore import get_data_dir
 
 from ..utils.common import *
 from ..plugin_manager import *
 
-# 插件数据
-sticker_dir = get_data_dir("stickers")
-sticker_dir.mkdir(parents=True, exist_ok=True)
-
-# 存储所有贴图文件夹的映射
-sticker_folders: Dict[str, Path] = {}
-
-
-def scan_sticker_folders():
-    """扫描所有贴图文件夹"""
-    global sticker_folders
-    sticker_folders.clear()
-
-    if sticker_dir.exists():
-        for folder in sticker_dir.iterdir():
-            if folder.is_dir():
-                sticker_folders[folder.name] = folder
-
-
-def get_random_sticker(folder_name: str) -> Path | None:
-    """从指定文件夹中随机获取一张贴图"""
-    if folder_name not in sticker_folders:
-        return None
-
-    folder = sticker_folders[folder_name]
-    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
-
-    # 收集所有图片文件
-    image_files = []
-    for ext in image_extensions:
-        image_files.extend(folder.glob(f"*{ext}"))
-        image_files.extend(folder.glob(f"*{ext.upper()}"))
-
-    if not image_files:
-        return None
-
-    return random.choice(image_files)
-
+from .send import scan_sticker_folders, get_random_sticker, start_folder_watcher, stop_folder_watcher
+from .contribution import extract_contribution_info, save_contribution_images
+from .statistics import handle_statistics_command, get_sticker_statistics
 
 # 初始化时扫描文件夹
 scan_sticker_folders()
@@ -70,6 +31,21 @@ async def handle_sticker(event: GroupMessageEvent):
     if not message_text:
         return
 
+    # 检查是否是查看统计命令
+    if handle_statistics_command(message_text):
+        statistics_info = get_sticker_statistics()
+        await sticker_matcher.finish(statistics_info)
+        return
+
+    # 检查是否是投稿格式
+    folder_name, is_contribution = extract_contribution_info(message_text)
+    if is_contribution:
+        # 处理投稿
+        success, reply_msg, saved_count = await save_contribution_images(folder_name, event.message)
+        if success or saved_count == 0:  # 成功或完全失败时回复
+            await sticker_matcher.finish(reply_msg)
+        return
+
     # 检查是否是贴图文件夹名称
     sticker_file = get_random_sticker(message_text)
     if sticker_file:
@@ -79,3 +55,27 @@ async def handle_sticker(event: GroupMessageEvent):
         except Exception:
             # 如果发送失败，静默处理，不发送错误信息
             pass
+
+
+# 启动文件夹监视器
+async def start_watcher():
+    await start_folder_watcher()
+
+
+# 停止文件夹监视器
+async def stop_watcher():
+    await stop_folder_watcher()
+
+
+# 在插件加载和卸载时启动/停止监视器
+from nonebot import get_driver
+
+driver = get_driver()
+
+@driver.on_startup
+async def on_startup():
+    await start_watcher()
+
+@driver.on_shutdown
+async def on_shutdown():
+    await stop_watcher()
