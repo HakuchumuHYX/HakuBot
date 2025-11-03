@@ -1,13 +1,14 @@
 import asyncio
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
+from nonebot.log import logger
 
 from ..utils.common import *
 from ..plugin_manager import *
 
 from .send import scan_sticker_folders, get_random_sticker, start_folder_watcher, stop_folder_watcher
 from .contribution import extract_contribution_info, save_contribution_images
-from .statistics import handle_statistics_command, get_sticker_statistics
+from .statistics import handle_statistics_command, get_sticker_statistics, render_stickers_preview
 
 # 初始化时扫描文件夹
 scan_sticker_folders()
@@ -33,15 +34,26 @@ async def handle_sticker(event: GroupMessageEvent):
 
     # 检查是否是查看统计命令
     if handle_statistics_command(message_text):
+        # 渲染贴图预览图片
+        try:
+            pic_bytes = await render_stickers_preview()
+
+            if pic_bytes:
+                # 发送图片
+                await sticker_matcher.send(MessageSegment.image(pic_bytes))
+                return
+        except Exception as e:
+            logger.error(f"生成或发送贴图预览图片失败: {e}")
+
+        # 如果图片生成或发送失败，使用文本统计
         statistics_info = get_sticker_statistics()
         await sticker_matcher.finish(statistics_info)
-        return
 
     # 检查是否是投稿格式
     folder_name, is_contribution = extract_contribution_info(message_text)
     if is_contribution:
-        # 处理投稿
-        success, reply_msg, saved_count = await save_contribution_images(folder_name, event.message)
+        # 处理投稿 - 现在传递整个event对象
+        success, reply_msg, saved_count = await save_contribution_images(folder_name, event)
         if success or saved_count == 0:  # 成功或完全失败时回复
             await sticker_matcher.finish(reply_msg)
         return
@@ -72,9 +84,11 @@ from nonebot import get_driver
 
 driver = get_driver()
 
+
 @driver.on_startup
 async def on_startup():
     await start_watcher()
+
 
 @driver.on_shutdown
 async def on_shutdown():

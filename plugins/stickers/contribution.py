@@ -2,8 +2,8 @@ import re
 import aiohttp
 import aiofiles
 from pathlib import Path
-from typing import List, Tuple
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from typing import List, Tuple, Optional
+from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent
 from nonebot import get_bot
 
 from .send import sticker_dir, sticker_folders, scan_sticker_folders, count_images_in_folder
@@ -22,7 +22,7 @@ def extract_contribution_info(message_text: str) -> Tuple[str, bool]:
     return "", False
 
 
-async def save_contribution_images(folder_name: str, message: Message) -> Tuple[bool, str, int]:
+async def save_contribution_images(folder_name: str, event: GroupMessageEvent) -> Tuple[bool, str, int]:
     """
     保存投稿图片到指定文件夹
 
@@ -41,12 +41,21 @@ async def save_contribution_images(folder_name: str, message: Message) -> Tuple[
 
     # 提取消息中的所有图片
     image_segments = []
-    for segment in message:
+
+    # 情况1: 直接发送图片 + 文字
+    for segment in event.message:
         if segment.type == "image":
             image_segments.append(segment)
 
+    # 情况2: 回复图片消息
+    if not image_segments and event.reply:
+        # 从回复的消息中提取图片
+        for segment in event.reply.message:
+            if segment.type == "image":
+                image_segments.append(segment)
+
     if not image_segments:
-        return False, "投稿失败！未检测到图片", 0
+        return False, "投稿失败！未检测到图片，请直接发送图片或回复图片消息", 0
 
     saved_count = 0
 
