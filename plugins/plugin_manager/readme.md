@@ -1,5 +1,5 @@
 目前接入了管理插件的有  
-赛博浅草寺：draw_lots  
+赛博浅草寺（抽签）：draw_lots  
 鹿签到：deer_pipe  
 B站链接解析：analysis_bilibili  
 帮助文档：help_plugin  
@@ -19,4 +19,5 @@ B站链接解析：analysis_bilibili
 戳一戳投稿：poke_reply:contribute  
 PJSK猜歌：pjsk_guess_song  
 PJSK听歌：pjsk_guess_song:listen  
-私戳bot主：send_and_reply
+私戳bot主：send_and_reply  
+随机表情包：stickers
