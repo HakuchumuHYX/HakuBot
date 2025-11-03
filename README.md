@@ -13,4 +13,5 @@ plugin列表中所使用的部分插件来自于[NoneBot](https://nonebot.dev)�
 [nonebot-plugin-groupmate-waifu](https://github.com/KarisAya/nonebot_plugin_groupmate_waifu)  
 [nonebot-plugin-jrrp](https://github.com/SkyDynamic/nonebot_plugin_jrrp)  
 [astrbot-plugin-pjsk-guess-song](https://github.com/nichinichisou0609/astrbot_plugin_pjsk_guess_song)  
-[nonebot-plugin-sticker-saver](https://github.com/colasama/nonebot-plugin-sticker-saver)
+[nonebot-plugin-sticker-saver](https://github.com/colasama/nonebot-plugin-sticker-saver)  
+[astrbot-plugin-stickers](https://github.com/shiywhh/astrbot_plugin_sticker)  
