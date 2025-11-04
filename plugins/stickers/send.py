@@ -135,6 +135,38 @@ def get_random_sticker(folder_name: str) -> Path | None:
     return random.choice(image_files)
 
 
+def get_random_stickers(folder_name: str, count: int) -> List[Path]:
+    """
+    从指定文件夹中随机获取多张贴图（支持别名）
+
+    返回: 图片路径列表
+    """
+    # 解析实际文件夹名称
+    actual_folder_name = resolve_folder_name(folder_name)
+
+    if actual_folder_name not in sticker_folders:
+        return []
+
+    folder = sticker_folders[actual_folder_name]
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+
+    # 收集所有图片文件
+    image_files = []
+    for ext in image_extensions:
+        image_files.extend(folder.glob(f"*{ext}"))
+        image_files.extend(folder.glob(f"*{ext.upper()}"))
+
+    if not image_files:
+        return []
+
+    # 如果请求数量超过可用图片数量，返回所有图片
+    if count > len(image_files):
+        return image_files
+
+    # 随机选择不重复的图片
+    return random.sample(image_files, count)
+
+
 def count_images_in_folder(folder_name: str) -> int:
     """
     计算指定文件夹中的图片数量（支持别名）
