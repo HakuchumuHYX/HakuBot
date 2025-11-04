@@ -1,3 +1,4 @@
+# __init__.py
 import asyncio
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
@@ -6,7 +7,7 @@ from nonebot.log import logger
 from ..utils.common import *
 from ..plugin_manager import *
 
-from .send import scan_sticker_folders, get_random_sticker, start_folder_watcher, stop_folder_watcher
+from .send import scan_sticker_folders, get_random_sticker
 from .contribution import extract_contribution_info, save_contribution_images
 from .statistics import handle_statistics_command, get_sticker_statistics, render_stickers_preview
 
@@ -58,38 +59,16 @@ async def handle_sticker(event: GroupMessageEvent):
             await sticker_matcher.finish(reply_msg)
         return
 
-    # 检查是否是贴图文件夹名称
-    sticker_file = get_random_sticker(message_text)
-    if sticker_file:
-        # 发送图片
-        try:
-            await sticker_matcher.finish(MessageSegment.image(sticker_file))
-        except Exception:
-            # 如果发送失败，静默处理，不发送错误信息
-            pass
-
-
-# 启动文件夹监视器
-async def start_watcher():
-    await start_folder_watcher()
-
-
-# 停止文件夹监视器
-async def stop_watcher():
-    await stop_folder_watcher()
-
-
-# 在插件加载和卸载时启动/停止监视器
-from nonebot import get_driver
-
-driver = get_driver()
-
-
-@driver.on_startup
-async def on_startup():
-    await start_watcher()
-
-
-@driver.on_shutdown
-async def on_shutdown():
-    await stop_watcher()
+    # 检查是否是随机贴图命令
+    if message_text.startswith("随机"):
+        # 提取文件夹名（去掉"随机"前缀）
+        folder_name = message_text[2:].strip()
+        if folder_name:
+            sticker_file = get_random_sticker(folder_name)
+            if sticker_file:
+                # 发送图片
+                try:
+                    await sticker_matcher.finish(MessageSegment.image(sticker_file))
+                except Exception:
+                    # 如果发送失败，静默处理，不发送错误信息
+                    pass

@@ -12,6 +12,6 @@ dependencies = [
 adapters = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" }
 ]
-plugins = ["nonebot_plugin_localstore", "nonebot_plugin_htmlrender", "nonebot_plugin_meme_stickers", "nonebot_plugin_saalc", "nonebot_bison"]
+plugins = ["nonebot_plugin_localstore", "nonebot_plugin_htmlrender", "nonebot_plugin_saalc", "nonebot_bison"]
 plugin_dirs = ["plugins"]
 builtin_plugins = ["echo"]
