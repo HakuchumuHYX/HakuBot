@@ -37,16 +37,18 @@ cleanup_state = {}
 
 def parse_multi_random_command(message_text: str) -> tuple[str, int] | None:
     """
-    解析多图随机命令
+    解析多图随机命令（支持多种分隔符）
 
     返回: (文件夹名, 图片数量) 或 None
     """
-    # 匹配格式：随机文件夹名x数量
-    match = re.match(r'^随机(\S+?)x(\d+)$', message_text.strip())
+    # 匹配格式：随机文件夹名[分隔符]数量
+    # 支持的分隔符：x, ×, *, 乘, 乘以
+    pattern = r'^随机(\S+?)[\s]*([x×*乘]|乘以)[\s]*(\d+)$'
+    match = re.match(pattern, message_text.strip(), re.IGNORECASE)
     if match:
         folder_name = match.group(1).strip()
         try:
-            count = int(match.group(2))
+            count = int(match.group(3))
             # 限制数量在1-5之间
             count = max(1, min(count, 5))
             return folder_name, count
