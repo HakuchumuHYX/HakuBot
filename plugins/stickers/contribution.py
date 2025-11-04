@@ -7,12 +7,12 @@ from typing import List, Tuple, Optional
 from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent
 from nonebot import get_bot
 
-from .send import sticker_dir, sticker_folders, scan_sticker_folders, count_images_in_folder
+from .send import sticker_dir, sticker_folders, resolve_folder_name, count_images_in_folder
 
 
 def extract_contribution_info(message_text: str) -> Tuple[str, bool]:
     """
-    提取投稿信息
+    提取投稿信息（支持别名）
     返回: (文件夹名, 是否为投稿格式)
     """
     # 匹配格式：文件夹名投稿
@@ -25,20 +25,35 @@ def extract_contribution_info(message_text: str) -> Tuple[str, bool]:
 
 async def save_contribution_images(folder_name: str, event: GroupMessageEvent) -> Tuple[bool, str, int]:
     """
-    保存投稿图片到指定文件夹
+    保存投稿图片到指定文件夹（支持别名）
 
     返回: (是否成功, 消息, 保存的图片数量)
     """
+    # 解析实际文件夹名称
+    actual_folder_name = resolve_folder_name(folder_name)
+
     # 检查文件夹是否存在
-    if folder_name not in sticker_folders:
-        available_folders = list(sticker_folders.keys())
-        if available_folders:
-            folder_list = ", ".join(available_folders)
-            return False, f"投稿失败！当前可用文件夹：{folder_list}", 0
+    if actual_folder_name not in sticker_folders:
+        # 获取可用文件夹信息
+        from .send import get_folder_display_info
+        folder_info_list = get_folder_display_info()
+
+        if folder_info_list:
+            folder_list = []
+            for folder_info in folder_info_list:
+                name = folder_info["name"]
+                aliases = folder_info.get("aliases", [])
+                if aliases:
+                    folder_list.append(f"{name}(别名: {', '.join(aliases)})")
+                else:
+                    folder_list.append(name)
+
+            available_folders = ", ".join(folder_list)
+            return False, f"投稿失败！当前可用文件夹：{available_folders}", 0
         else:
             return False, "投稿失败！暂无可用贴图文件夹", 0
 
-    folder_path = sticker_folders[folder_name]
+    folder_path = sticker_folders[actual_folder_name]
 
     # 提取消息中的所有图片
     image_segments = []
@@ -99,16 +114,18 @@ async def save_contribution_images(folder_name: str, event: GroupMessageEvent) -
             continue
 
     if saved_count > 0:
-        # 重新扫描文件夹以更新文件列表
-        scan_sticker_folders()
-
         # 计算当前文件夹中的图片数量
-        image_count = count_images_in_folder(folder_name)
+        image_count = count_images_in_folder(actual_folder_name)
+
+        # 显示实际文件夹名
+        display_name = actual_folder_name
+        if actual_folder_name != folder_name:
+            display_name = f"{actual_folder_name}(通过别名'{folder_name}')"
 
         if saved_count == 1:
-            return True, f"投稿成功！现在 {folder_name} 中有 {image_count} 张表情~", saved_count
+            return True, f"投稿成功！现在 {display_name} 中有 {image_count} 张表情~", saved_count
         else:
-            return True, f"投稿成功！成功保存 {saved_count} 张图片到 {folder_name}，现在共有 {image_count} 张表情~", saved_count
+            return True, f"投稿成功！成功保存 {saved_count} 张图片到 {display_name}，现在共有 {image_count} 张表情~", saved_count
     else:
         return False, "投稿失败！无法保存任何图片", 0
 

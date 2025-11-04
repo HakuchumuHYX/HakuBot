@@ -7,12 +7,13 @@ from nonebot.log import logger
 from ..utils.common import *
 from ..plugin_manager import *
 
-from .send import scan_sticker_folders, get_random_sticker
+from .send import load_sticker_list, get_random_sticker, resolve_folder_name
 from .contribution import extract_contribution_info, save_contribution_images
 from .statistics import handle_statistics_command, get_sticker_statistics, render_stickers_preview
+from .manage import handle_manage_command  # 新增导入
 
-# 初始化时扫描文件夹
-scan_sticker_folders()
+# 初始化时加载配置
+load_sticker_list()
 
 # 创建消息处理器
 sticker_matcher = on_message(priority=10, block=False)
@@ -32,6 +33,11 @@ async def handle_sticker(event: GroupMessageEvent):
     message_text = event.get_plaintext().strip()
     if not message_text:
         return
+
+    # 检查是否是管理命令
+    manage_reply = await handle_manage_command(message_text, event)
+    if manage_reply is not None:
+        await sticker_matcher.finish(manage_reply)
 
     # 检查是否是查看统计命令
     if handle_statistics_command(message_text):
@@ -53,7 +59,7 @@ async def handle_sticker(event: GroupMessageEvent):
     # 检查是否是投稿格式
     folder_name, is_contribution = extract_contribution_info(message_text)
     if is_contribution:
-        # 处理投稿 - 现在传递整个event对象
+        # 处理投稿
         success, reply_msg, saved_count = await save_contribution_images(folder_name, event)
         if success or saved_count == 0:  # 成功或完全失败时回复
             await sticker_matcher.finish(reply_msg)
@@ -64,6 +70,7 @@ async def handle_sticker(event: GroupMessageEvent):
         # 提取文件夹名（去掉"随机"前缀）
         folder_name = message_text[2:].strip()
         if folder_name:
+            # 使用支持别名的函数获取贴图
             sticker_file = get_random_sticker(folder_name)
             if sticker_file:
                 # 发送图片

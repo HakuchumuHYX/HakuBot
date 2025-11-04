@@ -5,7 +5,113 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 from PIL import Image, ImageDraw, ImageFont
 from nonebot.adapters.onebot.v11 import MessageSegment
-from .send import sticker_folders, count_images_in_folder, get_random_sticker
+
+from .send import sticker_folders, count_images_in_folder, get_random_sticker, get_folder_display_info
+
+
+def calculate_cell_height(folder_info: Dict) -> int:
+    """
+    根据文件夹信息计算单元格高度
+
+    返回: 单元格高度
+    """
+    base_height = 190  # 基础高度
+    aliases = folder_info.get("aliases", [])
+
+    if not aliases:
+        return base_height  # 没有别名，使用基础高度
+
+    # 计算别名需要的额外高度
+    alias_lines = 1
+    alias_text = ", ".join(aliases)
+
+    # 简单估算文本长度，每20个字符可能需要换行
+    if len(alias_text) > 20:
+        alias_lines = 2
+    if len(alias_text) > 40:
+        alias_lines = 3
+
+    # 每行别名增加15px高度
+    extra_height = (alias_lines - 1) * 15
+
+    return base_height + extra_height
+
+
+def get_max_cell_height(folder_info_list: List[Dict]) -> int:
+    """
+    获取所有单元格中的最大高度
+
+    返回: 最大单元格高度
+    """
+    max_height = 190  # 最小高度
+
+    for folder_info in folder_info_list:
+        height = calculate_cell_height(folder_info)
+        if height > max_height:
+            max_height = height
+
+    return max_height
+
+
+def draw_multiline_text(draw, text: str, font, max_width: int, x: int, y: int,
+                        fill: Tuple, max_lines: int = 3) -> int:
+    """
+    绘制多行文本，自动换行
+
+    返回: 绘制的行数
+    """
+    words = text.split(',')
+    lines = []
+    current_line = []
+
+    for word in words:
+        word = word.strip()
+        if not word:
+            continue
+
+        test_line = ', '.join(current_line + [word])
+        bbox = draw.textbbox((0, 0), test_line, font=font)
+        text_width = bbox[2] - bbox[0]
+
+        if text_width <= max_width:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines.append(', '.join(current_line))
+                current_line = [word]
+            else:
+                # 单个词就超过宽度，强制分割
+                lines.append(word)
+                current_line = []
+
+            if len(lines) >= max_lines:
+                break
+
+    if current_line and len(lines) < max_lines:
+        lines.append(', '.join(current_line))
+
+    # 如果超过最大行数，处理最后一行
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        if lines[-1]:
+            last_line = lines[-1]
+            while last_line:
+                test_text = last_line + "..."
+                bbox = draw.textbbox((0, 0), test_text, font=font)
+                if bbox[2] - bbox[0] <= max_width:
+                    lines[-1] = test_text
+                    break
+                last_line = last_line[:-1]
+
+    # 绘制每一行
+    line_height = font.size + 2
+    for i, line in enumerate(lines):
+        bbox = draw.textbbox((0, 0), line, font=font)
+        line_width = bbox[2] - bbox[0]
+        line_x = x + (max_width - line_width) // 2
+        draw.text((line_x, y + i * line_height), line, fill=fill, font=font)
+
+    return len(lines)
 
 
 async def render_stickers_preview() -> bytes:
@@ -15,19 +121,20 @@ async def render_stickers_preview() -> bytes:
     返回: 图片的bytes数据
     """
     try:
-        if not sticker_folders:
+        folder_info_list = get_folder_display_info()
+        if not folder_info_list:
             return None
 
-        # 获取所有文件夹并按名称排序
-        sorted_folders = sorted(sticker_folders.keys())
+        # 按文件夹名称排序
+        sorted_folders = sorted(folder_info_list, key=lambda x: x["name"])
 
         # 计算布局
-        cols = min(6, len(sorted_folders))  # 每行最多6个
+        cols = min(7, len(sorted_folders))  # 每行最多7个
         rows = math.ceil(len(sorted_folders) / cols)
 
-        # 保持单元格尺寸不变
+        # 动态计算单元格高度
+        cell_height = get_max_cell_height(sorted_folders) + 25
         cell_width = 220
-        cell_height = 190
         padding = 20
         spacing = 15
 
@@ -44,15 +151,18 @@ async def render_stickers_preview() -> bytes:
             title_font = ImageFont.truetype("msyh.ttc", 38)
             name_font = ImageFont.truetype("msyhbd.ttc", 24)
             count_font = ImageFont.truetype("msyh.ttc", 20)
+            alias_font = ImageFont.truetype("msyh.ttc", 16)
         except:
             try:
                 title_font = ImageFont.truetype("simhei.ttf", 38)
                 name_font = ImageFont.truetype("simhei.ttf", 24)
                 count_font = ImageFont.truetype("simhei.ttf", 20)
+                alias_font = ImageFont.truetype("simhei.ttf", 16)
             except:
                 title_font = ImageFont.load_default()
                 name_font = ImageFont.load_default()
                 count_font = ImageFont.load_default()
+                alias_font = ImageFont.load_default()
 
         # 绘制标题
         title = "贴图库预览"
@@ -63,7 +173,7 @@ async def render_stickers_preview() -> bytes:
 
         # 绘制统计信息
         total_folders = len(sorted_folders)
-        total_images = sum(count_images_in_folder(folder) for folder in sticker_folders)
+        total_images = sum(folder_info["image_count"] for folder_info in sorted_folders)
         stats_text = f"{total_folders}个文件夹  {total_images}张图片"
         stats_bbox = draw.textbbox((0, 0), stats_text, font=name_font)
         stats_width = stats_bbox[2] - stats_bbox[0]
@@ -73,7 +183,7 @@ async def render_stickers_preview() -> bytes:
         # 绘制网格
         start_y = padding + 85
 
-        for i, folder_name in enumerate(sorted_folders):
+        for i, folder_info in enumerate(sorted_folders):
             row = i // cols
             col = i % cols
 
@@ -90,21 +200,28 @@ async def render_stickers_preview() -> bytes:
                 width=2
             )
 
-            # 获取预览图片
-            preview_path = get_random_sticker(folder_name)
+            # 动态计算当前单元格的布局参数
+            current_cell_height = calculate_cell_height(folder_info)
+            aliases = folder_info.get("aliases", [])
 
-            # 计算元素间距 - 基于120px图片高度重新分配
-            # 单元格总高度：190px
-            # 图片区域高度：120px
-            # 文件夹名称区域高度：24px
-            # 图片数量区域高度：20px
-            # 剩余空间：190 - 120 - 24 - 20 = 26px
-            # 平均分配为4个间隙：26 / 4 = 6.5px ≈ 7px
-            image_area_height = 120
-            image_top_margin = 7
-            image_to_name_margin = 6  # 稍微调整以平衡
-            name_to_count_margin = 7
-            count_bottom_margin = 6  # 稍微调整以平衡
+            # 图片区域高度：至少占单元格的60%
+            image_area_height = int(cell_height * 0.6)
+
+            # 动态调整间距
+            if not aliases:
+                # 没有别名，增加名称和数量之间的间距
+                image_top_margin = 10
+                image_to_name_margin = 15
+                name_to_count_margin = 10
+            else:
+                # 有别名，压缩其他间距
+                image_top_margin = 5
+                image_to_name_margin = 8
+                name_to_alias_margin = 2
+                alias_to_count_margin = 3
+
+            # 获取预览图片
+            preview_path = get_random_sticker(folder_info["name"])
 
             if preview_path and preview_path.exists():
                 try:
@@ -112,10 +229,10 @@ async def render_stickers_preview() -> bytes:
                     if preview_image.mode != 'RGB':
                         preview_image = preview_image.convert('RGB')
 
-                    # 缩放图片以适应120px高度区域
+                    # 缩放图片以适应图片区域
                     preview_width, preview_height = preview_image.size
-                    target_height = image_area_height - 10  # 保留少量边距
-                    target_width = cell_width - 20  # 保留少量边距
+                    target_height = image_area_height - 15  # 保留边距
+                    target_width = cell_width - 20  # 保留边距
 
                     # 计算缩放比例，保持宽高比
                     ratio = min(target_width / preview_width, target_height / preview_height)
@@ -132,7 +249,7 @@ async def render_stickers_preview() -> bytes:
 
                 except Exception:
                     # 绘制占位符
-                    placeholder_size = 60
+                    placeholder_size = min(60, int(image_area_height * 0.6))
                     placeholder_x = x + (cell_width - placeholder_size) // 2
                     placeholder_y = y + image_top_margin + (image_area_height - placeholder_size) // 2
 
@@ -147,7 +264,7 @@ async def render_stickers_preview() -> bytes:
                     # 绘制文件夹图标
                     folder_text = "文件夹"
                     try:
-                        icon_font = ImageFont.truetype("msyh.ttc", 16)
+                        icon_font = ImageFont.truetype("msyh.ttc", 14)
                     except:
                         icon_font = ImageFont.load_default()
 
@@ -159,7 +276,7 @@ async def render_stickers_preview() -> bytes:
                     draw.text((text_x, text_y), folder_text, fill=(127, 140, 141), font=icon_font)
             else:
                 # 绘制占位符
-                placeholder_size = 60
+                placeholder_size = min(60, int(image_area_height * 0.6))
                 placeholder_x = x + (cell_width - placeholder_size) // 2
                 placeholder_y = y + image_top_margin + (image_area_height - placeholder_size) // 2
 
@@ -173,7 +290,7 @@ async def render_stickers_preview() -> bytes:
                 # 绘制文件夹图标
                 folder_text = "文件夹"
                 try:
-                    icon_font = ImageFont.truetype("msyh.ttc", 16)
+                    icon_font = ImageFont.truetype("msyh.ttc", 14)
                 except:
                     icon_font = ImageFont.load_default()
 
@@ -186,13 +303,14 @@ async def render_stickers_preview() -> bytes:
 
             # 绘制文件夹名称
             name_y = y + image_top_margin + image_area_height + image_to_name_margin
-            folder_name_text = folder_name[:10] + "..." if len(folder_name) > 10 else folder_name
+            folder_name_text = folder_info["name"][:12] + "..." if len(folder_info["name"]) > 12 else folder_info[
+                "name"]
             name_bbox = draw.textbbox((0, 0), folder_name_text, font=name_font)
             name_width = name_bbox[2] - name_bbox[0]
 
             # 如果名称太长，进一步截断
             if name_width > cell_width - 20:
-                max_chars = min(len(folder_name_text), 7)
+                max_chars = min(len(folder_name_text), 8)
                 folder_name_text = folder_name_text[:max_chars] + "..."
                 name_bbox = draw.textbbox((0, 0), folder_name_text, font=name_font)
                 name_width = name_bbox[2] - name_bbox[0]
@@ -200,17 +318,40 @@ async def render_stickers_preview() -> bytes:
             name_x = x + (cell_width - name_width) // 2
             draw.text((name_x, name_y), folder_name_text, fill=(44, 62, 80), font=name_font)
 
+            # 绘制别名（如果有）
+            aliases = folder_info.get("aliases", [])
+            if aliases:
+                alias_text = f"别名: {', '.join(aliases)}"
+                alias_y = name_y + name_to_alias_margin + 24
+
+                # 使用多行文本绘制别名
+                alias_lines = draw_multiline_text(
+                    draw, alias_text, alias_font,
+                    cell_width - 20,  # 最大宽度
+                    x + 10, alias_y,  # 位置
+                    (127, 140, 141),  # 颜色
+                    max_lines=3  # 最多3行
+                )
+            else:
+                alias_lines = 0
+
             # 绘制图片数量
-            image_count = count_images_in_folder(folder_name)
+            image_count = folder_info["image_count"]
             count_text = f"{image_count} 张"
             count_bbox = draw.textbbox((0, 0), count_text, font=count_font)
             count_width = count_bbox[2] - count_bbox[0]
             count_x = x + (cell_width - count_width) // 2
-            count_y = name_y + name_to_count_margin + 24  # 24是文件夹名称的近似高度
+
+            # 根据是否有别名及别名行数调整位置
+            if aliases:
+                count_y = alias_y + alias_to_count_margin + (alias_lines * 18)  # 每行约18px
+            else:
+                count_y = name_y + 30  # 没有别名时增加间距
+
             draw.text((count_x, count_y), count_text, fill=(127, 140, 141), font=count_font)
 
         # 绘制底部说明
-        footer_text = "Data provided by LunaBot Gallery and astrbot_plugin_stickers."
+        footer_text = "Data Provided by LunaBot Gallery (by @NeuraXmy) and astrbot_plugin_stickers (by @shiywhh)."
         footer_bbox = draw.textbbox((0, 0), footer_text, font=count_font)
         footer_width = footer_bbox[2] - footer_bbox[0]
         footer_x = (img_width - footer_width) // 2
@@ -234,22 +375,31 @@ def get_sticker_statistics() -> str:
 
     返回: 格式化的统计信息字符串
     """
-    if not sticker_folders:
+    folder_info_list = get_folder_display_info()
+    if not folder_info_list:
         return "当前没有可用的贴图文件夹"
 
-    # 获取所有文件夹并按名称排序
-    sorted_folders = sorted(sticker_folders.keys())
+    # 按文件夹名称排序
+    sorted_folders = sorted(folder_info_list, key=lambda x: x["name"])
 
     # 构建统计信息
     lines = ["当前stickers列表："]
 
-    for folder_name in sorted_folders:
-        image_count = count_images_in_folder(folder_name)
-        lines.append(f"{folder_name}：{image_count}张")
+    for folder_info in sorted_folders:
+        folder_name = folder_info["name"]
+        image_count = folder_info["image_count"]
+        aliases = folder_info.get("aliases", [])
+
+        if aliases:
+            alias_text = f" (别名: {', '.join(aliases)})"
+        else:
+            alias_text = ""
+
+        lines.append(f"{folder_name}{alias_text}：{image_count}张")
 
     # 添加总计信息
-    total_folders = len(sticker_folders)
-    total_images = sum(count_images_in_folder(folder) for folder in sticker_folders)
+    total_folders = len(sorted_folders)
+    total_images = sum(folder_info["image_count"] for folder_info in sorted_folders)
     lines.append(f"\n总计：{total_folders}个文件夹，{total_images}张图片")
 
     return "\n".join(lines)
