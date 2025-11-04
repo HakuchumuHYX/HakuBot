@@ -373,9 +373,9 @@ if waifu_cd_bye > -1:
     global cd_bye
     cd_bye = {}
 
-    def bye_rule(event: GroupMessageEvent) -> bool:
+    async def bye_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:  # 改为异步函数
         """离婚命令规则"""
-        if not check_plugin_enabled(event):
+        if not await check_plugin_enabled(event):  # 添加 await
             return False
 
         msg = event.message.extract_plain_text().strip()
@@ -386,10 +386,9 @@ if waifu_cd_bye > -1:
                 event.group_id in record_CP and
                 record_CP[event.group_id].get(event.user_id, event.user_id) != event.user_id)
 
-
     bye = on_command("离婚",
                      aliases={"分手"},
-                     rule=bye_rule,
+                     rule=bye_rule,  # 使用修改后的异步规则
                      priority=10,
                      block=True
                      )
@@ -557,10 +556,10 @@ yinpa = on_message(rule = yinpa_rule, priority = 10, block = True)
 
 @yinpa.handle()
 async def _(bot:Bot, event: GroupMessageEvent, state:T_State):
-
-    if not is_yinpa_enabled(str(event.group_id)):
+    # 修复这里的检查
+    if not await check_yinpa_enabled(event):  # 添加 await
         await yinpa.finish("本群禁止涩涩！")
-        return False
+        return
 
     group_id = event.group_id
     user_id = event.user_id
@@ -587,9 +586,9 @@ yinpa_list = on_command("涩涩记录",
 
 @yinpa_list.handle()
 async def _(bot:Bot, event: GroupMessageEvent):
-    if not is_yinpa_enabled(str(event.group_id)):
+    if not await check_yinpa_enabled(event):  # 添加 await
         await yinpa_list.finish("本群禁止涩涩！")
-        return False
+        return
     group_id = event.group_id
     msg_list =[]
     # 输出卡池
