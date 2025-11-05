@@ -22,3 +22,7 @@ PJSK听歌：pjsk_guess_song:listen
 私戳bot主：send_and_reply  
 随机表情包：stickers  
 图片处理：image_processor  
+gif倒放：image_processor:reverse  
+git加速：image_processor:speed  
+图片对称：image_processor:symmetry  
+图片抠图：image_processor:cutout  
