@@ -20,4 +20,5 @@ B站链接解析：analysis_bilibili
 PJSK猜歌：pjsk_guess_song  
 PJSK听歌：pjsk_guess_song:listen  
 私戳bot主：send_and_reply  
-随机表情包：stickers
+随机表情包：stickers  
+图片处理：image_processor  
