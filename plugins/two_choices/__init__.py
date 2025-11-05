@@ -8,7 +8,7 @@ from nonebot import get_driver, on_message, logger
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
 from nonebot.rule import Rule
 from nonebot.exception import FinishedException
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 # 配置文件路径
 CONFIG_FILE = Path(__file__).parent / "config.json"

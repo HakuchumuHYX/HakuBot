@@ -3,7 +3,7 @@ from nonebot.plugin import on_command
 from nonebot.params import CommandArg
 from typing import List
 import time
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 from ..utils.common import create_exact_command_rule
 
 jrrp = on_command("jrrp", permission=GROUP, priority=10, rule=create_exact_command_rule("jrrp"))

@@ -18,7 +18,7 @@ from ..utils import (
     _check_game_start_conditions, _get_setting_for_group
 )
 from ..game_session import _run_game_session
-from ...plugin_manager import is_plugin_enabled
+from ...plugin_manager.enable import is_plugin_enabled
 from ...utils.common import create_exact_command_rule
 
 # --- 猜歌指令 ---

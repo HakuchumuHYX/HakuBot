@@ -17,7 +17,7 @@ from ..utils import (
     get_session_id, get_user_id, get_user_name,
     _is_group_allowed, _get_setting_for_group
 )
-from ...plugin_manager import *
+from ...plugin_manager.enable import *
 from ...utils.common import create_exact_command_rule
 
 async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent, mode: str,

@@ -2,7 +2,7 @@ from nonebot.plugin import on_command, PluginMetadata
 from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, MessageSegment, GroupMessageEvent
 from httpx import AsyncClient
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 __plugin_meta__ = PluginMetadata(
     name="表情包保存器",

@@ -17,7 +17,8 @@ from .gif_speed import change_gif_speed, change_gif_speed_alternative
 from .image_symmetry import process_image_symmetry
 from .help import generate_help_image, get_help_text
 
-from ..plugin_manager import *
+from ..plugin_manager.enable import *
+from ..plugin_manager.cd_manager import *
 
 
 async def download_and_check_gif(url: str) -> bool:
@@ -319,6 +320,16 @@ async def handle_image_symmetry_common(event: Event, symmetry_type: str):
             await image_symmetry_handler.finish("对称功能在本群无法使用！")
             return
 
+    if isinstance(event, GroupMessageEvent):
+        PLUGIN_ID = "image_processor:symmetry"  # 对应 readme.md 中的功能ID
+        group_id = str(event.group_id)
+        user_id = str(event.user_id)
+
+        remaining_cd = check_cd(PLUGIN_ID, group_id, user_id)
+        if remaining_cd > 0:
+            await image_symmetry_handler.finish(f"对称功能还在冷却中，请等待 {remaining_cd} 秒")
+            return
+
     symmetry_names = {
         "left": "左对称",
         "right": "右对称",
@@ -366,6 +377,13 @@ async def handle_image_symmetry_common(event: Event, symmetry_type: str):
         if result_path and os.path.exists(result_path):
             file_size = os.path.getsize(result_path)
             if file_size > 100:
+
+                if isinstance(event, GroupMessageEvent):
+                    PLUGIN_ID = "image_processor:symmetry"  # 确保ID一致
+                    group_id = str(event.group_id)
+                    user_id = str(event.user_id)
+                    update_cd(PLUGIN_ID, group_id, user_id)
+
                 # 直接使用send方法发送图片，避免重复发送
                 await image_symmetry_handler.send(MessageSegment.image(f"file:///{result_path}"))
                 # 不调用finish，让函数自然结束

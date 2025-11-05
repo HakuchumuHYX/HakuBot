@@ -2,7 +2,7 @@ from nonebot import on_notice, require
 from nonebot.adapters.onebot.v11 import GroupIncreaseNoticeEvent, Message, MessageSegment
 import random
 from pathlib import Path
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as store

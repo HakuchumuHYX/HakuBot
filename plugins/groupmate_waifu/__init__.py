@@ -26,8 +26,8 @@ from nonebot.plugin import PluginMetadata
 # 在已有的导入后面添加
 from nonebot import get_loaded_plugins
 from nonebot.plugin import Plugin
-from ..plugin_manager import is_plugin_enabled as check_plugin
-from ..plugin_manager import is_feature_enabled
+from ..plugin_manager.enable import is_plugin_enabled as check_plugin
+from ..plugin_manager.enable import is_feature_enabled
 from ..utils.common import create_exact_command_rule
 
 # 添加插件标识符（用于插件管理器）

@@ -3,7 +3,7 @@ from nonebot import get_bot
 from nonebot_plugin_apscheduler import scheduler
 
 # 导入管理模块
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 from .data_manager import data_manager
 from .utils import get_total_messages, get_top_users, generate_stat_message, reset_daily_stats

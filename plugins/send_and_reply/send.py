@@ -9,7 +9,7 @@ from nonebot.log import logger
 
 # 导入共享上下文
 from .content import message_context
-from ..plugin_manager import *
+from ..plugin_manager.enable import *
 # 获取配置中的超级用户列表
 superusers = get_driver().config.superusers
 

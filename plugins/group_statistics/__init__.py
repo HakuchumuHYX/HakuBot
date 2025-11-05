@@ -6,7 +6,7 @@ from nonebot.adapters.onebot.v11 import Event
 require("nonebot_plugin_apscheduler")
 
 # 导入管理模块
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 from .data_manager import data_manager
 from .handlers import message_handler, stat_command

@@ -5,7 +5,7 @@ from typing import Dict, List, Set
 from .config import STATS_FILE
 
 # 导入管理模块
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 
 class GroupStatisticsData:

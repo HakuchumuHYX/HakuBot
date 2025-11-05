@@ -9,7 +9,7 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 # 导入管理模块
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 # 获取所有机器人实例
 bots = get_driver().bots

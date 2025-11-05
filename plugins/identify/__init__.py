@@ -12,7 +12,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
 
 # 导入管理模块
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 from ..utils.common import create_exact_command_rule
 from .data_manager import daily_record_manager
 from nonebot.exception import FinishedException

@@ -9,7 +9,7 @@ from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
 
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 # 配置文件路径
 CONFIG_FILE = Path(__file__).parent / "config.json"

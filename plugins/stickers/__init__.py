@@ -8,7 +8,7 @@ from nonebot.log import logger
 from nonebot.params import CommandArg
 
 from ..utils.common import *
-from ..plugin_manager import *
+from ..plugin_manager.enable import *
 
 from .send import load_sticker_list, get_random_sticker, get_random_stickers, resolve_folder_name
 from .contribution import extract_contribution_info, save_contribution_images

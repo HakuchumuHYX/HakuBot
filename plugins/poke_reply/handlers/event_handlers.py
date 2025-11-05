@@ -20,7 +20,7 @@ from ..services.text_image_cache import text_image_cache
 from ..managers.cache_manager import message_cache
 from ..managers.poke_cd_manager import poke_cd_manager
 from ..utils.common import download_image, get_group_id, extract_image_data, ensure_at_me
-from ...plugin_manager import *
+from ...plugin_manager.enable import *
 
 # 注册事件处理器
 poke = on_notice()

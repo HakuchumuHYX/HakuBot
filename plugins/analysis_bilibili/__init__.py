@@ -6,7 +6,7 @@ from nonebot.adapters import Event
 from nonebot.rule import Rule
 from nonebot.plugin import PluginMetadata
 from .analysis_bilibili import config, b23_extract, bili_keyword, search_bili_by_title
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 require("nonebot_plugin_saa")
 from nonebot_plugin_saa import (  # noqa: E402

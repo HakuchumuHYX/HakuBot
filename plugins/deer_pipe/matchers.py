@@ -22,7 +22,7 @@ from nonebot_plugin_userinfo import EventUserInfo, UserInfo
 # 修正导入：删除错误的导入，添加正确的导入
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.adapters import Event
-from ..plugin_manager import is_plugin_enabled  # 使用绝对导入
+from ..plugin_manager.enable import is_plugin_enabled  # 使用绝对导入
 
 # Matchers
 deer: AlconnaMatcher = on_alconna(Alconna("🦌", Args["target?", At]), aliases={"鹿"})

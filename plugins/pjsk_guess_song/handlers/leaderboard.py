@@ -11,7 +11,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, Bot, Group
 
 # [重构] 导入 db_service 和 image_service
 from .. import db_service, image_service
-from ...plugin_manager import is_plugin_enabled
+from ...plugin_manager.enable import is_plugin_enabled
 from ...utils.common import create_exact_command_rule
 
 leaderboard_handler = on_command("群聊猜歌排行",

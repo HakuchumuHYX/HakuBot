@@ -4,7 +4,7 @@ from nonebot.adapters import Event, Message, Bot
 from nonebot_plugin_session import extract_session, SessionIdType
 
 from .config import config
-from ..plugin_manager import is_plugin_enabled
+from ..plugin_manager.enable import is_plugin_enabled
 
 plus = on_message(rule=regex(""), priority=config.plus_one_priority, block=False)
 msg_dict = {}
