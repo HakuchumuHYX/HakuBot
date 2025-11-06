@@ -1,12 +1,14 @@
 # core/similarity_check.py
 import re
+import re
 from difflib import SequenceMatcher
 from typing import List, Dict
 from nonebot import logger
 
-from ..config import SIMILARITY_THRESHOLD
+# vvvvvv 【修改：导入路径】 vvvvvv
+from .config import SIMILARITY_THRESHOLD
 from .data_manager import data_manager
-from ..utils.common import preprocess_text
+from .common import preprocess_text
 
 class SimilarityChecker:
     def __init__(self, threshold: float = SIMILARITY_THRESHOLD):

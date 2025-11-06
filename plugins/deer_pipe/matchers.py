@@ -24,6 +24,9 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.adapters import Event
 from ..plugin_manager.enable import is_plugin_enabled  # 使用绝对导入
 
+# 导入CD管理函数
+from ..plugin_manager.cd_manager import check_cd, update_cd
+
 # Matchers
 deer: AlconnaMatcher = on_alconna(Alconna("🦌", Args["target?", At]), aliases={"鹿"})
 deer_past: AlconnaMatcher = on_alconna(
@@ -38,11 +41,20 @@ deer_help: AlconnaMatcher = on_alconna(Alconna("🦌帮助"), aliases={"鹿帮�
 
 # Handlers
 @deer.handle()
-async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Event = None):  # 添加 event 参数
-    # 修正：使用传入的 event 参数而不是导入的 event 模块
+async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Event = None):
+    # 统一使用这一个ID
+    PLUGIN_ID = "deer_pipe"
+
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("deer_pipe", str(event.group_id)):
+        group_id = str(event.group_id)
+        if not is_plugin_enabled(PLUGIN_ID, group_id):
             await deer.finish("🦌签到功能当前已被禁用")
+
+        # 检查CD
+        caller_user_id = user_info.user_id
+        remaining_cd = check_cd(PLUGIN_ID, group_id, caller_user_id)
+        if remaining_cd > 0:
+            await deer.finish(f"🦌功能还在冷却中，请等待 {remaining_cd} 秒")
 
     now: datetime = datetime.now()
 
@@ -61,6 +73,12 @@ async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Eve
     deer_map: dict[int, int] = await attend(user_id, now)
     img: bytes = generate_calendar(now, deer_map, avatar)
 
+    # 更新CD
+    if isinstance(event, GroupMessageEvent):
+        caller_user_id = user_info.user_id
+        group_id = str(event.group_id)
+        update_cd(PLUGIN_ID, group_id, caller_user_id)
+
     if target.available:
         await (
             UniMessage.text("成功帮")
@@ -74,11 +92,25 @@ async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Eve
 
 
 @deer_past.handle()
-async def _(day: Match[int], user_info: UserInfo = EventUserInfo(), event: Event = None):  # 添加 event 参数
-    # 修正：使用传入的 event 参数而不是导入的 event 模块
+async def _(day: Match[int], user_info: UserInfo = EventUserInfo(), event: Event = None):
+    # vvvvvv 【修改点 1：统一ID】 vvvvvv
+    # 统一使用这一个ID，不再区分功能ID
+    PLUGIN_ID = "deer_pipe"
+    # ^^^^^^ 【修改点 1：统一ID】 ^^^^^^
+
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("deer_pipe", str(event.group_id)):
+        group_id = str(event.group_id)
+        if not is_plugin_enabled(PLUGIN_ID, group_id):
             await deer_past.finish("🦌签到功能当前已被禁用")
+
+        # vvvvvv 【修改点 2：使用统一ID检查CD】 vvvvvv
+        caller_user_id = user_info.user_id
+        # 使用 PLUGIN_ID (deer_pipe) 检查CD，而不是 "deer_pipe:past"
+        remaining_cd = check_cd(PLUGIN_ID, group_id, caller_user_id)
+        if remaining_cd > 0:
+            # 提示信息也改为通用
+            await deer_past.finish(f"🦌功能还在冷却中，请等待 {remaining_cd} 秒")
+        # ^^^^^^ 【修改点 2：使用统一ID检查CD】 ^^^^^^
 
     now: datetime = datetime.now()
     user_id = user_info.user_id
@@ -95,6 +127,15 @@ async def _(day: Match[int], user_info: UserInfo = EventUserInfo(), event: Event
     ok, deer_map = await attend_past(user_id, now, day.result)
     img: bytes = generate_calendar(now, deer_map, avatar)
 
+    # vvvvvv 【修改点 3：使用统一ID更新CD】 vvvvvv
+    # 仅在补签成功时 (ok=True) 才更新CD
+    if ok and isinstance(event, GroupMessageEvent):
+        caller_user_id = user_info.user_id
+        group_id = str(event.group_id)
+        # 使用 PLUGIN_ID (deer_pipe) 更新CD
+        update_cd(PLUGIN_ID, group_id, caller_user_id)
+    # ^^^^^^ 【修改点 3：使用统一ID更新CD】 ^^^^^^
+
     if ok:
         await UniMessage.text("成功补🦌").image(raw=img).finish(reply_to=True)
     else:
@@ -106,14 +147,15 @@ async def _(day: Match[int], user_info: UserInfo = EventUserInfo(), event: Event
 
 
 @deer_calendar.handle()
-async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Event = None):  # 添加 event 参数
-    # 修正：使用传入的 event 参数而不是导入的 event 模块
+async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Event = None):
+    # (此功能为查询，无需CD)
+    PLUGIN_ID = "deer_pipe"  # 仅用于开关检查
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("deer_pipe", str(event.group_id)):
+        if not is_plugin_enabled(PLUGIN_ID, str(event.group_id)):
             await deer_calendar.finish("🦌签到功能当前已被禁用")
 
     now: datetime = datetime.now()
-
+    # ... (后续逻辑不变) ...
     if target.available:
         user_id: str = target.result.target
         avatar: bytes | None = await get_avatar(user_id)
@@ -132,16 +174,12 @@ async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Eve
     await UniMessage.image(raw=img).finish(reply_to=True)
 
 
-# @deer_top.handle()
-# async def _() -> None:
-#     pass
-
-
 @deer_help.handle()
-async def _(event: Event = None):  # 添加 event 参数
-    # 修正：使用传入的 event 参数而不是导入的 event 模块
+async def _(event: Event = None):
+    # (此功能为帮助，无需CD)
+    PLUGIN_ID = "deer_pipe"  # 仅用于开关检查
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("deer_pipe", str(event.group_id)):
+        if not is_plugin_enabled(PLUGIN_ID, str(event.group_id)):
             await deer_help.finish("🦌签到功能当前已被禁用")
 
         await (

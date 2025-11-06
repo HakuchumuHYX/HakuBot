@@ -1,11 +1,14 @@
 # core/file_monitor.py
+# poke_reply/file_monitor.py
 import os
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from nonebot import logger
 
-from ..config import TEXT_FILES_DIR, IMAGE_FILES_DIR, get_group_image_dir
+# vvvvvv 【修改：导入路径】 vvvvvv
+from .config import TEXT_FILES_DIR, IMAGE_FILES_DIR, get_group_image_dir
 from .data_manager import data_manager
+# ^^^^^^ 【修改：导入路径】 ^^^^^^
 
 class JsonFileHandler(FileSystemEventHandler):
     """监听JSON文件变化的处理器"""

@@ -10,6 +10,11 @@ from nonebot.params import CommandArg
 from ..utils.common import *
 from ..plugin_manager.enable import *
 
+# vvvvvv 【修改点 1：导入CD管理函数】 vvvvvv
+# (我们仍然需要导入它)
+from ..plugin_manager.cd_manager import check_cd, update_cd
+# ^^^^^^ 【修改点 1：导入CD管理函数】 ^^^^^^
+
 from .send import load_sticker_list, get_random_sticker, get_random_stickers, resolve_folder_name
 from .contribution import extract_contribution_info, save_contribution_images
 from .statistics import handle_statistics_command, get_sticker_statistics, render_stickers_preview
@@ -68,13 +73,12 @@ async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[
         if not is_superuser(str(event.user_id)):
             return "权限不足，只有超级用户才能清除重复图片"
 
-        # 先预览将要删除的重复图片
+        # ... (后续逻辑不变) ...
         all_duplicates = await find_all_duplicates()
 
         if not all_duplicates:
             return "未检测到重复图片"
 
-        # 生成预览图片
         preview_bytes = await preview_duplicates_before_cleanup(all_duplicates)
         if preview_bytes:
             await sticker_matcher.send(
@@ -84,7 +88,6 @@ async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[
             await sticker_matcher.send(
                 f"检测到 {total_pairs} 组重复图片。请回复『确认清理』来执行清理操作，或者回复『取消』取消操作")
 
-        # 存储清理状态
         cleanup_state[event.group_id] = {
             'user_id': event.user_id,
             'duplicates': all_duplicates,
@@ -99,62 +102,47 @@ async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[
 @clean_confirm_matcher.handle()
 async def handle_clean_confirm(event: GroupMessageEvent):
     """处理确认清理命令"""
+    # ... (此为SU命令，不需要CD，逻辑不变) ...
     group_id = event.group_id
     user_id = event.user_id
 
-    # 检查是否有待处理的清理任务
     if group_id not in cleanup_state:
         await clean_confirm_matcher.finish("没有待处理的清理任务")
         return
-
     state = cleanup_state[group_id]
-
-    # 检查用户权限和超时
     if state['user_id'] != user_id:
         await clean_confirm_matcher.finish("这不是您的清理任务")
         return
-
-    # 检查是否超时（5分钟）
     if asyncio.get_event_loop().time() - state['timestamp'] > 300:
         del cleanup_state[group_id]
         await clean_confirm_matcher.finish("清理任务已超时，请重新发起")
         return
 
-    # 执行安全清理
     removed_count, removed_files = await safe_remove_duplicates(state['duplicates'])
-
-    # 生成清理报告
     report_bytes = await render_cleanup_report(removed_count, state['duplicates'])
+
     if report_bytes:
         await clean_confirm_matcher.finish(MessageSegment.image(report_bytes))
     else:
         total_pairs = sum(len(duplicates) for duplicates in state['duplicates'].values())
         await clean_confirm_matcher.finish(
             f"安全清理完成！检测到{total_pairs}组重复，已移动{removed_count}张图片到备份文件夹")
-
-    # 清理状态
     del cleanup_state[group_id]
 
 
 @clean_cancel_matcher.handle()
 async def handle_clean_cancel(event: GroupMessageEvent):
     """处理取消清理命令"""
+    # ... (此为SU命令，不需要CD，逻辑不变) ...
     group_id = event.group_id
     user_id = event.user_id
-
-    # 检查是否有待处理的清理任务
     if group_id not in cleanup_state:
         await clean_cancel_matcher.finish("没有待处理的清理任务")
         return
-
     state = cleanup_state[group_id]
-
-    # 检查用户权限
     if state['user_id'] != user_id:
         await clean_cancel_matcher.finish("这不是您的清理任务")
         return
-
-    # 取消清理
     del cleanup_state[group_id]
     await clean_cancel_matcher.finish("已取消清理操作")
 
@@ -165,6 +153,7 @@ async def handle_sticker(event: GroupMessageEvent):
     if not isinstance(event, GroupMessageEvent):
         return
 
+    # 检查插件总开关
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("stickers", str(event.group_id)):
             return
@@ -174,26 +163,27 @@ async def handle_sticker(event: GroupMessageEvent):
     if not message_text:
         return
 
-    # 检查是否是清除重复命令
+    # 检查是否是清除重复命令 (SU
     clean_reply = await handle_clean_duplicates_command(event)
     if clean_reply is not None:
         await sticker_matcher.finish(clean_reply)
 
-    # 检查是否是管理命令
+    # 检查是否是管理命令 (SU
     manage_reply = await handle_manage_command(message_text, event)
     if manage_reply is not None:
         await sticker_matcher.finish(manage_reply)
 
     # 检查是否是查看统计命令
     if handle_statistics_command(message_text):
+
+        # (已移除 "查看stickers" 的CD)
+
         # 渲染贴图预览图片
         try:
             pic_bytes = await render_stickers_preview()
-
             if pic_bytes:
-                # 发送图片
                 await sticker_matcher.send(MessageSegment.image(pic_bytes))
-                return
+                return  # 使用 return 而不是 finish
         except Exception as e:
             logger.error(f"生成或发送贴图预览图片失败: {e}")
 
@@ -204,14 +194,30 @@ async def handle_sticker(event: GroupMessageEvent):
     # 检查是否是投稿格式
     folder_name, is_contribution, is_force = extract_contribution_info(message_text)
     if is_contribution:
+
+        # (已移除 "投稿" 的CD)
+
         # 处理投稿
         success, reply_msg, saved_count = await save_contribution_images(folder_name, event, is_force)
+
         if success or saved_count == 0:  # 成功或完全失败时回复
             await sticker_matcher.finish(reply_msg)
         return
 
     # 检查是否是单图随机命令
     if message_text.startswith("随机"):
+
+        # vvvvvv 【修改点 2：为"随机"功能添加CD】 vvvvvv
+        PLUGIN_ID_RANDOM = "stickers"  # 使用插件主ID
+        group_id = str(event.group_id)
+        user_id = str(event.user_id)
+
+        remaining_cd = check_cd(PLUGIN_ID_RANDOM, group_id, user_id)
+        if remaining_cd > 0:
+            # 冷却中，静默处理，不回复
+            return
+        # ^^^^^^ 【修改点 2：为"随机"功能添加CD】 ^^^^^^
+
         # 先检查是否为多图随机命令
         multi_random_result = parse_multi_random_command(message_text)
         if multi_random_result:
@@ -225,9 +231,13 @@ async def handle_sticker(event: GroupMessageEvent):
                     for sticker_file in sticker_files:
                         message_segments.append(MessageSegment.image(sticker_file))
 
+                    # vvvvvv 【修改点 3：更新CD】 vvvvvv
+                    update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
+                    # ^^^^^^ 【修改点 3：更新CD】 ^^^^^^
+
                     await sticker_matcher.finish(Message(message_segments))
                 except Exception:
-                    # 如果发送失败，静默处理，不发送错误信息
+                    # 如果发送失败，静默处理
                     pass
             return
 
@@ -240,7 +250,11 @@ async def handle_sticker(event: GroupMessageEvent):
             if sticker_file:
                 # 发送图片
                 try:
+                    # vvvvvv 【修改点 4：更新CD】 vvvvvv
+                    update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
+                    # ^^^^^^ 【修改点 4：更新CD】 ^^^^^^
+
                     await sticker_matcher.finish(MessageSegment.image(sticker_file))
                 except Exception:
-                    # 如果发送失败，静默处理，不发送错误信息
+                    # 如果发送失败，静默处理
                     pass
