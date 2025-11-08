@@ -5,7 +5,7 @@ from nonebot.rule import to_me
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.log import logger
 
-recall = on_message(rule=to_me(), permission=SUPERUSER, priority=10)
+recall = on_message(rule=to_me(), priority=10)
 
 
 @recall.handle()

@@ -26,3 +26,4 @@ gif倒放：image_processor:reverse
 git加速：image_processor:speed  
 图片对称：image_processor:symmetry  
 图片抠图：image_processor:cutout  
+视频转GIF：image_processor:video_to_gif
