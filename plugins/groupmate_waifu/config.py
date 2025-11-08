@@ -1,7 +1,7 @@
+# waifu/config.py
 from pydantic import BaseModel, Extra
 
 class Config(BaseModel, extra=Extra.ignore):
-    waifu_cd_bye :int = 300
     waifu_save :bool = True
     waifu_reset :bool = True
     waifu_he :int = 60

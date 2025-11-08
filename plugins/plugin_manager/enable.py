@@ -151,7 +151,7 @@ async def handle_list(bot: Bot, event: MessageEvent):
 
     plugin_list = []
     for plugin_id, plugin_name in readme_plugins.items():
-        status = "✅ 启用" if is_plugin_enabled(plugin_id, group_id) else "❌ 禁用"  # 本地的
+        status = "✅ 启用" if is_plugin_enabled(plugin_id, group_id, "0") else "❌ 禁用"  # 本地的
         plugin_list.append(f"{plugin_name} ({plugin_id}) - {status}")
 
     if plugin_list:

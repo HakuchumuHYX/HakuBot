@@ -14,6 +14,7 @@ B站链接解析：analysis_bilibili
 群聊消息统计：group_statistics  
 娶群友：groupmate_waifu  
 涩群友：groupmate_waifu:yinpa  
+分手:groupmate_waifu:bye  
 戳一戳：poke_reply  
 戳一戳回复：poke_reply:poke  
 戳一戳投稿：poke_reply:contribute  
