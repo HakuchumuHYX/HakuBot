@@ -37,9 +37,9 @@ start_guess_song_unified = on_command(
 
 @start_guess_song_unified.handle()
 async def _(bot: Bot, event: MessageEvent, state: T_State):
-
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id)):
+        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
             await start_guess_song_unified.finish("猜歌功能在此群无法使用！")
             return
 
@@ -158,8 +158,9 @@ start_random_guess_song = on_command("随机猜歌",
 
 @start_random_guess_song.handle()
 async def _(bot: Bot, event: MessageEvent):
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id)):
+        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
             await start_random_guess_song.finish("随机猜歌功能在此群无法使用！")
             return
 
@@ -258,8 +259,9 @@ start_vocalist_game = on_command("猜歌手",
 
 @start_vocalist_game.handle()
 async def _(bot: Bot, event: MessageEvent):
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id)):
+        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
             await start_vocalist_game.finish("猜歌手功能在此群无法使用！")
             return
 

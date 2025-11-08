@@ -43,8 +43,9 @@ async def is_enable_search() -> bool:
 
 
 async def is_normal(event: Event) -> bool:
+    user_id = str(event.user_id)
     if hasattr(event, "group_id") and event.group_id:
-        if not is_plugin_enabled("analysis_bilibili", str(event.group_id)):
+        if not is_plugin_enabled("analysis_bilibili", str(event.group_id), user_id):
             return False
 
     user_id = str(event.get_user_id())

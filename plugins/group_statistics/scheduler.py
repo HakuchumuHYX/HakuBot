@@ -12,7 +12,7 @@ from .utils import get_total_messages, get_top_users, generate_stat_message, res
 async def send_daily_report(bot, group_id: int):
     """发送每日统计报告"""
     # 检查插件是否启用
-    if not is_plugin_enabled("group_statistics", str(group_id)):
+    if not is_plugin_enabled("group_statistics", str(group_id), "0"):
         return
 
     total = get_total_messages(group_id)

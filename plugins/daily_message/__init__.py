@@ -82,7 +82,8 @@ async def send_message_to_enabled_groups(message: str):
 
     enabled_groups = []
     for group_id in all_groups:
-        if is_plugin_enabled("daily_message", group_id):
+        user_id = "0"
+        if is_plugin_enabled("daily_message", group_id, user_id):
             enabled_groups.append(group_id)
 
     if not enabled_groups:

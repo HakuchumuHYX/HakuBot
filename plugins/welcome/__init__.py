@@ -19,7 +19,7 @@ async def handle_welcome(event: GroupIncreaseNoticeEvent):
         return
 
     group_id = str(event.group_id)
-    if not is_plugin_enabled("welcome", group_id):
+    if not is_plugin_enabled("welcome", group_id, "0"):
         return
 
     user_id = event.user_id

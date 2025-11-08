@@ -2,7 +2,7 @@
 import time
 from typing import Dict, Any
 
-from nonebot import on_command
+from nonebot import on_command, get_driver
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.permission import SUPERUSER
 
@@ -17,8 +17,6 @@ from . import (
 
 
 # --- 供其他插件调用的核心API ---
-
-# vvvvvv 【修改点 1：API函数更新】 vvvvvv
 def get_plugin_cd_duration(plugin_id: str, group_id: str) -> int:
     """
     获取某个插件/功能在指定群的CD时长（单位：秒）
@@ -30,17 +28,19 @@ def get_plugin_cd_duration(plugin_id: str, group_id: str) -> int:
     return cd_config.get(group_id, {}).get(plugin_id, 0)
 
 
-# ^^^^^^ 【修改点 1：API函数更新】 ^^^^^^
-
-
 def check_cd(plugin_id: str, group_id: str, user_id: str) -> int:
     """
     检查用户是否处于CD中
     :return: 剩余CD时间（秒）。如果为 0，则表示CD结束。
     """
-    # vvvvvv 【修改点 2：内部调用更新】 vvvvvv
+    try:
+        superusers = get_driver().config.superusers
+        if user_id in superusers:
+            return 0  # SuperUser无视CD
+    except:
+        pass  # 驱动未加载等异常情况，继续执行
+
     cd_duration = get_plugin_cd_duration(plugin_id, group_id)
-    # ^^^^^^ 【修改点 2：内部调用更新】 ^^^^^^
 
     if cd_duration == 0:
         return 0  # 插件未设置CD
@@ -59,9 +59,15 @@ def update_cd(plugin_id: str, group_id: str, user_id: str):
     """
     更新用户的CD时间戳（标记为“已使用”）
     """
-    # vvvvvv 【修改点 3：内部调用更新】 vvvvvv
+    try:
+        superusers = get_driver().config.superusers
+        if user_id in superusers:
+            return  # SuperUser不记录CD
+    except:
+        pass
+
     if get_plugin_cd_duration(plugin_id, group_id) > 0:
-        # ^^^^^^ 【修改点 3：内部调用更新】 ^^^^^^
+
         now = time.time()
         if group_id not in cd_runtime:
             cd_runtime[group_id] = {}
@@ -81,7 +87,6 @@ disable_feature_cd = on_command("禁用功能CD", permission=SUPERUSER, priority
 list_cd = on_command("CD列表", permission=SUPERUSER, priority=1, block=True)
 
 
-# vvvvvv 【修改点 4：内部辅助函数更新】 vvvvvv
 def set_plugin_cd(plugin_id: str, group_id: str, cd_seconds: int) -> bool:
     """内部函数：设置或移除指定群的CD"""
     readme_plugins = load_readme_plugins()
@@ -105,10 +110,6 @@ def set_plugin_cd(plugin_id: str, group_id: str, cd_seconds: int) -> bool:
     return True
 
 
-# ^^^^^^ 【修改点 4：内部辅助函数更新】 ^^^^^^
-
-
-# vvvvvv 【修改点 5：所有命令处理器更新】 vvvvvv
 @enable_cd.handle()
 async def handle_enable_cd(bot: Bot, event: MessageEvent):
     """启用插件CD（仅限当前群）"""
@@ -227,14 +228,12 @@ async def handle_list_cd(bot: Bot, event: MessageEvent):
         await list_cd.finish("未找到插件列表配置，请检查 readme.md 文件")
 
     cd_list_msgs = []
-    # vvvvvv 【修改点 6：列表逻辑更新】 vvvvvv
     # 遍历 readme 中的所有插件
     for plugin_id, plugin_name in readme_plugins.items():
         # 获取当前群的CD配置
         cd_duration = get_plugin_cd_duration(plugin_id, group_id)
         status = f"{cd_duration} 秒" if cd_duration > 0 else "无CD"
         cd_list_msgs.append(f"{plugin_name} ({plugin_id}) - {status}")
-    # ^^^^^^ 【修改点 6：列表逻辑更新】 ^^^^^^
 
     if cd_list_msgs:
         message = "当前群聊插件CD配置:\n" + "\n".join(cd_list_msgs)

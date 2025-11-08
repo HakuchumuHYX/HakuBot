@@ -49,8 +49,9 @@ def load_config():
 
 
 def is_calling_bot(event: MessageEvent) -> bool:
+    user_id = str(event.user_id)
     if hasattr(event, 'group_id') and event.group_id:
-        if not is_plugin_enabled("atri_reply", str(event.group_id)):
+        if not is_plugin_enabled("atri_reply", str(event.group_id), user_id):
             return False
     """检查消息是否刚好在呼叫机器人"""
     message_text = event.get_plaintext().strip()

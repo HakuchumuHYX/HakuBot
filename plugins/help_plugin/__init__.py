@@ -76,7 +76,8 @@ def exact_match_keywords() -> Rule:
     async def _exact_match(event: MessageEvent) -> bool:
         if isinstance(event, GroupMessageEvent):
             group_id = str(event.group_id)
-            if not is_plugin_enabled("help_plugin", group_id):
+            user_id = str(event.user_id)
+            if not is_plugin_enabled("help_plugin", group_id, user_id):
                 return False
         # 获取纯文本消息并去除首尾空格
         msg = event.get_plaintext().strip()

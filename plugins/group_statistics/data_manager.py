@@ -49,7 +49,7 @@ class GroupStatisticsData:
     def record_bot_message(self, group_id: int, bot_card: str = "机器人"):
         """记录机器人发送的消息"""
         # 检查插件是否启用
-        if not is_plugin_enabled("group_statistics", str(group_id)):
+        if not is_plugin_enabled("group_statistics", str(group_id), "0"):
             return
 
         # 初始化群组数据
@@ -74,7 +74,7 @@ class GroupStatisticsData:
     def record_user_message(self, group_id: int, user_id: int, user_card: str):
         """记录用户消息"""
         # 检查插件是否启用
-        if not is_plugin_enabled("group_statistics", str(group_id)):
+        if not is_plugin_enabled("group_statistics", str(group_id), "0"):
             return
 
         # 初始化群组数据

@@ -24,11 +24,12 @@ leaderboard_handler = on_command("群聊猜歌排行",
 
 @leaderboard_handler.handle()
 async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
+    user_id = str(event.user_id)
     if not isinstance(event, GroupMessageEvent):
         await matcher.finish("...此功能仅限群聊使用。")
 
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id)):
+        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
             await leaderboard_handler.finish("猜歌功能在此群无法使用！")
             return
 

@@ -52,9 +52,9 @@ async def get_group_info(bot: Bot, group_id: str) -> str:
 @send_to_superuser.handle()
 async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg()):
     """处理send命令"""
-
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("send_and_reply", str(event.group_id)):
+        if not is_plugin_enabled("send_and_reply", str(event.group_id), user_id):
             return
 
     # 额外检查：确保消息是@机器人的

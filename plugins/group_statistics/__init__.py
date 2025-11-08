@@ -41,7 +41,7 @@ def patch_bot_send():
         if hasattr(event, 'group_id'):
             group_id = event.group_id
             # 检查插件是否启用
-            if is_plugin_enabled("group_statistics", str(group_id)):
+            if is_plugin_enabled("group_statistics", str(group_id), "0"):
                 # 记录机器人消息
                 data_manager.set_bot_self_id(str(self.self_id))
                 data_manager.record_bot_message(group_id, "ATRI")
@@ -59,7 +59,7 @@ async def intercept_bot_messages(event: Event):
     # 检查是否是机器人发送的消息
     if hasattr(event, '_bot') and hasattr(event, 'message') and hasattr(event, 'group_id'):
         # 检查插件是否启用
-        if is_plugin_enabled("group_statistics", str(event.group_id)):
+        if is_plugin_enabled("group_statistics", str(event.group_id), "0"):
             # 这是一个机器人发送的消息
             data_manager.set_bot_self_id(str(event._bot.self_id))
             data_manager.record_bot_message(event.group_id, "ATRI")

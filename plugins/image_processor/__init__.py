@@ -79,13 +79,14 @@ video_to_gif_handler = on_command("imggif", rule=to_me(), priority=5, block=True
 @gif_reverse_handler.handle()
 async def handle_gif_reverse(event: Event, cmd_arg: Message = CommandArg()):
     """处理GIF倒放"""
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id)):
+        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
             await gif_reverse_handler.finish("图片处理在本群未开启！")
             return
 
     if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled("image_processor", "reverse", str(event.group_id)):
+        if not is_feature_enabled("image_processor", "reverse", str(event.group_id), user_id):
             await image_cutout_handler.finish("gif倒放功能在本群无法使用！")
             return
 
@@ -146,13 +147,14 @@ async def handle_gif_reverse(event: Event, cmd_arg: Message = CommandArg()):
 @image_cutout_handler.handle()
 async def handle_image_cutout(event: Event, cmd_arg: Message = CommandArg()):
     """处理图片抠图"""
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id)):
+        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
             await image_cutout_handler.finish("图片处理在本群未开启！")
             return
 
     if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled("image_processor", "cutout", str(event.group_id)):
+        if not is_feature_enabled("image_processor", "cutout", str(event.group_id), user_id):
             await image_cutout_handler.finish("抠图功能在本群无法使用！")
             return
 
@@ -199,13 +201,14 @@ async def handle_image_cutout(event: Event, cmd_arg: Message = CommandArg()):
 @gif_speed_handler.handle()
 async def handle_gif_speed(event: Event, cmd_arg: Message = CommandArg()):
     """处理GIF倍速播放"""
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id)):
+        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
             await gif_speed_handler.finish("图片处理在本群未开启！")
             return
 
     if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled("image_processor", "speed", str(event.group_id)):
+        if not is_feature_enabled("image_processor", "speed", str(event.group_id), user_id):
             await gif_speed_handler.finish("gif加速功能在本群无法使用！")
             return
 
@@ -312,13 +315,14 @@ async def handle_image_symmetry_bottom(event: Event, cmd_arg: Message = CommandA
 
 async def handle_image_symmetry_common(event: Event, symmetry_type: str):
     """通用的对称处理函数"""
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id)):
+        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
             await image_symmetry_handler.finish("图片处理在本群未开启！")
             return
 
     if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled("image_processor", "symmetry", str(event.group_id)):
+        if not is_feature_enabled("image_processor", "symmetry", str(event.group_id), user_id):
             await image_symmetry_handler.finish("对称功能在本群无法使用！")
             return
 
@@ -404,8 +408,9 @@ async def handle_image_symmetry_common(event: Event, symmetry_type: str):
 @image_help_handler.handle()
 async def handle_image_help(event: Event, cmd_arg: Message = CommandArg()):
     """处理图片处理帮助"""
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id)):
+        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
             await image_help_handler.finish("图片处理在本群未开启！")
             return
 
@@ -434,21 +439,17 @@ async def handle_image_help(event: Event, cmd_arg: Message = CommandArg()):
         await image_help_handler.send(f"生成帮助图片时出错，以下是文本帮助：\n{help_text}")
 
 
-# 修改 handle_video_to_gif 函数中的视频检测部分：
-
-# 在 __init__.py 中找到 handle_video_to_gif 函数，修改视频检测部分：
-
-
 @video_to_gif_handler.handle()
 async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = CommandArg()):  # 移除默认值，使用依赖注入
     """处理视频转GIF"""
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id)):
+        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
             await video_to_gif_handler.finish("图片处理在本群未开启！")
             return
 
     if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled("image_processor", "video_to_gif", str(event.group_id)):
+        if not is_feature_enabled("image_processor", "video_to_gif", str(event.group_id), user_id):
             await video_to_gif_handler.finish("视频转GIF功能在本群无法使用！")
             return
 

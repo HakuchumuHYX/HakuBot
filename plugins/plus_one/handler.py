@@ -52,7 +52,7 @@ async def plush_handler(bot: Bot, event: Event):
     group_id = session.get_id(SessionIdType.GROUP).split("_")[-1]
 
     # 检查插件是否启用
-    if not is_plugin_enabled("plus_one", group_id):
+    if not is_plugin_enabled("plus_one", group_id, "0"):
         return
 
     if group_id in config.plus_one_black_list:

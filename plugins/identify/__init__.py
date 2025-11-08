@@ -88,7 +88,7 @@ async def handle_identify(bot: Bot, event: GroupMessageEvent):
         user_id = event.user_id
 
         # 检查群组是否启用鉴定功能 - 改用管理插件
-        if not is_plugin_enabled("identify", str(group_id)):
+        if not is_plugin_enabled("identify", str(group_id), user_id):
             await identify.finish()
             return
 

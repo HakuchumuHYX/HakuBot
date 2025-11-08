@@ -109,8 +109,9 @@ def extract_choices(text: str) -> Optional[Tuple[str, str]]:
 
 def is_two_choice_message(event: MessageEvent) -> bool:
     """检查消息是否为二择问题且@了机器人"""
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("two_choice", str(event.group_id)):
+        if not is_plugin_enabled("two_choice", str(event.group_id), user_id):
             return False
     # 获取纯文本内容
     message_text = event.get_plaintext().strip()

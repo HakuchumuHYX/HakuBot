@@ -22,9 +22,10 @@ from ...utils.common import create_exact_command_rule
 
 async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent, mode: str,
                                  search_term: Optional[str]):
+    user_id = str(event.user_id)
     # 检查听歌子功能是否启用
     if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled("pjsk_guess_song", "listen", str(event.group_id)):
+        if not is_feature_enabled("pjsk_guess_song", "listen", str(event.group_id), user_id):
             await matcher.finish("听歌功能在此群无法使用！")
             return
     """
@@ -128,10 +129,10 @@ listen_anvo = on_command("听anvo",
 
 @listen_anvo.handle()
 async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-
+    user_id = str(event.user_id)
     # 检查听歌子功能是否启用
     if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled("pjsk_guess_song", "listen", str(event.group_id)):
+        if not is_feature_enabled("pjsk_guess_song", "listen", str(event.group_id), user_id):
             await matcher.finish("听歌功能在此群无法使用！")
             return
 

@@ -20,7 +20,7 @@ async def handle_group_message(event: GroupMessageEvent):
     group_id = event.group_id
 
     # 检查插件是否启用
-    if not is_plugin_enabled("group_statistics", str(group_id)):
+    if not is_plugin_enabled("group_statistics", str(group_id), "0"):
         return
 
     user_id = event.user_id
@@ -40,7 +40,7 @@ async def handle_stat_command(event: GroupMessageEvent):
     group_id = event.group_id
 
     # 检查插件是否启用
-    if not is_plugin_enabled("group_statistics", str(group_id)):
+    if not is_plugin_enabled("group_statistics", str(group_id), "0"):
         await stat_command.finish("本群未开启消息统计功能")
         return
 

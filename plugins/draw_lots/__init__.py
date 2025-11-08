@@ -74,11 +74,11 @@ command = on_command('抽签', priority=6, rule=create_exact_command_rule("抽�
 @command.handle()
 async def lq_(bot: Bot, event: Event):
     # 新增：检查插件是否启用（群聊中）
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("draw_lots", str(event.group_id)):
+        if not is_plugin_enabled("draw_lots", str(event.group_id), user_id):
             await command.finish("抽签功能当前已被禁用")
 
-    user_id = str(event.user_id)
 
     # 新增：检查今天是否已经抽过
     if has_drawn_today(user_id):

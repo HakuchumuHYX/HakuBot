@@ -70,8 +70,9 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
     if group_id == 0:
         return
 
+    user_id = str(event.user_id)
     # 检查插件功能开关
-    if not is_feature_enabled("poke_reply", "poke", str(group_id)):
+    if not is_feature_enabled("poke_reply", "poke", str(group_id), user_id):
         return  # 静默返回
 
     # 接入外部CD管理
@@ -177,8 +178,9 @@ async def handle_contribute(bot: Bot, event: GroupMessageEvent, args: Message = 
     if group_id == 0:
         await contribute.finish("请在群聊中使用投稿功能喵！")
 
+    user_id = str(event.user_id)
     # 检查功能开关
-    if not is_feature_enabled("poke_reply", "contribute", str(group_id)):
+    if not is_feature_enabled("poke_reply", "contribute", str(group_id), user_id):
         await contribute.finish("本群未开启投稿功能！")
 
     # vvvvvv 【新增：为“投稿”功能添加CD】 vvvvvv

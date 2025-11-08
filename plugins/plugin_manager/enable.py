@@ -1,5 +1,5 @@
 # plugin_manager/enable.py
-from nonebot import on_command, get_loaded_plugins
+from nonebot import on_command, get_loaded_plugins, get_driver
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import Plugin
@@ -14,11 +14,19 @@ from . import (
 
 
 # --- 插件/功能开关的核心API函数 ---
-# 供其他插件导入，例如:
-# from ..plugin_manager.enable import is_plugin_enabled
 
-def is_plugin_enabled(plugin_name: str, group_id: str) -> bool:
+def is_plugin_enabled(plugin_name: str, group_id: str, user_id: str) -> bool:
     """检查插件在指定群是否启用"""
+
+    # 【修改：添加SU检查】
+    try:
+        superusers = get_driver().config.superusers
+        if user_id in superusers:
+            return True  # SuperUser无视开关
+    except:
+        pass
+    # ^^^^^^ 【修改：添加SU检查】 ^^^^^^
+
     # 默认启用
     if plugin_name not in plugin_status:
         return True
@@ -35,10 +43,20 @@ def set_plugin_status(plugin_name: str, group_id: str, enabled: bool):
     save_plugin_status(plugin_status)  # 使用导入的保存函数
 
 
-def is_feature_enabled(plugin_name: str, feature_name: str, group_id: str) -> bool:
+def is_feature_enabled(plugin_name: str, feature_name: str, group_id: str, user_id: str) -> bool:
     """检查插件的特定功能是否启用"""
-    # 先检查整个插件是否启用
-    if not is_plugin_enabled(plugin_name, group_id):  # 调用此文件中的 is_plugin_enabled
+
+    # 【修改：添加SU检查】
+    try:
+        superusers = get_driver().config.superusers
+        if user_id in superusers:
+            return True  # SuperUser无视开关
+    except:
+        pass
+    # ^^^^^^ 【修改：添加SU检查】 ^^^^^^
+
+    # 先检查整个插件是否启用 (传递 user_id)
+    if not is_plugin_enabled(plugin_name, group_id, user_id):
         return False
 
     # 检查特定功能状态
@@ -57,7 +75,6 @@ def set_feature_status(plugin_name: str, feature_name: str, group_id: str, enabl
         plugin_status[feature_key] = {}
     plugin_status[feature_key][group_id] = enabled
     save_plugin_status(plugin_status)  # 使用导入的保存函数
-
 
 # --- SuperUser 命令处理 ---
 

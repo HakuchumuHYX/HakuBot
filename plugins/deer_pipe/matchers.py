@@ -47,7 +47,8 @@ async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Eve
 
     if isinstance(event, GroupMessageEvent):
         group_id = str(event.group_id)
-        if not is_plugin_enabled(PLUGIN_ID, group_id):
+        user_id = str(event.user_id)
+        if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
             await deer.finish("🦌签到功能当前已被禁用")
 
         # 检查CD

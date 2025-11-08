@@ -9,11 +9,8 @@ from nonebot.params import CommandArg
 
 from ..utils.common import *
 from ..plugin_manager.enable import *
-
-# vvvvvv 【修改点 1：导入CD管理函数】 vvvvvv
-# (我们仍然需要导入它)
 from ..plugin_manager.cd_manager import check_cd, update_cd
-# ^^^^^^ 【修改点 1：导入CD管理函数】 ^^^^^^
+
 
 from .send import load_sticker_list, get_random_sticker, get_random_stickers, resolve_folder_name
 from .contribution import extract_contribution_info, save_contribution_images
@@ -73,7 +70,6 @@ async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[
         if not is_superuser(str(event.user_id)):
             return "权限不足，只有超级用户才能清除重复图片"
 
-        # ... (后续逻辑不变) ...
         all_duplicates = await find_all_duplicates()
 
         if not all_duplicates:
@@ -102,7 +98,6 @@ async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[
 @clean_confirm_matcher.handle()
 async def handle_clean_confirm(event: GroupMessageEvent):
     """处理确认清理命令"""
-    # ... (此为SU命令，不需要CD，逻辑不变) ...
     group_id = event.group_id
     user_id = event.user_id
 
@@ -133,7 +128,6 @@ async def handle_clean_confirm(event: GroupMessageEvent):
 @clean_cancel_matcher.handle()
 async def handle_clean_cancel(event: GroupMessageEvent):
     """处理取消清理命令"""
-    # ... (此为SU命令，不需要CD，逻辑不变) ...
     group_id = event.group_id
     user_id = event.user_id
     if group_id not in cleanup_state:
@@ -152,10 +146,10 @@ async def handle_sticker(event: GroupMessageEvent):
     # 只处理群聊消息
     if not isinstance(event, GroupMessageEvent):
         return
-
+    user_id = str(event.user_id)
     # 检查插件总开关
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("stickers", str(event.group_id)):
+        if not is_plugin_enabled("stickers", str(event.group_id), user_id):
             return
 
     # 获取纯文本消息
@@ -175,9 +169,6 @@ async def handle_sticker(event: GroupMessageEvent):
 
     # 检查是否是查看统计命令
     if handle_statistics_command(message_text):
-
-        # (已移除 "查看stickers" 的CD)
-
         # 渲染贴图预览图片
         try:
             pic_bytes = await render_stickers_preview()
@@ -194,9 +185,6 @@ async def handle_sticker(event: GroupMessageEvent):
     # 检查是否是投稿格式
     folder_name, is_contribution, is_force = extract_contribution_info(message_text)
     if is_contribution:
-
-        # (已移除 "投稿" 的CD)
-
         # 处理投稿
         success, reply_msg, saved_count = await save_contribution_images(folder_name, event, is_force)
 
@@ -206,8 +194,6 @@ async def handle_sticker(event: GroupMessageEvent):
 
     # 检查是否是单图随机命令
     if message_text.startswith("随机"):
-
-        # vvvvvv 【修改点 2：为"随机"功能添加CD】 vvvvvv
         PLUGIN_ID_RANDOM = "stickers"  # 使用插件主ID
         group_id = str(event.group_id)
         user_id = str(event.user_id)
@@ -216,7 +202,6 @@ async def handle_sticker(event: GroupMessageEvent):
         if remaining_cd > 0:
             # 冷却中，静默处理，不回复
             return
-        # ^^^^^^ 【修改点 2：为"随机"功能添加CD】 ^^^^^^
 
         # 先检查是否为多图随机命令
         multi_random_result = parse_multi_random_command(message_text)
