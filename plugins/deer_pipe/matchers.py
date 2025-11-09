@@ -98,10 +98,10 @@ async def _(day: Match[int], user_info: UserInfo = EventUserInfo(), event: Event
     # 统一使用这一个ID，不再区分功能ID
     PLUGIN_ID = "deer_pipe"
     # ^^^^^^ 【修改点 1：统一ID】 ^^^^^^
-
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
         group_id = str(event.group_id)
-        if not is_plugin_enabled(PLUGIN_ID, group_id):
+        if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
             await deer_past.finish("🦌签到功能当前已被禁用")
 
         # vvvvvv 【修改点 2：使用统一ID检查CD】 vvvvvv
@@ -151,8 +151,9 @@ async def _(day: Match[int], user_info: UserInfo = EventUserInfo(), event: Event
 async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Event = None):
     # (此功能为查询，无需CD)
     PLUGIN_ID = "deer_pipe"  # 仅用于开关检查
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled(PLUGIN_ID, str(event.group_id)):
+        if not is_plugin_enabled(PLUGIN_ID, str(event.group_id), user_id):
             await deer_calendar.finish("🦌签到功能当前已被禁用")
 
     now: datetime = datetime.now()
@@ -179,8 +180,9 @@ async def _(target: Match[At], user_info: UserInfo = EventUserInfo(), event: Eve
 async def _(event: Event = None):
     # (此功能为帮助，无需CD)
     PLUGIN_ID = "deer_pipe"  # 仅用于开关检查
+    user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled(PLUGIN_ID, str(event.group_id)):
+        if not is_plugin_enabled(PLUGIN_ID, str(event.group_id), user_id):
             await deer_help.finish("🦌签到功能当前已被禁用")
 
         await (
