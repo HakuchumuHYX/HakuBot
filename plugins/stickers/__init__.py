@@ -11,7 +11,6 @@ from ..utils.common import *
 from ..plugin_manager.enable import *
 from ..plugin_manager.cd_manager import check_cd, update_cd
 
-
 from .send import load_sticker_list, get_random_sticker, get_random_stickers, resolve_folder_name
 from .contribution import extract_contribution_info, save_contribution_images
 from .statistics import handle_statistics_command, get_sticker_statistics, render_stickers_preview
@@ -36,6 +35,13 @@ clean_cancel_matcher = on_command("取消", block=True)
 # 全局变量来存储清理状态
 cleanup_state = {}
 
+# vvvvvv 【新增：定义“随机所有”的别名】 vvvvvv
+# 使用集合以便快速查找，统一使用小写
+RANDOM_ALL_ALIASES = {"stickers", "sticker", "表情", "表情包"}
+
+
+# ^^^^^^ 【新增：定义“随机所有”的别名】 ^^^^^^
+
 
 def parse_multi_random_command(message_text: str) -> tuple[str, int] | None:
     """
@@ -49,6 +55,13 @@ def parse_multi_random_command(message_text: str) -> tuple[str, int] | None:
     match = re.match(pattern, message_text.strip(), re.IGNORECASE)
     if match:
         folder_name = match.group(1).strip()
+
+        # vvvvvv 【修改点 1：检查别名】 vvvvvv
+        # 检查是否为“随机所有”的别名
+        if folder_name.lower() in RANDOM_ALL_ALIASES:
+            folder_name = "stickers"  # 标准化为 "stickers" 关键字
+        # ^^^^^^ 【修改点 1：检查别名】 ^^^^^^
+
         try:
             count = int(match.group(3))
             # 限制数量在1-5之间
@@ -229,6 +242,13 @@ async def handle_sticker(event: GroupMessageEvent):
         # 如果不是多图随机命令，处理单图随机命令
         # 提取文件夹名（去掉"随机"前缀）
         folder_name = message_text[2:].strip()
+
+        # vvvvvv 【修改点 2：检查别名】 vvvvvv
+        # 检查是否为“随机所有”的别名
+        if folder_name.lower() in RANDOM_ALL_ALIASES:
+            folder_name = "stickers"  # 标准化为 "stickers" 关键字
+        # ^^^^^^ 【修改点 2：检查别名】 ^^^^^^
+
         if folder_name:
             # 使用支持别名的函数获取贴图
             sticker_file = get_random_sticker(folder_name)
@@ -243,3 +263,5 @@ async def handle_sticker(event: GroupMessageEvent):
                 except Exception:
                     # 如果发送失败，静默处理
                     pass
+
+    from . import help

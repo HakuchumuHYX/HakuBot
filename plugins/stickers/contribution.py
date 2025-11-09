@@ -44,24 +44,7 @@ async def save_contribution_images(folder_name: str, event: GroupMessageEvent, f
 
     # 检查文件夹是否存在
     if actual_folder_name not in sticker_folders:
-        # 获取可用文件夹信息
-        from .send import get_folder_display_info
-        folder_info_list = get_folder_display_info()
-
-        if folder_info_list:
-            folder_list = []
-            for folder_info in folder_info_list:
-                name = folder_info["name"]
-                aliases = folder_info.get("aliases", [])
-                if aliases:
-                    folder_list.append(f"{name}(别名: {', '.join(aliases)})")
-                else:
-                    folder_list.append(name)
-
-            available_folders = ", ".join(folder_list)
-            return False, f"投稿失败！当前可用文件夹：{available_folders}", 0
-        else:
-            return False, "投稿失败！暂无可用贴图文件夹", 0
+        return False, "投稿失败！请使用”查看stickers“查看目前可投稿的文件夹！", 0
 
     folder_path = sticker_folders[actual_folder_name]
 

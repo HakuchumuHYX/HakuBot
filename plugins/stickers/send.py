@@ -113,9 +113,19 @@ def resolve_folder_name(folder_name: str) -> str:
 
 
 def get_random_sticker(folder_name: str) -> Path | None:
-    """从指定文件夹中随机获取一张贴图（支持别名）"""
-    # 解析实际文件夹名称
-    actual_folder_name = resolve_folder_name(folder_name)
+    """从指定文件夹中随机获取一张贴图（支持别名和 'stickers' 关键字）"""
+
+    if folder_name.lower() == "stickers":
+        if not sticker_folders:
+            return None
+        folder_names = list(sticker_folders.keys())
+        if not folder_names:
+            return None
+        # 1. 随机选择一个文件夹
+        actual_folder_name = random.choice(folder_names)
+    else:
+        # 解析实际文件夹名称（支持别名）
+        actual_folder_name = resolve_folder_name(folder_name)
 
     if actual_folder_name not in sticker_folders:
         return None
@@ -130,19 +140,67 @@ def get_random_sticker(folder_name: str) -> Path | None:
         image_files.extend(folder.glob(f"*{ext.upper()}"))
 
     if not image_files:
+        # vvvvvv 【修改点 1：确保空文件夹返回 None】 vvvvvv
+        # 如果文件夹是空的，返回 None，这样 "skip" 逻辑才能生效
         return None
+        # ^^^^^^ 【修改点 1：确保空文件夹返回 None】 ^^^^^^
 
     return random.choice(image_files)
 
 
 def get_random_stickers(folder_name: str, count: int) -> List[Path]:
     """
-    从指定文件夹中随机获取多张贴图（支持别名）
+    从指定文件夹中随机获取多张贴图（支持别名和 'stickers' 关键字）
+
+    - "stickers" 关键字：随机 'count' 次文件夹，每次获取1张。
+    - 特定文件夹：从该文件夹中随机获取 'count' 张。
 
     返回: 图片路径列表
     """
-    # 解析实际文件夹名称
-    actual_folder_name = resolve_folder_name(folder_name)
+
+    # vvvvvv 【修改点 2：实现 "N次抽卡" 逻辑】 vvvvvv
+    if folder_name.lower() == "stickers":
+        if not sticker_folders:
+            return []
+
+        all_folder_names = list(sticker_folders.keys())
+        if not all_folder_names:
+            return []
+
+        selected_images: List[Path] = []
+        # 添加一个尝试次数限制，防止所有文件夹都为空时无限循环
+        max_attempts = count * 5  # 最多尝试 5 倍的次数
+
+        # 循环 'count' 次，直到取满 'count' 张图
+        while len(selected_images) < count and max_attempts > 0:
+            max_attempts -= 1
+
+            # 1. **每次循环**都随机一个文件夹
+            # (这一步在 get_random_sticker 内部已经实现了, 我们直接调用它)
+
+            # 2. 从所有文件夹中随机获取1张图片
+            # 我们复用 get_random_sticker 函数，它已经包含了 "随机文件夹" + "随机图片" + "空文件夹返回None" 的逻辑
+            image_path = get_random_sticker("stickers")
+
+            # 3. 检查结果
+            if image_path:
+                # 确保我们不添加重复的图片路径
+                if image_path not in selected_images:
+                    selected_images.append(image_path)
+
+            # 如果 image_path is None (因为抽到了空文件夹),
+            # 循环会继续, selected_images 列表没有增加,
+            # 这就实现了您要的 "自动跳过并重新再抽一次" 的逻辑。
+
+        return selected_images
+
+    # ^^^^^^ 【修改点 2：实现 "N次抽卡" 逻辑】 ^^^^^^
+
+    # --- 以下是原有的、针对特定文件夹的逻辑 (例如 "随机xx x5") ---
+    # --- 这部分保持不变 ---
+    else:
+        # 解析实际文件夹名称（支持别名）
+        actual_folder_name = resolve_folder_name(folder_name)
 
     if actual_folder_name not in sticker_folders:
         return []
@@ -150,9 +208,7 @@ def get_random_stickers(folder_name: str, count: int) -> List[Path]:
     folder = sticker_folders[actual_folder_name]
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
 
-    # vvvvvv 【修改点 1：使用Set去重】 vvvvvv
     # 收集所有图片文件
-    # 使用集合来避免重复计数
     image_files: Set[Path] = set()
 
     for ext in image_extensions:
@@ -165,9 +221,7 @@ def get_random_stickers(folder_name: str, count: int) -> List[Path]:
 
     # 将Set转换为List以进行抽样
     image_files_list = list(image_files)
-    # ^^^^^^ 【修改点 1：使用Set去重】 ^^^^^^
 
-    # vvvvvv 【修改点 2：使用去重后的新列表】 vvvvvv
     if not image_files_list:
         return []
 
@@ -177,7 +231,6 @@ def get_random_stickers(folder_name: str, count: int) -> List[Path]:
 
     # 随机选择不重复的图片
     return random.sample(image_files_list, count)
-    # ^^^^^^ 【修改点 2：使用去重后的新列表】 ^^^^^^
 
 
 def count_images_in_folder(folder_name: str) -> int:
