@@ -8,7 +8,7 @@ from nonebot.params import CommandArg
 from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
-from typing import Tuple
+from typing import Tuple, Optional  # <--- 新增 Optional
 import random
 import os
 import hashlib
@@ -22,6 +22,7 @@ from .data_manager import data_manager
 from .similarity_check import similarity_checker
 from .text_to_image import convert_text_to_image
 from .managers import message_cache, text_image_cache
+from . import image_checker
 from .common import (
     download_image, get_group_id, extract_image_data,
     ensure_at_me, download_and_hash_image, create_forward_message
@@ -183,7 +184,7 @@ async def handle_contribute(bot: Bot, event: GroupMessageEvent, args: Message = 
     if not is_feature_enabled("poke_reply", "contribute", str(group_id), user_id):
         await contribute.finish("本群未开启投稿功能！")
 
-    # vvvvvv 【新增：为“投稿”功能添加CD】 vvvvvv
+    # vvvvvv 【CD检查】 vvvvvv
     PLUGIN_ID_CONTRIB = "poke_reply:contribute"
     user_id = event.user_id
     is_superuser = str(user_id) in bot.config.superusers
@@ -192,30 +193,66 @@ async def handle_contribute(bot: Bot, event: GroupMessageEvent, args: Message = 
         remaining_time = check_cd(PLUGIN_ID_CONTRIB, str(group_id), str(user_id))
         if remaining_time > 0:
             await contribute.finish(f"投稿功能冷却中，请等待 {remaining_time} 秒喵！")
-    # ^^^^^^ 【新增：为“投稿”功能添加CD】 ^^^^^^
+    # ^^^^^^ 【CD检查】 ^^^^^^
 
-    has_images, images = extract_image_data(event.get_message())
-    if has_images:
-        # vvvvvv 【修改：传递CD信息】 vvvvvv
-        await handle_image_contribute(bot, group_id, images, PLUGIN_ID_CONTRIB, str(user_id), is_superuser)
-        # ^^^^^^ 【修改：传递CD信息】 ^^^^^^
+    # vvvvvv 【修改：支持回复投稿】 vvvvvv
+    replied_message = event.reply
+    target_message = event.get_message()  # 默认：当前消息
+
+    if replied_message:
+        # --- 情况1: 回复投稿 ---
+        target_message = replied_message.message  # 目标是回复的消息
+
+        has_images, images = extract_image_data(target_message)
+        if has_images:
+            # 1a: 回复图片 -> 投稿图片
+            await handle_image_contribute(bot, group_id, images, PLUGIN_ID_CONTRIB, str(user_id), is_superuser)
+        else:
+            # 1b: 回复文本 -> 投稿文本
+            text_to_add = target_message.extract_plain_text().strip()
+            if not text_to_add:
+                await contribute.finish("回复的消息没有文本内容喵！")
+
+            # 将回复的文本传递给 handle_text_contribute
+            await handle_text_contribute(bot, group_id, event, args, PLUGIN_ID_CONTRIB, str(user_id), is_superuser,
+                                         replied_text=text_to_add)
+
     else:
-        # vvvvvv 【修改：传递CD信息】 vvvvvv
-        await handle_text_contribute(bot, group_id, event, args, PLUGIN_ID_CONTRIB, str(user_id), is_superuser)
-        # ^^^^^^ 【修改：传递CD信息】 ^^^^^^
+        # --- 情况2: @bot 投稿 (无回复) ---
+        has_images, images = extract_image_data(target_message)
+        if has_images:
+            # 2a: @bot 投稿 [图片]
+            await handle_image_contribute(bot, group_id, images, PLUGIN_ID_CONTRIB, str(user_id), is_superuser)
+        else:
+            # 2b: @bot 投稿 文本
+            # 传递 replied_text=None，使其使用 args
+            await handle_text_contribute(bot, group_id, event, args, PLUGIN_ID_CONTRIB, str(user_id), is_superuser,
+                                         replied_text=None)
+    # ^^^^^^ 【修改：支持回复投稿】 ^^^^^^
 
 
 async def handle_text_contribute(bot: Bot, group_id: int, event: MessageEvent, args: Message,
-                                 plugin_id: str, user_id: str, is_superuser: bool):  # vvvvvv 【修改：添加CD参数】 vvvvvv
-    args_text = args.extract_plain_text().strip()
+                                 plugin_id: str, user_id: str, is_superuser: bool,
+                                 replied_text: Optional[str] = None):  # <-- 新增 replied_text
+
+    # vvvvvv 【修改：获取投稿文本】 vvvvvv
+    if replied_text is not None:
+        args_text = replied_text  # 优先使用回复的文本
+    else:
+        args_text = args.extract_plain_text().strip()  # 其次使用命令参数
+    # ^^^^^^ 【修改：获取投稿文本】 ^^^^^^
+
     if not args_text:
-        await contribute.finish("请提供要投稿的内容，格式：投稿 你的文本")
+        await contribute.finish("请提供要投稿的内容，格式：@我 投稿 你的文本，或回复一条消息 @我 投稿")
     if len(args_text) > MAX_TEXT_LENGTH:
         await contribute.finish(f"文本太长了，请控制在{MAX_TEXT_LENGTH}字以内喵！")
+
     if not data_manager.ensure_group_data_loaded(group_id):
         await contribute.finish("数据加载失败，无法投稿喵！")
     if not data_manager.is_text_list_valid(group_id):
         await contribute.finish("数据格式错误，无法投稿喵！")
+
+    # 文本查重
     if similarity_checker.is_similar_to_group(group_id, args_text):
         await contribute.finish("投稿失败，本群已经有类似的话了喵！")
 
@@ -242,26 +279,76 @@ async def handle_text_contribute(bot: Bot, group_id: int, event: MessageEvent, a
 
 
 async def handle_image_contribute(bot: Bot, group_id: int, images: list,
-                                  plugin_id: str, user_id: str, is_superuser: bool):  # vvvvvv 【修改：添加CD参数】 vvvvvv
+                                  plugin_id: str, user_id: str, is_superuser: bool):
     if not data_manager.ensure_group_data_loaded(group_id):
         await contribute.finish("数据加载失败，无法投稿喵！")
-    success_count = 0
-    total_count = len(images)
+
+    images_to_save = []  # 存储 (bytes, extension)
     saved_filenames = []
+    success_count = 0
+
+    # --- 阶段1: 下载和查重 ---
     for img_type, img_data, segment in images:
         if img_type == "image":
             success, image_bytes, extension = await download_image(img_data)
-            if success:
-                success_add, filename = data_manager.add_image(group_id, image_bytes, extension)
-                if success_add:
-                    success_count += 1
-                    saved_filenames.append(filename)
-            else:
+            if not success:
                 logger.error(f"下载图片失败: {img_data}")
+                await contribute.finish("图片投稿失败，下载图片时出错喵")  # 下载失败则终止
+                return
+
+            # vvvvvv 【BUG 修复：正确处理 FinishedException】 vvvvvv
+            try:
+                is_duplicate, existing_name = await image_checker.check_duplicate_image(group_id, image_bytes)
+                if is_duplicate:
+                    logger.info(f"群 {group_id} 图片投稿重复: {existing_name}")
+                    # 发现重复，立刻终止投稿
+                    await contribute.finish("投稿失败，本群已经有类似的图片了喵！")
+                    # 下面的 return 理论上不会执行，因为 finish() 抛出了异常
+                    return
+
+            except FinishedException:
+                # 捕获 `finish()` 抛出的异常并重新抛出
+                # 这将阻止 except Exception 捕获它，并确保 handler 立即终止
+                raise
+
+            except Exception as e:
+                # 这里只捕获真正的查重错误（例如图片损坏）
+                logger.error(f"图片查重时发生错误: {e}，默认放行")
+                # 查重失败，默认放行
+            # ^^^^^^ 【BUG 修复：正确处理 FinishedException】 ^^^^^^
+
+            # 如果没重复，添加到待保存列表
+            images_to_save.append((image_bytes, extension))
+
         elif img_type == "face":
             await contribute.finish("暂不支持表情符号投稿喵！")
             return
 
+    if not images_to_save:
+        # 如果用户只发了重复的图片，到这里时列表为空
+        # （但其实上面的 finish() 已经终止了，这只是一个保险）
+        await contribute.finish("图片投稿失败，未找到有效图片喵")
+        return
+
+    # --- 阶段2: 保存 (仅在所有图片都通过查重后执行) ---
+    for image_bytes, extension in images_to_save:
+        success_add, filename = data_manager.add_image(group_id, image_bytes, extension)
+        if success_add:
+            success_count += 1
+            saved_filenames.append(filename)
+            # vvvvvv 【更新新文件的哈希缓存】 vvvvvv
+            try:
+                new_file_path = get_group_image_dir(group_id) / filename
+                p_hash, f_hash = image_checker.get_hashes_from_bytes(image_bytes)
+                if p_hash and f_hash:
+                    image_checker.update_hash_cache(new_file_path, p_hash, f_hash)
+            except Exception as e:
+                logger.error(f"更新新图片 {filename} 的哈希缓存失败: {e}")
+            # ^^^^^^ 【更新新文件的哈希缓存】 ^^^^^^
+        else:
+            logger.error(f"保存图片 {filename} 失败")
+
+    # --- 阶段3: 报告结果 ---
     if success_count > 0:
         # vvvvvv 【新增：投稿成功后更新CD】 vvvvvv
         if not is_superuser:
@@ -270,9 +357,13 @@ async def handle_image_contribute(bot: Bot, group_id: int, images: list,
 
         text_count = data_manager.get_text_count(group_id)
         image_count = data_manager.get_image_count(group_id)
+
+        # 构建响应消息
+        message = f"图片投稿成功！成功上传{success_count}张图片！当前群共有{text_count}条文本和{image_count}张图片喵"
+
         result = await bot.send_group_msg(
             group_id=group_id,
-            message=f"图片投稿成功！成功上传{success_count}/{total_count}张图片。当前群共有{text_count}条文本和{image_count}张图片喵"
+            message=message
         )
         content_info = f"图片投稿: {', '.join(saved_filenames)}"
         cache_message_direct(
@@ -282,7 +373,8 @@ async def handle_image_contribute(bot: Bot, group_id: int, images: list,
             message_type="contribute_image"
         )
     else:
-        await contribute.finish("图片投稿失败，请稍后重试喵")
+        # 如果保存失败
+        await contribute.finish("图片投稿失败，无法保存任何图片喵")
 
 
 @mention_handler.handle()

@@ -34,6 +34,7 @@ from .common import (
     create_forward_message, image_to_base64
 )
 from .text_to_image import HTMLRENDER_AVAILABLE
+from . import image_checker
 # ^^^^^^ 【修改：导入路径】 ^^^^^^
 
 # ... (文件其余部分保持不变) ...
@@ -41,7 +42,7 @@ from .text_to_image import HTMLRENDER_AVAILABLE
 view_text_count = on_command("查看投稿数", rule=to_me(), priority=5, block=True)
 view_all_text_count = on_command("查看所有投稿数", permission=SUPERUSER, rule=to_me(), priority=5, block=True)
 view_content_stats = on_command("查看投稿统计", rule=to_me(), priority=5, block=True)
-
+clear_duplicates = on_command("清除投稿重复", permission=SUPERUSER, rule=to_me(), priority=5, block=True)
 
 @view_text_count.handle()
 async def handle_view_text_count(event: MessageEvent):
@@ -119,6 +120,42 @@ async def handle_view_all_text_count(event: MessageEvent):
         logger.error(f"获取所有群聊投稿统计时出错: {e}")
         await view_all_text_count.finish("获取统计信息时出错喵！")
 
+
+@clear_duplicates.handle()
+async def handle_clear_duplicates(bot: Bot, event: GroupMessageEvent):
+    group_id = event.group_id
+
+    await clear_duplicates.send("正在开始检查本群所有图片，这可能需要几分钟，请稍候...")
+
+    try:
+        # 1. 查找重复
+        # (这是一个 async 函数，因为它内部需要进行图片验证)
+        duplicates_found = await image_checker.find_group_duplicates(group_id)
+
+        if not duplicates_found:
+            await clear_duplicates.finish("检查完毕，未在本群发现重复的图片喵！")
+
+        num_pairs = len(duplicates_found)
+
+        # 2. 删除重复
+        # (这是一个 sync 函数，因为它只操作数据和文件)
+        removed_count = image_checker.safe_remove_group_duplicates(group_id, duplicates_found)
+
+        await clear_duplicates.finish(
+            f"清理完成！\n"
+            f"共发现 {num_pairs} 组重复图片。\n"
+            f"成功删除了 {removed_count} 张多余的图片文件。"
+        )
+
+    except FinishedException:
+        # 这是 .finish() 引起的正常异常，直接抛出
+        raise
+    except Exception as e:
+        logger.error(f"执行清除重复命令时出错: {e}")
+        await clear_duplicates.finish(f"清理过程中发生错误: {e}")
+
+
+# --- ^^^^^^ 【新增：SU 清理重复命令】 ^^^^^^ ---
 
 # --- 查看投稿命令 (来自 view_contributions.py) ---
 view_all_contributions = on_command("查看所有投稿", rule=ensure_at_me() & to_me(), priority=5, block=True)
@@ -361,19 +398,11 @@ def find_similar_text(group_id: int, target_content: str, threshold: float = 0.9
         return False, ""
 
 
-async def process_content_deletion(group_id: int, message_type: str, content: str) -> bool:
+async def process_content_deletion(group_id: int, message_type: str, content: str) -> bool:  #
     try:
         success = False
         if message_type in ["text", "text_image", "contribute_text"]:
-            if group_id in data_manager.group_texts:
-                if content in data_manager.group_texts[group_id]:
-                    data_manager.group_texts[group_id].remove(content)
-                    success = data_manager.save_text_data(group_id)
-                else:
-                    found, actual_content = find_similar_text(group_id, content)
-                    if found and actual_content in data_manager.group_texts[group_id]:
-                        data_manager.group_texts[group_id].remove(actual_content)
-                        success = data_manager.save_text_data(group_id)
+            ...
         elif message_type in ["image", "contribute_image"]:
             if group_id in data_manager.group_images:
                 filename = content
@@ -387,6 +416,15 @@ async def process_content_deletion(group_id: int, message_type: str, content: st
                     image_path = image_dir / filename
                     if image_path.exists():
                         image_path.unlink()
+
+                        # vvvvvv 【新增：删除缓存】 vvvvvv
+                        try:
+                            image_checker.invalidate_cache_for_file(image_path)
+                            logger.info(f"已使 {image_path.name} 的哈希缓存失效")
+                        except Exception as e:
+                            logger.error(f"删除哈希缓存失败: {e}")
+                        # ^^^^^^ 【新增：删除缓存】 ^^^^^^
+
                     success = data_manager.save_image_data(group_id)
 
         data_manager.load_text_data(group_id)
