@@ -17,7 +17,8 @@ from .__init__ import (
     # 规则
     check_plugin_enabled,
     check_yinpa_enabled,
-    is_plugin_enabled_internal,
+    is_plugin_enabled_internal,  # <---【修改】导入
+    is_yinpa_enabled_internal,  # <---【修改】导入
     create_exact_command_rule,
 
     # 配置
@@ -35,56 +36,94 @@ from .__init__ import (
 
 # --- 透群友 ---
 
+# vvvvvv 【修改点：重写 yinpa_rule 逻辑】 vvvvvv
 async def yinpa_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:
     """
-    规则：透群友
+    规则：透群友 (v2, 指定目标已修复)
     """
-    if not is_plugin_enabled_internal(str(event.group_id), str(event.user_id)):
+    # 1. 基础检查 (插件, 消息)
+    # (使用内部函数，避免重复的 async await)
+    if not is_yinpa_enabled_internal(str(event.group_id), str(event.user_id)):
         return False
 
     msg = event.message.extract_plain_text()
     if msg != "透群友" and not (msg.startswith("透群友") and get_message_at(event.message)):
         return False
+
     group_id = event.group_id
     user_id = event.user_id
+
+    # 2. 发送者保护检查
     protect_set = protect_list.get(group_id, set())
     if user_id in protect_set:
         return False
+
     at = get_message_at(event.message)
     yinpa_id = None
     tips = "你的涩涩对象是、"
+
     if at:
-        at = at[0]
-        if at in protect_set:
-            return False
-        if at == user_id:
+        # --- 3A. 指定目标逻辑 (@User) ---
+        at_id = at[0]
+
+        if at_id in protect_set:
+            return False  # 目标被保护
+
+        if at_id == user_id:
             msg = f"恭喜你涩到了你自己！" + MessageSegment.image(file=await user_img(user_id))
             await bot.send(event, msg, at_sender=True)
-            return False
+            return False  # 停止
+
         X = random.randint(1, 100)
-        if at == record_CP.get(group_id, {}).get(user_id, 0):
+
+        # 检查是否为CP
+        if at_id == record_CP.get(group_id, {}).get(user_id, 0):
             if 0 < X <= yinpa_CP:
-                yinpa_id = at
+                yinpa_id = at_id
                 tips = "恭喜你涩到了你的老婆！"
             else:
                 await bot.send(event, "你的老婆拒绝和你涩涩！", at_sender=True)
-                return False
-        elif 0 < X <= yinpa_HE:
-            yinpa_id = at
-            tips = "恭喜你涩到了群友！"
-        elif yinpa_HE < X <= yinpa_BE:
-            yinpa_id = user_id
-    if not yinpa_id:
+                return False  # 停止
+
+        # 非CP目标
+        else:
+            if 0 < X <= yinpa_HE:
+                yinpa_id = at_id
+                tips = "恭喜你涩到了群友！"
+            else:
+                # 【关键修改】如果@了人，但ROLL点失败 (X > HE)，则明确失败，而不是随机
+                await bot.send(event, f"涩群友失败了！自己炉管去吧！", at_sender=True)
+                return False  # 停止
+
+        # 如果代码执行到这里, yinpa_id 必定是 at_id
+
+    else:
+        # --- 3B. 随机目标逻辑 (无@) ---
         member_list = await bot.get_group_member_list(group_id=group_id)
         lastmonth = event.time - last_sent_time_filter
-        yinpa_ids = [user_id for member in member_list if
-                     (user_id := member['user_id']) not in protect_set and member["last_sent_time"] > lastmonth]
+
+        # 筛选卡池：不在保护名单、不是自己、最近发言过
+        yinpa_ids = [member['user_id'] for member in member_list if
+                     (member['user_id'] not in protect_set) and
+                     (member['user_id'] != user_id) and
+                     (member["last_sent_time"] > lastmonth)]
+
         if yinpa_ids:
             yinpa_id = random.choice(yinpa_ids)
         else:
-            return False
-    state["yinpa"] = yinpa_id, tips
-    return True
+            await bot.send(event, "卡池里没有可涩的人了！", at_sender=True)
+            return False  # 卡池为空
+
+    # 4. 最终确认
+    if yinpa_id:
+        state["yinpa"] = yinpa_id, tips
+        return True
+    else:
+        # 此路径理论上只有在 3B 逻辑失败时才会到达
+        return False
+
+
+# ^^^^^^ 【修改点结束】 ^^^^^^
 
 
 yinpa = on_message(rule=yinpa_rule, priority=10, block=True)
@@ -92,19 +131,19 @@ yinpa = on_message(rule=yinpa_rule, priority=10, block=True)
 
 @yinpa.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
-    if not await check_yinpa_enabled(event):
-        await yinpa.finish("本群禁止涩涩！")
-        return
+    # (这个 handle 保持不变, check_yinpa_enabled 已在 rule 中执行)
 
     group_id = event.group_id
     user_id = event.user_id
     yinpa_id, tips = state["yinpa"]
+
+    # (rule 中已经排除了 yinpa_id == user_id 的情况, 但双重保险)
     if yinpa_id == user_id:
         await yinpa.finish("不可以涩涩！", at_sender=True)
     else:
         record_yinpa1[user_id] = record_yinpa1.get(user_id, 0) + 1
         save(record_yinpa1_file, record_yinpa1)
-        record_yinpa2[yinpa_id] = record_yinpa2.get(yinpa_id, 0) + 1  # Fix: 应该是 yinpa_id
+        record_yinpa2[yinpa_id] = record_yinpa2.get(yinpa_id, 0) + 1  # 修复：目标是 yinpa_id
         save(record_yinpa2_file, record_yinpa2)
         member = await bot.get_group_member_info(group_id=group_id, user_id=yinpa_id)
         msg = tips + MessageSegment.image(
@@ -113,7 +152,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 
 # --- 涩涩记录 ---
-
+# (保持不变)
 yinpa_list = on_command("涩涩记录",
                         aliases={"色色记录"},
                         priority=10,
