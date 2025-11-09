@@ -150,21 +150,34 @@ def get_random_stickers(folder_name: str, count: int) -> List[Path]:
     folder = sticker_folders[actual_folder_name]
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
 
+    # vvvvvv 【修改点 1：使用Set去重】 vvvvvv
     # 收集所有图片文件
-    image_files = []
-    for ext in image_extensions:
-        image_files.extend(folder.glob(f"*{ext}"))
-        image_files.extend(folder.glob(f"*{ext.upper()}"))
+    # 使用集合来避免重复计数
+    image_files: Set[Path] = set()
 
-    if not image_files:
+    for ext in image_extensions:
+        # 使用小写扩展名
+        for file in folder.glob(f"*{ext}"):
+            image_files.add(file)
+        # 使用大写扩展名
+        for file in folder.glob(f"*{ext.upper()}"):
+            image_files.add(file)
+
+    # 将Set转换为List以进行抽样
+    image_files_list = list(image_files)
+    # ^^^^^^ 【修改点 1：使用Set去重】 ^^^^^^
+
+    # vvvvvv 【修改点 2：使用去重后的新列表】 vvvvvv
+    if not image_files_list:
         return []
 
     # 如果请求数量超过可用图片数量，返回所有图片
-    if count > len(image_files):
-        return image_files
+    if count > len(image_files_list):
+        return image_files_list
 
     # 随机选择不重复的图片
-    return random.sample(image_files, count)
+    return random.sample(image_files_list, count)
+    # ^^^^^^ 【修改点 2：使用去重后的新列表】 ^^^^^^
 
 
 def count_images_in_folder(folder_name: str) -> int:

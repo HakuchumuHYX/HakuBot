@@ -334,10 +334,15 @@ async def check_duplicate_images(folder_name: str, new_images: List[Path]) -> Tu
 
     # 获取文件夹中所有现有图片
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
-    existing_images = []
+    existing_images_set: Set[Path] = set()
+
     for ext in image_extensions:
-        existing_images.extend(folder_path.glob(f"*{ext}"))
-        existing_images.extend(folder_path.glob(f"*{ext.upper()}"))
+        for file in folder_path.glob(f"*{ext}"):
+            existing_images_set.add(file)
+        for file in folder_path.glob(f"*{ext.upper()}"):
+            existing_images_set.add(file)
+
+    existing_images = list(existing_images_set)
 
     print(f"开始查重: {folder_name}, 现有图片: {len(existing_images)}, 新图片: {len(new_images)}")
 
@@ -618,10 +623,15 @@ async def find_folder_duplicates(folder_name: str) -> List[Tuple[Path, Path]]:
 
     # 获取文件夹中所有图片
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
-    image_files = []
+    image_files_set: Set[Path] = set()
+
     for ext in image_extensions:
-        image_files.extend(folder_path.glob(f"*{ext}"))
-        image_files.extend(folder_path.glob(f"*{ext.upper()}"))
+        for file in folder_path.glob(f"*{ext}"):
+            image_files_set.add(file)
+        for file in folder_path.glob(f"*{ext.upper()}"):
+            image_files_set.add(file)
+
+    image_files = list(image_files_set)
 
     print(f"在文件夹 {folder_name} 中找到 {len(image_files)} 张图片")
 
