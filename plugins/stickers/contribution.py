@@ -198,21 +198,52 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
         if actual_folder_name != folder_name:
             display_name = f"{actual_folder_name}(通过别名'{folder_name}')"
 
-        # Case B: 全部图片都重复
-        if saved_count == 0 and duplicate_count > 0:
-            # 【修复】此时临时文件仍然存在，报告可以正确生成
+        # vvvvvv 【修改后的逻辑：从这里开始】 vvvvvv
+
+        # 1. 无论如何，只要有重复，就尝试生成报告
+        report_bytes = None
+        if duplicate_count > 0:
             report_bytes = await render_duplicate_report(folder_name, duplicates)
+
+        # Case B: 全部图片都重复 (0 saved, >0 duplicates)
+        if saved_count == 0 and duplicate_count > 0:
             if report_bytes:
+                # 发送报告图片
                 return False, MessageSegment.image(report_bytes), 0
             else:
+                # 报告生成失败，发送文字
                 return False, f"投稿失败！检测到 {duplicate_count} 张图片全部为重复图片。", 0
 
-        # Case C: 至少保存成功1张
-        response_parts = [f"成功保存 {saved_count} 张图片"]
-        if duplicate_count > 0:
-            response_parts.append(f"检测到 {duplicate_count} 张重复图片")
+        # Case C: 至少保存成功1张 (saved_count > 0)
 
-        return True, f"投稿完成！{'，'.join(response_parts)}。现在 {display_name} 中共有 {image_count} 张表情~", saved_count
+        # 构筑基础消息 (MessageSegment 列表)
+        message_segments = [
+            MessageSegment.text(f"投稿完成！成功保存 {saved_count} 张图片。")
+        ]
+
+        # 【修复】如果部分重复，添加文字说明并附加报告图片
+        if duplicate_count > 0:
+            message_segments.append(
+                MessageSegment.text(f"\n检测到 {duplicate_count} 张重复图片。")
+            )
+            if report_bytes:
+                # 附加报告图片
+                message_segments.append(MessageSegment.image(report_bytes))
+            else:
+                # 报告生成失败
+                message_segments.append(
+                    MessageSegment.text("\n（重复报告生成失败）")
+                )
+
+        # 添加结尾
+        message_segments.append(
+            MessageSegment.text(f"\n现在 {display_name} 中共有 {image_count} 张表情~")
+        )
+
+        # 返回组合后的 Message 对象
+        return True, Message(message_segments), saved_count
+
+        # ^^^^^^ 【修改后的逻辑：到这里结束】 ^^^^^^
 
     # 3. 【修复】finally 块与 try 对齐，确保始终执行
     finally:
