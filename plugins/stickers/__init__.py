@@ -2,8 +2,8 @@
 import asyncio
 import re
 from typing import Optional
-from nonebot import on_message, on_command
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
+from nonebot import on_message, on_command, get_bot  # 确保 get_bot 被导入（虽然我们用依赖注入）
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment, Bot  # 导入 Bot
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
@@ -22,6 +22,8 @@ from .check import (
     preview_duplicates_before_cleanup,
     safe_remove_duplicates
 )
+# 导入 help
+from . import help
 
 # 初始化时加载配置
 load_sticker_list()
@@ -35,12 +37,12 @@ clean_cancel_matcher = on_command("取消", block=True)
 # 全局变量来存储清理状态
 cleanup_state = {}
 
-# vvvvvv 【新增：定义“随机所有”的别名】 vvvvvv
+# vvvvvv 【定义“随机所有”的别名】 vvvvvv
 # 使用集合以便快速查找，统一使用小写
 RANDOM_ALL_ALIASES = {"stickers", "sticker", "表情", "表情包"}
 
 
-# ^^^^^^ 【新增：定义“随机所有”的别名】 ^^^^^^
+# ^^^^^^ 【定义“随机所有”的别名】 ^^^^^^
 
 
 def parse_multi_random_command(message_text: str) -> tuple[str, int] | None:
@@ -154,8 +156,10 @@ async def handle_clean_cancel(event: GroupMessageEvent):
     await clean_cancel_matcher.finish("已取消清理操作")
 
 
+# vvvvvv 【修改：添加 Bot 对象】 vvvvvv
 @sticker_matcher.handle()
-async def handle_sticker(event: GroupMessageEvent):
+async def handle_sticker(bot: Bot, event: GroupMessageEvent):
+    # ^^^^^^ 【修改：添加 Bot 对象】 ^^^^^^
     # 只处理群聊消息
     if not isinstance(event, GroupMessageEvent):
         return
@@ -198,8 +202,10 @@ async def handle_sticker(event: GroupMessageEvent):
     # 检查是否是投稿格式
     folder_name, is_contribution, is_force = extract_contribution_info(message_text)
     if is_contribution:
+        # vvvvvv 【修改：传递 Bot 对象】 vvvvvv
         # 处理投稿
-        success, reply_msg, saved_count = await save_contribution_images(folder_name, event, is_force)
+        success, reply_msg, saved_count = await save_contribution_images(bot, folder_name, event, is_force)
+        # ^^^^^^ 【修改：传递 Bot 对象】 ^^^^^^
 
         if success or saved_count == 0:  # 成功或完全失败时回复
             await sticker_matcher.finish(reply_msg)
@@ -229,9 +235,7 @@ async def handle_sticker(event: GroupMessageEvent):
                     for sticker_file in sticker_files:
                         message_segments.append(MessageSegment.image(sticker_file))
 
-                    # vvvvvv 【修改点 3：更新CD】 vvvvvv
                     update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
-                    # ^^^^^^ 【修改点 3：更新CD】 ^^^^^^
 
                     await sticker_matcher.finish(Message(message_segments))
                 except Exception:
@@ -243,11 +247,9 @@ async def handle_sticker(event: GroupMessageEvent):
         # 提取文件夹名（去掉"随机"前缀）
         folder_name = message_text[2:].strip()
 
-        # vvvvvv 【修改点 2：检查别名】 vvvvvv
         # 检查是否为“随机所有”的别名
         if folder_name.lower() in RANDOM_ALL_ALIASES:
             folder_name = "stickers"  # 标准化为 "stickers" 关键字
-        # ^^^^^^ 【修改点 2：检查别名】 ^^^^^^
 
         if folder_name:
             # 使用支持别名的函数获取贴图
@@ -255,13 +257,9 @@ async def handle_sticker(event: GroupMessageEvent):
             if sticker_file:
                 # 发送图片
                 try:
-                    # vvvvvv 【修改点 4：更新CD】 vvvvvv
                     update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
-                    # ^^^^^^ 【修改点 4：更新CD】 ^^^^^^
 
                     await sticker_matcher.finish(MessageSegment.image(sticker_file))
                 except Exception:
                     # 如果发送失败，静默处理
                     pass
-
-    from . import help
