@@ -92,15 +92,32 @@ async def check_yinpa_enabled(event: GroupMessageEvent) -> bool:
 # --- 数据I/O与全局数据字典 (供其他模块导入) ---
 
 def load(file, waifu_reset):
-    if waifu_reset and file.exists() and os.path.getmtime(file) > Zero_today:
-        with open(file, 'r') as f:
-            line = f.read()
-            record = eval(line)
-        logger.info(f"{file} 已加载")
-    else:
-        record = {}
-        logger.info(f"{file} 已重置")
-    return record
+    if not file.exists():
+        logger.info(f"{file} 未找到，创建新记录。")
+        return {}
+
+    try:
+        # 检查文件是否为今天
+        file_mtime = os.path.getmtime(file)
+
+        if waifu_reset and file_mtime <= Zero_today:
+            # 'waifu_reset' 为 True，且文件是昨天的 -> 重置
+            logger.info(f"{file} 是旧文件，已重置。")
+            return {}
+        else:
+            # 'waifu_reset' 为 False -> 总是加载
+            # 'waifu_reset' 为 True，且文件是今天的 -> 加载
+            with open(file, 'r') as f:
+                line = f.read()
+                if not line:  # 处理空文件
+                    logger.info(f"{file} 为空，返回空字典。")
+                    return {}
+                record = eval(line)
+            logger.info(f"{file} 已加载")
+            return record
+    except Exception as e:
+        logger.error(f"加载 {file} 失败: {e}。文件将重置。")
+        return {}
 
 if waifu_save:
     def save(file, data):
@@ -149,17 +166,38 @@ if waifu_reset:
         record_lock = {}
         record_yinpa1 = {}
         record_yinpa2 = {}
-        logger.info(f"娶群友记录已重置")
+
+        # 【修复】增加保存操作
+        save(record_CP_file, record_CP)
+        save(record_waifu_file, record_waifu)
+        save(record_lock_file, record_lock)
+        save(record_yinpa1_file, record_yinpa1)
+        save(record_yinpa2_file, record_yinpa2)
+
+        logger.info(f"娶群友记录已重置 (waifu_reset=True)")
 else:
     def reset_record():
         global record_CP, record_yinpa1, record_yinpa2
+
+        # 【修复】修正重置单身记录的逻辑
         for group_id in record_CP:
-            for user_id in record_CP[group_id]:
-                if record_CP[group_id][user_id] == user_id:
-                    record_CP[group_id][user_id] = 0
+            users_to_remove = []
+            for user_id, waifu_id in record_CP[group_id].items():
+                if user_id == waifu_id:
+                    users_to_remove.append(user_id)
+
+            for user_id in users_to_remove:
+                del record_CP[group_id][user_id]
+
         record_yinpa1 = {}
         record_yinpa2 = {}
-        logger.info(f"娶群友记录已重置")
+
+        # 【修复】增加保存操作
+        save(record_CP_file, record_CP)
+        save(record_yinpa1_file, record_yinpa1)
+        save(record_yinpa2_file, record_yinpa2)
+
+        logger.info(f"娶群友记录已重置 (waifu_reset=False)")
 
 on_command("重置记录", priority=10, block=True).append_handler(reset_record)
 scheduler.add_job(reset_record, "cron", hour=0, misfire_grace_time=120)
