@@ -187,6 +187,12 @@ async def waifu_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool
             return False
 
     if at:
+        # --- 【修复】 ---
+        # 增加对 @自己 的判断
+        if at == user_id:
+            await bot.send(event, "不可以娶自己哦！", at_sender=True)
+            return False
+
         if at == rec.get(at):
             X = HE
             del rec[at]
@@ -196,10 +202,19 @@ async def waifu_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool
         if 0 < X <= HE:
             waifu_id = at
             tips = "恭喜你娶到了群友!\n" + tips
-        elif HE < X <= BE:
+        elif HE < X <= BE: # (BE 在 __init__ 中被定义为 HE + waifu_be)
             waifu_id = user_id
         else:
-            pass
+            # 原本是 pass，导致了 bug
+            # 现在改为明确失败并停止
+            try:
+                member = await bot.get_group_member_info(group_id=group_id, user_id=at)
+                name = member['card'] or member['nickname']
+            except Exception:
+                name = "TA"
+            await bot.send(event, f"你没能娶到 {name}！", at_sender=True)
+            return False # 停止匹配，不再向下执行
+        # --- 【修复结束】 ---
 
     if not waifu_id:
         group_id = event.group_id

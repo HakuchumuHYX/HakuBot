@@ -1,11 +1,13 @@
+# waifu/utils.py
 import io
 import httpx
 import hashlib
 import asyncio
 
-from pil_utils import BuildImage,Text2Image
+from pil_utils import BuildImage, Text2Image
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.log import logger
+
 
 async def download_avatar(user_id: int) -> bytes:
     url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=640"
@@ -14,6 +16,7 @@ async def download_avatar(user_id: int) -> bytes:
         url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
         data = await download_url(url)
     return data
+
 
 async def download_url(url: str) -> bytes:
     async with httpx.AsyncClient() as client:
@@ -26,10 +29,12 @@ async def download_url(url: str) -> bytes:
                 await asyncio.sleep(3)
     raise Exception(f"{url} 下载失败！")
 
+
 async def download_user_img(user_id: int):
     data = await download_avatar(user_id)
     img = BuildImage.open(io.BytesIO(data))
     return img.save_png()
+
 
 async def user_img(user_id: int) -> bytes:
     '''
@@ -52,28 +57,37 @@ def text_to_png(msg):
         text_img = Text2Image.from_text(msg, 50)
         # 设置一个合理的最大宽度（例如800像素）
         text_img.wrap(800)
-        # 生成透明背景的文本图片
+        # 生成透明背景的文本图片 (img 是 RGBA)
         img = text_img.to_image()
 
-        # 创建一个白色背景的图片，大小比文本图片稍大
+        # 创建一个白色背景的图片 (bg 是 RGB)
         bg_width = img.width + 40
         bg_height = img.height + 40
         bg = BuildImage.new("RGB", (bg_width, bg_height), "white")
 
-        # 将文本图片粘贴到白色背景上
-        bg.paste(img, (20, 20))
+        # --- 【修复 1/2：修复黑块问题】 ---
+        # 将文本图片粘贴到白色背景上，并明确启用 alpha 蒙版
+        bg.paste(img, (20, 20), alpha=True)
 
-        # 保存为PNG
-        bg.save(output, format="png")
+        # --- 【修复 2/2：修复 save 报错】 ---
+        # 保存为PNG (使用 .image 来访问底层的 PIL 对象)
+        bg.image.save(output, format="png")
+        # --- 【修复结束】 ---
 
     except Exception as e:
         logger.error(f"text_to_png error: {e}")
-        # 如果失败，尝试更简单的方法
+        # 如果失败，尝试更简单的方法 (fallback)
         try:
             # 直接创建一个白色背景的图片，并在上面绘制文本
             from PIL import Image, ImageDraw, ImageFont
             # 估算文本大小
-            font = ImageFont.truetype("msyh.ttc", 50)  # 使用系统字体
+            font_path = "msyh.ttc"  # 尝试微软雅黑
+            try:
+                font = ImageFont.truetype(font_path, 50)
+            except IOError:
+                logger.warning(f"找不到字体 {font_path}，使用默认字体。")
+                font = ImageFont.load_default()  # 使用 PIL 默认字体
+
             # 计算文本尺寸
             dummy_img = Image.new("RGB", (1, 1))
             dummy_draw = ImageDraw.Draw(dummy_img)
@@ -108,19 +122,22 @@ def bbcode_to_png(msg, spacing: int = 10):
         text_img = Text2Image.from_bbcode_text(msg, 50)
         # 设置一个合理的最大宽度（例如800像素）
         text_img.wrap(800)
-        # 生成透明背景的文本图片
+        # 生成透明背景的文本图片 (img 是 RGBA)
         img = text_img.to_image()
 
-        # 创建一个白色背景的图片，大小比文本图片稍大
+        # 创建一个白色背景的图片 (bg 是 RGB)
         bg_width = img.width + 40
         bg_height = img.height + 40
         bg = BuildImage.new("RGB", (bg_width, bg_height), "white")
 
-        # 将文本图片粘贴到白色背景上
-        bg.paste(img, (20, 20))
+        # --- 【修复 1/2：修复黑块问题】 ---
+        # 将文本图片粘贴到白色背景上，并明确启用 alpha 蒙版
+        bg.paste(img, (20, 20), alpha=True)
 
-        # 保存为PNG
-        bg.save(output, format="png")
+        # --- 【修复 2/2：修复 save 报错】 ---
+        # 保存为PNG (使用 .image 来访问底层的 PIL 对象)
+        bg.image.save(output, format="png")
+        # --- 【修复结束】 ---
 
     except Exception as e:
         logger.error(f"bbcode_to_png error: {e}")
@@ -129,7 +146,8 @@ def bbcode_to_png(msg, spacing: int = 10):
 
     return output
 
-def get_message_at(message:Message) -> list:
+
+def get_message_at(message: Message) -> list:
     '''
     获取at列表
     '''
