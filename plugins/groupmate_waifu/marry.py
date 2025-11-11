@@ -239,7 +239,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
                 member['card'] or member['nickname'])
         if waifu_id in record_lock.get(group_id, {}).keys():
             await waifu.finish(msg + "\n本对cp已锁！", at_sender=True)
-        X = random.randint(1_00)
+        X = random.randint(1, 100)
         if X > NTR:
             rec[user_id] = user_id
             save(record_CP_file, record_CP)

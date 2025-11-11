@@ -60,6 +60,9 @@ async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> 
     # 添加别名命令 (所有用户)
     add_alias_match = re.match(r'^添加别名\s+(\S+)\s+to\s+(\S+)$', message_text, re.IGNORECASE)
     if add_alias_match:
+        if not is_superuser(str(event.user_id)):
+            return "权限不足，只有超级用户才能添加别名"
+
         alias = add_alias_match.group(1).strip()
         folder_name = add_alias_match.group(2).strip()
         return await add_alias(alias, folder_name, str(event.user_id))

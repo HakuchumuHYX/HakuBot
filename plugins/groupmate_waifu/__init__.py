@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .config import Config
 from nonebot.plugin import PluginMetadata
+from nonebot.permission import SUPERUSER
 from nonebot import get_loaded_plugins
 from nonebot.plugin import Plugin
 # 导入 common 中的 rule
@@ -221,7 +222,7 @@ else:
 
         logger.info(f"娶群友记录已重置 (waifu_reset=False)")
 
-on_command("重置记录", priority=10, block=True).append_handler(reset_record)
+on_command("重置记录", permission=SUPERUSER, priority=10, block=True).append_handler(reset_record)
 scheduler.add_job(reset_record, "cron", hour=0, misfire_grace_time=120)
 
 # --- 导入子模块，加载 Matcher ---
