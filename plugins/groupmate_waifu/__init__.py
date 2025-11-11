@@ -24,16 +24,25 @@ try:
     from ..plugin_manager.enable import is_feature_enabled
     # 导入CD管理API
     from ..plugin_manager.cd_manager import check_cd, update_cd
+
     PLUGIN_MANAGER_LOADED = True
 except ImportError:
     PLUGIN_MANAGER_LOADED = False
+
+
     # 定义回退函数
     def check_plugin(plugin_name: str, group_id: str, user_id: str) -> bool:
         return True
+
+
     def is_feature_enabled(plugin_name: str, feature_name: str, group_id: str, user_id: str) -> bool:
         return True
+
+
     def check_cd(plugin_id: str, group_id: str, user_id: str) -> int:
         return 0
+
+
     def update_cd(plugin_id: str, group_id: str, user_id: str):
         pass
 # ^^^^^^ 插件管理 API 结束 ^^^^^^
@@ -70,6 +79,7 @@ timestr = time.strftime('%Y-%m-%d', time.localtime(time.time()))
 timeArray = time.strptime(timestr, '%Y-%m-%d')
 Zero_today = time.mktime(timeArray)
 
+
 # --- 插件管理规则 (供其他模块导入) ---
 def is_plugin_enabled_internal(group_id: str, user_id: str) -> bool:
     try:
@@ -77,8 +87,10 @@ def is_plugin_enabled_internal(group_id: str, user_id: str) -> bool:
     except (ImportError, TypeError):
         return True
 
+
 async def check_plugin_enabled(event: GroupMessageEvent) -> bool:
     return is_plugin_enabled_internal(str(event.group_id), str(event.user_id))
+
 
 def is_yinpa_enabled_internal(group_id: str, user_id: str) -> bool:
     try:
@@ -86,8 +98,10 @@ def is_yinpa_enabled_internal(group_id: str, user_id: str) -> bool:
     except (ImportError, TypeError):
         return True
 
+
 async def check_yinpa_enabled(event: GroupMessageEvent) -> bool:
     return is_yinpa_enabled_internal(str(event.group_id), str(event.user_id))
+
 
 # --- 数据I/O与全局数据字典 (供其他模块导入) ---
 
@@ -118,6 +132,7 @@ def load(file, waifu_reset):
     except Exception as e:
         logger.error(f"加载 {file} 失败: {e}。文件将重置。")
         return {}
+
 
 if waifu_save:
     def save(file, data):
@@ -161,18 +176,22 @@ from nonebot_plugin_apscheduler import scheduler
 if waifu_reset:
     def reset_record():
         global record_CP, record_waifu, record_lock, record_yinpa1, record_yinpa2
-        record_CP = {}
-        record_waifu = {}
-        record_lock = {}
-        record_yinpa1 = {}
-        record_yinpa2 = {}
 
-        # 【修复】增加保存操作
+        # --- 【关键修复】 ---
+        # 使用 .clear() 来原地清空字典，而不是创建新字典
+        record_CP.clear()
+        record_waifu.clear()
+        record_lock.clear()
+        record_yinpa1.clear()
+        record_yinpa2.clear()
+
+        # 增加保存操作，将空字典写入文件
         save(record_CP_file, record_CP)
         save(record_waifu_file, record_waifu)
         save(record_lock_file, record_lock)
         save(record_yinpa1_file, record_yinpa1)
         save(record_yinpa2_file, record_yinpa2)
+        # --- 【修复结束】 ---
 
         logger.info(f"娶群友记录已重置 (waifu_reset=True)")
 else:
@@ -180,19 +199,22 @@ else:
         global record_CP, record_yinpa1, record_yinpa2
 
         # 【修复】修正重置单身记录的逻辑
-        for group_id in record_CP:
-            users_to_remove = []
-            for user_id, waifu_id in record_CP[group_id].items():
+        users_to_remove = []
+        # 遍历 .items() 来安全地修改
+        for group_id, cp_data in list(record_CP.items()):
+            for user_id, waifu_id in list(cp_data.items()):
                 if user_id == waifu_id:
-                    users_to_remove.append(user_id)
+                    # 不能在遍历时删除，所以收集
+                    users_to_remove.append((group_id, user_id))
 
-            for user_id in users_to_remove:
+        for group_id, user_id in users_to_remove:
+            if group_id in record_CP and user_id in record_CP[group_id]:
                 del record_CP[group_id][user_id]
 
-        record_yinpa1 = {}
-        record_yinpa2 = {}
+        # 使用 .clear()
+        record_yinpa1.clear()
+        record_yinpa2.clear()
 
-        # 【修复】增加保存操作
         save(record_CP_file, record_CP)
         save(record_yinpa1_file, record_yinpa1)
         save(record_yinpa2_file, record_yinpa2)
@@ -201,7 +223,6 @@ else:
 
 on_command("重置记录", priority=10, block=True).append_handler(reset_record)
 scheduler.add_job(reset_record, "cron", hour=0, misfire_grace_time=120)
-
 
 # --- 导入子模块，加载 Matcher ---
 from . import marry
