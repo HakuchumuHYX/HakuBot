@@ -440,9 +440,9 @@ async def optimize_gif_parameters(video_info: dict) -> tuple:
     elif duration <= 15:
         target_fps = min(12, original_fps)
     elif duration <= 30:
-        target_fps = min(10, original_fps)
+        target_fps = min(8, original_fps)
     else:
-        target_fps = min(8, original_fps)  # 长视频降低帧率
+        target_fps = min(5, original_fps)  # 长视频降低帧率
 
     # 确保FPS至少为1
     target_fps = max(1, target_fps)
@@ -457,15 +457,15 @@ async def optimize_gif_parameters(video_info: dict) -> tuple:
         scale_width = int(original_width * scale_factor)
         scale_height = int(original_height * scale_factor)
     elif max_dimension <= 720:
-        scale_factor = 480 / max_dimension
+        scale_factor = 320 / max_dimension
         scale_width = int(original_width * scale_factor)
         scale_height = int(original_height * scale_factor)
     elif max_dimension <= 1080:
-        scale_factor = 640 / max_dimension
+        scale_factor = 480 / max_dimension
         scale_width = int(original_width * scale_factor)
         scale_height = int(original_height * scale_factor)
     else:
-        scale_factor = 720 / max_dimension
+        scale_factor = 480 / max_dimension
         scale_width = int(original_width * scale_factor)
         scale_height = int(original_height * scale_factor)
 
