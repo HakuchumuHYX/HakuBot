@@ -433,15 +433,28 @@ class GameService:
         available_songs = getattr(self.cache_service, config['list_attr'])
         song_to_play = None
 
+        # --- [修改] 重构搜索逻辑以支持别名 ---
         if search_term:
+            search_lower = search_term.lower()
+
+            # 1. 按 ID 查找
             if search_term.isdigit():
-                music_id_to_find = int(search_term)
-                song_to_play = next((s for s in available_songs if s['id'] == music_id_to_find), None)
-            else:
-                found_songs = [s for s in available_songs if search_term.lower() in s['title'].lower()]
+                song_to_play = next((s for s in available_songs if s['id'] == int(search_term)), None)
+
+            # 2. 按别名查找 (新)
+            if not song_to_play and search_lower in self.cache_service.song_aliases:
+                # 从别名获取ID
+                target_id = int(self.cache_service.song_aliases[search_lower])
+                # 检查该ID是否在此模式的可用歌曲列表中
+                song_to_play = next((s for s in available_songs if s['id'] == target_id), None)
+
+            # 3. 按标题查找 (原逻辑)
+            if not song_to_play:
+                found_songs = [s for s in available_songs if search_lower in s['title'].lower()]
                 if found_songs:
-                    exact_match = next((s for s in found_songs if s['title'].lower() == search_term.lower()), None)
+                    exact_match = next((s for s in found_songs if s['title'].lower() == search_lower), None)
                     song_to_play = exact_match or min(found_songs, key=lambda s: len(s['title']))
+        # --- [修改] 结束 ---
         else:
             if not available_songs:
                 return None, None
@@ -458,7 +471,9 @@ class GameService:
                 chosen_bundle = random.choice(valid_piano_bundles)
                 relative_path = f"songs_piano_trimmed_mp3/{chosen_bundle}/{chosen_bundle}.mp3"
                 mp3_source = self.cache_service.get_resource_path_or_url(relative_path)
+
         else:
+            # (原有的处理 accompaniment, vocals, bass, drums 的逻辑)
             sekai_ver = next((v for v in song_to_play.get('vocals', []) if v.get('musicVocalType') == 'sekai'), None)
             bundle_name = None
             if sekai_ver:
@@ -471,6 +486,60 @@ class GameService:
                 mp3_source = self.cache_service.get_resource_path_or_url(relative_path)
 
         return song_to_play, mp3_source
+
+    async def get_normal_song_and_path(self, song_query: Optional[str], version_type: str) -> Tuple[
+        Optional[Dict], Optional[Union[Path, str]], Optional[Dict]]:
+        """
+        获取 "听普通" 指令的歌曲、音频路径和vocal信息。
+
+        :param song_query: 歌曲ID、名称或 None (随机)
+        :param version_type: "sekai" 或 "virtual_singer"
+        :return: (song_dict, mp3_source, vocal_info_dict)
+        """
+        song_to_play = None
+        if song_query is None:
+            if not self.cache_service.song_data:
+                return None, None, None
+            song_to_play = random.choice(self.cache_service.song_data)
+        else:
+            # 此处调用了 find_song_by_query，它已支持别名
+            song_to_play = self.cache_service.find_song_by_query(song_query)
+
+        if not song_to_play:
+            return None, None, None
+
+        # 查找请求的版本
+        vocal_version = next((v for v in song_to_play.get('vocals', []) if v.get('musicVocalType') == version_type),
+                             None)
+
+        # 备用逻辑 (Fallback)
+        if not vocal_version:
+            # 如果请求 sekai 找不到，尝试 vs
+            if version_type == "sekai":
+                vocal_version = next(
+                    (v for v in song_to_play.get('vocals', []) if v.get('musicVocalType') == "virtual_singer"), None)
+            # 如果请求 vs 找不到，尝试 sekai
+            elif version_type == "virtual_singer":
+                vocal_version = next((v for v in song_to_play.get('vocals', []) if v.get('musicVocalType') == "sekai"),
+                                     None)
+
+        # 如果还是找不到，使用列表中的第一个
+        if not vocal_version:
+            if song_to_play.get('vocals'):
+                vocal_version = song_to_play['vocals'][0]
+            else:
+                # 歌曲存在，但没有vocal信息
+                return song_to_play, None, None
+
+        # 找到了vocal信息，构建路径
+        bundle_name = vocal_version.get("vocalAssetbundleName")
+        if not bundle_name:
+            return song_to_play, None, vocal_version  # 有vocal条目但没有bundle name
+
+        relative_path = f"songs/{bundle_name}/{bundle_name}.mp3"
+        mp3_source = self.cache_service.get_resource_path_or_url(relative_path)
+
+        return song_to_play, mp3_source, vocal_version
 
     async def get_anvo_song_and_vocal(self, content: str) -> Tuple[Optional[Dict], Optional[Union[Dict, str]]]:
         """根据用户输入解析并返回Another Vocal歌曲和版本。"""
@@ -502,6 +571,7 @@ class GameService:
 
             if is_char_combo and len(parts) > 1:
                 song_query = parts[0]
+                # 此处调用了 find_song_by_query，它已支持别名
                 song_to_play = self.cache_service.find_song_by_query(song_query)
                 if song_to_play:
                     for v in song_to_play.get('vocals', []):
@@ -524,6 +594,7 @@ class GameService:
                                                        c.get('characterId') == char_id for c in
                                                        v.get('characters', []))), None)
                 else:
+                    # 此处调用了 find_song_by_query，它已支持别名
                     song_to_play = self.cache_service.find_song_by_query(content)
                     if song_to_play:
                         vocal_info = 'list_versions'

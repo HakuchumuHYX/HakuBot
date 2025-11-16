@@ -38,6 +38,11 @@ class CacheService:
         self.char_id_to_anov_songs = defaultdict(list)
         self.abbr_to_char_id: Dict[str, int] = {}
 
+        # --- [新增] 别名数据 ---
+        self.song_aliases_by_id: Dict[str, List[str]] = {}  # { "1": ["tyw", "tell your world"] }
+        self.song_aliases: Dict[str, str] = {}  # { "tyw": "1", "tell your world": "1" }
+        # --- [新增] 结束 ---
+
         self.available_piano_songs_bundles = set()
         self.preprocessed_tracks = defaultdict(set)
 
@@ -52,6 +57,10 @@ class CacheService:
         if not self._load_song_data() or not self._load_character_data():
             logger.error("核心数据文件加载失败，插件将无法正常工作。")
             return
+
+        # --- [新增] ---
+        self._load_song_aliases()
+        # --- [新增] 结束 ---
 
         if self.use_local_resources:
             self._load_local_manifest()
@@ -121,6 +130,33 @@ class CacheService:
         except (json.JSONDecodeError, IOError) as e:
             logger.error(f"加载或解析角色数据失败: {e}")
             return False
+
+    # --- [新增] ---
+    def _load_song_aliases(self) -> bool:
+        """同步加载 song_aliases.json 数据"""
+        aliases_file = self.resources_dir / "song_aliases.json"
+        if not aliases_file.exists():
+            logger.warning(f"未找到歌曲别名文件: {aliases_file}。别名搜索功能将不可用。")
+            return False
+
+        try:
+            with open(aliases_file, "r", encoding="utf-8") as f:
+                self.song_aliases_by_id = json.load(f)
+
+            # 构建反向查找字典（别名 -> ID）
+            for song_id, aliases in self.song_aliases_by_id.items():
+                if isinstance(aliases, list):
+                    for alias in aliases:
+                        # 使用 .lower() 来支持不区分大小写的匹配
+                        self.song_aliases[alias.lower()] = song_id
+
+            logger.info(f"成功加载 {len(self.song_aliases)} 个歌曲别名。")
+            return True
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"加载或解析 song_aliases.json 失败: {e}")
+            return False
+
+    # --- [新增] 结束 ---
 
     def _load_local_manifest(self):
         """同步加载本地资源清单。"""
@@ -255,17 +291,29 @@ class CacheService:
             logger.error(f"无法打开图片资源 {source}: {e}", exc_info=True)
             return None
 
+    # --- [修改] ---
     def find_song_by_query(self, query: str) -> Optional[Dict]:
-        """通过ID或名称统一查找歌曲，优先精确匹配。"""
+        """通过ID、别名或名称统一查找歌曲，优先精确匹配。"""
+
+        # 1. 按 ID 查找
         if query.isdigit():
             return next((s for s in self.song_data if s['id'] == int(query)), None)
-        else:
-            query_lower = query.lower()
-            found_songs = [s for s in self.song_data if query_lower in s['title'].lower()]
-            if not found_songs: return None
 
-            exact_match = next((s for s in found_songs if s['title'].lower() == query_lower), None)
-            return exact_match or min(found_songs, key=lambda s: len(s['title']))
+        query_lower = query.lower()
+
+        # 2. 按别名查找 (新)
+        if query_lower in self.song_aliases:
+            target_id = int(self.song_aliases[query_lower])
+            return next((s for s in self.song_data if s['id'] == target_id), None)
+
+        # 3. 按标题查找 (原逻辑)
+        found_songs = [s for s in self.song_data if query_lower in s['title'].lower()]
+        if not found_songs: return None
+
+        exact_match = next((s for s in found_songs if s['title'].lower() == query_lower), None)
+        return exact_match or min(found_songs, key=lambda s: len(s['title']))
+
+    # --- [修改] 结束 ---
 
     async def terminate(self):
         """关闭缓存服务，目前无需特殊操作"""

@@ -20,6 +20,7 @@ from ..utils import (
 from ...plugin_manager.enable import *
 from ...utils.common import create_exact_command_rule
 
+
 async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent, mode: str,
                                  search_term: Optional[str]):
     user_id = str(event.user_id)
@@ -119,13 +120,147 @@ for cmd, mode in listen_commands.items():
 
     on_command(cmd, priority=10, block=True, rule=create_exact_command_rule(cmd)).handle()(create_handler(mode))
 
+# --- [修改] 听普通 (独立处理器) ---
+listen_normal = on_command("听",
+                           priority=10,
+                           block=True,
+                           rule=create_exact_command_rule("听")
+                           )
+
+
+@listen_normal.handle()
+async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    user_id = str(event.user_id)
+    # 检查听歌子功能是否启用
+    if isinstance(event, GroupMessageEvent):
+        if not is_feature_enabled("pjsk_guess_song", "listen", str(event.group_id), user_id):
+            await matcher.finish("听歌功能在此群无法使用！")
+            return
+
+    if not await _is_group_allowed(event): return
+
+    session_id = get_session_id(event)
+    lock = game_session_locks[session_id]
+
+    # --- [修改] 提前检查参数 ---
+    content = args.extract_plain_text().strip()
+    if not content:
+        await matcher.finish("......请指定要听的歌曲名称或ID。例如：听 <歌名> [sekai/vs]")
+        return
+    # --- [修改] 结束 ---
+
+    async with lock:
+        cooldown = _get_setting_for_group(event, "game_cooldown_seconds", 30)
+        if time.time() - last_game_end_time.get(session_id, 0) < cooldown:
+            remaining_time = cooldown - (time.time() - last_game_end_time.get(session_id, 0))
+            time_display = f"{remaining_time:.3f}" if remaining_time < 1 else str(int(remaining_time))
+            await matcher.finish(f"嗯......休息 {time_display} 秒再玩吧......")
+        if session_id in active_game_sessions:
+            await matcher.finish("......有一个正在进行的游戏或播放任务了呢。")
+
+        user_id = get_user_id(event)
+        listen_limit = _get_setting_for_group(event, "daily_listen_limit", 10)
+        can_listen = await db_service.can_listen_song(user_id, listen_limit)
+        if not can_listen:
+            await matcher.finish(f"......你今天听歌的次数已达上限（{listen_limit}次），请明天再来吧......")
+
+        active_game_sessions[session_id] = {"placeholder": True, "type": "listen"}
+
+    await matcher.send("正在加载数据……")
+
+    try:
+        # content 已在锁外获取
+
+        song_query: Optional[str] = ""
+        version_type = "sekai"  # 默认听 sekai ver
+
+        parts = content.rsplit(maxsplit=1)
+
+        # content 已确认不为空
+        if len(parts) == 1:
+            song_query = content
+        else:  # len(parts) == 2
+            query_part = parts[0]
+            version_part = parts[1].lower()
+
+            vs_aliases = ["vs", "v", "vocal", "vocal ver", "vs ver"]
+            sekai_aliases = ["s", "sekai", "sekai ver"]
+
+            if version_part in vs_aliases:
+                version_type = "virtual_singer"
+                song_query = query_part
+            elif version_part in sekai_aliases:
+                version_type = "sekai"
+                song_query = query_part
+            else:
+                # 用户输入了 "歌名A 歌名B"，但 "歌名B" 不是版本指令，
+                # 将整体视为歌名
+                song_query = content
+
+        # [重构] 调用新的 service 方法
+        song_to_play, mp3_source, vocal_info = await game_service.get_normal_song_and_path(song_query, version_type)
+
+        if not song_to_play:
+            if song_query:
+                await matcher.finish(f"......没有找到与 '{song_query}' 匹配的歌曲。")
+            else:
+                await matcher.finish("......没有找到任何歌曲。")
+            return
+
+        if not mp3_source or not vocal_info:
+            await matcher.finish(f"......歌曲 \"{song_to_play['title']}\" 没有找到符合要求的音频文件。")
+            return
+
+        jacket_source = cache_service.get_resource_path_or_url(
+            f"music_jacket/{song_to_play['jacketAssetbundleName']}.png")
+
+        # 根据实际找到的版本生成标题后缀
+        version_name = ""
+        if vocal_info.get('musicVocalType') == 'virtual_singer':
+            version_name = "(Virtual Singer Ver.)"
+        elif vocal_info.get('musicVocalType') == 'sekai':
+            version_name = "(Sekai Ver.)"
+        elif vocal_info.get('musicVocalType') == 'another_vocal':
+            version_name = "(Another Vocal)"  # 备用，正常不会到这里
+
+        msg_chain = Message(f"歌曲:{song_to_play['id']}. {song_to_play['title']} {version_name}\n")
+        if jacket_source:
+            if isinstance(jacket_source, Path):
+                msg_chain.append(MessageSegment.image(file=jacket_source.absolute().as_uri()))
+            else:
+                msg_chain.append(MessageSegment.image(file=jacket_source))
+
+        await matcher.send(msg_chain)
+
+        if isinstance(mp3_source, Path):
+            await matcher.send(MessageSegment.record(file=mp3_source.absolute().as_uri()))
+        else:
+            await matcher.send(MessageSegment.record(file=mp3_source))
+
+        user_id = get_user_id(event)
+        await db_service.record_listen_song(user_id, get_user_name(event))
+
+    except Exception as e:
+        logger.error(f"处理 听歌 功能时出错: {e}", exc_info=True)
+        await matcher.send("......播放时出错了，请联系管理员。")
+    finally:
+        if session_id in active_game_sessions:
+            active_game_sessions.pop(session_id)
+        last_game_end_time[session_id] = time.time()
+
+
+# --- [修改] 结束 ---
+
+
 # --- 听anvo 指令 ---
 listen_anvo = on_command("听anvo",
                          aliases={"listen_anvo", "listen_anov", "听anov", "anvo", "anov"},
                          priority=10,
                          block=True,
-                         rule=create_exact_command_rule("听anvo", {"listen_anvo", "listen_anov", "听anov", "anvo", "anov"})
+                         rule=create_exact_command_rule("听anvo",
+                                                        {"listen_anvo", "listen_anov", "听anov", "anvo", "anov"})
                          )
+
 
 @listen_anvo.handle()
 async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = CommandArg()):
