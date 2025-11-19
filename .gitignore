@@ -3,7 +3,9 @@ data/
 *.json
 plugins/identify/data/
 plugins/buaa_msm
+plugins/pxchat
 .env.prod
+cache/
 
 # Python 虚拟环境
 .venv/

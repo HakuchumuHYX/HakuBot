@@ -1,6 +1,0 @@
-pillow>=10.0.0
-imageio>=2.31.0
-imageio-ffmpeg>=0.4.9
-numpy>=1.24.0
-aiohttp>=3.8.0
-rembg>=2.0.0
