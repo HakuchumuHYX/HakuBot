@@ -14,7 +14,7 @@ B站链接解析：analysis_bilibili
 群聊消息统计：group_statistics  
 娶群友：groupmate_waifu  
 涩群友：groupmate_waifu:yinpa  
-分手:groupmate_waifu:bye  
+分手：groupmate_waifu:bye  
 戳一戳：poke_reply  
 戳一戳回复：poke_reply:poke  
 戳一戳投稿：poke_reply:contribute  
@@ -27,4 +27,5 @@ gif倒放：image_processor:reverse
 git加速：image_processor:speed  
 图片对称：image_processor:symmetry  
 图片抠图：image_processor:cutout  
-视频转GIF：image_processor:video_to_gif
+视频转GIF：image_processor:video_to_gif  
+何意味？：hyw
