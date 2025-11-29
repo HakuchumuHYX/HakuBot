@@ -4,14 +4,21 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.rule import Rule
 
 # --- 导入管理插件 API ---
-# 注意：这里的导入路径取决于你的文件夹结构
-# 如果报错 ImportError，请根据实际位置调整点号数量 (例如 .plugin_manager 或 ..plugin_manager)
-from ..plugin_manager.enable import is_plugin_enabled
-from ..plugin_manager.cd_manager import check_cd, update_cd
+try:
+    from ..plugin_manager.enable import is_plugin_enabled
+    from ..plugin_manager.cd_manager import check_cd, update_cd
+except ImportError:
+    # 备用导入路径，防止路径层级不同导致报错
+    from src.plugins.plugin_manager.enable import is_plugin_enabled
+    from src.plugins.plugin_manager.cd_manager import check_cd, update_cd
 
 # --- 配置 ---
 PLUGIN_ID = "hyw"
 KEYWORDS = {"？", "?", "啥意思", "何意味", "hyw", "何异味"}
+
+# 【新增配置】关键词触发的回复概率 (0.1 = 10%, 0.5 = 50%, 1.0 = 100%)
+# 只有当你发送 "?" 且命中这 30% 概率时，才会回复
+KEYWORD_PROBABILITY = 0.3
 
 
 # --- 逻辑 1: 关键词触发 ---
@@ -30,16 +37,25 @@ async def handle_heyiwei(bot: Bot, event: GroupMessageEvent):
     if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
         return
 
-    # 2. 检查CD & 更新
+    # 2. 检查CD
+    # 如果还在CD中，直接退出
     if check_cd(PLUGIN_ID, group_id, user_id) > 0:
         return
+
+    # 3. 【新增】概率检查
+    # 如果生成的随机数大于设定的概率，则忽略本次消息
+    # 这样就不会每次都回了
+    if random.random() > KEYWORD_PROBABILITY:
+        return
+
+    # 4. 只有确定要回复了，才开始记录CD
     update_cd(PLUGIN_ID, group_id, user_id)
 
-    # 3. 回复消息 (重点修改：添加 reply_message=True)
+    # 5. 回复消息 (引用发送者)
     await heyiwei.finish("何意味", reply_message=True)
 
 
-# --- 逻辑 2: 彩蛋触发 (千分之一) ---
+# --- 逻辑 2: 彩蛋触发 (你设定的 1/500) ---
 async def random_checker(event: GroupMessageEvent) -> bool:
     # 概率判定：1/500
     return random.randint(1, 500) == 1
@@ -53,16 +69,16 @@ async def handle_egg(bot: Bot, event: GroupMessageEvent):
     group_id = str(event.group_id)
     user_id = str(event.user_id)
 
-    # 1. 检查总开关 (和上面用同一个 PLUGIN_ID)
+    # 1. 检查总开关
     if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
         return
 
-    # 2. 检查 CD (和主功能共享 CD，防止刷屏)
+    # 2. 检查 CD
     if check_cd(PLUGIN_ID, group_id, user_id) > 0:
         return
 
     # 3. 更新 CD 并发送
     update_cd(PLUGIN_ID, group_id, user_id)
 
-    # 4. 回复消息 (重点修改：添加 reply_message=True)
+    # 4. 回复消息 (引用发送者)
     await easter_egg.finish("何意味", reply_message=True)
