@@ -4,29 +4,27 @@ from pathlib import Path
 from nonebot import on_command, require, get_driver
 from nonebot.adapters import Bot, Event
 
-# 引入定时任务支持
+# 请根据适配器修改 (例如 OneBot V11)
+from nonebot.adapters.onebot.v11 import MessageSegment
+
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
+# 导入同目录下的绘图模块
+from . import drawer
+
 # ================= 配置与数据初始化 =================
 
-# 设置数据存储路径
 DATA_DIR = Path() / "data" / "alive_stats"
 DATA_FILE = DATA_DIR / "stats.json"
-
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# 全局变量
-# current_session_start: 本次 Bot 启动的时间
 current_session_start = datetime.now()
-# total_saved_seconds: 启动前历史上已经累积的总秒数
 total_saved_seconds = 0.0
-# first_record_time: 第一次开始记录的时间
 first_record_time = current_session_start
 
 
 def load_data():
-    """读取数据"""
     global total_saved_seconds, first_record_time
     if DATA_FILE.exists():
         try:
@@ -40,55 +38,40 @@ def load_data():
             print(f"读取 alive 数据出错: {e}")
 
 
-# 启动时加载一次数据
 load_data()
 
 
-# ================= 核心保存逻辑 =================
+# ================= 定时保存逻辑 =================
 
-# 设置定时任务：每 5 分钟执行一次 save_data
 @scheduler.scheduled_job("interval", minutes=5, id="save_alive_stats")
 def save_data():
-    """
-    计算并保存当前的总运行时间到文件。
-    算法：文件中的总时间 = (历史累积时间) + (本次启动后的运行时长)
-    """
     now = datetime.now()
-    # 本次运行的时长
     current_uptime = (now - current_session_start).total_seconds()
-
-    # 实时计算当前的总时长 (历史 + 本次)
     final_total = total_saved_seconds + current_uptime
 
     data = {
         "total_seconds": final_total,
         "first_record_timestamp": first_record_time.timestamp(),
-        "last_save_time": now.strftime("%Y-%m-%d %H:%M:%S")  # 方便人工查看最后保存时间
+        "last_save_time": now.strftime("%Y-%m-%d %H:%M:%S")
     }
-
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
     except Exception as e:
-        # 这里可以用 nonebot.logger.error，为了简单演示用 print
         print(f"自动保存 alive 数据失败: {e}")
 
-
-# ================= 生命周期钩子 =================
 
 driver = get_driver()
 
 
 @driver.on_shutdown
 async def _():
-    """Bot 关闭时强制保存一次"""
     save_data()
 
 
 # ================= 辅助函数 =================
 
 def format_duration(td: timedelta) -> str:
-    """格式化 timedelta 为 Xd Xh Xmin Xs"""
     total_seconds = int(td.total_seconds())
     days = total_seconds // 86400
     remain_seconds = total_seconds % 86400
@@ -102,12 +85,10 @@ def format_duration(td: timedelta) -> str:
     if hours > 0: parts.append(f"{hours}h")
     if minutes > 0: parts.append(f"{minutes}min")
     parts.append(f"{seconds}s")
-
     return " ".join(parts)
 
 
 def format_date(dt: datetime) -> str:
-    """格式化日期为 Dec. 25 2025"""
     return dt.strftime("%b. %d %Y")
 
 
@@ -120,22 +101,34 @@ alive = on_command("alive-main", priority=5, block=True)
 async def handle_alive(bot: Bot, event: Event):
     now = datetime.now()
 
-    # 1. 计算本次运行时间
+    # 1. 计算时间数据
     current_uptime_delta = now - current_session_start
     current_str = format_duration(current_uptime_delta)
     current_since = format_date(current_session_start)
 
-    # 2. 计算总运行时间 (内存中的历史 + 本次运行时间)
-    # 注意：我们不读取文件，而是直接用内存计算，保证实时性
     total_uptime_seconds = total_saved_seconds + current_uptime_delta.total_seconds()
     total_uptime_delta = timedelta(seconds=total_uptime_seconds)
-
     total_str = format_duration(total_uptime_delta)
     total_since = format_date(first_record_time)
 
-    msg = (
-        f"当前运行时间：{current_str}, since {current_since}\n"
-        f"总运行时间：{total_str}, since {total_since}"
+    # 2. 准备水印内容
+    # 格式化当前时间
+    watermark_time = now.strftime("%H:%M:%S %b. %d %Y")
+
+    # 在这里修改你的自定义文本
+    my_custom_text = "HakuBot Powered by Hakuchumu"
+
+    # 拼接完整水印，使用 \n 换行
+    full_watermark = f"{my_custom_text}\nGenerated at {watermark_time}"
+
+    # 3. 调用 Drawer 生成图片
+    image_bytes = drawer.draw_alive_card(
+        current_time=current_str,
+        current_since=current_since,
+        total_time=total_str,
+        total_since=total_since,
+        watermark=full_watermark
     )
 
-    await alive.finish(msg)
+    # 4. 发送
+    await alive.finish(MessageSegment.image(image_bytes))
