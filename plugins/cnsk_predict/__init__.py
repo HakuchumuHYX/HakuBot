@@ -24,10 +24,10 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_htmlrender import get_new_page
 from nonebot_plugin_apscheduler import scheduler
 
-stealth_async = None  # 先初始化为 None，确保后续调用不报错
 try:
-    from playwright_stealth import stealth_async
+    from playwright_stealth import Stealth
 except ImportError:
+    Stealth = None
     logger.warning("未检测到 playwright-stealth 库，将在无伪装模式下运行。")
 
 # === 全局配置 ===
@@ -153,8 +153,9 @@ async def manual_capture_page(url: str, viewport: dict, device_scale_factor: flo
             has_touch=False
     ) as page:
         # 只有当导入成功时才执行
-        if stealth_async:
-            await stealth_async(page)
+        if Stealth:
+            stealth = Stealth()
+            await stealth.apply_stealth_async(page)
 
         await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
 
