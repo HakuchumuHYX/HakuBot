@@ -14,6 +14,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 # 常量
 CACHE_EXPIRE_SECONDS = 5 * 60
 FILE_CLEAN_SECONDS = 24 * 60 * 60
+AUTO_REFRESH_INTERVAL = 5  # 单位：分钟 (新增)
 
 
 def load_config() -> dict:
