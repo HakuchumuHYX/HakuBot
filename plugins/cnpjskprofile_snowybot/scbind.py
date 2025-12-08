@@ -2,7 +2,7 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
-from .data_manager import save_sc_bind  # 导入刚才写的数据保存函数
+from .data_manager import save_sc_bind
 
 # 注册命令
 sc_bind = on_command("scbind", aliases={"sc绑定"}, priority=5, block=True)

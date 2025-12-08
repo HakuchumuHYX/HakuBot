@@ -35,6 +35,6 @@ def save_sc_bind(qq: str, sc_id: str):
 
 
 def get_sc_bind(qq: str) -> str | None:
-    """(预留功能) 获取某个QQ绑定的ID"""
+    """获取某个QQ绑定的ID"""
     data = load_data()
     return data.get(qq)

@@ -22,10 +22,6 @@ except ImportError:
 
 sc_profile = on_command("sc个人信息", aliases={"scpjskprofile"}, priority=5, block=True)
 
-# ==========================================
-# 终极定点修复版 CSS
-# 策略：保持所有现有修正，新增 .unit-tab 定点修复
-# ==========================================
 DARK_MODE_CSS = """
 /* 1. 全局背景 */
 html, body {
@@ -42,12 +38,12 @@ html, body {
     box-shadow: none !important;
 }
 
-/* 3. 【歌曲成绩】 */
+/* 3. 歌曲成绩 */
 .music-row { border-color: #333333 !important; }
 .music-stat-val:not(.fc):not(.ap) { color: #ffffff !important; }
 .music-stat-label { color: #cccccc !important; }
 
-/* 4. 【个人数据】 */
+/* 4. 个人数据 */
 .stat-capsule {
     background-color: #2d2d2d !important;
     border: 1px solid #444 !important;
@@ -57,7 +53,7 @@ html, body {
     color: #ffffff !important;
 }
 
-/* 5. 【编队卡片】Q版小人去白底 (保持不变) */
+/* 5. 编队卡片  */
 .deck-card {
     background-color: #252525 !important;
     border: 1px solid #444 !important;
@@ -72,7 +68,7 @@ html, body {
     box-shadow: none !important;
 }
 
-/* 6. 【Leader修复】 */
+/* 6. Leader */
 .deck-card .leader-ribbon {
     background-color: var(--theme-color, #ff6699) !important;
     color: #ffffff !important;
@@ -91,8 +87,7 @@ html, body {
 }
 .card-stats span, .card-stats div { color: #ffffff !important; }
 
-/* 8. 【定点修复】Character Rank 区域背景 */
-/* 这里的胶囊按钮类名是 .unit-tab */
+/* 8. Character Rank 区域背景 */
 .unit-tab {
     background-color: #252525 !important; /* 深灰色背景 */
     border: 1px solid #444 !important;     /* 增加边框以防背景太黑看不清边界 */
