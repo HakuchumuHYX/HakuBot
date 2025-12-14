@@ -1,6 +1,6 @@
 import random
 from pathlib import Path
-
+import re
 import nonebot_plugin_localstore as store
 from nonebot import logger
 
@@ -56,60 +56,64 @@ class PixManage:
         return PixResult[list[PixModel]](**res_data)
 
     @classmethod
-    async def get_image(cls, pix: PixModel, is_original: bool = False) -> Path | None:
-        """获取图片 (修改版：支持官方原图直连试错)"""
+    async def get_image(cls, pix: PixModel, is_original: bool = False, page_index: int = None) -> Path | None:
+        """获取图片 (支持多图页码 + 官方原图直连试错)"""
 
-        # 1. 逻辑修正：如果配置文件要求原图，强制设为 True
+        # 1. 确定当前要下载第几页
+        # 如果传入了 page_index，就用传入的；否则用 pix.img_p (API 指定的那一页)
+        current_p = page_index if page_index is not None else int(pix.img_p)
+
+        # 2. 强制原图逻辑 (配合配置文件)
         if config.zxpix_image_size == "original":
             is_original = True
 
         url = pix.url
 
-        # 2. 官方直连模式
+        # --- 官方直连模式 (当没有配置反代，且需要原图时) ---
         if is_original and not config.zxpix_nginx:
-
+            # 尝试从 API 给的 Master 链接还原出 Original 链接
             if "img-master" in url:
                 # 替换路径核心部分
                 base_url = url.replace("/img-master/", "/img-original/")
-                # 去除缩略图后缀
                 base_url = base_url.replace("_master1200", "")
 
-                # 清洗域名和前缀
+                # 强制使用官方图床域名 i.pximg.net
                 if "/img-original/" in base_url:
                     base_url = "https://i.pximg.net/img-original/" + base_url.split("/img-original/")[1]
 
-                # 3. 后缀名自动试错
-                # 缩略图通常是 jpg，但原图可能是 png 或 gif，需要挨个试
+                # [关键] 使用正则将 URL 中的 pX 替换为当前页码 p{current_p}
+                # 例如: 123456_p0.jpg -> 123456_p1.jpg
+                base_url = re.sub(r'_p\d+\.', f'_p{current_p}.', base_url)
+
+                # 后缀名自动试错逻辑
                 original_ext = base_url.split(".")[-1]
                 possible_exts = ["jpg", "png", "gif"]
-
-                # 把当前后缀放到第一个试，优化速度
+                # 优先尝试原本的后缀
                 if original_ext in possible_exts:
                     possible_exts.remove(original_ext)
                 possible_exts.insert(0, original_ext)
 
-                # 去掉后缀，准备拼接
                 url_without_ext = base_url.rsplit(".", 1)[0]
 
                 for ext in possible_exts:
                     try_url = f"{url_without_ext}.{ext}"
-                    # 构造临时文件名
-                    file = TEMP_PATH / f"pix_{pix.pid}_{pix.img_p}_{random.randint(1, 1000)}.{ext}"
+                    # 文件名加上页码区分
+                    file = TEMP_PATH / f"pix_{pix.pid}_{current_p}_{random.randint(1, 1000)}.{ext}"
 
-                    logger.debug(f"尝试下载官方原图: {try_url}")
-                    # 尝试下载
+                    logger.debug(f"尝试下载官方原图 (P{current_p}): {try_url}")
                     if await AsyncHttpx.download_file(
                             try_url, file, headers=headers, timeout=config.zxpix_timeout, verify=False
                     ):
                         return file
-
-                logger.error(f"所有后缀尝试均失败: {pix.pid}")
+                # 所有后缀都失败
                 return None
 
+        # --- 反代模式 (备用逻辑) ---
         if "limit_sanity_level" in url or (is_original and config.zxpix_nginx):
             image_type = url.split(".")[-1]
             if pix.is_multiple:
-                url = f"https://{config.zxpix_nginx}/{pix.pid}-{int(pix.img_p) + 1}.{image_type}"
+                # 构造反代链接: PID-页码.ext (注意：pixiv.re/cat 页码通常从1开始，对应p0)
+                url = f"https://{config.zxpix_nginx}/{pix.pid}-{current_p + 1}.{image_type}"
             else:
                 url = f"https://{config.zxpix_nginx}/{pix.pid}.{image_type}"
         elif config.zxpix_small_nginx:
@@ -119,7 +123,7 @@ class PixManage:
                 url = "img-original" + url.split("img-original")[-1]
             url = f"https://{config.zxpix_small_nginx}/{url}"
 
-        file = TEMP_PATH / f"pix_{pix.pid}_{random.randint(1, 1000)}.png"
+        file = TEMP_PATH / f"pix_{pix.pid}_{current_p}_{random.randint(1, 1000)}.png"
         return (
             file
             if await AsyncHttpx.download_file(

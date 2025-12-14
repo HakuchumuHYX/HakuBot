@@ -19,7 +19,7 @@ from nonebot_plugin_alconna.uniseg import Receipt
 from nonebot_plugin_alconna.uniseg.tools import reply_fetch
 from nonebot_plugin_uninfo import Uninfo
 
-from .._config import InfoManage
+from .._config import InfoManage, PixModel
 from ..utils import MessageUtils
 from .data_source import PixManage, config
 
@@ -68,28 +68,63 @@ _original_matcher = on_alconna(
 )
 
 
+# 新增：处理单张图片（或组图中的某一页）下载和消息构建的辅助函数
+async def process_single_image(pix: PixModel, page_index: int | None):
+    # 确定当前要下载第几页
+    current_p = page_index if page_index is not None else int(pix.img_p)
+
+    # 调用 data_source.py 中修改过的 get_image，传入 page_index
+    image = await PixManage.get_image(pix, is_original=False, page_index=page_index)
+
+    if not image:
+        return [f"获取图片 pid: {pix.pid} (P{current_p}) 失败..."], pix
+
+    message_list = []
+    if config.zxpix_show_info:
+        # 构造信息字符串
+        info_str = (
+            f"title: {pix.title}\n"
+            f"author: {pix.author}\n"
+            f"pid: {pix.pid}"
+        )
+        # 如果是组图中的某一页，显示页码 Px
+        if page_index is not None or pix.is_multiple:
+            info_str += f" (P{current_p})"
+
+        info_str += f"\nuid: {pix.uid}\n"
+
+        message_list.append(info_str)
+
+    message_list.append(image)
+    return message_list, pix
+
+
 @_matcher.handle()
 async def _(
-    bot: Bot,
-    session: Uninfo,
-    arparma: Arparma,
-    tags: Query[tuple[str, ...]] = Query("tags", ()),
-    num: Query[int] = Query("num", 1),
-    nsfw: Query[tuple[int, ...]] = Query("nsfw_tag", ()),
-    ratio: Query[str] = Query("ratio", ""),
+        bot: Bot,
+        session: Uninfo,
+        arparma: Arparma,
+        tags: Query[tuple[str, ...]] = Query("tags", ()),
+        num: Query[int] = Query("num", 1),
+        nsfw: Query[tuple[int, ...]] = Query("nsfw_tag", ()),
+        ratio: Query[str] = Query("ratio", ""),
 ):
     if num.result > 10:
         await MessageUtils.build_message("最多一次10张哦...").finish()
     allow_group_r18 = config.zxpix_allow_group_r18
     is_r18 = arparma.find("r18")
     if (
-        not allow_group_r18
-        and session.group
-        and (is_r18 or 2 in nsfw.result)
-        and session.user.id not in bot.config.superusers
+            not allow_group_r18
+            and session.group
+            and (is_r18 or 2 in nsfw.result)
+            and session.user.id not in bot.config.superusers
     ):
         await MessageUtils.build_message("给我滚出克私聊啊变态！").finish()
+
+    # 修改：强制默认为过滤 AI (is_ai = False)，无视用户是否输入 -noai
+    # 原逻辑是 is_ai = False if arparma.find("noai") else None
     is_ai = False
+
     ratio_tuple = None
     ratio_tuple_split = []
     if "," in ratio.result:
@@ -122,13 +157,27 @@ async def _(
         await MessageUtils.build_message("pix图库API出错啦！").finish()
     if not result.data:
         await MessageUtils.build_message("没有找到相关tag/pix/uid的图片...").finish()
-    task_list = [asyncio.create_task(PixManage.get_pix_result(r)) for r in result.data]
-    result_list = await asyncio.gather(*task_list)
+
+    # 修改：构建所有页面的下载任务
+    download_tasks = []
+    for pix in result.data:
+        # 如果是多图，且总页数大于1，则遍历所有页码
+        if pix.is_multiple and pix.page_count > 1:
+            for p in range(pix.page_count):
+                download_tasks.append(process_single_image(pix, p))
+        else:
+            # 否则只处理当前这一张
+            download_tasks.append(process_single_image(pix, None))
+
+    # 并发执行所有下载
+    result_list = await asyncio.gather(*download_tasks)
+
     max_once_num2forward = config.zxpix_max_once_num2forward
+    # 修改：判定合并转发时，使用扩展后的 result_list 长度
     if (
-        max_once_num2forward
-        and max_once_num2forward <= len(result.data)
-        and session.group
+            max_once_num2forward
+            and max_once_num2forward <= len(result_list)
+            and session.group
     ):
         await MessageUtils.alc_forward_msg(
             [r[0] for r in result_list],

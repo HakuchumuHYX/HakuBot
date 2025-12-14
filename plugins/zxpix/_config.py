@@ -88,6 +88,8 @@ class PixModel(BaseModel):
     """是否多图"""
     img_p: str
     """多图第n张"""
+    page_count: int = 1  # 默认为1，防止API没返回报错
+    """总页数"""
     tags: str
     """tags"""
     star: int
