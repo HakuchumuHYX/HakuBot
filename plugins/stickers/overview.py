@@ -18,7 +18,8 @@ from . import send
 
 # 注册命令
 view_all_matcher = on_command("看所有", aliases={"查看所有", "view all"}, priority=5, block=True)
-view_single_matcher = on_command("sticker", aliases={"看表情", "No.", "NO", "查看", "no", "no."}, priority=5, block=True)
+view_single_matcher = on_command("sticker", aliases={"看表情", "No.", "NO", "查看", "no", "no."}, priority=5,
+                                 block=False)
 
 # 允许的最大图片像素数 (50MP)
 MAX_CANVAS_PIXELS = 50 * 1024 * 1024
@@ -42,6 +43,9 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
     try:
         target_id = int(arg_text)
     except ValueError:
+        if arg_text.lower() in ["stickers", "sticker", "表情", "表情包"]:
+            return
+
         await view_single_matcher.finish(f"输入的编号 '{arg_text}' 不合法，请输入纯数字编号。")
 
     # 动态获取最大编号
