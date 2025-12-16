@@ -1,4 +1,4 @@
-# contribution.py
+# stickers/contribution.py
 import re
 import aiohttp
 import aiofiles
@@ -10,7 +10,11 @@ from typing import List, Tuple, Optional, Set, Dict
 from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot
 from nonebot import get_bot
 from nonebot.log import logger
-from .send import sticker_dir, sticker_folders, resolve_folder_name, count_images_in_folder
+
+# vvvvvv 【修改：导入 get_next_image_id】 vvvvvv
+from .send import sticker_dir, sticker_folders, resolve_folder_name, count_images_in_folder, get_next_image_id
+# ^^^^^^ 【修改：导入 get_next_image_id】 ^^^^^^
+
 from .check import check_duplicate_images, render_duplicate_report
 
 
@@ -41,10 +45,8 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
 
     返回: (是否成功, 消息, 保存的图片数量)
     """
-    # 1. 将 temp_files 移到 try 外部, 以便 finally 可以访问
     temp_files: List[Path] = []
 
-    # 2. 【修复】整个函数体都包含在 try 块中
     try:
         # 解析实际文件夹名称
         actual_folder_name = resolve_folder_name(folder_name)
@@ -73,12 +75,9 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
 
                     # 遍历节点列表
                     for node in nodes:
-                        content = None  # <-- 【改进】确保 content 始终被定义
+                        content = None
                         try:
-                            # 4. 消息内容在 "message" 键中
                             content = node.get("message", "")
-
-                            # vvvvvv 【已保留：BUG绕过方案】 vvvvvv
                             segments_list = []
 
                             if isinstance(content, str):
@@ -92,7 +91,6 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
                                     elif isinstance(item, dict):
                                         segments_list.append(item)
 
-                            # 6. 【已保留】直接遍历 dict 列表, 绕过 Message() 构造函数的 bug
                             for segment_dict in segments_list:
                                 if segment_dict.get('type') == 'image':
                                     try:
@@ -102,16 +100,11 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
                                     except Exception as segment_error:
                                         logger.warning(
                                             f"无法解析单个图片 segment: {segment_error} | Segment: {segment_dict}")
-                            # ^^^^^^ 【已保留：BUG绕过方案】 ^^^^^^
-
                         except Exception as e:
-                            # 【改进】现在这个 except 只捕获单个节点的解析失败
                             logger.error(f"解析合并转发 *节点* 失败: {e} | 节点内容: {content}")
-                            # 继续处理下一个节点，而不是终止整个投稿
                             pass
 
                 except Exception as e:
-                    # 这个 except 捕获 "get_forward_msg" API 本身的失败
                     logger.error(f"获取合并转发消息失败: {e} | ID: {forward_id}")
                     return False, "投稿失败！解析合并转发内容失败，请稍后再试。", 0
 
@@ -148,9 +141,9 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
                                 temp_file.write(image_data)
                                 temp_files.append(Path(temp_file.name))
                         else:
-                            print(f"下载图片失败: {image_url}, 状态码: {response.status}")
+                            logger.error(f"下载图片失败: {image_url}, 状态码: {response.status}")
             except Exception as e:
-                print(f"下载图片到临时文件失败: {e}")
+                logger.error(f"下载图片到临时文件失败: {e}")
 
         if not temp_files:
             return False, "投稿失败！无法下载任何图片", 0
@@ -172,9 +165,13 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
         for temp_file in temp_files:
             if temp_file not in duplicate_temp_files:
                 try:
-                    timestamp = int(time.time())
-                    random_num = random.randint(1000, 9999)
-                    filename = f"contribution_{timestamp}_{random_num}{temp_file.suffix}"
+                    # vvvvvv 【修改：使用全局编号命名】 vvvvvv
+                    # 旧逻辑: timestamp = int(time.time()); random_num = random.randint(1000, 9999); filename = ...
+
+                    # 新逻辑: 获取下一个编号
+                    next_id = get_next_image_id()
+                    filename = f"{next_id}{temp_file.suffix}"
+                    # ^^^^^^ 【修改：使用全局编号命名】 ^^^^^^
 
                     file_path = folder_path / filename
                     async with aiofiles.open(file_path, "wb") as f:
@@ -185,7 +182,7 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
                     saved_count += 1
                     saved_files.append(file_path)
                 except Exception as e:
-                    print(f"保存图片时出错: {e}")
+                    logger.error(f"保存图片时出错: {e}")
 
         # --- 报告结果 ---
         total_processed = saved_count + duplicate_count
@@ -198,8 +195,6 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
         if actual_folder_name != folder_name:
             display_name = f"{actual_folder_name}(通过别名'{folder_name}')"
 
-        # vvvvvv 【修改后的逻辑：从这里开始】 vvvvvv
-
         # 1. 无论如何，只要有重复，就尝试生成报告
         report_bytes = None
         if duplicate_count > 0:
@@ -208,29 +203,22 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
         # Case B: 全部图片都重复 (0 saved, >0 duplicates)
         if saved_count == 0 and duplicate_count > 0:
             if report_bytes:
-                # 发送报告图片
                 return False, MessageSegment.image(report_bytes), 0
             else:
-                # 报告生成失败，发送文字
                 return False, f"投稿失败！检测到 {duplicate_count} 张图片全部为重复图片。", 0
 
         # Case C: 至少保存成功1张 (saved_count > 0)
-
-        # 构筑基础消息 (MessageSegment 列表)
         message_segments = [
             MessageSegment.text(f"投稿完成！成功保存 {saved_count} 张图片。")
         ]
 
-        # 【修复】如果部分重复，添加文字说明并附加报告图片
         if duplicate_count > 0:
             message_segments.append(
                 MessageSegment.text(f"\n检测到 {duplicate_count} 张重复图片。")
             )
             if report_bytes:
-                # 附加报告图片
                 message_segments.append(MessageSegment.image(report_bytes))
             else:
-                # 报告生成失败
                 message_segments.append(
                     MessageSegment.text("\n（重复报告生成失败）")
                 )
@@ -240,20 +228,15 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
             MessageSegment.text(f"\n现在 {display_name} 中共有 {image_count} 张表情~")
         )
 
-        # 返回组合后的 Message 对象
         return True, Message(message_segments), saved_count
 
-        # ^^^^^^ 【修改后的逻辑：到这里结束】 ^^^^^^
-
-    # 3. 【修复】finally 块与 try 对齐，确保始终执行
     finally:
-        # 无论函数如何返回 (成功, 失败, 异常)，这里总会执行
-        print(f"清理 {len(temp_files)} 个临时文件...")
+        logger.error(f"清理 {len(temp_files)} 个临时文件...")
         for temp_file in temp_files:
             try:
                 temp_file.unlink()
             except Exception as e:
-                print(f"清理临时文件失败 {temp_file}: {e}")
+                logger.error(f"清理临时文件失败 {temp_file}: {e}")
 
 
 def determine_image_extension(image_segment: MessageSegment, response: aiohttp.ClientResponse = None) -> str:

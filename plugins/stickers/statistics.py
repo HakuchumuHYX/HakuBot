@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 from PIL import Image, ImageDraw, ImageFont
 from nonebot.adapters.onebot.v11 import MessageSegment
-
+from nonebot.log import logger
 from .send import sticker_folders, count_images_in_folder, get_random_sticker, get_folder_display_info
 
 
@@ -365,7 +365,7 @@ async def render_stickers_preview() -> bytes:
         return img_bytes.getvalue()
 
     except Exception as e:
-        print(f"生成贴图预览图片失败: {e}")
+        logger.error(f"生成贴图预览图片失败: {e}")
         return None
 
 

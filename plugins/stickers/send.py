@@ -1,10 +1,12 @@
-# send.py
+# stickers/send.py
 import random
 import json
+import threading
 from pathlib import Path
 from typing import Dict, Set, List
 
 from nonebot_plugin_localstore import get_data_dir
+from nonebot.log import logger
 
 # 插件数据
 sticker_dir = get_data_dir("stickers")
@@ -19,6 +21,50 @@ sticker_folders: Dict[str, Path] = {}
 alias_to_folder: Dict[str, str] = {}
 # 存储文件夹配置信息
 folder_configs: List[Dict] = []
+
+# 全局编号计数器
+current_max_id: int = 0
+_id_lock = threading.Lock()
+
+
+def refresh_max_id():
+    """
+    遍历所有已知文件夹，找到当前最大的纯数字编号
+    """
+    global current_max_id
+    max_id = 0
+    logger.info("正在初始化全局图片编号计数器...")
+
+    try:
+        for folder_path in sticker_folders.values():
+            if not folder_path.exists():
+                continue
+
+            for file in folder_path.iterdir():
+                if file.is_file():
+                    stem = file.stem
+                    if stem.isdigit():
+                        try:
+                            num = int(stem)
+                            if num > max_id:
+                                max_id = num
+                        except ValueError:
+                            pass
+
+        with _id_lock:
+            current_max_id = max_id
+
+        logger.info(f"编号初始化完成，当前最大编号: {current_max_id}")
+
+    except Exception as e:
+        logger.error(f"初始化编号计数器失败: {e}")
+
+
+def get_next_image_id() -> int:
+    global current_max_id
+    with _id_lock:
+        current_max_id += 1
+        return current_max_id
 
 
 def load_sticker_list():
@@ -39,29 +85,27 @@ def load_sticker_list():
                     folder_name = folder_config["name"]
                     aliases = folder_config.get("aliases", [])
 
-                    # 创建文件夹路径
                     folder_path = sticker_dir / folder_name
                     folder_path.mkdir(exist_ok=True)
 
-                    # 添加到主映射
                     sticker_folders[folder_name] = folder_path
 
-                    # 添加别名映射
                     for alias in aliases:
                         alias_to_folder[alias] = folder_name
 
-            print(f"从 list.json 加载了 {len(folder_configs)} 个贴图文件夹配置")
-            print(f"可用文件夹: {list(sticker_folders.keys())}")
-            print(f"别名映射: {alias_to_folder}")
+            # <--- 修改日志
+            logger.info(f"从 list.json 加载了 {len(folder_configs)} 个贴图文件夹配置")
+            logger.debug(f"可用文件夹: {list(sticker_folders.keys())}")
+            logger.debug(f"别名映射: {alias_to_folder}")
 
         except Exception as e:
-            print(f"加载 list.json 失败: {e}")
-            # 如果加载失败，回退到扫描模式
+            logger.error(f"加载 list.json 失败: {e}")
             scan_sticker_folders_fallback()
     else:
-        # 如果 list.json 不存在，创建默认文件
         create_default_list_json()
-        print("list.json 不存在，已创建默认文件")
+        logger.warning("list.json 不存在，已创建默认文件")
+
+    refresh_max_id()
 
 
 def scan_sticker_folders_fallback():
@@ -74,7 +118,7 @@ def scan_sticker_folders_fallback():
             if folder.is_dir() and folder.name != "__pycache__":
                 sticker_folders[folder.name] = folder
 
-    print(f"回退模式扫描完成，找到 {len(sticker_folders)} 个贴图文件夹: {list(sticker_folders.keys())}")
+    logger.warning(f"回退模式扫描完成，找到 {len(sticker_folders)} 个贴图文件夹: {list(sticker_folders.keys())}")
 
 
 def create_default_list_json():
@@ -91,21 +135,14 @@ def create_default_list_json():
     try:
         with open(list_json_path, 'w', encoding='utf-8') as f:
             json.dump(default_data, f, ensure_ascii=False, indent=2)
-        print("已创建默认 list.json 文件")
+        logger.success("已创建默认 list.json 文件")
     except Exception as e:
-        print(f"创建默认 list.json 失败: {e}")
+        logger.error(f"创建默认 list.json 失败: {e}")
 
 
 def resolve_folder_name(folder_name: str) -> str:
-    """
-    解析文件夹名称，支持别名
-
-    返回: 实际文件夹名称
-    """
-    # 如果是别名，返回对应的实际文件夹名
     if folder_name in alias_to_folder:
         return alias_to_folder[folder_name]
-    # 如果是实际文件夹名，直接返回
     elif folder_name in sticker_folders:
         return folder_name
     else:
@@ -113,18 +150,14 @@ def resolve_folder_name(folder_name: str) -> str:
 
 
 def get_random_sticker(folder_name: str) -> Path | None:
-    """从指定文件夹中随机获取一张贴图（支持别名和 'stickers' 关键字）"""
-
     if folder_name.lower() == "stickers":
         if not sticker_folders:
             return None
         folder_names = list(sticker_folders.keys())
         if not folder_names:
             return None
-        # 1. 随机选择一个文件夹
         actual_folder_name = random.choice(folder_names)
     else:
-        # 解析实际文件夹名称（支持别名）
         actual_folder_name = resolve_folder_name(folder_name)
 
     if actual_folder_name not in sticker_folders:
@@ -133,32 +166,18 @@ def get_random_sticker(folder_name: str) -> Path | None:
     folder = sticker_folders[actual_folder_name]
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
 
-    # 收集所有图片文件
     image_files = []
     for ext in image_extensions:
         image_files.extend(folder.glob(f"*{ext}"))
         image_files.extend(folder.glob(f"*{ext.upper()}"))
 
     if not image_files:
-        # vvvvvv 【修改点 1：确保空文件夹返回 None】 vvvvvv
-        # 如果文件夹是空的，返回 None，这样 "skip" 逻辑才能生效
         return None
-        # ^^^^^^ 【修改点 1：确保空文件夹返回 None】 ^^^^^^
 
     return random.choice(image_files)
 
 
 def get_random_stickers(folder_name: str, count: int) -> List[Path]:
-    """
-    从指定文件夹中随机获取多张贴图（支持别名和 'stickers' 关键字）
-
-    - "stickers" 关键字：随机 'count' 次文件夹，每次获取1张。
-    - 特定文件夹：从该文件夹中随机获取 'count' 张。
-
-    返回: 图片路径列表
-    """
-
-    # vvvvvv 【修改点 2：实现 "N次抽卡" 逻辑】 vvvvvv
     if folder_name.lower() == "stickers":
         if not sticker_folders:
             return []
@@ -168,38 +187,18 @@ def get_random_stickers(folder_name: str, count: int) -> List[Path]:
             return []
 
         selected_images: List[Path] = []
-        # 添加一个尝试次数限制，防止所有文件夹都为空时无限循环
-        max_attempts = count * 5  # 最多尝试 5 倍的次数
+        max_attempts = count * 5
 
-        # 循环 'count' 次，直到取满 'count' 张图
         while len(selected_images) < count and max_attempts > 0:
             max_attempts -= 1
-
-            # 1. **每次循环**都随机一个文件夹
-            # (这一步在 get_random_sticker 内部已经实现了, 我们直接调用它)
-
-            # 2. 从所有文件夹中随机获取1张图片
-            # 我们复用 get_random_sticker 函数，它已经包含了 "随机文件夹" + "随机图片" + "空文件夹返回None" 的逻辑
             image_path = get_random_sticker("stickers")
-
-            # 3. 检查结果
             if image_path:
-                # 确保我们不添加重复的图片路径
                 if image_path not in selected_images:
                     selected_images.append(image_path)
 
-            # 如果 image_path is None (因为抽到了空文件夹),
-            # 循环会继续, selected_images 列表没有增加,
-            # 这就实现了您要的 "自动跳过并重新再抽一次" 的逻辑。
-
         return selected_images
 
-    # ^^^^^^ 【修改点 2：实现 "N次抽卡" 逻辑】 ^^^^^^
-
-    # --- 以下是原有的、针对特定文件夹的逻辑 (例如 "随机xx x5") ---
-    # --- 这部分保持不变 ---
     else:
-        # 解析实际文件夹名称（支持别名）
         actual_folder_name = resolve_folder_name(folder_name)
 
     if actual_folder_name not in sticker_folders:
@@ -208,36 +207,26 @@ def get_random_stickers(folder_name: str, count: int) -> List[Path]:
     folder = sticker_folders[actual_folder_name]
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
 
-    # 收集所有图片文件
     image_files: Set[Path] = set()
 
     for ext in image_extensions:
-        # 使用小写扩展名
         for file in folder.glob(f"*{ext}"):
             image_files.add(file)
-        # 使用大写扩展名
         for file in folder.glob(f"*{ext.upper()}"):
             image_files.add(file)
 
-    # 将Set转换为List以进行抽样
     image_files_list = list(image_files)
 
     if not image_files_list:
         return []
 
-    # 如果请求数量超过可用图片数量，返回所有图片
     if count > len(image_files_list):
         return image_files_list
 
-    # 随机选择不重复的图片
     return random.sample(image_files_list, count)
 
 
 def count_images_in_folder(folder_name: str) -> int:
-    """
-    计算指定文件夹中的图片数量（支持别名）
-    """
-    # 解析实际文件夹名称
     actual_folder_name = resolve_folder_name(folder_name)
 
     if actual_folder_name not in sticker_folders:
@@ -246,14 +235,11 @@ def count_images_in_folder(folder_name: str) -> int:
     folder = sticker_folders[actual_folder_name]
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
 
-    # 使用集合来避免重复计数
     image_files: Set[Path] = set()
 
     for ext in image_extensions:
-        # 使用小写扩展名
         for file in folder.glob(f"*{ext}"):
             image_files.add(file)
-        # 使用大写扩展名
         for file in folder.glob(f"*{ext.upper()}"):
             image_files.add(file)
 
@@ -261,11 +247,6 @@ def count_images_in_folder(folder_name: str) -> int:
 
 
 def get_folder_display_info() -> List[Dict]:
-    """
-    获取文件夹显示信息（用于统计等功能）
-
-    返回: 包含文件夹名称、别名、图片数量的列表
-    """
     result = []
     for folder_config in folder_configs:
         folder_name = folder_config["name"]
@@ -279,7 +260,3 @@ def get_folder_display_info() -> List[Dict]:
         })
 
     return result
-
-
-# 初始化时加载配置
-load_sticker_list()

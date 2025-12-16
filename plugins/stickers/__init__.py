@@ -24,25 +24,17 @@ from .check import (
 )
 # 导入 help
 from . import help
+from . import overview
 
-# 初始化时加载配置
 load_sticker_list()
 
-# 创建消息处理器
 sticker_matcher = on_message(priority=10, block=False)
-# 创建专门的清理确认处理器
 clean_confirm_matcher = on_command("确认清理", block=True)
 clean_cancel_matcher = on_command("取消", block=True)
 
-# 全局变量来存储清理状态
 cleanup_state = {}
 
-# vvvvvv 【定义“随机所有”的别名】 vvvvvv
-# 使用集合以便快速查找，统一使用小写
 RANDOM_ALL_ALIASES = {"stickers", "sticker", "表情", "表情包"}
-
-
-# ^^^^^^ 【定义“随机所有”的别名】 ^^^^^^
 
 
 def parse_multi_random_command(message_text: str) -> tuple[str, int] | None:
@@ -58,11 +50,9 @@ def parse_multi_random_command(message_text: str) -> tuple[str, int] | None:
     if match:
         folder_name = match.group(1).strip()
 
-        # vvvvvv 【修改点 1：检查别名】 vvvvvv
-        # 检查是否为“随机所有”的别名
         if folder_name.lower() in RANDOM_ALL_ALIASES:
             folder_name = "stickers"  # 标准化为 "stickers" 关键字
-        # ^^^^^^ 【修改点 1：检查别名】 ^^^^^^
+
 
         try:
             count = int(match.group(3))
