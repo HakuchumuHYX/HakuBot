@@ -5,6 +5,7 @@ from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent, PrivateMessageEvent, Bot
 from nonebot.exception import FinishedException
+from nonebot.log import logger
 import asyncio
 import aiohttp
 from PIL import Image
@@ -45,7 +46,7 @@ async def download_and_check_gif(url: str) -> bool:
                         return True
         return False
     except Exception as e:
-        print(f"GIF检测错误: {e}")
+        logger.error(f"GIF检测错误: {e}")
         # 如果检测失败，假设是GIF让用户尝试
         return True
 
@@ -374,7 +375,7 @@ async def handle_image_symmetry_common(event: Event, symmetry_type: str):
         try:
             await image_symmetry_handler.send(f"正在处理图片{symmetry_name}，请稍候...")
         except Exception as send_error:
-            print(f"发送处理中消息失败: {send_error}")
+            logger.error(f"发送处理中消息失败: {send_error}")
             # 继续处理，不因为发送失败而中断
 
         # 直接异步调用对称处理函数
@@ -467,9 +468,9 @@ async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = Command
         # 通过 bot 实例获取 access_token
         access_token = bot.config.access_token
         if access_token:
-            print("成功获取 Access Token")
+            logger.info("成功获取 Access Token")
     except Exception as e:
-        print(f"警告: 获取 Access Token 失败: {e} (如果OneBot实现未配置Token则此项可选)")
+        logger.warning(f"警告: 获取 Access Token 失败: {e} (如果OneBot实现未配置Token则此项可选)")
 
     # 获取视频消息 - 增强检测逻辑
     video_found = False
@@ -478,19 +479,19 @@ async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = Command
     expected_file_size = 0
     file_id = None
 
-    print(f"开始检测回复消息中的视频...")
-    print(f"回复消息内容: {reply.message}")
+    logger.info(f"开始检测回复消息中的视频...")
+    logger.info(f"回复消息内容: {reply.message}")
 
     # 遍历所有消息段，查找视频或文件
     for segment in reply.message:
-        print(f"检查消息段: type={segment.type}, data={segment.data}")
+        logger.info(f"检查消息段: type={segment.type}, data={segment.data}")
 
         # 情况1: 直接视频消息
         if segment.type == "video":
             url = segment.data.get("url", "")
             file_name = segment.data.get("file", "")
             file_size_str = segment.data.get("file_size", "0")
-            print(f"找到视频消息段: url={url[:100] if url else 'None'}, file={file_name}")
+            logger.info(f"找到视频消息段: url={url[:100] if url else 'None'}, file={file_name}")
 
             try:
                 expected_file_size = int(file_size_str)
@@ -510,13 +511,13 @@ async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = Command
             _file_id = segment.data.get("file_id", "")
             file_size = segment.data.get("file_size", "")
 
-            print(
+            logger.info(
                 f"找到文件消息段: file={file_name}, url={url[:100] if url else 'None'}, file_id={_file_id}, file_size={file_size}")
 
             # 检查是否为视频文件
             if file_name and any(file_name.lower().endswith(ext) for ext in
                                  ['.mp4', '.avi', '.mov', '.webm', '.mkv', '.flv', '.wmv']):
-                print(f"检测到视频文件: {file_name}")
+                logger.info(f"检测到视频文件: {file_name}")
                 video_found = True
                 video_file_name = file_name
 
@@ -533,7 +534,7 @@ async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = Command
                     video_url = url
 
     if file_id and isinstance(event, GroupMessageEvent):
-        print(f"检测到群文件 file_id: {file_id}，尝试调用 OneBot API 获取下载链接...")
+        logger.info(f"检测到群文件 file_id: {file_id}，尝试调用 OneBot API 获取下载链接...")
         try:
             api_response = await bot.call_api("get_group_file_url", group_id=event.group_id, file_id=file_id)
             new_url = api_response.get("url")
@@ -542,9 +543,9 @@ async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = Command
 
             video_url = new_url
             video_found = True
-            print(f"成功获取 Go-CQHTTP 代理 URL: {video_url[:200]}...")
+            logger.info(f"成功获取 Go-CQHTTP 代理 URL: {video_url[:200]}...")
         except Exception as e:
-            print(f"调用 get_group_file_url 失败: {e}")
+            logger.error(f"调用 get_group_file_url 失败: {e}")
             await video_to_gif_handler.finish(f"获取群文件下载链接失败: {e}。请确保Bot具有群文件权限。")
 
     elif video_found and not video_url:

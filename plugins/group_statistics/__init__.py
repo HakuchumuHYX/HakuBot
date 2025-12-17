@@ -2,6 +2,7 @@ from nonebot import get_driver, require
 from nonebot.plugin import PluginMetadata
 from nonebot.message import event_preprocessor
 from nonebot.adapters.onebot.v11 import Event
+from nonebot.log import logger
 
 require("nonebot_plugin_apscheduler")
 
@@ -71,11 +72,11 @@ async def init_plugin():
     """插件初始化"""
     try:
         patch_bot_send()
-        print("已应用Bot.send补丁")
+        logger.info("已应用Bot.send补丁")
     except Exception as e:
-        print(f"应用Bot.send补丁失败: {e}")
+        logger.error(f"应用Bot.send补丁失败: {e}")
 
-    print("群聊消息统计插件已加载")
+    logger.info("群聊消息统计插件已加载")
 
 
 # 机器人关闭时保存数据

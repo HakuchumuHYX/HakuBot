@@ -12,6 +12,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
+from nonebot.log import logger
 
 try:
     from PIL.Image import Resampling
@@ -24,7 +25,7 @@ try:
     from pilmoji import Pilmoji
 except (ImportError, AttributeError) as e:
     Pilmoji = None
-    print(f"Pilmoji import failed ({type(e).__name__}), emoji rendering will be disabled. Error: {e}")
+    logger.warning(f"Pilmoji import failed ({type(e).__name__}), emoji rendering will be disabled. Error: {e}")
 
 from nonebot.log import logger
 from .cache_service import CacheService

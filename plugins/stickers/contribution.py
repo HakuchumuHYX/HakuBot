@@ -231,7 +231,7 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
         return True, Message(message_segments), saved_count
 
     finally:
-        logger.error(f"清理 {len(temp_files)} 个临时文件...")
+        logger.info(f"清理 {len(temp_files)} 个临时文件...")
         for temp_file in temp_files:
             try:
                 temp_file.unlink()

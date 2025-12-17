@@ -4,7 +4,7 @@ import aiohttp
 from PIL import Image, ImageSequence
 from pathlib import Path
 import shutil
-
+from nonebot.log import logger
 
 async def download_file(url: str) -> str:
     """下载文件到临时目录"""
@@ -37,7 +37,7 @@ async def safe_delete_file(file_path: str, max_retries: int = 3):
                 import time
                 time.sleep(0.1)  # 等待100ms后重试
             else:
-                print(f"无法删除文件 {file_path}: {e}")
+                logger.error(f"无法删除文件 {file_path}: {e}")
                 return False
     return False
 
@@ -82,7 +82,7 @@ async def reverse_gif(image_url: str) -> str:
                     durations.append(duration)
 
                 except Exception as frame_error:
-                    print(f"处理帧时出错: {frame_error}")
+                    logger.error(f"处理帧时出错: {frame_error}")
                     continue
 
             if not frames:
@@ -113,7 +113,7 @@ async def reverse_gif(image_url: str) -> str:
                 format='GIF'
             )
 
-            print(f"GIF倒放成功: {len(frames)} 帧")
+            logger.info(f"GIF倒放成功: {len(frames)} 帧")
 
         # 清理临时文件
         if temp_path:
@@ -122,7 +122,7 @@ async def reverse_gif(image_url: str) -> str:
         return str(output_path)
 
     except Exception as e:
-        print(f"GIF倒放错误: {e}")
+        logger.error(f"GIF倒放错误: {e}")
         # 清理临时文件
         if temp_path:
             await safe_delete_file(temp_path)
@@ -187,5 +187,5 @@ def reverse_gif_alternative(image_url: str) -> str:
         return str(output_path)
 
     except Exception as e:
-        print(f"备选方案GIF倒放错误: {e}")
+        logger.error(f"备选方案GIF倒放错误: {e}")
         return ""

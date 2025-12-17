@@ -4,6 +4,7 @@ import tempfile
 import aiohttp
 from PIL import Image, ImageSequence
 from pathlib import Path
+from nonebot.log import logger
 
 
 async def download_file(url: str) -> str:
@@ -80,7 +81,7 @@ async def change_gif_speed(image_url: str, speed_factor: float) -> str:
                     durations.append(duration)
 
                 except Exception as frame_error:
-                    print(f"处理帧时出错: {frame_error}")
+                    logger.error(f"处理帧时出错: {frame_error}")
                     continue
 
             if not frames:
@@ -129,9 +130,9 @@ async def change_gif_speed(image_url: str, speed_factor: float) -> str:
 
             first_frame.save(str(output_path), **save_kwargs)
 
-            print(f"GIF倍速处理成功: {len(frames)} 帧, 加速 {speed_factor} 倍")
-            print(f"原持续时间: {durations[:5]}...")  # 打印前5个持续时间用于调试
-            print(f"新持续时间: {new_durations[:5]}...")
+            logger.info(f"GIF倍速处理成功: {len(frames)} 帧, 加速 {speed_factor} 倍")
+            logger.info(f"原持续时间: {durations[:5]}...")  # 打印前5个持续时间用于调试
+            logger.info(f"新持续时间: {new_durations[:5]}...")
 
         # 清理临时文件
         if temp_path:
@@ -140,7 +141,7 @@ async def change_gif_speed(image_url: str, speed_factor: float) -> str:
         return str(output_path)
 
     except Exception as e:
-        print(f"GIF倍速处理错误: {e}")
+        logger.error(f"GIF倍速处理错误: {e}")
         if temp_path:
             await safe_delete_file(temp_path)
         return ""
@@ -218,5 +219,5 @@ def change_gif_speed_alternative(image_url: str, speed_factor: float) -> str:
         return str(output_path)
 
     except Exception as e:
-        print(f"备选方案GIF倍速错误: {e}")
+        logger.error(f"备选方案GIF倍速错误: {e}")
         return ""

@@ -4,6 +4,7 @@ import tempfile
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import textwrap
+from nonebot.log import logger
 
 
 async def generate_help_image() -> str:
@@ -115,7 +116,7 @@ GIF 处理命令：
         return str(output_path)
 
     except Exception as e:
-        print(f"生成帮助图片时出错: {e}")
+        logger.error(f"生成帮助图片时出错: {e}")
         # 如果生成图片失败，返回空字符串，让调用者处理
         return ""
 

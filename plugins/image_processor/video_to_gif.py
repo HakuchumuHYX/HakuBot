@@ -10,7 +10,7 @@ from PIL import Image
 import numpy as np
 import urllib.parse
 import random
-
+from nonebot.log import logger
 # 全局变量，用于缓存ffmpeg可用性检查结果
 _ffmpeg_available = None
 
@@ -27,7 +27,7 @@ async def download_video(url: str, file_name: str = None, expected_size: int = 0
 
     # 处理QQ群文件URL - 修复下载问题
     if 'ftn.qq.com' in url:
-        print("检测到QQ群文件URL，进行特殊处理 (添加Referer并修复fname)")
+        logger.info("检测到QQ群文件URL，进行特殊处理 (添加Referer并修复fname)")
         headers['Referer'] = 'https://qun.qq.com/'  # 仅为 ftn 链接添加 Referer
 
         # 修复URL参数
@@ -54,26 +54,26 @@ async def download_video(url: str, file_name: str = None, expected_size: int = 0
             parsed_url.fragment
         ))
 
-        print(f"修复后的QQ群文件URL: {url[:200]}...")
+        logger.info(f"修复后的QQ群文件URL: {url[:200]}...")
 
     # 处理 Go-CQHTTP 代理 URL
     # 如果不是 ftn 链接，且提供了 access_token，则假定为 Go-CQHTTP 代理链接
     elif access_token:
-        print("检测到非QQ群文件URL且Access Token存在，添加Authorization header")
+        logger.info("检测到非QQ群文件URL且Access Token存在，添加Authorization header")
         headers['Authorization'] = f'Bearer {access_token}'
 
     async with aiohttp.ClientSession(headers=headers) as session:
         try:
-            print(f"开始下载视频: {url[:200]}...")
+            logger.info(f"开始下载视频: {url[:200]}...")
 
             # 先发送HEAD请求获取文件信息
             async with session.head(url) as head_response:
                 if head_response.status not in [200, 206]:
-                    print(f"HEAD请求失败: {head_response.status}")
+                    logger.info(f"HEAD请求失败: {head_response.status}")
                 else:
                     content_length = head_response.headers.get('content-length')
                     content_type = head_response.headers.get('content-type', '')
-                    print(f"文件信息 - 大小: {content_length}, 类型: {content_type}")
+                    logger.info(f"文件信息 - 大小: {content_length}, 类型: {content_type}")
 
             # 下载文件
             temp_dir = tempfile.gettempdir()
@@ -95,18 +95,18 @@ async def download_video(url: str, file_name: str = None, expected_size: int = 0
                                 if total_size > 0:
                                     percent = (downloaded_size / total_size) * 100
                                     if int(percent) % 10 == 0:  # 每10%打印一次进度
-                                        print(f"下载进度: {percent:.1f}% ({downloaded_size}/{total_size} bytes)")
+                                        logger.info(f"下载进度: {percent:.1f}% ({downloaded_size}/{total_size} bytes)")
                                 else:
-                                    print(f"已下载: {downloaded_size} bytes")
+                                    logger.info(f"已下载: {downloaded_size} bytes")
 
                     # 验证下载的文件大小
                     final_size = os.path.getsize(temp_path)
-                    print(f"下载完成: {temp_path}, 大小: {final_size} bytes")
+                    logger.info(f"下载完成: {temp_path}, 大小: {final_size} bytes")
 
                     # 优先使用从消息体中获取的预期大小进行验证
                     # 允许10%的误差（0.9倍）
                     if expected_size > 0 and final_size < expected_size * 0.9:
-                        print(
+                        logger.warning(
                             f"严重警告: 下载的文件大小 ({final_size}) 与预期大小 ({expected_size}) 严重不符。下载可能已失败。")
                         try:
                             await safe_delete_file(temp_path)
@@ -118,14 +118,14 @@ async def download_video(url: str, file_name: str = None, expected_size: int = 0
 
                     # 如果没有预期大小，或者大小匹配，再使用 content-length 验证
                     elif total_size > 0 and final_size < total_size * 0.9:
-                        print(f"警告: 下载的文件可能不完整 (期望: {total_size}, 实际: {final_size})")
+                        logger.warning(f"警告: 下载的文件可能不完整 (期望: {total_size}, 实际: {final_size})")
 
                     return temp_path
                 else:
                     error_text = await response.text()
-                    print(f"下载失败，状态码: {response.status}")
+                    logger.error(f"下载失败，状态码: {response.status}")
                     if error_text:
-                        print(f"错误响应: {error_text[:500]}")
+                        logger.error(f"错误响应: {error_text[:500]}")
                     raise Exception(f"下载视频失败: {response.status}")
 
         except aiohttp.ClientError as e:
@@ -145,7 +145,7 @@ async def get_video_info(video_path: str) -> dict:
         if file_size == 0:
             raise Exception("视频文件为空")
 
-        print(f"开始分析视频文件: {video_path}, 大小: {file_size} bytes")
+        logger.info(f"开始分析视频文件: {video_path}, 大小: {file_size} bytes")
 
         # 方法1: 使用OpenCV
         try:
@@ -174,10 +174,10 @@ async def get_video_info(video_path: str) -> dict:
                 'method': 'opencv'
             }
 
-            print(f"通过OpenCV获取视频信息: {info}")
+            logger.info(f"通过OpenCV获取视频信息: {info}")
             return info
         except Exception as opencv_error:
-            print(f"OpenCV分析失败: {opencv_error}")
+            logger.error(f"OpenCV分析失败: {opencv_error}")
 
         # 方法2: 使用ffprobe - 修复N/A值处理
         try:
@@ -189,12 +189,12 @@ async def get_video_info(video_path: str) -> dict:
                 '-of', 'csv=p=0',
                 video_path
             ]
-            print(f"执行ffprobe命令: {' '.join(cmd)}")
+            logger.info(f"执行ffprobe命令: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
             if result.returncode == 0:
                 output = result.stdout.strip()
-                print(f"ffprobe原始输出: {output}")
+                logger.info(f"ffprobe原始输出: {output}")
                 parts = output.split(',')
 
                 if len(parts) >= 5:
@@ -245,12 +245,12 @@ async def get_video_info(video_path: str) -> dict:
                         'method': 'ffprobe'
                     }
 
-                    print(f"通过ffprobe获取视频信息: {info}")
+                    logger.info(f"通过ffprobe获取视频信息: {info}")
                     return info
             else:
-                print(f"ffprobe错误: {result.stderr}")
+                logger.error(f"ffprobe错误: {result.stderr}")
         except Exception as ffprobe_error:
-            print(f"ffprobe分析失败: {ffprobe_error}")
+            logger.error(f"ffprobe分析失败: {ffprobe_error}")
 
         # 方法3: 使用文件大小估算基本信息
         try:
@@ -268,16 +268,16 @@ async def get_video_info(video_path: str) -> dict:
                 'method': 'estimation'
             }
 
-            print(f"通过文件大小估算视频信息: {info}")
+            logger.info(f"通过文件大小估算视频信息: {info}")
             return info
 
         except Exception as estimation_error:
-            print(f"估算视频信息失败: {estimation_error}")
+            logger.error(f"估算视频信息失败: {estimation_error}")
 
         raise Exception("所有方法都无法获取视频信息")
 
     except Exception as e:
-        print(f"获取视频信息失败: {e}")
+        logger.error(f"获取视频信息失败: {e}")
         raise Exception(f"无法获取视频信息: {str(e)}")
 
 
@@ -310,7 +310,7 @@ async def convert_video_to_gif_ffmpeg(video_path: str, output_path: str, fps: in
             '-y', palette_path
         ]
 
-        print(f"执行调色板生成命令: {' '.join(palette_cmd)}")
+        logger.info(f"执行调色板生成命令: {' '.join(palette_cmd)}")
         result = await asyncio.create_subprocess_exec(
             *palette_cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -319,7 +319,7 @@ async def convert_video_to_gif_ffmpeg(video_path: str, output_path: str, fps: in
         stdout, stderr = await result.communicate()
 
         if result.returncode != 0:
-            print(f"调色板生成错误: {stderr.decode()}")
+            logger.error(f"调色板生成错误: {stderr.decode()}")
             # 清理可能生成的调色板文件
             if os.path.exists(palette_path):
                 os.unlink(palette_path)
@@ -333,7 +333,7 @@ async def convert_video_to_gif_ffmpeg(video_path: str, output_path: str, fps: in
             '-y', output_path
         ]
 
-        print(f"执行GIF生成命令: {' '.join(gif_cmd)}")
+        logger.info(f"执行GIF生成命令: {' '.join(gif_cmd)}")
         result = await asyncio.create_subprocess_exec(
             *gif_cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -346,12 +346,12 @@ async def convert_video_to_gif_ffmpeg(video_path: str, output_path: str, fps: in
             os.unlink(palette_path)
 
         if result.returncode != 0:
-            print(f"GIF生成错误: {stderr.decode()}")
+            logger.error(f"GIF生成错误: {stderr.decode()}")
             return False
 
         return True
     except Exception as e:
-        print(f"ffmpeg转换失败: {e}")
+        logger.error(f"ffmpeg转换失败: {e}")
         # 清理可能残留的调色板文件
         palette_path = output_path.replace('.gif', '_palette.png')
         if os.path.exists(palette_path):
@@ -395,7 +395,7 @@ async def convert_video_to_gif_opencv(video_path: str, output_path: str, fps: in
 
             # 安全限制，避免处理过长的视频
             if frame_count > 10000:  # 最多处理10000帧
-                print("达到帧数限制，停止读取")
+                logger.warning("达到帧数限制，停止读取")
                 break
 
         cap.release()
@@ -403,7 +403,7 @@ async def convert_video_to_gif_opencv(video_path: str, output_path: str, fps: in
         if not frames:
             raise Exception("没有提取到任何帧")
 
-        print(f"成功提取 {success_count} 帧")
+        logger.info(f"成功提取 {success_count} 帧")
 
         # 计算持续时间（毫秒）
         duration = int(1000 / fps)
@@ -421,7 +421,7 @@ async def convert_video_to_gif_opencv(video_path: str, output_path: str, fps: in
         return True
 
     except Exception as e:
-        print(f"OpenCV转换失败: {e}")
+        logger.error(f"OpenCV转换失败: {e}")
         return False
 
 
@@ -432,7 +432,7 @@ async def optimize_gif_parameters(video_info: dict) -> tuple:
     original_width = video_info['width']
     original_height = video_info['height']
 
-    print(f"原始视频参数: 时长{duration:.1f}s, FPS{original_fps:.1f}, 分辨率{original_width}x{original_height}")
+    logger.info(f"原始视频参数: 时长{duration:.1f}s, FPS{original_fps:.1f}, 分辨率{original_width}x{original_height}")
 
     # 根据时长调整FPS
     if duration <= 5:
@@ -477,7 +477,7 @@ async def optimize_gif_parameters(video_info: dict) -> tuple:
     scale_width = max(scale_width, 32)
     scale_height = max(scale_height, 32)
 
-    print(f"优化参数: 目标FPS{target_fps}, 缩放{scale_width}x{scale_height}")
+    logger.info(f"优化参数: 目标FPS{target_fps}, 缩放{scale_width}x{scale_height}")
     return target_fps, scale_width, scale_height
 
 
@@ -493,16 +493,16 @@ def check_ffmpeg_available() -> bool:
         _ffmpeg_available = result.returncode == 0
 
         if not _ffmpeg_available:
-            print("警告: ffmpeg未安装或不可用，将使用OpenCV进行视频转换，质量可能较低")
-            print("建议安装ffmpeg以获得更好的GIF质量: sudo apt-get install ffmpeg")
+            logger.warning("警告: ffmpeg未安装或不可用，将使用OpenCV进行视频转换，质量可能较低")
+            logger.warning("建议安装ffmpeg以获得更好的GIF质量: sudo apt-get install ffmpeg")
         else:
-            print("ffmpeg可用，将使用高质量GIF转换")
+            logger.info("ffmpeg可用，将使用高质量GIF转换")
 
         return _ffmpeg_available
     except:
         _ffmpeg_available = False
-        print("警告: ffmpeg未安装或不可用，将使用OpenCV进行视频转换，质量可能较低")
-        print("建议安装ffmpeg以获得更好的GIF质量: sudo apt-get install ffmpeg")
+        logger.warning("警告: ffmpeg未安装或不可用，将使用OpenCV进行视频转换，质量可能较低")
+        logger.warning("建议安装ffmpeg以获得更好的GIF质量: sudo apt-get install ffmpeg")
         return False
 
 
@@ -511,12 +511,12 @@ async def convert_video_to_gif(video_url: str, file_name: str = None, expected_s
     """主函数：将视频转换为GIF"""
     video_path = None
     try:
-        print(f"开始处理视频转GIF")
-        print(f"视频URL: {video_url[:200]}...")
+        logger.info(f"开始处理视频转GIF")
+        logger.info(f"视频URL: {video_url[:200]}...")
         if file_name:
-            print(f"文件名: {file_name}")
+            logger.info(f"文件名: {file_name}")
         if expected_size > 0:
-            print(f"预期文件大小: {expected_size} bytes")
+            logger.info(f"预期文件大小: {expected_size} bytes")
 
         # 检查ffmpeg可用性
         ffmpeg_available = check_ffmpeg_available()
@@ -527,7 +527,7 @@ async def convert_video_to_gif(video_url: str, file_name: str = None, expected_s
             raise Exception("下载视频失败或文件不存在")
 
         file_size = os.path.getsize(video_path)
-        print(f"视频下载成功: {video_path}, 大小: {file_size} bytes")
+        logger.info(f"视频下载成功: {video_path}, 大小: {file_size} bytes")
 
         # 获取视频信息
         video_info = await get_video_info(video_path)
@@ -552,7 +552,7 @@ async def convert_video_to_gif(video_url: str, file_name: str = None, expected_s
         output_dir.mkdir(exist_ok=True)
         output_path = output_dir / f"video_gif_{os.urandom(4).hex()}.gif"
 
-        print(f"开始转换，参数: FPS={fps}, 分辨率={width}x{height}")
+        logger.info(f"开始转换，参数: FPS={fps}, 分辨率={width}x{height}")
 
         # 根据ffmpeg可用性选择转换方法
         success = False
@@ -561,7 +561,7 @@ async def convert_video_to_gif(video_url: str, file_name: str = None, expected_s
             success = await convert_video_to_gif_ffmpeg(video_path, str(output_path), fps, width, height)
 
             if not success:
-                print("ffmpeg转换失败，尝试OpenCV备选方案")
+                logger.warning("ffmpeg转换失败，尝试OpenCV备选方案")
                 success = await convert_video_to_gif_opencv(video_path, str(output_path), fps, width, height)
         else:
             # 直接使用OpenCV
@@ -571,12 +571,12 @@ async def convert_video_to_gif(video_url: str, file_name: str = None, expected_s
             raise Exception("所有转换方法都失败了")
 
         result_size = os.path.getsize(output_path)
-        print(f"视频转GIF成功: {output_path}, 大小: {result_size} bytes")
+        logger.info(f"视频转GIF成功: {output_path}, 大小: {result_size} bytes")
 
         return str(output_path)
 
     except Exception as e:
-        print(f"视频转GIF处理出错: {e}")
+        logger.error(f"视频转GIF处理出错: {e}")
         import traceback
         traceback.print_exc()
         return ""
@@ -585,9 +585,9 @@ async def convert_video_to_gif(video_url: str, file_name: str = None, expected_s
         if video_path and os.path.exists(video_path):
             try:
                 await safe_delete_file(video_path)
-                print(f"已清理临时视频文件: {video_path}")
+                logger.info(f"已清理临时视频文件: {video_path}")
             except Exception as delete_error:
-                print(f"清理临时文件失败: {delete_error}")
+                logger.error(f"清理临时文件失败: {delete_error}")
 
 
 def get_supported_video_formats() -> list:

@@ -11,6 +11,7 @@ from PIL import Image
 from pathlib import Path
 import numpy as np
 import cv2
+from nonebot.log import logger
 
 
 async def download_image(url: str) -> str:
@@ -61,10 +62,10 @@ async def remove_background_rembg(image_path: str) -> str:
         return str(output_path)
 
     except ImportError:
-        print("rembg未安装，请安装: pip install rembg")
+        logger.error("rembg未安装，请安装: pip install rembg")
         return await remove_background_opencv(image_path)
     except Exception as e:
-        print(f"rembg抠图错误: {e}")
+        logger.error(f"rembg抠图错误: {e}")
         return await remove_background_opencv(image_path)
 
 
@@ -117,7 +118,7 @@ async def remove_background_opencv(image_path: str) -> str:
         return str(output_path)
 
     except Exception as e:
-        print(f"OpenCV抠图错误: {e}")
+        logger.error(f"OpenCV抠图错误: {e}")
         return await remove_background_simple(image_path)
 
 
@@ -162,7 +163,7 @@ async def remove_background_simple(image_path: str) -> str:
         return str(output_path)
 
     except Exception as e:
-        print(f"简单抠图错误: {e}")
+        logger.error(f"简单抠图错误: {e}")
         return ""
 
 
@@ -220,7 +221,7 @@ async def remove_background_gif(image_path: str) -> str:
         return str(output_path)
 
     except Exception as e:
-        print(f"GIF抠图错误: {e}")
+        logger.error(f"GIF抠图错误: {e}")
         return await remove_background_rembg(image_path)
 
 
@@ -253,7 +254,7 @@ async def remove_background(image_url: str) -> str:
         return result_path if result_path and os.path.exists(result_path) else ""
 
     except Exception as e:
-        print(f"抠图处理错误: {e}")
+        logger.error(f"抠图处理错误: {e}")
         if 'image_path' in locals() and os.path.exists(image_path):
             os.unlink(image_path)
         return ""

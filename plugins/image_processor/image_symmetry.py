@@ -5,6 +5,7 @@ import aiohttp
 from PIL import Image, ImageSequence
 from pathlib import Path
 import numpy as np
+from nonebot.log import logger
 
 
 async def download_image(url: str) -> str:
@@ -88,7 +89,7 @@ async def process_left_symmetry(image_path: str) -> Image.Image:
             return result
 
     except Exception as e:
-        print(f"左对称处理错误: {e}")
+        logger.error(f"左对称处理错误: {e}")
         return None
 
 
@@ -114,7 +115,7 @@ async def process_right_symmetry(image_path: str) -> Image.Image:
             return result
 
     except Exception as e:
-        print(f"右对称处理错误: {e}")
+        logger.error(f"右对称处理错误: {e}")
         return None
 
 
@@ -150,7 +151,7 @@ async def process_center_symmetry(image_path: str) -> Image.Image:
             return result
 
     except Exception as e:
-        print(f"中心对称处理错误: {e}")
+        logger.error(f"中心对称处理错误: {e}")
         return None
 
 
@@ -176,7 +177,7 @@ async def process_top_symmetry(image_path: str) -> Image.Image:
             return result
 
     except Exception as e:
-        print(f"上对称处理错误: {e}")
+        logger.error(f"上对称处理错误: {e}")
         return None
 
 
@@ -202,7 +203,7 @@ async def process_bottom_symmetry(image_path: str) -> Image.Image:
             return result
 
     except Exception as e:
-        print(f"下对称处理错误: {e}")
+        logger.error(f"下对称处理错误: {e}")
         return None
 
 
@@ -264,12 +265,12 @@ async def process_gif_symmetry(image_path: str, symmetry_type: str) -> str:
                     disposal = frame.info.get('disposal', 2)
                     disposal_methods.append(disposal)
                 else:
-                    print(f"第{frame_index}帧处理失败，跳过")
+                    logger.error(f"第{frame_index}帧处理失败，跳过")
 
                 frame_index += 1
 
             except Exception as frame_error:
-                print(f"处理第{frame_index}帧时出错: {frame_error}")
+                logger.error(f"处理第{frame_index}帧时出错: {frame_error}")
                 continue
 
         if not frames:
@@ -280,7 +281,7 @@ async def process_gif_symmetry(image_path: str, symmetry_type: str) -> str:
         has_transparency = any(frame.mode == 'RGBA' for frame in frames)
         if has_transparency:
             save_mode = 'RGBA'
-            print("检测到透明帧，GIF将保存为RGBA模式")
+            logger.info("检测到透明帧，GIF将保存为RGBA模式")
 
         # 确保所有帧都是相同的模式
         unified_frames = []
@@ -320,28 +321,24 @@ async def process_gif_symmetry(image_path: str, symmetry_type: str) -> str:
             save_kwargs['disposal'] = 2
             save_kwargs['optimize'] = False
             # 移除 'transparency' 关键字，PIL 会自动处理 RGBA 帧的 Alpha 通道
-            print("保存透明GIF，设置 disposal=2, optimize=False")
+            logger.info("保存透明GIF，设置 disposal=2, optimize=False")
         else:
             # 对于不透明的RGB-GIF，可以安全地开启优化
             save_kwargs['optimize'] = True
-            print("保存不透明GIF，设置 optimize=True")
+            logger.info("保存不透明GIF，设置 optimize=True")
 
         # 保存第一帧
         first_frame = unified_frames[0]
 
-        # *** 【修复】 ***
-        # 移除整个尝试转换为调色板(P模式)的 try...except 块
-        # (原代码中错误的调色板转换逻辑已删除)
-
         # 直接使用 (RGB或RGBA) 模式保存
         first_frame.save(str(output_path), **save_kwargs)
 
-        print(f"GIF对称处理完成 ({save_mode} 模式): {len(frames)} 帧, 保存到 {output_path}")
+        logger.info(f"GIF对称处理完成 ({save_mode} 模式): {len(frames)} 帧, 保存到 {output_path}")
 
         return str(output_path)
 
     except Exception as e:
-        print(f"GIF对称处理错误: {e}")
+        logger.error(f"GIF对称处理错误: {e}")
         import traceback
         traceback.print_exc()
         return ""
@@ -353,14 +350,14 @@ async def process_gif_symmetry(image_path: str, symmetry_type: str) -> str:
                 try:
                     os.unlink(temp_path)
                 except Exception as delete_error:
-                    print(f"删除临时文件失败 {temp_path}: {delete_error}")
+                    logger.error(f"删除临时文件失败 {temp_path}: {delete_error}")
 
 
 async def process_image_symmetry(image_url: str, symmetry_type: str) -> str:
     """主对称处理函数 - 支持静态图片和GIF"""
     image_path = None
     try:
-        print(f"开始处理对称图片: {symmetry_type}, URL: {image_url[:100]}...")
+        logger.info(f"开始处理对称图片: {symmetry_type}, URL: {image_url[:100]}...")
 
         # 下载图片
         image_path = await download_image(image_url)
@@ -368,7 +365,7 @@ async def process_image_symmetry(image_url: str, symmetry_type: str) -> str:
             raise Exception("下载图片失败或文件不存在")
 
         file_size = os.path.getsize(image_path)
-        print(f"图片下载成功: {image_path}, 大小: {file_size} bytes")
+        logger.info(f"图片下载成功: {image_path}, 大小: {file_size} bytes")
 
         # 检查是否为GIF
         is_gif = False
@@ -376,16 +373,16 @@ async def process_image_symmetry(image_url: str, symmetry_type: str) -> str:
             with Image.open(image_path) as img:
                 if hasattr(img, 'is_animated') and img.is_animated:
                     is_gif = True
-                    print("检测到GIF图片，将进行逐帧处理")
+                    logger.info("检测到GIF图片，将进行逐帧处理")
         except Exception as img_error:
-            print(f"检查图片格式时出错: {img_error}")
+            logger.error(f"检查图片格式时出错: {img_error}")
 
         # 根据类型选择处理方法
         if is_gif:
-            print("开始GIF对称处理...")
+            logger.info("开始GIF对称处理...")
             result_path = await process_gif_symmetry(image_path, symmetry_type)
         else:
-            print("开始静态图片对称处理...")
+            logger.info("开始静态图片对称处理...")
             # 静态图片处理
             if symmetry_type == "left":
                 processed_image = await process_left_symmetry(image_path)
@@ -412,21 +409,21 @@ async def process_image_symmetry(image_url: str, symmetry_type: str) -> str:
                     processed_image.save(output_path, 'PNG')  # PNG支持RGB和RGBA
 
                 result_path = str(output_path)
-                print(f"静态图片对称处理完成: {result_path}")
+                logger.info(f"静态图片对称处理完成: {result_path}")
             else:
                 result_path = ""
-                print("静态图片对称处理失败")
+                logger.error("静态图片对称处理失败")
 
         if result_path and os.path.exists(result_path):
             result_size = os.path.getsize(result_path)
-            print(f"对称处理成功: {result_path}, 大小: {result_size} bytes")
+            logger.info(f"对称处理成功: {result_path}, 大小: {result_size} bytes")
             return result_path
         else:
-            print("对称处理失败: 未生成有效输出文件")
+            logger.error("对称处理失败: 未生成有效输出文件")
             return ""
 
     except Exception as e:
-        print(f"对称处理过程出错: {e}")
+        logger.error(f"对称处理过程出错: {e}")
         import traceback
         traceback.print_exc()
         return ""
@@ -435,6 +432,6 @@ async def process_image_symmetry(image_url: str, symmetry_type: str) -> str:
         if image_path and os.path.exists(image_path):
             try:
                 await safe_delete_file(image_path)
-                print(f"已清理临时文件: {image_path}")
+                logger.info(f"已清理临时文件: {image_path}")
             except Exception as delete_error:
-                print(f"清理临时文件失败: {delete_error}")
+                logger.error(f"清理临时文件失败: {delete_error}")
