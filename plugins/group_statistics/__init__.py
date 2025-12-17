@@ -84,4 +84,4 @@ async def init_plugin():
 async def shutdown_plugin():
     """插件关闭时保存数据"""
     data_manager.save_stats()
-    print("群聊消息统计插件数据已保存")
+    logger.info("群聊消息统计插件数据已保存")

@@ -18,6 +18,8 @@ from .gif_speed import change_gif_speed, change_gif_speed_alternative
 from .image_symmetry import process_image_symmetry
 from .help import generate_help_image, get_help_text
 from .video_to_gif import convert_video_to_gif
+from .image_mirror import process_image_mirror
+from .image_rotate import process_image_rotate
 
 from ..plugin_manager.enable import *
 from ..plugin_manager.cd_manager import *
@@ -76,6 +78,11 @@ image_symmetry_top_handler = on_command("img上对称", rule=to_me(), priority=5
 image_symmetry_bottom_handler = on_command("img下对称", rule=to_me(), priority=5, block=True)
 image_help_handler = on_command("imghelp", priority=5, block=True)
 video_to_gif_handler = on_command("imggif", rule=to_me(), priority=5, block=True)
+image_mirror_handler = on_command("img镜像", rule=to_me(), priority=5, block=True)
+image_mirror_vertical_handler = on_command("img上镜像", rule=to_me(), priority=5, block=True)
+image_rotate_handler = on_command("img旋转", rule=to_me(), priority=5, block=True)
+image_rotate_clockwise_handler = on_command("img顺时针", rule=to_me(), priority=5, block=True)
+image_rotate_counter_handler = on_command("img逆时针", rule=to_me(), priority=5, block=True)
 
 @gif_reverse_handler.handle()
 async def handle_gif_reverse(event: Event, cmd_arg: Message = CommandArg()):
@@ -578,3 +585,190 @@ async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = Command
         raise
     except Exception as e:
         await video_to_gif_handler.finish(f"处理视频时出错: {str(e)}")
+
+
+@image_mirror_handler.handle()
+async def handle_image_mirror_horizontal(event: Event):
+    """处理水平镜像（默认）"""
+    # 传入 "horizontal" 作为方向
+    await handle_image_mirror_common(event, "horizontal")
+
+
+@image_mirror_vertical_handler.handle()
+async def handle_image_mirror_vertical(event: Event):
+    """处理垂直镜像"""
+    # 传入 "vertical" 作为方向
+    await handle_image_mirror_common(event, "vertical")
+
+
+async def handle_image_mirror_common(event: Event, direction: str):
+    """通用的镜像处理函数"""
+    user_id = str(event.user_id)
+    group_id = str(event.group_id) if isinstance(event, GroupMessageEvent) else "private"
+
+    # 插件开关与权限检查
+    if isinstance(event, GroupMessageEvent):
+        if not is_plugin_enabled("image_processor", group_id, user_id):
+            await image_mirror_handler.finish("图片处理在本群未开启！")
+            return
+
+        # 使用 mirror 作为功能标识符
+        if not is_feature_enabled("image_processor", "mirror", group_id, user_id):
+            await image_mirror_handler.finish("镜像功能在本群无法使用！")
+            return
+
+        PLUGIN_ID = "image_processor:mirror"
+        remaining_cd = check_cd(PLUGIN_ID, group_id, user_id)
+        if remaining_cd > 0:
+            await image_mirror_handler.finish(f"镜像功能还在冷却中，请等待 {remaining_cd} 秒")
+            return
+
+    # 定义中文名称
+    direction_names = {
+        "horizontal": "水平镜像",
+        "vertical": "垂直镜像"
+    }
+    action_name = direction_names.get(direction, "镜像")
+
+    # 检查回复
+    if not hasattr(event, 'reply') or not event.reply:
+        await image_mirror_handler.finish(f"请回复一条图片消息来使用{action_name}功能")
+
+    # 获取图片
+    image_found = False
+    image_url = None
+    for segment in event.reply.message:
+        if segment.type == "image":
+            url = segment.data.get("url", "")
+            if url:
+                image_found = True
+                image_url = url
+                break
+
+    if not image_found or not image_url:
+        await image_mirror_handler.finish("回复的消息中没有找到图片")
+
+    try:
+        await image_mirror_handler.send(f"正在处理图片{action_name}，请稍候...")
+
+        result_path = await process_image_mirror(image_url, direction)
+
+        if result_path and os.path.exists(result_path):
+            file_size = os.path.getsize(result_path)
+            if file_size > 100:
+                if isinstance(event, GroupMessageEvent):
+                    PLUGIN_ID = "image_processor:mirror"
+                    update_cd(PLUGIN_ID, group_id, user_id)
+
+                await image_mirror_handler.send(MessageSegment.image(f"file:///{result_path}"))
+            else:
+                await image_mirror_handler.send(f"图片{action_name}处理失败，文件异常")
+        else:
+            await image_mirror_handler.send(f"图片{action_name}处理失败")
+
+    except FinishedException:
+        raise
+    except Exception as e:
+        await image_mirror_handler.send(f"处理图片时出错: {str(e)}")
+
+
+@image_rotate_handler.handle()
+async def handle_rotate_default(event: Event, cmd_arg: Message = CommandArg()):
+    """img旋转 [倍速] (默认顺时针)"""
+    await handle_rotate_common(event, cmd_arg, "clockwise")
+
+
+@image_rotate_clockwise_handler.handle()
+async def handle_rotate_cw(event: Event, cmd_arg: Message = CommandArg()):
+    """img顺时针 [倍速]"""
+    await handle_rotate_common(event, cmd_arg, "clockwise")
+
+
+@image_rotate_counter_handler.handle()
+async def handle_rotate_ccw(event: Event, cmd_arg: Message = CommandArg()):
+    """img逆时针 [倍速]"""
+    await handle_rotate_common(event, cmd_arg, "counter_clockwise")
+
+
+async def handle_rotate_common(event: Event, cmd_arg: Message, direction: str):
+    """通用旋转处理逻辑"""
+    user_id = str(event.user_id)
+    group_id = str(event.group_id) if isinstance(event, GroupMessageEvent) else "private"
+
+    # 1. 插件与功能开关检查
+    if isinstance(event, GroupMessageEvent):
+        if not is_plugin_enabled("image_processor", group_id, user_id):
+            await image_rotate_handler.finish("图片处理在本群未开启！")
+            return
+
+        # 使用 rotate 作为功能标识符
+        if not is_feature_enabled("image_processor", "rotate", group_id, user_id):
+            await image_rotate_handler.finish("旋转功能在本群无法使用！")
+            return
+
+        # CD 检查
+        PLUGIN_ID = "image_processor:rotate"
+        remaining_cd = check_cd(PLUGIN_ID, group_id, user_id)
+        if remaining_cd > 0:
+            await image_rotate_handler.finish(f"旋转功能还在冷却中，请等待 {remaining_cd} 秒")
+            return
+
+    # 2. 参数解析 (提取倍速)
+    args = cmd_arg.extract_plain_text().strip()
+    speed = 1.0  # 默认 1 倍速
+    if args:
+        try:
+            speed = float(args)
+        except ValueError:
+            # 如果参数不是数字，可能是用户输错了，或者是其他文本，这里忽略或提示
+            pass
+
+    # 限制倍速显示文本
+    if speed > 5:
+        await image_rotate_handler.send("转速太快啦！最高只能5倍速哦，已自动调整。")
+    elif speed < 0.1:
+        await image_rotate_handler.send("转速太慢啦！最低0.1倍速，已自动调整。")
+
+    action_name = "顺时针旋转" if direction == "clockwise" else "逆时针旋转"
+
+    # 3. 获取图片
+    if not hasattr(event, 'reply') or not event.reply:
+        await image_rotate_handler.finish(f"请回复一条图片消息来使用{action_name}功能")
+
+    image_found = False
+    image_url = None
+    for segment in event.reply.message:
+        if segment.type == "image":
+            url = segment.data.get("url", "")
+            if url:
+                image_found = True
+                image_url = url
+                break
+
+    if not image_found or not image_url:
+        await image_rotate_handler.finish("回复的消息中没有找到图片")
+
+    # 4. 执行处理
+    try:
+        await image_rotate_handler.send(f"正在生成{action_name}动画 (倍速: {speed})，请稍候...")
+
+        result_path = await process_image_rotate(image_url, direction, speed)
+
+        if result_path and os.path.exists(result_path):
+            file_size = os.path.getsize(result_path)
+            if file_size > 100:
+                # 更新 CD
+                if isinstance(event, GroupMessageEvent):
+                    PLUGIN_ID = "image_processor:rotate"
+                    update_cd(PLUGIN_ID, group_id, user_id)
+
+                await image_rotate_handler.send(MessageSegment.image(f"file:///{result_path}"))
+            else:
+                await image_rotate_handler.send(f"{action_name}失败，生成文件异常")
+        else:
+            await image_rotate_handler.send(f"{action_name}处理失败")
+
+    except FinishedException:
+        raise
+    except Exception as e:
+        await image_rotate_handler.send(f"处理出错: {str(e)}")
