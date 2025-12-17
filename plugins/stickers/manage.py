@@ -1,4 +1,4 @@
-# manage.py
+# stickers/manage.py
 import json
 import re
 from pathlib import Path
@@ -6,12 +6,9 @@ from typing import Tuple, Optional, Dict, List
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from nonebot import get_driver
 
-# vvvvvv 【修改：导入了 sticker_dir】 vvvvvv
+from . import send
 from .send import sticker_dir, list_json_path, load_sticker_list, folder_configs, alias_to_folder, sticker_folders, \
     resolve_folder_name
-
-
-# ^^^^^^ 【修改：导入了 sticker_dir】 ^^^^^^
 
 
 def is_superuser(user_id: str) -> bool:
@@ -46,18 +43,88 @@ async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> 
 
         return reload_sticker_list()
 
-    # vvvvvv 【新增：新建Gallery命令】 vvvvvv
+    # 匹配 "删除 1024" 或 "删除 1024 4399"
+    delete_match = re.match(r'^删除\s+(.+)$', message_text, re.IGNORECASE)
+    if delete_match:
+        if not is_superuser(str(event.user_id)):
+            return "权限不足，只有超级用户才能删除图片"
+
+        args_str = delete_match.group(1).strip()
+        id_list = args_str.split()
+
+        # 数量限制
+        if len(id_list) > 5:
+            return "为了防止误操作，一次最多只能删除 5 张图片。"
+
+        # 动态获取当前最大编号
+        current_max_id = send.current_max_id
+        valid_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+
+        results = []
+
+        for id_str in id_list:
+            # 1. 基础格式校验
+            if not id_str.isdigit():
+                results.append(f"⚠️ 参数 '{id_str}' 不是合法的数字编号")
+                continue
+
+            target_id = int(id_str)
+
+            # 2. 范围校验
+            if target_id <= 0:
+                results.append(f"⚠️ 编号 {target_id} 必须大于 0")
+                continue
+
+            if target_id > current_max_id:
+                results.append(f"⚠️ 找不到编号 {target_id} (当前最大: {current_max_id})")
+                continue
+
+            # 3. 查找并删除
+            found = False
+            for folder_name, folder_path in sticker_folders.items():
+                if not folder_path.exists():
+                    continue
+
+                file_deleted = False
+                for ext in valid_extensions:
+                    potential_path = folder_path / f"{target_id}{ext}"
+                    potential_path_upper = folder_path / f"{target_id}{ext.upper()}"
+
+                    target_file = None
+                    if potential_path.exists() and potential_path.is_file():
+                        target_file = potential_path
+                    elif potential_path_upper.exists() and potential_path_upper.is_file():
+                        target_file = potential_path_upper
+
+                    if target_file:
+                        try:
+                            target_file.unlink()  # 删除文件
+                            results.append(f"✅ 已删除 {target_id} (原位于 '{folder_name}')")
+                            file_deleted = True
+                        except Exception as e:
+                            results.append(f"❌ 删除 {target_id} 失败: {e}")
+                            file_deleted = True  # 找到了但操作失败，也算处理过
+                        break
+
+                if file_deleted:
+                    found = True
+                    break  # 找到并处理后，停止搜索其他文件夹
+
+            if not found:
+                results.append(f"⚠️ 未找到文件 {target_id} (可能已被删除)")
+
+        return "\n".join(results)
+
+    # 新建Gallery命令
     new_gallery_match = re.match(r'^sticker 新建gallery\s+(\S+)$', message_text, re.IGNORECASE)
     if new_gallery_match:
         if not is_superuser(str(event.user_id)):
             return "权限不足，只有超级用户才能新建gallery"
 
         gallery_name = new_gallery_match.group(1).strip()
-        # 调用新的处理函数
         return create_new_gallery(gallery_name)
-    # ^^^^^^ 【新增：新建Gallery命令】 ^^^^^^
 
-    # 添加别名命令 (所有用户)
+    # 添加别名命令
     add_alias_match = re.match(r'^添加别名\s+(\S+)\s+to\s+(\S+)$', message_text, re.IGNORECASE)
     if add_alias_match:
         if not is_superuser(str(event.user_id)):
@@ -67,7 +134,7 @@ async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> 
         folder_name = add_alias_match.group(2).strip()
         return await add_alias(alias, folder_name, str(event.user_id))
 
-    # 删除别名命令 (su only)
+    # 删除别名命令
     remove_alias_match = re.match(r'^删除别名\s+(\S+)\s+from\s+(\S+)$', message_text, re.IGNORECASE)
     if remove_alias_match:
         if not is_superuser(str(event.user_id)):
@@ -98,7 +165,6 @@ def reload_sticker_list() -> str:
         return f"重载失败: {e}"
 
 
-# vvvvvv 【新增：创建Gallery的函数】 vvvvvv
 def create_new_gallery(gallery_name: str) -> str:
     """
     创建一个新的 gallery (文件夹和配置)
@@ -106,7 +172,7 @@ def create_new_gallery(gallery_name: str) -> str:
     返回: 操作结果消息
     """
     try:
-        # 检查名称有效性 (不允许特殊字符，防止路径遍历等)
+        # 检查名称有效性
         if not re.match(r'^[a-zA-Z0-9_\u4e00-\u9fa5-]+$', gallery_name):
             return f"新建失败！名称 '{gallery_name}' 包含无效字符。"
         if gallery_name.lower() in ["stickers", "sticker", "表情", "表情包", "force"]:
@@ -114,7 +180,7 @@ def create_new_gallery(gallery_name: str) -> str:
         if len(gallery_name) > 50:
             return "新建失败！名称太长了。"
 
-        # 检查文件夹是否已存在 (使用 sticker_folders 检查)
+        # 检查文件夹是否已存在
         if gallery_name in sticker_folders:
             return f"新建失败！文件夹 '{gallery_name}' 已经存在。"
 
@@ -130,7 +196,6 @@ def create_new_gallery(gallery_name: str) -> str:
 
         # --- 2. 更新 list.json ---
         if not list_json_path.exists():
-            # 如果 list.json 不存在 (例如首次运行)，创建它
             data = {"folders": []}
         else:
             try:
@@ -139,7 +204,6 @@ def create_new_gallery(gallery_name: str) -> str:
                 if "folders" not in data or not isinstance(data["folders"], list):
                     data["folders"] = []
             except json.JSONDecodeError:
-                # 文件损坏，进行备份和重置
                 list_json_path.rename(list_json_path.with_suffix('.json.bak'))
                 data = {"folders": []}
                 print("警告: list.json 文件损坏，已备份并重置。")
@@ -158,14 +222,10 @@ def create_new_gallery(gallery_name: str) -> str:
         # --- 3. 重载配置到内存 ---
         load_sticker_list()
 
-        print(f"超级用户 新建了 gallery '{gallery_name}'")
         return f"成功新建 gallery '{gallery_name}'！现在可以向它投稿了。"
 
     except Exception as e:
         return f"新建 gallery 失败: {e}"
-
-
-# ^^^^^^ 【新增：创建Gallery的函数】 ^^^^^^
 
 
 async def add_alias(alias: str, folder_name: str, user_id: str) -> str:
@@ -175,37 +235,31 @@ async def add_alias(alias: str, folder_name: str, user_id: str) -> str:
     返回: 操作结果消息
     """
     try:
-        # 解析实际文件夹名称（支持别名）
+        # 解析实际文件夹名称
         actual_folder_name = resolve_folder_name(folder_name)
 
-        # 检查文件夹是否存在
         if actual_folder_name not in sticker_folders:
             return f"添加别名失败！文件夹 '{folder_name}' 不存在"
 
-        # 检查别名是否已被使用
         if alias in alias_to_folder:
             current_folder = alias_to_folder[alias]
             return f"添加失败，'{alias}' 已经是 '{current_folder}' 的别名了"
 
-        # 检查别名是否是其他文件夹的实际名称
         if alias in sticker_folders:
             return f"添加失败，'{alias}' 已经是一个实际文件夹名称"
 
-        # 加载当前的 list.json
         if not list_json_path.exists():
             return "添加别名失败！list.json 文件不存在"
 
         with open(list_json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        # 找到对应的文件夹配置并添加别名
         folder_found = False
         for folder_config in data["folders"]:
             if folder_config["name"] == actual_folder_name:
                 if "aliases" not in folder_config:
                     folder_config["aliases"] = []
 
-                # 检查别名是否已存在（避免重复）
                 if alias not in folder_config["aliases"]:
                     folder_config["aliases"].append(alias)
 
@@ -215,18 +269,11 @@ async def add_alias(alias: str, folder_name: str, user_id: str) -> str:
         if not folder_found:
             return f"添加别名失败！在 list.json 中未找到文件夹 '{actual_folder_name}'"
 
-        # 保存更新后的 list.json
         with open(list_json_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-        # 重载配置
         load_sticker_list()
 
-        # 记录操作日志
-        user_info = "超级用户" if is_superuser(user_id) else f"用户{user_id}"
-        print(f"{user_info} 为文件夹 '{actual_folder_name}' 添加了别名 '{alias}'")
-
-        # 显示信息
         display_info = f"'{actual_folder_name}'"
         if folder_name != actual_folder_name:
             display_info = f"'{folder_name}' (实际文件夹: '{actual_folder_name}')"
@@ -244,30 +291,24 @@ def remove_alias(alias: str, folder_name: str) -> str:
     返回: 操作结果消息
     """
     try:
-        # 解析实际文件夹名称（支持别名）
         actual_folder_name = resolve_folder_name(folder_name)
 
-        # 检查文件夹是否存在
         if actual_folder_name not in sticker_folders:
             return f"删除别名失败！文件夹 '{folder_name}' 不存在"
 
-        # 检查别名是否存在
         if alias not in alias_to_folder:
             return f"删除别名失败！'{alias}' 不是任何文件夹的别名"
 
-        # 检查别名是否属于指定的文件夹
         if alias_to_folder[alias] != actual_folder_name:
             actual_folder = alias_to_folder[alias]
             return f"删除别名失败！'{alias}' 是 '{actual_folder}' 的别名，不是 '{folder_name}' 的"
 
-        # 加载当前的 list.json
         if not list_json_path.exists():
             return "删除别名失败！list.json 文件不存在"
 
         with open(list_json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        # 找到对应的文件夹配置并删除别名
         folder_found = False
         alias_removed = False
 
@@ -286,16 +327,11 @@ def remove_alias(alias: str, folder_name: str) -> str:
         if not alias_removed:
             return f"删除别名失败！在 '{actual_folder_name}' 的别名列表中未找到 '{alias}'"
 
-        # 保存更新后的 list.json
         with open(list_json_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-        # 重载配置
         load_sticker_list()
 
-        print(f"超级用户 从文件夹 '{actual_folder_name}' 删除了别名 '{alias}'")
-
-        # 显示信息
         display_info = f"'{actual_folder_name}'"
         if folder_name != actual_folder_name:
             display_info = f"'{folder_name}' (实际文件夹: '{actual_folder_name}')"

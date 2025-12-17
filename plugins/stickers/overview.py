@@ -40,63 +40,89 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
     if not arg_text:
         await view_single_matcher.finish("请指定要查看的图片编号，例如：看表情 1024")
 
-    try:
-        target_id = int(arg_text)
-    except ValueError:
-        if arg_text.lower() in ["stickers", "sticker", "表情", "表情包"]:
-            return
+    # 分割参数
+    id_list = arg_text.split()
 
-        await view_single_matcher.finish(f"输入的编号 '{arg_text}' 不合法，请输入纯数字编号。")
+    # 兼容旧逻辑：如果只有一个参数且是保留关键字，直接返回（交给其他 matcher 处理）
+    if len(id_list) == 1 and id_list[0].lower() in ["stickers", "sticker", "表情", "表情包"]:
+        return
 
-    # 动态获取最大编号
+    # 上限检查
+    if len(id_list) > 5:
+        await view_single_matcher.finish("一次最多只能查看 5 张图片哦。")
+
+    # 动态获取当前最大编号
     current_max_id = send.current_max_id
-
-    if target_id <= 0:
-        await view_single_matcher.finish("图片编号必须大于 0。")
-
-    if target_id > current_max_id:
-        msg = f"找不到编号为 {target_id} 的图片。\n当前已有图片的最大编号为: {current_max_id}"
-        if current_max_id == 0:
-            msg = "当前图库中没有任何图片，无法查看。"
-        await view_single_matcher.finish(msg)
-
-    found_image_path: Optional[Path] = None
-    found_folder_name: Optional[str] = None
     valid_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
 
-    for folder_name, folder_path in sticker_folders.items():
-        if not folder_path.exists():
+    msg = Message()
+    error_msgs = []
+    has_valid_image = False
+
+    for id_str in id_list:
+        # 1. 基础格式校验
+        if not id_str.isdigit():
+            error_msgs.append(f"参数 '{id_str}' 不是合法的数字编号")
             continue
 
-        for ext in valid_extensions:
-            potential_path = folder_path / f"{target_id}{ext}"
-            potential_path_upper = folder_path / f"{target_id}{ext.upper()}"
+        target_id = int(id_str)
 
-            if potential_path.exists() and potential_path.is_file():
-                found_image_path = potential_path
-                found_folder_name = folder_name
-                break
-            elif potential_path_upper.exists() and potential_path_upper.is_file():
-                found_image_path = potential_path_upper
-                found_folder_name = folder_name
+        # 2. 范围校验
+        if target_id <= 0:
+            error_msgs.append(f"编号 {target_id} 必须大于 0")
+            continue
+
+        if target_id > current_max_id:
+            # 如果当前没有任何图片 (max_id=0)
+            if current_max_id == 0:
+                error_msgs.append(f"图库为空，无法查看编号 {target_id}")
+            else:
+                error_msgs.append(f"找不到编号 {target_id} (当前最大: {current_max_id})")
+            continue
+
+        # 3. 查找文件
+        found_image_path: Optional[Path] = None
+
+        for folder_name, folder_path in sticker_folders.items():
+            if not folder_path.exists():
+                continue
+
+            for ext in valid_extensions:
+                potential_path = folder_path / f"{target_id}{ext}"
+                potential_path_upper = folder_path / f"{target_id}{ext.upper()}"
+
+                if potential_path.exists() and potential_path.is_file():
+                    found_image_path = potential_path
+                    break
+                elif potential_path_upper.exists() and potential_path_upper.is_file():
+                    found_image_path = potential_path_upper
+                    break
+
+            if found_image_path:
                 break
 
+        # 4. 收集结果
         if found_image_path:
-            break
+            try:
+                # 累加图片消息段
+                msg += MessageSegment.image(found_image_path)
+                has_valid_image = True
+            except Exception as e:
+                logger.error(f"发送图片 {found_image_path} 失败: {e}")
+                error_msgs.append(f"编号 {target_id} 图片加载失败")
+        else:
+            # 理论上 ID 在范围内但文件不存在（可能被手动删除了）
+            error_msgs.append(f"编号 {target_id} 文件丢失")
 
-    if found_image_path and found_folder_name:
-        try:
-            msg = MessageSegment.image(found_image_path)
-            await view_single_matcher.finish(msg)
-        except FinishedException:
-            raise
-        except Exception as e:
-            logger.error(f"发送图片 {found_image_path} 失败: {e}")
-            await view_single_matcher.finish(f"找到图片但发送失败: {e}")
-    else:
-        await view_single_matcher.finish(
-            f"错误：虽然编号 {target_id} 在理论范围内，但在所有文件夹中均未找到对应文件。请检查是否手动删除了文件，或尝试重载配置。"
-        )
+    # 5. 发送最终结果
+    if has_valid_image:
+        # 如果有合法图片，先发图片，并在末尾附带错误信息（如果有）
+        if error_msgs:
+            msg += MessageSegment.text("\n⚠️ 部分编号未获取: " + " ".join(error_msgs))
+        await view_single_matcher.finish(msg)
+    elif error_msgs:
+        # 如果一张图都没找到，只发错误信息
+        await view_single_matcher.finish("\n".join(error_msgs))
 
 
 @view_all_matcher.handle()
