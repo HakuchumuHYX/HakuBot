@@ -7,7 +7,7 @@ from .config import plugin_config
 
 async def render_profile(url: str) -> bytes:
     """
-    访问 URL，隐藏原有页脚，注入自定义水印并截图
+    访问 URL，隐藏原有页脚，动态获取页面定义的 --theme-color 并注入自定义水印，最后截图
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -26,24 +26,36 @@ async def render_profile(url: str) -> bytes:
             logger.info(f"正在加载 PJSK 页面: {url}")
             await page.goto(url)
 
+            # 等待核心元素加载
             await page.wait_for_selector(".main-card", timeout=30000)
 
+            # 等待网络空闲
             await page.wait_for_load_state("networkidle")
 
             watermark_text = plugin_config.watermark.replace("\n", "<br>")
 
+            # 执行 JS 修改
             await page.evaluate(f"""() => {{
+                // 1. 从 html 标签获取 --theme-color 变量
+                const rootStyle = getComputedStyle(document.documentElement);
+                const themeColor = rootStyle.getPropertyValue('--theme-color').trim();
+
+                // 2. 隐藏无关元素
                 const adCard = document.querySelector('.announcement-card');
                 if (adCard) adCard.style.display = 'none';
 
                 const originalFooter = document.querySelector('.footer-info');
                 if (originalFooter) originalFooter.style.display = 'none';
 
+                // 3. 注入水印
                 const container = document.querySelector('.pjsk-container');
                 if (container) {{
                     const wmDiv = document.createElement('div');
                     wmDiv.style.textAlign = 'center';
-                    wmDiv.style.color = '#bb6688'; 
+
+                    // 使用动态获取的主题色，如果没有获取到则回退到默认色
+                    wmDiv.style.color = themeColor || '#bb6688'; 
+
                     wmDiv.style.opacity = '0.7';
                     wmDiv.style.fontSize = '14px';
                     wmDiv.style.fontWeight = 'bold';
@@ -56,6 +68,7 @@ async def render_profile(url: str) -> bytes:
                 }}
             }}""")
 
+            # 截图范围保持为 .app 以包含顶部装饰条
             target_locator = page.locator(".app")
 
             # 短暂等待渲染刷新
@@ -70,3 +83,4 @@ async def render_profile(url: str) -> bytes:
             raise e
         finally:
             await browser.close()
+            
