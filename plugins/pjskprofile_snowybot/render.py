@@ -83,4 +83,3 @@ async def render_profile(url: str) -> bytes:
             raise e
         finally:
             await browser.close()
-            
