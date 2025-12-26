@@ -47,16 +47,15 @@ async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup(
     target_url = construct_url(server, pjsk_id)
     if not target_url:
         await profile_matcher.finish("❌ 插件配置缺失(url或token)。")
-
     await profile_matcher.send("正在获取个人信息，请稍候...")
 
     try:
         image_bytes = await render_profile(target_url)
-
         await profile_matcher.finish(MessageSegment.image(image_bytes))
 
     except FinishedException:
         raise
     except Exception as e:
         logger.error(f"PJSK Profile 处理异常: {e}")
-        await profile_matcher.finish(f"❌ 获取失败，发生错误：\n{e}")
+        await profile_matcher.finish(f"获取SnowyBot版个人资料页出错，请稍后再试")
+        
