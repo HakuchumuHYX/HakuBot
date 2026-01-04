@@ -58,4 +58,3 @@ async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup(
     except Exception as e:
         logger.error(f"PJSK Profile 处理异常: {e}")
         await profile_matcher.finish(f"获取SnowyBot版个人资料页出错，请稍后再试")
-        

@@ -34,11 +34,7 @@ class PluginConfig(BaseModel, extra=Extra.ignore):
     ]
     independent_daily_limit: bool = False
     random_mode_decay_factor: float = 0.75
-
-    # --- [新功能] ---
-    custom_footer_text: str = ""  # 在这里输入您的自定义水印文本
-
-    # --- [新功能] 结束 ---
+    custom_footer_text: str = ""
 
     class Config:
         validate_assignment = True
@@ -79,5 +75,4 @@ def load_plugin_config() -> PluginConfig:
         return default_config
 
 
-# --- 4. 在导入时立即加载配置 ---
 plugin_config = load_plugin_config()
