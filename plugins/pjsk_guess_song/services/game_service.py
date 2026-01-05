@@ -1,6 +1,5 @@
 # pjsk_guess_song/services/game_service.py
 """
-(新文件 - 原 audio_service.py)
 游戏逻辑服务
 负责游戏模式定义、歌曲选择、效果组合等业务逻辑。
 """
@@ -120,7 +119,6 @@ class GameService:
         audio_source = None
         forced_start_ms = None
 
-        # (此选择逻辑保持不变)
         for song_attempt in range(MAX_SONG_RETRIES):
             if not song:
                 if preprocessed_mode:
@@ -263,7 +261,7 @@ class GameService:
         # 路径 2: 其他简单模式的快速路径
         if not use_slow_path:
             try:
-                # [重构] 调用 audio_processor
+                #  调用 audio_processor
                 total_duration_ms = await loop.run_in_executor(self.executor,
                                                                self.audio_processor.get_duration_ms_ffprobe_sync,
                                                                audio_source)
@@ -278,7 +276,7 @@ class GameService:
                 start_ms = random.randint(start_range_min,
                                           start_range_max) if start_range_min < start_range_max else start_range_min
 
-                # [重构] 调用 audio_processor
+                #  调用 audio_processor
                 success = await self.audio_processor.clip_audio_ffmpeg_fast(audio_source, clip_path_obj, start_ms,
                                                                             target_duration_ms / 1000.0)
                 if not success: raise RuntimeError("ffmpeg clipping failed")
@@ -290,7 +288,7 @@ class GameService:
 
         # 路径 3: 慢速路径 (pydub)
         try:
-            # [重构] 调用 audio_processor
+            #  调用 audio_processor
             audio_data = await self.audio_processor.get_audio_data(audio_source)
             if audio_data is None:
                 raise RuntimeError("Failed to get audio data (download failed?)")
@@ -417,7 +415,7 @@ class GameService:
         return dict(zip(scores, probabilities))
 
     def _mode_display_name(self, mode_key: str) -> str:
-        """(重构) 题型名美化，支持稳定ID"""
+        """ 题型名美化，支持稳定ID"""
         default_map = {"normal": "普通"}
         if mode_key in default_map: return default_map[mode_key]
         if mode_key.startswith("random_"):
@@ -433,28 +431,8 @@ class GameService:
         available_songs = getattr(self.cache_service, config['list_attr'])
         song_to_play = None
 
-        # --- [修改] 重构搜索逻辑以支持别名 ---
         if search_term:
-            search_lower = search_term.lower()
-
-            # 1. 按 ID 查找
-            if search_term.isdigit():
-                song_to_play = next((s for s in available_songs if s['id'] == int(search_term)), None)
-
-            # 2. 按别名查找 (新)
-            if not song_to_play and search_lower in self.cache_service.song_aliases:
-                # 从别名获取ID
-                target_id = int(self.cache_service.song_aliases[search_lower])
-                # 检查该ID是否在此模式的可用歌曲列表中
-                song_to_play = next((s for s in available_songs if s['id'] == target_id), None)
-
-            # 3. 按标题查找 (原逻辑)
-            if not song_to_play:
-                found_songs = [s for s in available_songs if search_lower in s['title'].lower()]
-                if found_songs:
-                    exact_match = next((s for s in found_songs if s['title'].lower() == search_lower), None)
-                    song_to_play = exact_match or min(found_songs, key=lambda s: len(s['title']))
-        # --- [修改] 结束 ---
+            song_to_play = self.cache_service.find_song_by_query(search_term, pool=available_songs)
         else:
             if not available_songs:
                 return None, None
@@ -473,7 +451,6 @@ class GameService:
                 mp3_source = self.cache_service.get_resource_path_or_url(relative_path)
 
         else:
-            # (原有的处理 accompaniment, vocals, bass, drums 的逻辑)
             sekai_ver = next((v for v in song_to_play.get('vocals', []) if v.get('musicVocalType') == 'sekai'), None)
             bundle_name = None
             if sekai_ver:
@@ -502,7 +479,6 @@ class GameService:
                 return None, None, None
             song_to_play = random.choice(self.cache_service.song_data)
         else:
-            # 此处调用了 find_song_by_query，它已支持别名
             song_to_play = self.cache_service.find_song_by_query(song_query)
 
         if not song_to_play:
@@ -543,7 +519,6 @@ class GameService:
 
     async def get_anvo_song_and_vocal(self, content: str) -> Tuple[Optional[Dict], Optional[Union[Dict, str]]]:
         """根据用户输入解析并返回Another Vocal歌曲和版本。"""
-        # (此函数不依赖 audio_processor，保持不变)
         song_to_play, vocal_info = None, None
 
         # 依赖 cache_service 的数据
@@ -571,7 +546,6 @@ class GameService:
 
             if is_char_combo and len(parts) > 1:
                 song_query = parts[0]
-                # 此处调用了 find_song_by_query，它已支持别名
                 song_to_play = self.cache_service.find_song_by_query(song_query)
                 if song_to_play:
                     for v in song_to_play.get('vocals', []):
@@ -594,7 +568,6 @@ class GameService:
                                                        c.get('characterId') == char_id for c in
                                                        v.get('characters', []))), None)
                 else:
-                    # 此处调用了 find_song_by_query，它已支持别名
                     song_to_play = self.cache_service.find_song_by_query(content)
                     if song_to_play:
                         vocal_info = 'list_versions'

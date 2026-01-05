@@ -5,6 +5,7 @@ import os
 import io
 import json
 import time
+import difflib
 from pathlib import Path
 from typing import List, Dict, Optional, Union
 from collections import defaultdict
@@ -27,7 +28,6 @@ class CacheService:
 
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # (修改点) 从 Pydantic config 读取
         self.use_local_resources = self.config.use_local_resources
         self.remote_resource_url_base = self.config.remote_resource_url_base.strip('/')
 
@@ -38,10 +38,9 @@ class CacheService:
         self.char_id_to_anov_songs = defaultdict(list)
         self.abbr_to_char_id: Dict[str, int] = {}
 
-        # --- [新增] 别名数据 ---
-        self.song_aliases_by_id: Dict[str, List[str]] = {}  # { "1": ["tyw", "tell your world"] }
-        self.song_aliases: Dict[str, str] = {}  # { "tyw": "1", "tell your world": "1" }
-        # --- [新增] 结束 ---
+        # 别名数据
+        self.song_aliases_by_id: Dict[str, List[str]] = {}
+        self.song_aliases: Dict[str, str] = {}
 
         self.available_piano_songs_bundles = set()
         self.preprocessed_tracks = defaultdict(set)
@@ -58,9 +57,7 @@ class CacheService:
             logger.error("核心数据文件加载失败，插件将无法正常工作。")
             return
 
-        # --- [新增] ---
         self._load_song_aliases()
-        # --- [新增] 结束 ---
 
         if self.use_local_resources:
             self._load_local_manifest()
@@ -120,7 +117,6 @@ class CacheService:
                 for item in data if item.get("characterId")
             }
 
-            # 将衍生数据的逻辑迁移到这里
             self.abbr_to_char_id = {
                 char_info['name'].lower(): int(char_id)
                 for char_id, char_info in self.character_data.items() if char_info.get('name')
@@ -131,7 +127,6 @@ class CacheService:
             logger.error(f"加载或解析角色数据失败: {e}")
             return False
 
-    # --- [新增] ---
     def _load_song_aliases(self) -> bool:
         """同步加载 song_aliases.json 数据"""
         aliases_file = self.resources_dir / "song_aliases.json"
@@ -147,7 +142,6 @@ class CacheService:
             for song_id, aliases in self.song_aliases_by_id.items():
                 if isinstance(aliases, list):
                     for alias in aliases:
-                        # 使用 .lower() 来支持不区分大小写的匹配
                         self.song_aliases[alias.lower()] = song_id
 
             logger.info(f"成功加载 {len(self.song_aliases)} 个歌曲别名。")
@@ -155,8 +149,6 @@ class CacheService:
         except (json.JSONDecodeError, IOError) as e:
             logger.error(f"加载或解析 song_aliases.json 失败: {e}")
             return False
-
-    # --- [新增] 结束 ---
 
     def _load_local_manifest(self):
         """同步加载本地资源清单。"""
@@ -291,27 +283,64 @@ class CacheService:
             logger.error(f"无法打开图片资源 {source}: {e}", exc_info=True)
             return None
 
-    # --- [修改] ---
-    def find_song_by_query(self, query: str) -> Optional[Dict]:
-        """通过ID、别名或名称统一查找歌曲，优先精确匹配。"""
+    def find_song_by_query(self, query: str, pool: Optional[List[Dict]] = None) -> Optional[Dict]:
+        """
+        通过ID、别名或名称统一查找歌曲。
+        优先精确匹配，若无结果则尝试模糊匹配（允许少量错字）。
 
-        # 1. 按 ID 查找
+        :param query: 搜索词
+        :param pool: (可选) 搜索范围列表，默认为所有歌曲 (self.song_data)
+        """
+        if not query:
+            return None
+
+        # 确定搜索池
+        target_pool = pool if pool is not None else self.song_data
+        # 建立 ID 集合以便快速验证 (提升性能)
+        pool_ids = {s['id'] for s in target_pool}
+
+        # 1. 按 ID 查找 (最快)
         if query.isdigit():
-            return next((s for s in self.song_data if s['id'] == int(query)), None)
+            s_id = int(query)
+            if s_id in pool_ids:
+                return next((s for s in target_pool if s['id'] == s_id), None)
 
-        query_lower = query.lower()
+        query_lower = query.lower().strip()
 
-        # 2. 按别名查找 (新)
+        # 2. 按别名查找 (精确匹配)
         if query_lower in self.song_aliases:
             target_id = int(self.song_aliases[query_lower])
-            return next((s for s in self.song_data if s['id'] == target_id), None)
+            if target_id in pool_ids:
+                return next((s for s in target_pool if s['id'] == target_id), None)
 
-        # 3. 按标题查找 (原逻辑)
-        found_songs = [s for s in self.song_data if query_lower in s['title'].lower()]
-        if not found_songs: return None
+        # 3. 按标题查找 (包含匹配 & 精确匹配优先)
+        found_songs = [s for s in target_pool if query_lower in s['title'].lower()]
+        if found_songs:
+            # 如果有完全一样的，优先返回
+            exact_match = next((s for s in found_songs if s['title'].lower() == query_lower), None)
+            return exact_match or min(found_songs, key=lambda s: len(s['title']))
 
-        exact_match = next((s for s in found_songs if s['title'].lower() == query_lower), None)
-        return exact_match or min(found_songs, key=lambda s: len(s['title']))
+        # 4. 模糊匹配 (difflib)
+        # 构建候选词典: {name_or_alias: song_id}
+        candidates = {}
+        for s in target_pool:
+            candidates[s['title'].lower()] = s['id']
+
+        # 将指向当前 pool 中歌曲的别名也加入候选
+        for alias, sid in self.song_aliases.items():
+            if int(sid) in pool_ids:
+                candidates[alias] = int(sid)
+
+        # cutoff=0.6 表示相似度至少要 60%
+        matches = difflib.get_close_matches(query_lower, candidates.keys(), n=1, cutoff=0.6)
+
+        if matches:
+            best_match_name = matches[0]
+            target_id = candidates[best_match_name]
+            logger.info(f"模糊搜索命中: '{query}' -> '{best_match_name}' (ID: {target_id})")
+            return next((s for s in target_pool if s['id'] == target_id), None)
+
+        return None
 
     # --- [修改] 结束 ---
 
