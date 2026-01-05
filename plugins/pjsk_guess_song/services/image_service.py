@@ -273,6 +273,7 @@ class ImageService:
                 "  '听anvo [歌名/ID] [角色名缩写]' - 播放指定或随机的 Another Vocal\n\n"
                 "■ 其他功能\n"
                 "  '猜歌帮助' - 显示此帮助信息\n"
+                "  '猜歌资源' - 显示当前的资源版本\n"
             )
 
             draw = ImageDraw.Draw(img)
