@@ -47,6 +47,7 @@ async def call_image_generation(content_list: List[dict]) -> str:
         "Do NOT write python code or explanations. "
         "Directly generate the image requested by the user. "
         "Output the image URL in Markdown format: ![image](url)."
+        "生成的图片画风用漫画/二次元画风为佳。"
     )
 
     payload = {
