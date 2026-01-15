@@ -1,14 +1,14 @@
 目前接入了管理插件的有  
 赛博浅草寺（抽签）：draw_lots  
 鹿签到：deer_pipe  
-B站链接解析：analysis_bilibili  
+B 站链接解析：analysis_bilibili  
 帮助文档：help_plugin  
 二择：two_choices  
 欢迎新群员：welcome  
 今日人品：jrrp  
 复读姬：plus_one  
 动画表情保存：sticker_saver  
-呼叫ATRI：atri_reply  
+呼叫 ATRI：atri_reply  
 定时消息：daily_message  
 鉴定：identify  
 群聊消息统计：group_statistics  
@@ -18,16 +18,19 @@ B站链接解析：analysis_bilibili
 戳一戳：poke_reply  
 戳一戳回复：poke_reply:poke  
 戳一戳投稿：poke_reply:contribute  
-PJSK猜歌：pjsk_guess_song  
-PJSK听歌：pjsk_guess_song:listen  
-私戳bot主：send_and_reply  
+PJSK 猜歌：pjsk_guess_song  
+PJSK 听歌：pjsk_guess_song:listen  
+私戳 bot 主：send_and_reply  
 随机表情包：stickers  
 图片处理：image_processor  
-gif倒放：image_processor:reverse  
-git加速：image_processor:speed  
+gif 倒放：image_processor:reverse  
+git 加速：image_processor:speed  
 图片对称：image_processor:symmetry  
 图片抠图：image_processor:cutout  
-视频转GIF：image_processor:video_to_gif  
+视频转 GIF：image_processor:video_to_gif  
 图片镜像：image_processor:mirror  
 图片旋转：image_processor:rotate  
-何意味？：hyw
+何意味？：hyw  
+AI 助手：ai_assistant  
+AI 对话：ai_assistant:chat  
+AI 生图：ai_assistant:imagen

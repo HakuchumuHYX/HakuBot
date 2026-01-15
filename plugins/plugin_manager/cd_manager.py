@@ -16,7 +16,6 @@ from . import (
 )
 
 
-# --- 供其他插件调用的核心API ---
 def get_plugin_cd_duration(plugin_id: str, group_id: str) -> int:
     """
     获取某个插件/功能在指定群的CD时长（单位：秒）

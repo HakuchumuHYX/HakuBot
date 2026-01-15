@@ -5,6 +5,7 @@ from .config import HelpConfig
 # 模板目录路径
 TEMPLATE_PATH = Path(__file__).parent / "templates"
 
+
 async def render_help_image(config: HelpConfig, is_dark: bool) -> bytes:
     """
     使用 htmlrender 渲染图片

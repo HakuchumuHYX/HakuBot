@@ -8,6 +8,7 @@ from typing import List, Tuple
 import nonebot_plugin_localstore as store
 from .config import load_config, HelpConfig
 from .drawer import render_help_image
+from nonebot.log import logger
 
 # 缓存文件名模板
 CACHE_IMG_TEMPLATE = "help_cache_{mode}.png"
@@ -40,7 +41,6 @@ class HelpManager:
         """保存图片和哈希值到 data 目录"""
         with open(img_path, "wb") as f:
             f.write(img_bytes)
-        # 更新哈希值 (注意：哈希值是通用的，只要配置没变，日/夜缓存都有效)
         with open(self.hash_path, "w", encoding="utf-8") as f:
             f.write(new_hash)
 
@@ -79,7 +79,7 @@ class HelpManager:
 
         # 4. 如果缓存无效，重新渲染
         if not cache_valid:
-            print(f"Rendering help image for mode: {mode_suffix.upper()}...")
+            logger.info(f"Rendering help image for mode: {mode_suffix.upper()}...")
             # 传入 is_dark 参数
             img_bytes = await render_help_image(self.current_config, is_dark=is_dark)
             self._save_cache(img_bytes, current_img_path, current_hash)

@@ -59,8 +59,6 @@ def save_plugin_status(data: Dict[str, Dict[str, bool]]):
 
 
 # --- CD 管理 I/O ---
-
-# vvvvvv 【修改点 1：更新CD配置的加载函数】 vvvvvv
 def load_cd_config() -> Dict[str, Dict[str, int]]:
     """加载插件CD时长配置 (已更新为分群结构)"""
     if CD_CONFIG_FILE.exists():
@@ -77,9 +75,6 @@ def save_cd_config(data: Dict[str, Dict[str, int]]):
     """保存插件CD时长配置 (已更新为分群结构)"""
     with open(CD_CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-# ^^^^^^ 【修改点 1：更新CD配置的加载函数】 ^^^^^^
 
 
 def load_cd_runtime() -> Dict[str, Dict[str, Dict[str, float]]]:

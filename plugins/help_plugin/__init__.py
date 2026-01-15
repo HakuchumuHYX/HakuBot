@@ -11,14 +11,11 @@ help_cmd = on_command("help", aliases={"帮助", "菜单"}, priority=5, block=Tr
 reload_cmd = on_command("reload_help", aliases={"重载帮助"}, priority=1, block=True)
 
 
-# --- 启动时预热 ---
 @driver.on_startup
 async def _():
-    # 记得加 await
     await help_manager.get_help_data()
 
 
-# --- 帮助命令 ---
 @help_cmd.handle()
 async def handle_help(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     try:
