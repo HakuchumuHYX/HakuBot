@@ -1,5 +1,5 @@
-from nonebot import on_message, on_command
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message
+from nonebot import on_message, on_command, on
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, Event
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
@@ -28,6 +28,44 @@ async def handle_group_message(event: GroupMessageEvent):
 
     # 记录用户消息
     data_manager.record_user_message(group_id, user_id, user_card)
+
+
+# 监听自身发送的消息 (OneBot 扩展事件 message_sent)
+def is_message_sent(event: Event) -> bool:
+    return getattr(event, "post_type", "") == "message_sent"
+
+sent_handler = on(rule=is_message_sent, priority=MESSAGE_HANDLER_PRIORITY, block=False)
+
+
+@sent_handler.handle()
+async def handle_sent_message(bot: Bot, event: Event):
+    """处理自身发送的消息并更新统计"""
+    # 确保是群消息
+    if getattr(event, "message_type", "") != "group":
+        return
+
+    group_id = getattr(event, "group_id", None)
+    if not group_id:
+        return
+
+    # 检查插件是否启用
+    if not is_plugin_enabled("group_statistics", str(group_id), "0"):
+        return
+
+    # 尝试获取用户ID，如果获取失败则使用机器人自身ID
+    user_id = getattr(event, "user_id", bot.self_id)
+    
+    # 尝试获取发送者名片
+    user_card = "ATRI"
+    if hasattr(event, "sender"):
+        sender = event.sender
+        if isinstance(sender, dict):
+            user_card = sender.get("card") or sender.get("nickname") or "ATRI"
+        else:
+            user_card = getattr(sender, "card", "") or getattr(sender, "nickname", "") or "ATRI"
+
+    # 记录消息
+    data_manager.record_user_message(group_id, int(user_id), user_card)
 
 
 # 手动查询命令
