@@ -19,33 +19,11 @@ from ..utils.common import create_exact_command_rule
 from nonebot.rule import Rule
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-try:
-    # 导入功能开关API
-    from ..plugin_manager.enable import is_plugin_enabled as check_plugin
-    from ..plugin_manager.enable import is_feature_enabled
-    # 导入CD管理API
-    from ..plugin_manager.cd_manager import check_cd, update_cd
-
-    PLUGIN_MANAGER_LOADED = True
-except ImportError:
-    PLUGIN_MANAGER_LOADED = False
-
-
-    # 定义回退函数
-    def check_plugin(plugin_name: str, group_id: str, user_id: str) -> bool:
-        return True
-
-
-    def is_feature_enabled(plugin_name: str, feature_name: str, group_id: str, user_id: str) -> bool:
-        return True
-
-
-    def check_cd(plugin_id: str, group_id: str, user_id: str) -> int:
-        return 0
-
-
-    def update_cd(plugin_id: str, group_id: str, user_id: str):
-        pass
+# 导入功能开关API
+from ..plugin_manager.enable import is_plugin_enabled as check_plugin
+from ..plugin_manager.enable import is_feature_enabled
+# 导入CD管理API
+from ..plugin_manager.cd_manager import check_cd, update_cd
 # ^^^^^^ 插件管理 API 结束 ^^^^^^
 
 # 插件标识符
@@ -83,10 +61,7 @@ Zero_today = time.mktime(timeArray)
 
 # --- 插件管理规则 (供其他模块导入) ---
 def is_plugin_enabled_internal(group_id: str, user_id: str) -> bool:
-    try:
-        return check_plugin(PLUGIN_NAME, group_id, user_id)
-    except (ImportError, TypeError):
-        return True
+    return check_plugin(PLUGIN_NAME, group_id, user_id)
 
 
 async def check_plugin_enabled(event: GroupMessageEvent) -> bool:
@@ -94,10 +69,7 @@ async def check_plugin_enabled(event: GroupMessageEvent) -> bool:
 
 
 def is_yinpa_enabled_internal(group_id: str, user_id: str) -> bool:
-    try:
-        return is_feature_enabled(PLUGIN_NAME, "yinpa", group_id, user_id)
-    except (ImportError, TypeError):
-        return True
+    return is_feature_enabled(PLUGIN_NAME, "yinpa", group_id, user_id)
 
 
 async def check_yinpa_enabled(event: GroupMessageEvent) -> bool:

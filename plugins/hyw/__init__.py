@@ -4,13 +4,8 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.rule import Rule
 
 # --- 导入管理插件 API ---
-try:
-    from ..plugin_manager.enable import is_plugin_enabled
-    from ..plugin_manager.cd_manager import check_cd, update_cd
-except ImportError:
-    # 备用导入路径，防止路径层级不同导致报错
-    from src.plugins.plugin_manager.enable import is_plugin_enabled
-    from src.plugins.plugin_manager.cd_manager import check_cd, update_cd
+from ..plugin_manager.enable import is_plugin_enabled
+from ..plugin_manager.cd_manager import check_cd, update_cd
 
 # --- 配置 ---
 PLUGIN_ID = "hyw"

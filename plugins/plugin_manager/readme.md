@@ -24,7 +24,7 @@ PJSK 听歌：pjsk_guess_song:listen
 随机表情包：stickers  
 图片处理：image_processor  
 gif 倒放：image_processor:reverse  
-git 加速：image_processor:speed  
+gif 加速：image_processor:speed  
 图片对称：image_processor:symmetry  
 图片抠图：image_processor:cutout  
 视频转 GIF：image_processor:video_to_gif  

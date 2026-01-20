@@ -4,6 +4,7 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 
 from .manager import help_manager
+from ..plugin_manager.enable import is_plugin_enabled
 
 driver = get_driver()
 
@@ -18,6 +19,11 @@ async def _():
 
 @help_cmd.handle()
 async def handle_help(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
+    # 检查插件是否启用
+    user_id = str(event.user_id)
+    if not is_plugin_enabled("help_plugin", str(event.group_id), user_id):
+        return
+    
     try:
         img_path, links = await help_manager.get_help_data(force_update=False)
 

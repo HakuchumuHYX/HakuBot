@@ -39,6 +39,9 @@ from .__init__ import (
     record_CP_file, record_waifu_file, record_lock_file, protect_list_file
 )
 
+# 导入功能开关检查
+from ..plugin_manager.enable import is_feature_enabled
+
 # --- 保护名单 ---
 
 protect = on_command("娶群友保护",
@@ -280,6 +283,9 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 async def bye_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:
     """离婚命令规则"""
     if not await check_plugin_enabled(event):
+        return False
+    # 检查 bye 功能是否启用
+    if not is_feature_enabled(PLUGIN_NAME, "bye", str(event.group_id), str(event.user_id)):
         return False
     msg = event.message.extract_plain_text().strip()
     if msg not in ["离婚", "分手"]:
