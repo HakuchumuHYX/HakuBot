@@ -1,41 +1,52 @@
-# poke_reply/config.py
 from pathlib import Path
-from typing import List, Set
+from typing import Set, Dict, List
 import json
 from nonebot import logger
 import nonebot_plugin_localstore as localstore
 
-# 文件路径配置
-PLUGIN_DIR = Path(__file__).parent
+# --- 基础路径配置 ---
 PLUGIN_NAME = "poke_reply"
-data_dir = localstore.get_data_dir(PLUGIN_NAME)
-data_dir.mkdir(parents=True, exist_ok=True)
-TEXT_FILES_DIR = data_dir / "text_files"
-IMAGE_FILES_DIR = data_dir / "image_files"
-CONFIG_FILES_DIR = data_dir / "config_files"
+PLUGIN_DIR = Path(__file__).parent
+DATA_DIR = localstore.get_data_dir(PLUGIN_NAME)
 
-# 确保目录存在
+# 创建必要的目录
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+TEXT_FILES_DIR = DATA_DIR / "text_files"
+IMAGE_FILES_DIR = DATA_DIR / "image_files"
+CONFIG_FILES_DIR = DATA_DIR / "config_files"
+
 TEXT_FILES_DIR.mkdir(exist_ok=True)
 IMAGE_FILES_DIR.mkdir(exist_ok=True)
 CONFIG_FILES_DIR.mkdir(exist_ok=True)
 
-# 配置文件路径
-# (POKE_CD_GROUPS_FILE 已删除)
+# --- 缓存文件路径 ---
+MESSAGE_CACHE_FILE = DATA_DIR / "message_cache.json"
+TEXT_IMAGE_CACHE_FILE = DATA_DIR / "text_image_cache.json"
+DELETE_REQUESTS_FILE = DATA_DIR / "delete_requests.json"
+IMAGE_HASH_CACHE_FILE = DATA_DIR / "image_hash_cache.json"
+
+# --- 配置文件路径 ---
 TEXT_TO_IMAGE_GROUPS_FILE = CONFIG_FILES_DIR / "text_to_image_groups.json"
 
-# 插件配置
+# --- 常量配置 ---
+# 文本相似度阈值
 SIMILARITY_THRESHOLD = 0.6
-MAX_TEXT_LENGTH = 1000
-CONTRIBUTE_COMMAND_PRIORITY = 5
+# 图片相似度阈值
 IMAGE_SIMILARITY_THRESHOLD = 50
-
-# 文本转图片配置
-TEXT_TO_IMAGE_LENGTH_THRESHOLD = 200
+# 最大文本长度
+MAX_TEXT_LENGTH = 1000
+# 投稿命令优先级
+CONTRIBUTE_COMMAND_PRIORITY = 5
+# 文本转图片默认长度阈值
+DEFAULT_TEXT_TO_IMAGE_THRESHOLD = 200
 TEXT_TO_IMAGE_COMMAND_PRIORITY = 6
+# 缓存过期时间 (秒)
+CACHE_EXPIRE_TIME = 10 * 60  # 10分钟
+IMAGE_HASH_CACHE_TTL = 30 * 24 * 60 * 60  # 30天
+# 图片哈希缓存版本
+CACHE_VERSION = "1.0_poke_reply"
 
-# (POKE_CD_TIME 已删除)
-
-# 默认回复文本
+# --- 默认文本 ---
 DEFAULT_TEXTS = [
     "ERROR! text.json失踪了喵！",
     "ERROR! text.json是空的喵！",
@@ -43,21 +54,17 @@ DEFAULT_TEXTS = [
     "ERROR! text.json加载错误喵！"
 ]
 
-# 默认启用的群组
-# (DEFAULT_POKE_CD_GROUPS 已删除)
+# --- 运行时配置 ---
+TEXT_TO_IMAGE_ENABLED_GROUPS: Set[int] = set()
+TEXT_TO_IMAGE_LENGTH_THRESHOLD = DEFAULT_TEXT_TO_IMAGE_THRESHOLD
 DEFAULT_TEXT_TO_IMAGE_GROUPS = {}
 
-# 全局变量，存储启用的群组
-# (POKE_CD_ENABLED_GROUPS 已删除)
-TEXT_TO_IMAGE_ENABLED_GROUPS: Set[int] = set()
+# --- 配置加载与保存函数 ---
 
-
-def load_config_groups():
-    """加载启用的群组配置"""
+def load_config():
+    """加载所有配置"""
     global TEXT_TO_IMAGE_ENABLED_GROUPS
-
-    # (加载戳一戳CD群组部分 已删除)
-
+    
     # 加载文本转图片群组
     if TEXT_TO_IMAGE_GROUPS_FILE.exists():
         try:
@@ -67,12 +74,10 @@ def load_config_groups():
         except Exception as e:
             logger.error(f"加载文本转图片群组配置失败: {e}")
             TEXT_TO_IMAGE_ENABLED_GROUPS = DEFAULT_TEXT_TO_IMAGE_GROUPS.copy()
+            save_text_to_image_groups()
     else:
         TEXT_TO_IMAGE_ENABLED_GROUPS = DEFAULT_TEXT_TO_IMAGE_GROUPS.copy()
         save_text_to_image_groups()
-
-
-# (save_poke_cd_groups 已删除)
 
 def save_text_to_image_groups():
     """保存文本转图片群组配置"""
@@ -83,49 +88,41 @@ def save_text_to_image_groups():
     except Exception as e:
         logger.error(f"保存文本转图片群组配置失败: {e}")
 
+# --- 路径获取辅助函数 ---
 
 def get_group_text_path(group_id: int) -> Path:
     return TEXT_FILES_DIR / f"text_{group_id}.json"
-
 
 def get_group_image_dir(group_id: int) -> Path:
     group_dir = IMAGE_FILES_DIR / f"group_{group_id}"
     group_dir.mkdir(exist_ok=True)
     return group_dir
 
-
 def get_group_image_list_path(group_id: int) -> Path:
     return IMAGE_FILES_DIR / f"images_{group_id}.json"
 
+# --- 配置操作辅助函数 ---
 
 def add_text_to_image_group(group_id: int) -> None:
     TEXT_TO_IMAGE_ENABLED_GROUPS.add(group_id)
     save_text_to_image_groups()
 
-
 def remove_text_to_image_group(group_id: int) -> None:
     TEXT_TO_IMAGE_ENABLED_GROUPS.discard(group_id)
     save_text_to_image_groups()
 
-
 def is_text_to_image_enabled(group_id: int) -> bool:
     return group_id in TEXT_TO_IMAGE_ENABLED_GROUPS
-
 
 def set_text_to_image_threshold(threshold: int) -> None:
     global TEXT_TO_IMAGE_LENGTH_THRESHOLD
     TEXT_TO_IMAGE_LENGTH_THRESHOLD = threshold
 
-
 def get_text_to_image_threshold() -> int:
     return TEXT_TO_IMAGE_LENGTH_THRESHOLD
-
-
-# (所有 poke_cd 相关函数 已删除)
 
 def get_text_to_image_enabled_groups() -> Set[int]:
     return TEXT_TO_IMAGE_ENABLED_GROUPS.copy()
 
-
-# 在模块加载时自动加载配置
-load_config_groups()
+# 初始化加载
+load_config()

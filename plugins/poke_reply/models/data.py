@@ -1,18 +1,13 @@
-# poke_reply/core/data_manager.py
-# poke_reply/data_manager.py
 import json
 import os
-import time
 import uuid
 from typing import List, Dict, Tuple
-from pathlib import Path
 from nonebot import logger
 
-# vvvvvv 【修改：导入路径】 vvvvvv
-from .config import get_group_text_path, get_group_image_dir, get_group_image_list_path, DEFAULT_TEXTS
-from .common import get_group_id
-# ^^^^^^ 【修改：导入路径】 ^^^^^^
-
+from ..config import (
+    get_group_text_path, get_group_image_dir, 
+    get_group_image_list_path, DEFAULT_TEXTS
+)
 
 class TextDataManager:
     def __init__(self):
@@ -198,13 +193,11 @@ class TextDataManager:
             if not self.load_image_data(group_id):
                 return False
         return True
-
+    
     def get_all_group_ids(self) -> List[int]:
-        # vvvvvv 【修改：合并两个来源的ID】 vvvvvv
         text_group_ids = set(self.group_texts.keys())
         image_group_ids = set(self.group_images.keys())
         return list(text_group_ids.union(image_group_ids))
-        # ^^^^^^ 【修改：合并两个来源的ID】 ^^^^^^
 
     def cleanup_missing_images(self, group_id: int) -> int:
         if group_id not in self.group_images:
