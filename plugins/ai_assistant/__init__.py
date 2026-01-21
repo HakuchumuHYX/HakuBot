@@ -112,5 +112,5 @@ async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         raise
 
     except Exception as e:
-        logger.error(f"Draw Error: {e}")
+        logger.exception("Draw Error")
         await draw_matcher.finish(f"生图失败: {str(e)}")

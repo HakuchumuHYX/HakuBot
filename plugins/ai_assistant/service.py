@@ -66,51 +66,54 @@ async def call_image_generation(content_list: List[dict]) -> str:
     ]
     logger.debug(f"Payload 概览: {json.dumps(debug_payload, ensure_ascii=False)}")
 
-    async with httpx.AsyncClient(
-            base_url=plugin_config.base_url,
-            proxies=plugin_config.proxy,
-            timeout=plugin_config.timeout
-    ) as client:
-        resp = await client.post("/chat/completions", json=payload, headers=HEADERS)
+    try:
+        async with httpx.AsyncClient(
+                base_url=plugin_config.base_url,
+                proxies=plugin_config.proxy,
+                timeout=plugin_config.timeout
+        ) as client:
+            resp = await client.post("/chat/completions", json=payload, headers=HEADERS)
 
-        if resp.status_code != 200:
-            logger.error(f"API 返回: {resp.text}")
-            raise Exception(f"API Error {resp.status_code}")
+            if resp.status_code != 200:
+                logger.error(f"API 返回: {resp.text}")
+                raise Exception(f"API Error {resp.status_code}")
 
-        data = resp.json()
+            data = resp.json()
+    except httpx.TimeoutException:
+        raise Exception(f"请求超时，已等待 {plugin_config.timeout} 秒。")
 
-        try:
-            choice = data["choices"][0]
-            message = choice.get("message", {})
-            content = message.get("content")
+    try:
+        choice = data["choices"][0]
+        message = choice.get("message", {})
+        content = message.get("content")
 
-            if "images" in message and isinstance(message["images"], list) and message["images"]:
-                image_obj = message["images"][0]
-                if "image_url" in image_obj and "url" in image_obj["image_url"]:
-                    logger.info("成功从 message.images 字段提取到图片URL")
-                    return image_obj["image_url"]["url"]
+        if "images" in message and isinstance(message["images"], list) and message["images"]:
+            image_obj = message["images"][0]
+            if "image_url" in image_obj and "url" in image_obj["image_url"]:
+                logger.info("成功从 message.images 字段提取到图片URL")
+                return image_obj["image_url"]["url"]
 
-            if content:
-                match = re.search(r'\!\[.*?\]\((.*?)\)', content)
-                if match:
-                    return match.group(1)
+        if content:
+            match = re.search(r'\!\[.*?\]\((.*?)\)', content)
+            if match:
+                return match.group(1)
 
-                urls = re.findall(r'(https?://[^\s)"]+)', content)
-                for url in urls:
-                    if not url.endswith(('.py', '.html', '.css', '.js')):
-                        return url
+            urls = re.findall(r'(https?://[^\s)"]+)', content)
+            for url in urls:
+                if not url.endswith(('.py', '.html', '.css', '.js')):
+                    return url
 
-            if content is None:
-                finish_reason = choice.get("finish_reason")
-                if finish_reason == "content_filter":
-                    raise Exception("生图请求被AI模型的安全策略拒绝了(Content Filter)。")
+        if content is None:
+            finish_reason = choice.get("finish_reason")
+            if finish_reason == "content_filter":
+                raise Exception("生图请求被AI模型的安全策略拒绝了(Content Filter)。")
 
-                logger.error(f"API返回数据异常。完整数据: {json.dumps(data, ensure_ascii=False)}")
-                raise Exception("API 返回成功，但未找到图片地址。")
+            logger.error(f"API返回数据异常。完整数据: {json.dumps(data, ensure_ascii=False)}")
+            raise Exception("API 返回成功，但未找到图片地址。")
 
-            preview = content[:50].replace('\n', ' ')
-            raise Exception(f"模型回复了文本但未包含图片链接: “{preview}...”")
+        preview = content[:50].replace('\n', ' ')
+        raise Exception(f"模型回复了文本但未包含图片链接: “{preview}...”")
 
-        except (KeyError, IndexError) as e:
-            logger.error(f"解析失败: {data}")
-            raise Exception(f"API响应格式异常: {e}")
+    except (KeyError, IndexError) as e:
+        logger.error(f"解析失败: {data}")
+        raise Exception(f"API响应格式异常: {e}")
