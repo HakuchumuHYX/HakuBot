@@ -58,28 +58,32 @@ async def plush_handler(bot: Bot, event: Event):
     if group_id in config.plus_one_black_list:
         return
 
+    # 如果是机器人自己发的消息（虽然通常 on_message 不会触发，但以防万一有 echo）
+    if event.get_user_id() == bot.self_id:
+        msg_dict[group_id] = []
+        return
+
     # 获取当前信息
     msg = event.get_message()
 
     message_text = extract_text_from_message(msg)
     if contains_blocked_words(message_text):
-        # 如果包含屏蔽词，不进行+1处理
+        # 如果包含屏蔽词，清空记录并返回
+        msg_dict[group_id] = []
         return
 
     # 获取群聊记录
-    text_list = msg_dict.get(group_id, None)
-    if not text_list:
-        text_list = []
-        msg_dict[group_id] = text_list
+    text_list = msg_dict.get(group_id, [])
 
-    try:
+    # 检查是否与上一条消息相同
+    if text_list:
         if not is_equal(text_list[-1], msg):
+            # 如果不相同，重置列表
             text_list = []
-            msg_dict[group_id] = text_list
-    except IndexError:
-        pass
-
+    
+    # 将当前消息加入（此时 text_list 要么是空的，要么包含之前的相同消息）
     text_list.append(msg)
+    msg_dict[group_id] = text_list
 
     if len(text_list) == 2:
         await plus.send(msg)
