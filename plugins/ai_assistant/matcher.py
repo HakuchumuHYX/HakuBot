@@ -1,0 +1,207 @@
+from nonebot import on_command
+from nonebot.adapters.onebot.v11 import Bot, MessageEvent, Message, MessageSegment, GroupMessageEvent
+from nonebot.params import CommandArg
+from nonebot.log import logger
+from nonebot.permission import SUPERUSER
+from nonebot.exception import FinishedException
+
+from .utils import *
+from .config import plugin_config, save_config
+from .service import call_chat_completion, call_image_generation
+
+try:
+    from ..plugin_manager.enable import is_plugin_enabled, is_feature_enabled
+    from ..plugin_manager.cd_manager import check_cd, update_cd
+
+    MANAGER_AVAILABLE = True
+except ImportError:
+    logger.warning("未找到 plugin_manager 插件，将跳过管理功能检查。")
+    MANAGER_AVAILABLE = False
+
+PLUGIN_NAME = "ai_assistant"
+
+# 注册命令
+chat_matcher = on_command("chat", priority=5, block=True)
+draw_matcher = on_command("生图", priority=5, block=True)
+model_cmd = on_command("切换模型", aliases={"更改模型", "change_model"}, permission=SUPERUSER, priority=1, block=True)
+
+
+@chat_matcher.handle()
+async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
+        group_id = str(event.group_id)
+        user_id = str(event.user_id)
+
+        # 1. 检查插件总开关
+        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
+            await chat_matcher.finish()  # 禁用时静默失败
+
+        # 2. 检查功能分开关 (feature: chat)
+        if not is_feature_enabled(PLUGIN_NAME, "chat", group_id, user_id):
+            await chat_matcher.finish()
+
+        # 3. 检查功能 CD (key: ai_assistant:chat)
+        cd_key = f"{PLUGIN_NAME}:chat"
+        cd_remain = check_cd(cd_key, group_id, user_id)
+        if cd_remain > 0:
+            await chat_matcher.finish(f"Chat功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
+
+        # 4. 更新 CD (命令成功触发即进入CD)
+        update_cd(cd_key, group_id, user_id)
+
+    try:
+        content_list = await parse_message_content(event, args)
+
+        if not content_list:
+            await chat_matcher.finish("请提供对话内容，或回复包含内容的消息。")
+
+        messages = [
+            {"role": "system", "content": plugin_config.system_prompt},
+            {"role": "user", "content": content_list}
+        ]
+
+        await chat_matcher.send("正在思考中...")
+        reply_text, model_name, tokens = await call_chat_completion(messages)
+
+        cleaned_text = remove_markdown(reply_text)
+        stat_text = f"\n\n—— 使用模型: {model_name} | Token消耗: {tokens}"
+        full_reply = cleaned_text + stat_text
+
+        if isinstance(event, GroupMessageEvent):
+            # 获取Bot信息用于构建节点
+            login_info = await bot.get_login_info()
+            bot_id = str(login_info.get("user_id", event.self_id))
+            bot_name = login_info.get("nickname", "AI Assistant")
+
+            # 提取用户纯文本用于展示
+            user_raw_text = extract_pure_text(content_list)
+            if not user_raw_text:
+                user_raw_text = "[图片/非文本内容]"
+            
+            # 简单的截断，防止摘要过长
+            if len(user_raw_text) > 200:
+                user_raw_text = user_raw_text[:200] + "..."
+
+            # 构建合并转发节点
+            nodes = [
+                MessageSegment.node_custom(
+                    user_id=event.user_id,
+                    nickname=event.sender.card or event.sender.nickname or "User",
+                    content=user_raw_text
+                ),
+                MessageSegment.node_custom(
+                    user_id=bot_id,
+                    nickname=bot_name,
+                    content=full_reply
+                )
+            ]
+            
+            await bot.send_group_forward_msg(group_id=event.group_id, messages=nodes)
+            await chat_matcher.finish()
+        else:
+            # 私聊直接发送
+            await chat_matcher.finish(full_reply)
+
+    except FinishedException:
+        raise
+
+    except Exception as e:
+        logger.error(f"Chat Error: {e}")
+        await chat_matcher.finish(f"发生错误: {str(e)}")
+
+
+@draw_matcher.handle()
+async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
+        group_id = str(event.group_id)
+        user_id = str(event.user_id)
+
+        # 1. 检查插件总开关
+        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
+            await draw_matcher.finish()
+
+        # 2. 检查功能分开关 (feature: imagen)
+        if not is_feature_enabled(PLUGIN_NAME, "imagen", group_id, user_id):
+            await draw_matcher.finish()
+
+        # 3. 检查功能 CD (key: ai_assistant:imagen)
+        cd_key = f"{PLUGIN_NAME}:imagen"
+        cd_remain = check_cd(cd_key, group_id, user_id)
+        if cd_remain > 0:
+            await draw_matcher.finish(f"生图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
+
+        # 4. 更新 CD
+        update_cd(cd_key, group_id, user_id)
+
+    try:
+        content_list = await parse_message_content(event, args)
+
+        if not content_list:
+            await draw_matcher.finish("请提供文字描述，或回复一张图片。")
+
+        await draw_matcher.send("正在绘制中，请稍候...")
+
+        image_url = await call_image_generation(content_list)
+
+        await draw_matcher.finish(MessageSegment.image(image_url))
+
+    except FinishedException:
+        raise
+
+    except Exception as e:
+        logger.exception("Draw Error")
+        await draw_matcher.finish(f"生图失败: {str(e)}")
+
+
+@model_cmd.handle()
+async def handle_change_model(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    new_model = args.extract_plain_text().strip()
+    if not new_model:
+        await model_cmd.finish("请提供新的模型名称。例如：切换模型 gpt-4")
+    
+    old_model = plugin_config.chat_model
+    if old_model == new_model:
+        await model_cmd.finish(f"当前已经是 {new_model} 模型了。")
+
+    await model_cmd.send(f"正在尝试切换到模型: {new_model}\n正在进行连接测试，请稍候...")
+    
+    # 临时修改配置
+    plugin_config.chat_model = new_model
+    
+    try:
+        # 构造测试消息
+        messages = [{"role": "user", "content": "Hello! This is a connection test."}]
+        
+        # 发起测试请求
+        reply_text, used_model, _ = await call_chat_completion(messages)
+        
+        # 如果代码执行到这里，说明测试成功
+        save_config(plugin_config)
+        
+        # 截取简短的响应预览
+        preview = reply_text[:50] + "..." if len(reply_text) > 50 else reply_text
+        preview = preview.replace('\n', ' ')
+        
+        await model_cmd.finish(
+            f"✅ 模型切换成功！\n"
+            f"旧模型: {old_model}\n"
+            f"新模型: {used_model}\n"
+            f"测试响应: {preview}"
+        )
+    
+    except FinishedException:
+        raise
+
+    except Exception as e:
+        # 测试失败，回滚配置
+        plugin_config.chat_model = old_model
+        
+        error_msg = str(e)
+        if len(error_msg) > 100:
+            error_msg = error_msg[:100] + "..."
+            
+        await model_cmd.finish(
+            f"❌ 切换失败，模型 {new_model} 似乎不可用。\n"
+            f"已回滚到: {old_model}\n"
+            f"错误信息: {error_msg}"
+        )
