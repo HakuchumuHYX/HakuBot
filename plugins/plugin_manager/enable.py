@@ -18,14 +18,12 @@ from . import (
 def is_plugin_enabled(plugin_name: str, group_id: str, user_id: str) -> bool:
     """检查插件在指定群是否启用"""
 
-    # 【修改：添加SU检查】
     try:
         superusers = get_driver().config.superusers
         if user_id in superusers:
             return True  # SuperUser无视开关
     except:
         pass
-    # ^^^^^^ 【修改：添加SU检查】 ^^^^^^
 
     # 默认启用
     if plugin_name not in plugin_status:
@@ -46,14 +44,12 @@ def set_plugin_status(plugin_name: str, group_id: str, enabled: bool):
 def is_feature_enabled(plugin_name: str, feature_name: str, group_id: str, user_id: str) -> bool:
     """检查插件的特定功能是否启用"""
 
-    # 【修改：添加SU检查】
     try:
         superusers = get_driver().config.superusers
         if user_id in superusers:
             return True  # SuperUser无视开关
     except:
         pass
-    # ^^^^^^ 【修改：添加SU检查】 ^^^^^^
 
     # 先检查整个插件是否启用 (传递 user_id)
     if not is_plugin_enabled(plugin_name, group_id, user_id):
@@ -151,7 +147,15 @@ async def handle_list(bot: Bot, event: MessageEvent):
 
     plugin_list = []
     for plugin_id, plugin_name in readme_plugins.items():
-        status = "✅ 启用" if is_plugin_enabled(plugin_id, group_id, "0") else "❌ 禁用"  # 本地的
+        is_enabled = is_plugin_enabled(plugin_id, group_id, "0")
+        
+        # 如果是子功能（带冒号），且主插件被禁用，则显示为禁用
+        if ":" in plugin_id:
+            parent_id = plugin_id.split(":")[0]
+            if not is_plugin_enabled(parent_id, group_id, "0"):
+                is_enabled = False
+
+        status = "✅ 启用" if is_enabled else "❌ 禁用"  # 本地的
         plugin_list.append(f"{plugin_name} ({plugin_id}) - {status}")
 
     if plugin_list:

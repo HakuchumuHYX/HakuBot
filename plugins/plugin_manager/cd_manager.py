@@ -239,7 +239,6 @@ async def handle_list_cd(bot: Bot, event: MessageEvent):
     else:
         message = "当前群聊暂无插件CD配置"
 
-    # ... (合并转发逻辑不变) ...
     try:
         bot_info = await bot.get_login_info()
         bot_uin = bot_info['user_id']
