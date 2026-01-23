@@ -23,7 +23,7 @@ async def call_chat_completion(messages: list) -> Tuple[str, str, int]:
 
     async with httpx.AsyncClient(
             base_url=plugin_config.base_url,
-            proxies=plugin_config.proxy,
+            proxy=plugin_config.proxy,
             timeout=plugin_config.timeout
     ) as client:
         resp = await client.post("/chat/completions", json=payload, headers=HEADERS)
@@ -69,7 +69,7 @@ async def call_image_generation(content_list: List[dict]) -> str:
     try:
         async with httpx.AsyncClient(
                 base_url=plugin_config.base_url,
-                proxies=plugin_config.proxy,
+                proxy=plugin_config.proxy,
                 timeout=plugin_config.timeout
         ) as client:
             resp = await client.post("/chat/completions", json=payload, headers=HEADERS)

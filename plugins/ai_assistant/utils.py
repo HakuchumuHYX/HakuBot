@@ -8,7 +8,7 @@ from .config import plugin_config
 async def download_image_as_base64(url: str) -> str:
     """下载图片并转换为base64字符串"""
     # 设置20秒超时，防止下载大图时阻塞过久
-    async with httpx.AsyncClient(proxies=plugin_config.proxy, timeout=20.0) as client:
+    async with httpx.AsyncClient(proxy=plugin_config.proxy, timeout=20.0) as client:
         resp = await client.get(url)
         resp.raise_for_status()
         b64 = base64.b64encode(resp.content).decode("utf-8")
