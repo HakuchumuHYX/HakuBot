@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Any, TypeVar, Union, List
 from nonebot.log import logger
 from nonebot.adapters.onebot.v11 import Bot, Event, GroupMessageEvent, Message, MessageSegment
+from nonebot.exception import NetworkError, ActionFailed
 
 T = TypeVar("T")
 
@@ -125,9 +126,20 @@ async def send_forward_msg(
             # 尝试发送私聊合并转发，如果不直接支持可能需要 fallback
             # 大多数 OneBot 实现支持 send_private_forward_msg
             await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=nodes)
-    except Exception as e:
-        logger.error(f"发送合并转发失败: {e}")
-        # 如果合并转发失败，尝试逐条发送
+    except NetworkError as e:
+        logger.error(f"发送合并转发网络错误: {e}")
+        if "timeout" in str(e).lower():
+            logger.warning("合并转发请求超时，服务端可能仍在处理中，跳过 fallback 以避免重复发送。")
+        else:
+            # 非超时网络错误，尝试逐条发送
+            for msg in messages:
+                if isinstance(msg, str):
+                    await bot.send(event, Message(msg))
+                else:
+                    await bot.send(event, msg)
+    except (ActionFailed, Exception) as e:
+        logger.error(f"发送合并转发失败 ({type(e).__name__}): {e}")
+        # 其他错误（如API调用失败），尝试逐条发送
         for msg in messages:
             if isinstance(msg, str):
                 await bot.send(event, Message(msg))
