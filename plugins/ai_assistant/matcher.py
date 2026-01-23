@@ -1,3 +1,4 @@
+import time
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, Message, MessageSegment, GroupMessageEvent
 from nonebot.params import CommandArg
@@ -141,9 +142,17 @@ async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg(
 
         await draw_matcher.send("正在绘制中，请稍候...")
 
+        t1 = time.time()
         image_url = await call_image_generation(content_list)
+        t2 = time.time()
+        gen_time = t2 - t1
 
-        await draw_matcher.finish(MessageSegment.image(image_url))
+        t3 = time.time()
+        await draw_matcher.send(MessageSegment.image(image_url))
+        t4 = time.time()
+        send_time = t4 - t3
+
+        await draw_matcher.finish(f"生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s")
 
     except FinishedException:
         raise
