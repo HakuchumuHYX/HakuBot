@@ -43,10 +43,9 @@ async def call_image_generation(content_list: List[dict]) -> str:
     调用生图接口 (支持多模态输入 + 适配 Chat 协议)
     """
     system_instruction = (
-        "You are an image generation tool. "
-        "Do NOT write python code or explanations. "
-        "Directly generate the image requested by the user. "
-        "Output the image URL in Markdown format: ![image](url)."
+        "Please generate an image based on the user's request. "
+        "Return ONLY the image URL in Markdown format, like this: ![image](https://...). "
+        "Ensure the response is a valid Markdown image link and nothing else. "
         "生成的图片画风用漫画/二次元画风为佳。"
     )
 
@@ -94,9 +93,10 @@ async def call_image_generation(content_list: List[dict]) -> str:
                 return image_obj["image_url"]["url"]
 
         if content:
-            match = re.search(r'\!\[.*?\]\((.*?)\)', content)
+            # 优化正则: 支持跨行匹配 (re.DOTALL)，允许 ] 和 ( 之间有空格
+            match = re.search(r'!\[.*?\]\s*\((.*?)\)', content, re.DOTALL)
             if match:
-                return match.group(1)
+                return match.group(1).strip()
 
             urls = re.findall(r'(https?://[^\s)"]+)', content)
             for url in urls:
@@ -112,6 +112,7 @@ async def call_image_generation(content_list: List[dict]) -> str:
             raise Exception("API 返回成功，但未找到图片地址。")
 
         preview = content[:50].replace('\n', ' ')
+        logger.warning(f"生图失败，完整模型回复: {content}")
         raise Exception(f"模型回复了文本但未包含图片链接: “{preview}...”")
 
     except (KeyError, IndexError) as e:
