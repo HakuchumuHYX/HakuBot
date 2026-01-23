@@ -1,5 +1,5 @@
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, Event, GroupMessageEvent, MessageSegment, Message
+from nonebot.adapters.onebot.v11 import Bot, Event, GroupMessageEvent, MessageSegment, Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
@@ -119,7 +119,7 @@ command = on_command('抽签', priority=6, rule=create_exact_command_rule("抽�
 
 
 @command.handle()
-async def lq_(bot: Bot, event: Event):
+async def lq_(bot: Bot, event: MessageEvent):
     user_id = str(event.user_id)
 
     # 群聊权限检查
@@ -147,21 +147,27 @@ async def lq_(bot: Bot, event: Event):
 
         save_user_record(user_id, sign_index)
 
+    # 构建消息
+    msg = Message()
+    # 添加回复引用
+    msg.append(MessageSegment.reply(event.message_id))
+
     # 提示语
     if is_retry:
-        await command.send("你今天已经抽过签啦，这是你今天的签文：")
+        msg.append("你今天已经抽过签啦，这是你今天的签文：\n")
 
     # 获取/生成图片并发送
     try:
         img_bytes = await get_or_render_image(sign_index)
-        await command.finish(MessageSegment.image(img_bytes))
+        msg.append(MessageSegment.image(img_bytes))
+        await command.finish(msg, at_sender=True)
     except FinishedException:
         raise
     except Exception as e:
         logger.error(f"抽签处理失败: {e}")
         # 降级文本
         content = "空签" if sign_index == -1 else message_sign[sign_index]
-        await command.finish(f"图片生成失败，签文内容：\n{content}")
+        await command.finish(f"图片生成失败，签文内容：\n{content}", at_sender=True)
 
 
 # --- 缓存管理命令 ---
