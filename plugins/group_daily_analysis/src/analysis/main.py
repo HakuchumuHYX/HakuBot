@@ -14,6 +14,20 @@ from ..visualization.charts import ActivityVisualizer
 from ..utils.llm import call_chat_completion, fix_json
 from .user_analyzer import UserAnalyzer
 
+
+def safe_prompt_format(prompt: str, **kwargs) -> str:
+    """
+    安全替换 prompt 中的少量占位符。
+
+    说明：
+    - 避免使用 str.format()，因为 prompt 里常包含 JSON 示例，带大量 `{}` 会触发 KeyError。
+    - 这里只替换我们明确允许的变量：如 {messages_text} / {users_text} / {max_topics} 等。
+    """
+    for k, v in kwargs.items():
+        prompt = prompt.replace("{" + k + "}", str(v))
+    return prompt
+
+
 class MessageAnalyzer:
     def __init__(self):
         self.activity_visualizer = ActivityVisualizer()
@@ -217,9 +231,10 @@ class MessageAnalyzer:
     # --- Single Analyzers (Map) ---
 
     async def _analyze_topics_single(self, messages_text: str) -> tuple[list[SummaryTopic], TokenUsage]:
-        prompt = plugin_config.topic_analysis_prompt.format(
+        prompt = safe_prompt_format(
+            plugin_config.topic_analysis_prompt,
             max_topics=plugin_config.max_topics,
-            messages_text=messages_text
+            messages_text=messages_text,
         )
         try:
             # Topic analysis needs structure, low temp
@@ -235,9 +250,10 @@ class MessageAnalyzer:
             return [], TokenUsage()
 
     async def _analyze_golden_quotes_single(self, messages_text: str) -> tuple[list[GoldenQuote], TokenUsage]:
-        prompt = plugin_config.golden_quote_analysis_prompt.format(
+        prompt = safe_prompt_format(
+            plugin_config.golden_quote_analysis_prompt,
             max_golden_quotes=plugin_config.max_golden_quotes,
-            messages_text=messages_text
+            messages_text=messages_text,
         )
         try:
             # Golden quotes need creativity, high temp
@@ -295,7 +311,7 @@ class MessageAnalyzer:
             ]
         )
 
-        base_prompt = plugin_config.user_title_analysis_prompt.format(users_text=text)
+        base_prompt = safe_prompt_format(plugin_config.user_title_analysis_prompt, users_text=text)
 
         prompt = f"""以下是群聊中最活跃的用户（按消息数量排序）。请**优先**为这些用户生成称号，并尽量在输出中包含 qq（若模板要求输出 qq 字段）：
 
@@ -351,9 +367,10 @@ class MessageAnalyzer:
         # 将对象转为简化文本供 LLM 合并
         topics_text = json.dumps([t.dict() for t in topics], ensure_ascii=False, indent=2)
         
-        prompt = plugin_config.topic_merge_prompt.format(
+        prompt = safe_prompt_format(
+            plugin_config.topic_merge_prompt,
             max_topics=plugin_config.max_topics,
-            topics_text=topics_text
+            topics_text=topics_text,
         )
         try:
             # Merging needs structure, low temp
@@ -375,9 +392,10 @@ class MessageAnalyzer:
             
         quotes_text = json.dumps([q.dict() for q in quotes], ensure_ascii=False, indent=2)
         
-        prompt = plugin_config.golden_quote_merge_prompt.format(
+        prompt = safe_prompt_format(
+            plugin_config.golden_quote_merge_prompt,
             max_golden_quotes=plugin_config.max_golden_quotes,
-            quotes_text=quotes_text
+            quotes_text=quotes_text,
         )
         try:
             # Merging quotes still needs structure even if content is creative
