@@ -1,0 +1,6 @@
+nonebot-adapter-onebot
+nonebot-plugin-htmlrender
+nonebot-plugin-apscheduler
+jinja2
+httpx
+pydantic

@@ -1,0 +1,123 @@
+from pathlib import Path
+from datetime import datetime
+import base64
+import aiohttp
+from nonebot.log import logger
+from nonebot_plugin_htmlrender import html_to_pic
+from jinja2 import Environment, FileSystemLoader
+
+from ..config import plugin_config
+from ..models import AnalysisResult
+
+class ReportRenderer:
+    def __init__(self):
+        self.template_path = str(Path(__file__).parent / "templates" / plugin_config.report_template)
+        # 初始化 Jinja2 环境
+        self.env = Environment(loader=FileSystemLoader(self.template_path))
+
+    async def render_to_image(self, analysis_result: AnalysisResult, group_id: str) -> bytes:
+        """生成图片报告"""
+        render_data = await self._prepare_render_data(analysis_result)
+        
+        try:
+            # 1. 渲染主模板
+            template = self.env.get_template("image_template.html")
+            html_content = template.render(**render_data)
+            
+            # 2. 转换为图片
+            # template_path 用于解析 CSS/JS 等相对路径资源
+            # 将路径转换为 file URI 以确保在 Windows 等系统上正确解析
+            template_uri = Path(self.template_path).as_uri()
+            
+            image_bytes = await html_to_pic(
+                html=html_content,
+                template_path=template_uri,
+                viewport={"width": 800, "height": 10} # 宽度设为800，高度自适应
+            )
+            return image_bytes
+        except Exception as e:
+            logger.error(f"渲染图片失败: {e}")
+            raise
+
+    async def _prepare_render_data(self, result: AnalysisResult) -> dict:
+        stats = result.statistics
+        
+        # 渲染 Topics
+        topics_list = [
+            {"index": i, "topic": t, "contributors": "、".join(t.contributors)}
+            for i, t in enumerate(result.topics, 1)
+        ]
+        topics_html = self.env.get_template("topic_item.html").render(topics=topics_list)
+        
+        # 渲染 Titles
+        titles_list = []
+        for t in result.user_titles[:plugin_config.max_user_titles]:
+            avatar_data = await self._get_user_avatar(str(t.qq)) if t.qq else None
+            titles_list.append({
+                "name": t.name,
+                "title": t.title,
+                "mbti": t.mbti,
+                "reason": t.reason,
+                "avatar_data": avatar_data
+            })
+        titles_html = self.env.get_template("user_title_item.html").render(titles=titles_list)
+        
+        # 渲染 Quotes
+        quotes_list = []
+        for q in stats.golden_quotes[:plugin_config.max_golden_quotes]:
+             avatar_url = await self._get_user_avatar(str(q.qq)) if q.qq else None
+             quotes_list.append({
+                 "content": q.content,
+                 "sender": q.sender,
+                 "reason": q.reason,
+                 "avatar_url": avatar_url
+             })
+        quotes_html = self.env.get_template("quote_item.html").render(quotes=quotes_list)
+        
+        # 渲染 Chart
+        hourly_data = stats.activity_visualization.hourly_activity
+        max_count = max(hourly_data.values()) if hourly_data and hourly_data.values() else 1
+        
+        template_chart_data = []
+        for hour in range(24):
+            count = hourly_data.get(hour, 0)
+            percentage = (count / max_count) * 100 if max_count > 0 else 0
+            template_chart_data.append({
+                "hour": hour,
+                "count": count,
+                "percentage": int(percentage)
+            })
+            
+        chart_html = self.env.get_template("activity_chart.html").render(chart_data=template_chart_data)
+
+        return {
+            "current_date": datetime.now().strftime("%Y年%m月%d日"),
+            "current_datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "message_count": stats.message_count,
+            "participant_count": stats.participant_count,
+            "total_characters": stats.total_characters,
+            "emoji_count": stats.emoji_count,
+            "most_active_period": stats.most_active_period,
+            "topics_html": topics_html,
+            "titles_html": titles_html,
+            "quotes_html": quotes_html,
+            "hourly_chart_html": chart_html,
+            "total_tokens": stats.token_usage.total_tokens,
+            "prompt_tokens": stats.token_usage.prompt_tokens,
+            "completion_tokens": stats.token_usage.completion_tokens,
+            "watermark_text": plugin_config.watermark_text,
+        }
+
+    async def _get_user_avatar(self, user_id: str) -> str | None:
+        """获取用户头像 Base64"""
+        try:
+            url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={user_id}&spec=100"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        data = await resp.read()
+                        b64 = base64.b64encode(data).decode()
+                        return f"data:image/jpeg;base64,{b64}"
+        except Exception as e:
+            logger.warning(f"获取头像失败: {e}")
+        return None

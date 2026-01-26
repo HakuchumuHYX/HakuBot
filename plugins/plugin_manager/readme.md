@@ -33,10 +33,11 @@ gif 加速：image_processor:speed
 何意味？：hyw  
 AI 助手：ai_assistant  
 AI 对话：ai_assistant:chat  
-AI 生图：ai_assistant:imagen
-撤回插件：recall
-撤回监控：recall:monitor
-自我撤回：recall:self_recall
-搜图插件：lunabot_imgexp
-搜图功能：lunabot_imgexp:search
-推特图片：lunabot_imgexp:ximg
+AI 生图：ai_assistant:imagen  
+撤回插件：recall  
+撤回监控：recall:monitor  
+自我撤回：recall:self_recall  
+搜图插件：lunabot_imgexp  
+搜图功能：lunabot_imgexp:search  
+推特图片：lunabot_imgexp:ximg  
+每日群总结：group_daily_analysis
