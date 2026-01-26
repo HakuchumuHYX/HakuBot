@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Optional, List, Any
 from pydantic import BaseModel, Field
+from nonebot.log import logger
 
 class LLMConfig(BaseModel):
     api_key: str
@@ -65,8 +66,11 @@ def load_config() -> PluginConfig:
                     data["llm"]["base_url"] = ai_data.get("base_url", data["llm"]["base_url"])
                     data["llm"]["model"] = ai_data.get("chat_model", data["llm"]["model"])
                     data["llm"]["proxy"] = ai_data.get("proxy", data["llm"]["proxy"])
-        except Exception:
-            pass
+                    logger.info("已从 ai_assistant 插件加载 LLM 配置")
+            else:
+                logger.warning("未找到 ai_assistant 配置文件，请手动配置 LLM API")
+        except Exception as e:
+            logger.warning(f"加载 ai_assistant 配置失败: {e}，请手动配置 LLM API")
 
     return PluginConfig(**data)
 

@@ -45,22 +45,18 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
             nickname = sender.nickname or "未知用户"
         
         # 序列化消息链以保留完整结构 (表情、图片等)
-        # event.message 是 Message 对象，转 list 后包含 Segment
-        # 需要转为 JSON 存入 raw_message
+        # 完整保留所有消息类型和数据
         try:
-            # Message 对象可以直接序列化为 JSON 兼容的 list
             msg_list = []
             for seg in event.message:
-                if seg.type == "text":
-                    msg_list.append({"type": "text", "data": {"text": str(seg)}})
-                elif seg.type == "face":
-                    msg_list.append({"type": "face", "data": {"id": seg.data.get("id")}})
-                elif seg.type == "at":
-                    msg_list.append({"type": "at", "data": {"qq": seg.data.get("qq")}})
-                # 其他类型暂存为 text 或忽略
-                
+                # 通用序列化：保留所有类型和完整数据
+                msg_list.append({
+                    "type": seg.type,
+                    "data": dict(seg.data)  # 保留完整的 data 字典
+                })
             raw_message = json.dumps(msg_list, ensure_ascii=False)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"消息序列化失败: {e}")
             raw_message = ""
 
         db.add_message(
@@ -211,12 +207,16 @@ async def handle_set_template(bot: Bot, event: GroupMessageEvent):
 async def auto_run_daily_analysis():
     if not plugin_config.enable_auto_analysis:
         return
-        
+
     logger.info("开始运行每日自动总结任务...")
-    
+
     # 1. 清理过期消息 (保留7天)
-    logger.info("正在清理过期消息...")
-    db.cleanup_old_messages(days=7)
+    # 注意：清理失败不应中断自动总结流程
+    try:
+        logger.info("正在清理过期消息...")
+        db.cleanup_old_messages(retention_days=7)
+    except Exception as e:
+        logger.warning(f"清理过期消息失败(将继续执行自动总结): {e}")
 
     try:
         bot = get_bot()
@@ -249,14 +249,35 @@ async def auto_run_daily_analysis():
         except Exception as e:
             logger.error(f"群 {group_id_str} 自动总结失败: {e}")
 
-# 注册定时任务
+def cleanup_old_messages_job():
+    """独立的消息清理任务（与自动总结解耦）"""
+    try:
+        db.cleanup_old_messages(retention_days=7)
+    except Exception as e:
+        logger.warning(f"定时清理过期消息失败: {e}")
+
+
+# 注册：独立清理任务（即使不开启自动总结也会执行，避免 DB 无限增长）
+# 每天凌晨 04:00 清理一次
+scheduler.add_job(
+    cleanup_old_messages_job,
+    "cron",
+    hour=4,
+    minute=0,
+    id="group_daily_analysis_cleanup_job",
+    replace_existing=True,
+)
+logger.info("已注册 group_daily_analysis 消息清理定时任务: 04:00 (保留7天)")
+
+# 注册：自动总结任务
 if plugin_config.enable_auto_analysis:
     hour, minute = plugin_config.auto_analysis_time.split(":")
     scheduler.add_job(
-        auto_run_daily_analysis, 
-        "cron", 
-        hour=int(hour), 
+        auto_run_daily_analysis,
+        "cron",
+        hour=int(hour),
         minute=int(minute),
-        id="group_daily_analysis_job"
+        id="group_daily_analysis_job",
+        replace_existing=True,
     )
     logger.info(f"已注册每日总结定时任务: {plugin_config.auto_analysis_time}")
