@@ -8,7 +8,7 @@ from nonebot.exception import FinishedException
 
 from .utils import *
 from .config import plugin_config, save_config
-from .service import call_chat_completion, call_image_generation
+from .service import call_chat_completion, call_image_generation, tavily_search, format_search_results
 
 try:
     from ..plugin_manager.enable import is_plugin_enabled, is_feature_enabled
@@ -23,7 +23,11 @@ PLUGIN_NAME = "ai_assistant"
 
 # 注册命令
 chat_matcher = on_command("chat", priority=5, block=True)
+chat_web_matcher = on_command("chat联网", aliases={"chat_web", "chatweb", "chat搜索"}, priority=5, block=True)
+
 draw_matcher = on_command("生图", priority=5, block=True)
+draw_web_matcher = on_command("生图联网", aliases={"生图web", "生图搜索"}, priority=5, block=True)
+
 model_cmd = on_command("切换模型", aliases={"更改模型", "change_model"}, permission=SUPERUSER, priority=1, block=True)
 
 
@@ -111,6 +115,110 @@ async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         await chat_matcher.finish(f"发生错误: {str(e)}")
 
 
+@chat_web_matcher.handle()
+async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    """
+    手动联网 Chat：先 Tavily 搜索，再将搜索结果注入 prompt，让模型基于最新资料回答。
+    """
+    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
+        group_id = str(event.group_id)
+        user_id = str(event.user_id)
+
+        # 1. 检查插件总开关
+        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
+            await chat_web_matcher.finish()
+
+        # 2. 检查功能分开关 (feature: chat)
+        if not is_feature_enabled(PLUGIN_NAME, "chat", group_id, user_id):
+            await chat_web_matcher.finish()
+
+        # 3. 检查功能 CD (key: ai_assistant:chat)
+        cd_key = f"{PLUGIN_NAME}:chat"
+        cd_remain = check_cd(cd_key, group_id, user_id)
+        if cd_remain > 0:
+            await chat_web_matcher.finish(f"Chat功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
+
+        # 4. 更新 CD
+        update_cd(cd_key, group_id, user_id)
+
+    try:
+        content_list = await parse_message_content(event, args)
+        if not content_list:
+            await chat_web_matcher.finish("请提供对话内容，或回复包含内容的消息。")
+
+        query = extract_pure_text(content_list).strip()
+        if not query:
+            await chat_web_matcher.finish("未检测到可用于搜索的文本内容。")
+
+        # 防止 query 太长
+        if len(query) > 300:
+            query = query[:300] + "..."
+
+        await chat_web_matcher.send("正在联网搜索中...")
+        results = await tavily_search(query)
+        context_text = format_search_results(results)
+
+        messages = [
+            {"role": "system", "content": plugin_config.system_prompt},
+            {
+                "role": "system",
+                "content": (
+                    "你将收到一段【联网搜索结果】（含编号与链接）。请严格遵守以下规则：\n"
+                    "1) 回答时只使用【联网搜索结果】中出现的信息；不要凭记忆补充过时知识。\n"
+                    "2) 每个关键结论后必须附上引用编号，例如：[1] 或 [1][2]。\n"
+                    "3) 禁止编造来源：不要生成搜索结果里不存在的 URL/标题/编号。\n"
+                    "4) 如果搜索结果没有覆盖问题关键点：请明确说明“搜索结果未包含X”，并给出建议的补充检索关键词。\n"
+                    "5) 如果不同来源有冲突：请指出冲突，并说明你倾向哪一条（可依据更新时间/权威性）。\n"
+                    "6) 输出结构：先给结论与解释（带引用编号），最后单独列出“来源：”并逐条贴出对应 URL。\n"
+                    "\n【联网搜索结果】\n" + context_text
+                ),
+            },
+            {"role": "user", "content": content_list},
+        ]
+
+        await chat_web_matcher.send("正在思考中...")
+        reply_text, model_name, tokens = await call_chat_completion(messages)
+
+        cleaned_text = remove_markdown(reply_text)
+        stat_text = f"\n\n—— 使用模型: {model_name} | Token消耗: {tokens} | 联网: Tavily"
+        full_reply = cleaned_text + stat_text
+
+        if isinstance(event, GroupMessageEvent):
+            login_info = await bot.get_login_info()
+            bot_id = str(login_info.get("user_id", event.self_id))
+            bot_name = login_info.get("nickname", "AI Assistant")
+
+            user_raw_text = extract_pure_text(content_list)
+            if not user_raw_text:
+                user_raw_text = "[图片/非文本内容]"
+            if len(user_raw_text) > 200:
+                user_raw_text = user_raw_text[:200] + "..."
+
+            nodes = [
+                MessageSegment.node_custom(
+                    user_id=event.user_id,
+                    nickname=event.sender.card or event.sender.nickname or "User",
+                    content=user_raw_text
+                ),
+                MessageSegment.node_custom(
+                    user_id=bot_id,
+                    nickname=bot_name,
+                    content=full_reply
+                )
+            ]
+
+            await bot.send_group_forward_msg(group_id=event.group_id, messages=nodes)
+            await chat_web_matcher.finish()
+        else:
+            await chat_web_matcher.finish(full_reply)
+
+    except FinishedException:
+        raise
+    except Exception as e:
+        logger.error(f"Chat Web Error: {e}")
+        await chat_web_matcher.finish(f"联网Chat失败: {str(e)}")
+
+
 @draw_matcher.handle()
 async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
@@ -160,6 +268,65 @@ async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg(
     except Exception as e:
         logger.exception("Draw Error")
         await draw_matcher.finish(f"生图失败: {str(e)}")
+
+
+@draw_web_matcher.handle()
+async def handle_draw_web(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    """
+    手动联网生图：先 Tavily 搜索（补充设定/资料），再将搜索摘要注入 system_instruction 进行生图。
+    """
+    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
+        group_id = str(event.group_id)
+        user_id = str(event.user_id)
+
+        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
+            await draw_web_matcher.finish()
+
+        if not is_feature_enabled(PLUGIN_NAME, "imagen", group_id, user_id):
+            await draw_web_matcher.finish()
+
+        cd_key = f"{PLUGIN_NAME}:imagen"
+        cd_remain = check_cd(cd_key, group_id, user_id)
+        if cd_remain > 0:
+            await draw_web_matcher.finish(f"生图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
+
+        update_cd(cd_key, group_id, user_id)
+
+    try:
+        content_list = await parse_message_content(event, args)
+        if not content_list:
+            await draw_web_matcher.finish("请提供文字描述，或回复一张图片。")
+
+        query = extract_pure_text(content_list).strip()
+        if not query:
+            await draw_web_matcher.finish("未检测到可用于搜索的文本内容。")
+
+        if len(query) > 200:
+            query = query[:200] + "..."
+
+        await draw_web_matcher.send("正在联网搜索设定/资料中...")
+        results = await tavily_search(query)
+        context_text = format_search_results(results, max_chars=1200)
+
+        await draw_web_matcher.send("正在绘制中，请稍候...")
+
+        t1 = time.time()
+        image_url = await call_image_generation(content_list, extra_context=context_text)
+        t2 = time.time()
+        gen_time = t2 - t1
+
+        t3 = time.time()
+        await draw_web_matcher.send(MessageSegment.image(image_url))
+        t4 = time.time()
+        send_time = t4 - t3
+
+        await draw_web_matcher.finish(f"生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s（联网: Tavily）")
+
+    except FinishedException:
+        raise
+    except Exception as e:
+        logger.exception("Draw Web Error")
+        await draw_web_matcher.finish(f"联网生图失败: {str(e)}")
 
 
 @model_cmd.handle()

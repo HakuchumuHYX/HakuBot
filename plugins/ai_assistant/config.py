@@ -17,6 +17,12 @@ class PluginConfig(BaseModel):
     timeout: float = 60.0
     proxy: Optional[str] = None
 
+    # --- Web Search (manual command only) ---
+    # Tavily: https://tavily.com/
+    tavily_api_key: Optional[str] = None
+    web_search_max_results: int = 5
+    web_search_depth: str = "basic"
+
 
 CURRENT_PATH = Path(__file__).parent
 CONFIG_PATH = CURRENT_PATH / "config.json"
