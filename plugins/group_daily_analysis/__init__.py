@@ -2,8 +2,12 @@ import asyncio
 import os
 import json
 from pathlib import Path
-from nonebot import require, on_command, on_message, get_bot, get_driver
+import time
+from collections import defaultdict
+
+from nonebot import require, on_command, on_message, on_type, get_bot, get_driver
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11.event import Event as OneBotEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.log import logger
 from nonebot.permission import SUPERUSER
@@ -22,6 +26,35 @@ from .src.render.renderer import ReportRenderer
 from .src.data_source import MessageFetcher
 from .src.database import db
 
+# --- 过滤本插件发出的“日报总结”消息（通过 message_id 精确过滤，避免递归污染） ---
+# group_id -> {message_id -> timestamp}
+_REPORT_MESSAGE_TTL_SECONDS = 3600  # 1h 以内认为是“刚发出的日报总结”
+_recent_report_message_ids: dict[int, dict[int, float]] = defaultdict(dict)
+
+
+def _mark_report_message_id(group_id: int, message_id: int | None) -> None:
+    if not message_id:
+        return
+    _recent_report_message_ids[int(group_id)][int(message_id)] = time.time()
+
+
+def _is_recent_report_message_id(group_id: int, message_id: int | None) -> bool:
+    if not message_id:
+        return False
+    gid = int(group_id)
+    mid = int(message_id)
+    now = time.time()
+
+    # 清理过期
+    bucket = _recent_report_message_ids.get(gid)
+    if not bucket:
+        return False
+    expired = [k for k, ts in bucket.items() if now - ts > _REPORT_MESSAGE_TTL_SECONDS]
+    for k in expired:
+        bucket.pop(k, None)
+
+    return mid in bucket
+
 __plugin_meta__ = PluginMetadata(
     name="群聊每日总结",
     description="分析群聊记录，生成每日总结报告（话题、活跃度、金句等）",
@@ -32,6 +65,15 @@ __plugin_meta__ = PluginMetadata(
 # --- 消息记录器 ---
 # 优先级设为 10，确保不阻塞其他高优先级命令，但能记录所有消息
 message_recorder = on_message(priority=10, block=False)
+
+# --- Bot 自己发出的群消息回流事件记录器 (post_type=message_sent) ---
+message_sent_recorder = on_type(
+    OneBotEvent,
+    rule=lambda event: getattr(event, "post_type", None) == "message_sent"
+    and getattr(event, "message_type", None) == "group",
+    priority=10,
+    block=False,
+)
 
 @message_recorder.handle()
 async def record_message(bot: Bot, event: GroupMessageEvent):
@@ -72,6 +114,70 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
         # 记录失败不应影响主流程，仅打日志
         # logger.debug(f"记录消息失败: {e}")
         pass
+
+
+@message_sent_recorder.handle()
+async def record_message_sent(bot: Bot, event: OneBotEvent):
+    """
+    记录 bot 自己发出的群消息到数据库。
+
+    说明：
+    - OneBot V11 会把 self 发送的消息以 post_type=message_sent 回流
+    - 当前 nonebot onebot v11 adapter 没有专门的 MessageSentEvent 类型，因此用 on_type(Event)+rule 过滤
+    - 会精确过滤掉本插件发出的“日报总结”消息（通过 message_id）
+    """
+    try:
+        group_id = int(getattr(event, "group_id"))
+        message_id = int(getattr(event, "message_id", 0) or 0)
+
+        # 跳过本插件发出的日报总结，避免“总结套娃”
+        if _is_recent_report_message_id(group_id, message_id):
+            return
+
+        sender = getattr(event, "sender", None) or {}
+        user_id = getattr(event, "user_id", None) or sender.get("user_id") or 0
+        sender_name = (
+            (sender.get("card") or sender.get("nickname"))
+            if isinstance(sender, dict)
+            else getattr(sender, "card", None) or getattr(sender, "nickname", None)
+        )
+        sender_name = sender_name or "未知用户"
+
+        # 序列化消息链（尽量保留结构）
+        raw_message = ""
+        try:
+            msg_list = []
+            message = getattr(event, "message", None)
+            if message is not None:
+                for seg in message:
+                    # seg 可能是 MessageSegment 或 dict
+                    if hasattr(seg, "type") and hasattr(seg, "data"):
+                        msg_list.append({"type": seg.type, "data": dict(seg.data)})
+                    elif isinstance(seg, dict):
+                        msg_list.append({"type": seg.get("type"), "data": dict(seg.get("data") or {})})
+            raw_message = json.dumps(msg_list, ensure_ascii=False)
+        except Exception as e:
+            logger.debug(f"message_sent 序列化失败: {e}")
+            raw_message = ""
+
+        content = ""
+        try:
+            content = getattr(event, "raw_message", None) or ""
+        except Exception:
+            content = ""
+
+        db.add_message(
+            group_id=str(group_id),
+            user_id=str(user_id),
+            sender_name=sender_name,
+            content=content,
+            timestamp=int(getattr(event, "time")),
+            msg_type="group_sent",
+            raw_message=raw_message,
+        )
+    except Exception as e:
+        logger.debug(f"记录 message_sent 失败: {e}")
+        return
 
 # --- 分析命令 ---
 analysis_cmd = on_command("daily_analysis", aliases={"今日总结", "群日报"}, permission=SUPERUSER, priority=5, block=True)
@@ -134,7 +240,13 @@ async def handle_analysis(bot: Bot, event: GroupMessageEvent):
         image_bytes = await run_analysis(bot, group_id, retries=2) # 手动触发重试2次
         
         if image_bytes:
-            await analysis_cmd.finish(MessageSegment.image(image_bytes))
+            # 用 send_group_msg 发送以拿到 message_id，用于过滤本插件发出的总结
+            resp = await bot.send_group_msg(
+                group_id=group_id, message=MessageSegment.image(image_bytes)
+            )
+            if isinstance(resp, dict):
+                _mark_report_message_id(group_id, resp.get("message_id"))
+            await analysis_cmd.finish()
         else:
             await analysis_cmd.finish(f"消息数量不足 {plugin_config.min_messages_threshold} 条，无法生成总结。")
             
@@ -240,7 +352,11 @@ async def auto_run_daily_analysis():
             group_id = int(group_id_str)
             image_bytes = await run_analysis(bot, group_id, retries=3) # 自动任务重试3次
             if image_bytes:
-                await bot.send_group_msg(group_id=group_id, message=MessageSegment.image(image_bytes))
+                resp = await bot.send_group_msg(
+                    group_id=group_id, message=MessageSegment.image(image_bytes)
+                )
+                if isinstance(resp, dict):
+                    _mark_report_message_id(group_id, resp.get("message_id"))
             
             # 避免并发过高
             import asyncio
