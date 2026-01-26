@@ -105,11 +105,11 @@ async def call_image_generation(content_list: List[dict]) -> str:
 
         if content is None:
             finish_reason = choice.get("finish_reason")
-            if finish_reason == "content_filter":
-                raise Exception("生图请求被AI模型的安全策略拒绝了(Content Filter)。")
+            if finish_reason in ["content_filter", "prohibited_content", "safety"]:
+                raise Exception("生图请求被AI模型的安全策略拒绝了 (Safety/Content Policy)。请尝试修改描述。")
 
             logger.error(f"API返回数据异常。完整数据: {json.dumps(data, ensure_ascii=False)}")
-            raise Exception("API 返回成功，但未找到图片地址。")
+            raise Exception(f"API 返回成功但无内容 (finish_reason: {finish_reason})。")
 
         preview = content[:50].replace('\n', ' ')
         logger.warning(f"生图失败，完整模型回复: {content}")
