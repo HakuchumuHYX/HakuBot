@@ -1,6 +1,7 @@
 import httpx
 import json
 import re
+import html
 from typing import Tuple, Optional, List
 from nonebot.log import logger
 from .config import plugin_config
@@ -175,18 +176,18 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
             image_obj = message["images"][0]
             if "image_url" in image_obj and "url" in image_obj["image_url"]:
                 logger.info("成功从 message.images 字段提取到图片URL")
-                return image_obj["image_url"]["url"]
+                return html.unescape(image_obj["image_url"]["url"]).strip()
 
         if content:
             # 优化正则: 支持跨行匹配 (re.DOTALL)，允许 ] 和 ( 之间有空格
             match = re.search(r'!\[.*?\]\s*\((.*?)\)', content, re.DOTALL)
             if match:
-                return match.group(1).strip()
+                return html.unescape(match.group(1)).strip()
 
             urls = re.findall(r'(https?://[^\s)"]+)', content)
             for url in urls:
-                if not url.endswith(('.py', '.html', '.css', '.js')):
-                    return url
+                if not url.endswith((".py", ".html", ".css", ".js")):
+                    return html.unescape(url).strip()
 
         if content is None:
             finish_reason = choice.get("finish_reason")

@@ -1,6 +1,7 @@
 import time
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, Message, MessageSegment, GroupMessageEvent
+from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.params import CommandArg
 from nonebot.log import logger
 from nonebot.permission import SUPERUSER
@@ -256,7 +257,13 @@ async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         gen_time = t2 - t1
 
         t3 = time.time()
-        await draw_matcher.send(MessageSegment.image(image_url))
+        try:
+            await draw_matcher.send(MessageSegment.image(image_url))
+        except ActionFailed as e:
+            # OneBot 端无法下载远端图片（鉴权/签名/防盗链等），改为机器人侧下载并以 base64 发送
+            logger.warning(f"OneBot 下载图片失败，尝试 base64 发送。retcode={getattr(e, 'retcode', None)} wording={getattr(e, 'wording', None)} url={image_url}")
+            b64_payload = await download_image_as_onebot_base64(image_url)
+            await draw_matcher.send(MessageSegment.image(b64_payload))
         t4 = time.time()
         send_time = t4 - t3
 
@@ -316,7 +323,12 @@ async def handle_draw_web(bot: Bot, event: MessageEvent, args: Message = Command
         gen_time = t2 - t1
 
         t3 = time.time()
-        await draw_web_matcher.send(MessageSegment.image(image_url))
+        try:
+            await draw_web_matcher.send(MessageSegment.image(image_url))
+        except ActionFailed as e:
+            logger.warning(f"OneBot 下载图片失败，尝试 base64 发送。retcode={getattr(e, 'retcode', None)} wording={getattr(e, 'wording', None)} url={image_url}")
+            b64_payload = await download_image_as_onebot_base64(image_url)
+            await draw_web_matcher.send(MessageSegment.image(b64_payload))
         t4 = time.time()
         send_time = t4 - t3
 

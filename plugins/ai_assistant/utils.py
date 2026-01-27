@@ -6,7 +6,7 @@ from .config import plugin_config
 
 
 async def download_image_as_base64(url: str) -> str:
-    """下载图片并转换为base64字符串"""
+    """下载图片并转换为base64字符串（data:...;base64,...），用于 OpenAI 多模态输入。"""
     # 设置20秒超时，防止下载大图时阻塞过久
     async with httpx.AsyncClient(proxy=plugin_config.proxy, timeout=20.0) as client:
         resp = await client.get(url)
@@ -14,6 +14,21 @@ async def download_image_as_base64(url: str) -> str:
         b64 = base64.b64encode(resp.content).decode("utf-8")
         mime = "image/jpeg"
         return f"data:{mime};base64,{b64}"
+
+
+async def download_image_as_onebot_base64(url: str) -> str:
+    """
+    下载图片并转换为 OneBot v11 可发送的 base64 格式：base64://<纯base64>
+
+    用途：当 OneBot 端无法直接下载远端图片 URL（鉴权/签名/防盗链等）时，
+    由机器人侧先下载到本地内存，再以 base64 方式发图，避免 OneBot 端拉取失败。
+    """
+    async with httpx.AsyncClient(proxy=plugin_config.proxy, timeout=30.0) as client:
+        resp = await client.get(url, follow_redirects=True)
+        resp.raise_for_status()
+
+    b64 = base64.b64encode(resp.content).decode("utf-8")
+    return f"base64://{b64}"
 
 
 async def parse_message_content(event, args: Message) -> list:
