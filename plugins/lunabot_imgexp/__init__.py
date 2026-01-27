@@ -95,17 +95,27 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
                 forward_messages = [MessageSegment.image(f"file:///{tmp_path.resolve()}")]
 
                 # 发送文字结果详情
-                msg = ""
+                # 将每一条搜索结果拆分成独立消息（合并转发的独立 node），方便移动端逐条复制链接
                 for result in results:
-                    if result.results:
-                        msg += f"来自 {result.source} 的结果:\n"
-                        for i, item in enumerate(result.results):
-                            title_str = f"[{item.title}] " if item.title else ""
-                            sim_str = f"({item.similarity:.1f}%) " if item.similarity else ""
-                            msg += f"#{i+1} {title_str}{sim_str}\n{item.url}\n"
-                if msg:
-                    forward_messages.append(msg.strip())
-                
+                    # 错误信息也单独成条
+                    if result.error:
+                        forward_messages.append(f"来自 {result.source} 的结果:\n{result.error}".strip())
+                        continue
+
+                    # 没有结果则跳过（不发送“未找到结果”文字，避免刷屏）
+                    if not result.results:
+                        continue
+
+                    # 每个 item 独立成条
+                    for i, item in enumerate(result.results):
+                        title_str = f"[{item.title}]\n" if item.title else ""
+                        sim_str = f"({item.similarity:.1f}%)\n" if item.similarity is not None else ""
+                        # GoogleLens 的结果可能带来源站点（item.source）
+                        from_str = f"From {item.source}\n" if getattr(item, "source", None) else ""
+                        forward_messages.append(
+                            f"来自 {result.source} 的结果 #{i + 1}\n{from_str}{title_str}{sim_str}{item.url}".strip()
+                        )
+
                 await send_forward_msg(bot, event, forward_messages)
             
         except Exception as e:
