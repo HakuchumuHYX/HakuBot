@@ -63,6 +63,11 @@ async def call_chat_completion(messages: list, temperature: float = 0.5) -> Tupl
 def fix_json(text: str) -> str:
     """尝试修复JSON字符串"""
     text = text.strip()
+    
+    # 处理空响应，返回空数组避免 JSON 解析错误
+    if not text:
+        return "[]"
+    
     # 移除 markdown 代码块标记
     if text.startswith("```json"):
         text = text[7:]
@@ -70,4 +75,7 @@ def fix_json(text: str) -> str:
         text = text[3:]
     if text.endswith("```"):
         text = text[:-3]
-    return text.strip()
+    
+    result = text.strip()
+    # 再次检查处理后是否为空
+    return result if result else "[]"

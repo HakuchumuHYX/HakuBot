@@ -382,7 +382,7 @@ class MessageAnalyzer:
             data = json.loads(json_str)
             return [SummaryTopic(**item) for item in data], tokens
         except Exception as e:
-            logger.error(f"话题合并(Reduce)失败: {e}")
+            logger.warning(f"话题合并(Reduce)降级处理，使用未合并数据: {e}")
             # 降级：直接返回前 N 个
             return topics[:plugin_config.max_topics], TokenUsage()
 
@@ -407,7 +407,7 @@ class MessageAnalyzer:
             data = json.loads(json_str)
             return [GoldenQuote(**item) for item in data], tokens
         except Exception as e:
-            logger.error(f"金句合并(Reduce)失败: {e}")
+            logger.warning(f"金句合并(Reduce)降级处理，使用未合并数据: {e}")
             return quotes[:plugin_config.max_golden_quotes], TokenUsage()
 
     # --- Helpers ---

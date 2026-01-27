@@ -29,7 +29,7 @@ async def handle_heyiwei(bot: Bot, event: GroupMessageEvent):
     user_id = str(event.user_id)
 
     # 1. 检查总开关
-    if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
+    if not is_plugin_enabled(PLUGIN_ID, group_id, 0):
         return
 
     # 2. 检查CD
@@ -65,7 +65,7 @@ async def handle_egg(bot: Bot, event: GroupMessageEvent):
     user_id = str(event.user_id)
 
     # 1. 检查总开关
-    if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
+    if not is_plugin_enabled(PLUGIN_ID, group_id, 0):
         return
 
     # 2. 检查 CD
