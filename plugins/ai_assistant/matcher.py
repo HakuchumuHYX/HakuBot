@@ -9,7 +9,7 @@ from nonebot.exception import FinishedException
 
 from .utils import *
 from .config import plugin_config, save_config
-from .service import call_chat_completion, call_image_generation, tavily_search, format_search_results
+from .service import call_chat_completion, call_image_generation, format_search_results, web_search_with_rewrite
 
 try:
     from ..plugin_manager.enable import is_plugin_enabled, is_feature_enabled
@@ -147,31 +147,30 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         if not content_list:
             await chat_web_matcher.finish("请提供对话内容，或回复包含内容的消息。")
 
-        query = extract_pure_text(content_list).strip()
-        if not query:
+        raw_text = extract_pure_text(content_list).strip()
+        if not raw_text:
             await chat_web_matcher.finish("未检测到可用于搜索的文本内容。")
 
-        # 防止 query 太长
-        if len(query) > 300:
-            query = query[:300] + "..."
-
         await chat_web_matcher.send("正在联网搜索中...")
-        results = await tavily_search(query)
+        queries, results = await web_search_with_rewrite(raw_text, mode="chat")
         context_text = format_search_results(results)
+
+        queries_hint = " / ".join(queries) if queries else "（无）"
 
         messages = [
             {"role": "system", "content": plugin_config.system_prompt},
             {
                 "role": "system",
                 "content": (
-                    "你将收到一段【联网搜索结果】（含编号与链接）。请严格遵守以下规则：\n"
-                    "1) 回答时只使用【联网搜索结果】中出现的信息；不要凭记忆补充过时知识。\n"
-                    "2) 每个关键结论后必须附上引用编号，例如：[1] 或 [1][2]。\n"
+                    "你将收到一段【联网搜索结果】（含编号与链接）以及【本次检索 query】。请严格遵守以下规则：\n"
+                    "1) 事实性结论（数据/时间/版本/政策/新闻等）必须来自【联网搜索结果】并附引用编号，例如：[1] 或 [1][2]。\n"
+                    "2) 允许补充少量通用解释（不属于最新事实），但不得杜撰搜索结果中不存在的来源/链接。\n"
                     "3) 禁止编造来源：不要生成搜索结果里不存在的 URL/标题/编号。\n"
                     "4) 如果搜索结果没有覆盖问题关键点：请明确说明“搜索结果未包含X”，并给出建议的补充检索关键词。\n"
                     "5) 如果不同来源有冲突：请指出冲突，并说明你倾向哪一条（可依据更新时间/权威性）。\n"
                     "6) 输出结构：先给结论与解释（带引用编号），最后单独列出“来源：”并逐条贴出对应 URL。\n"
-                    "\n【联网搜索结果】\n" + context_text
+                    "\n【本次检索 query】\n" + queries_hint +
+                    "\n\n【联网搜索结果】\n" + context_text
                 ),
             },
             {"role": "user", "content": content_list},
@@ -181,7 +180,7 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         reply_text, model_name, tokens = await call_chat_completion(messages)
 
         cleaned_text = remove_markdown(reply_text)
-        stat_text = f"\n\n—— 使用模型: {model_name} | Token消耗: {tokens} | 联网: Tavily"
+        stat_text = f"\n\n—— 使用模型: {model_name} | Token消耗: {tokens} | 联网: Tavily | Query数: {len(queries) if queries else 0}"
         full_reply = cleaned_text + stat_text
 
         if isinstance(event, GroupMessageEvent):
@@ -252,7 +251,7 @@ async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         await draw_matcher.send("正在绘制中，请稍候...")
 
         t1 = time.time()
-        image_url = await call_image_generation(content_list)
+        image_url, meta = await call_image_generation(content_list)
         t2 = time.time()
         gen_time = t2 - t1
 
@@ -267,7 +266,12 @@ async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         t4 = time.time()
         send_time = t4 - t3
 
-        await draw_matcher.finish(f"生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s")
+        note = ""
+        if isinstance(meta, dict) and meta.get("used_safe_rewrite"):
+            # “触发安全重写”不准确：实际是发生了合规化改写并重试
+            note = "（已进行合规化改写并重试）"
+
+        await draw_matcher.finish(f"生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s{note}")
 
     except FinishedException:
         raise
@@ -304,21 +308,18 @@ async def handle_draw_web(bot: Bot, event: MessageEvent, args: Message = Command
         if not content_list:
             await draw_web_matcher.finish("请提供文字描述，或回复一张图片。")
 
-        query = extract_pure_text(content_list).strip()
-        if not query:
+        raw_text = extract_pure_text(content_list).strip()
+        if not raw_text:
             await draw_web_matcher.finish("未检测到可用于搜索的文本内容。")
 
-        if len(query) > 200:
-            query = query[:200] + "..."
-
         await draw_web_matcher.send("正在联网搜索设定/资料中...")
-        results = await tavily_search(query)
+        queries, results = await web_search_with_rewrite(raw_text, mode="image")
         context_text = format_search_results(results, max_chars=1200)
 
         await draw_web_matcher.send("正在绘制中，请稍候...")
 
         t1 = time.time()
-        image_url = await call_image_generation(content_list, extra_context=context_text)
+        image_url, meta = await call_image_generation(content_list, extra_context=context_text)
         t2 = time.time()
         gen_time = t2 - t1
 
@@ -332,7 +333,11 @@ async def handle_draw_web(bot: Bot, event: MessageEvent, args: Message = Command
         t4 = time.time()
         send_time = t4 - t3
 
-        await draw_web_matcher.finish(f"生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s（联网: Tavily）")
+        note = ""
+        if isinstance(meta, dict) and meta.get("used_safe_rewrite"):
+            note = "（已进行合规化改写并重试）"
+
+        await draw_web_matcher.finish(f"生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s（联网: Tavily）{note}")
 
     except FinishedException:
         raise
