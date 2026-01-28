@@ -40,4 +40,5 @@ AI 生图：ai_assistant:imagen
 搜图插件：lunabot_imgexp  
 搜图功能：lunabot_imgexp:search  
 推特图片：lunabot_imgexp:ximg  
-每日群总结：group_daily_analysis
+每日群总结：group_daily_analysis  
+涩图（lzst）：setu_plugin
