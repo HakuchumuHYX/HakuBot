@@ -100,12 +100,21 @@ class SetuClient:
             pid = 0
 
         urls = item.get("urls") or {}
+        original_url = ""
+        regular_url = ""
         if isinstance(urls, dict):
-            url = str(urls.get("original") or "")
+            original_url = str(urls.get("original") or "")
+            regular_url = str(urls.get("regular") or "")
         else:
-            url = ""
+            original_url = ""
+            regular_url = ""
 
-        display_url = self._rewrite_domain(url) if url else url
+        # 发送用图默认选 regular（更小更快），缺失则退回 original
+        send_url = regular_url or original_url
+
+        # url 字段保留“原图链接”，display_url 用于实际发送/下载
+        url = self._rewrite_domain(original_url) if original_url else ""
+        display_url = self._rewrite_domain(send_url) if send_url else ""
 
         return SetuResult(title=title, pid=pid, url=url, display_url=display_url)
 

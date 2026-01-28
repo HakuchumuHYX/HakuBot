@@ -286,13 +286,18 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         def _mk_node(content: str) -> Dict[str, Any]:
             return {"type": "node", "data": {"name": bot_nickname, "uin": bot_uin, "content": content}}
 
-        link_text = f"自己动手: {result.url or result.display_url}"
+        original_link = result.url or ""
+        regular_link = result.display_url or ""
+        original_link_text = f"原图链接：{original_link}" if original_link else ""
+        fallback_link_text = f"图片链接：{regular_link or original_link}"
 
-        # --- 1) 优先尝试：合并转发（Title/Pid + 图片/链接） ---
+        # --- 1) 优先尝试：合并转发（Title/Pid + 图片/链接 + 原图链接） ---
         nodes: List[Dict[str, Any]] = [
             _mk_node(info),
-            _mk_node(str(img_seg) if img_seg else link_text),
+            _mk_node(str(img_seg) if img_seg else fallback_link_text),
         ]
+        if original_link_text:
+            nodes.append(_mk_node(original_link_text))
 
         sent_ok = False
         try:
@@ -313,7 +318,11 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                 if img_seg:
                     await bot.send(event, img_seg)
                 else:
-                    await bot.send(event, link_text)
+                    await bot.send(event, fallback_link_text)
+
+                if original_link_text:
+                    await bot.send(event, original_link_text)
+
                 sent_ok = True
             except Exception as e:
                 logger.exception(f"[setu_plugin] send split failed: {e}")
@@ -321,7 +330,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         # --- 3) 分开发图也失败：最后 fallback 到仅链接 ---
         if not sent_ok:
             try:
-                await bot.send(event, link_text)
+                await bot.send(event, original_link_text or fallback_link_text)
                 sent_ok = True
             except Exception as e:
                 logger.exception(f"[setu_plugin] send link failed: {e}")
