@@ -22,6 +22,8 @@ async def tavily_search(
     *,
     max_results: Optional[int] = None,
     search_depth: Optional[str] = None,
+    include_domains: Optional[List[str]] = None,
+    exclude_domains: Optional[List[str]] = None,
 ) -> List[dict]:
     """
     使用 Tavily 进行联网搜索（手动命令触发）。
@@ -47,6 +49,11 @@ async def tavily_search(
         "include_answer": False,
         "include_raw_content": False,
     }
+
+    if include_domains:
+        payload["include_domains"] = include_domains
+    if exclude_domains:
+        payload["exclude_domains"] = exclude_domains
 
     async with httpx.AsyncClient(
         proxy=plugin_config.proxy,
@@ -340,6 +347,8 @@ async def call_chat_completion(
     *,
     max_tokens: int = 1000,
     model: Optional[str] = None,
+    temperature: Optional[float] = None,
+    top_p: Optional[float] = None,
 ) -> Tuple[str, str, int]:
     """
     调用聊天接口
@@ -354,6 +363,11 @@ async def call_chat_completion(
         "messages": messages,
         "max_tokens": max_tokens,
     }
+
+    if temperature is not None:
+        payload["temperature"] = temperature
+    if top_p is not None:
+        payload["top_p"] = top_p
 
     async with httpx.AsyncClient(
             base_url=plugin_config.base_url,

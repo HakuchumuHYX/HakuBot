@@ -34,6 +34,7 @@ gif 加速：image_processor:speed
 AI 助手：ai_assistant  
 AI 对话：ai_assistant:chat  
 AI 生图：ai_assistant:imagen  
+AI 点歌：ai_assistant:music  
 撤回插件：recall  
 撤回监控：recall:monitor  
 自我撤回：recall:self_recall  
