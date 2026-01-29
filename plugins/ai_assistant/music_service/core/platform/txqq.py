@@ -120,16 +120,29 @@ class TXQQMusic(BaseMusicPlayer):
         if not isinstance(result, dict) or "data" not in result:
             logger.error(f"[music_plugin] TXQQMusic 返回了意料之外的数据：{result}")
             return []
-        songs: list[Song] = []
-        for s in result["data"]:
-            songs.append(
-                Song(
-                    id=str(s.get("songid") or ""),
-                    name=s.get("title"),
-                    artists=s.get("author"),
-                    audio_url=s.get("url") or s.get("link"),
-                    cover_url=s.get("pic"),
-                    lyrics=s.get("lrc", ""),
+
+        data = result.get("data")
+
+        # 正常情况：data 是 list[dict]
+        if isinstance(data, list):
+            songs: list[Song] = []
+            for s in data:
+                songs.append(
+                    Song(
+                        id=str(s.get("songid") or ""),
+                        name=s.get("title"),
+                        artists=s.get("author"),
+                        audio_url=s.get("url") or s.get("link"),
+                        cover_url=s.get("pic"),
+                        lyrics=s.get("lrc", ""),
+                    )
                 )
-            )
-        return songs[:limit]
+            return songs[:limit]
+
+        # 异常情况：接口会返回 data="" + code/error（例如：404/403）
+        code = result.get("code")
+        err = result.get("error")
+        logger.warning(
+            f"[music_plugin] TXQQMusic 搜索无结果或参数不被支持: keyword={keyword!r} type={platform_type!r} code={code} error={err}"
+        )
+        return []

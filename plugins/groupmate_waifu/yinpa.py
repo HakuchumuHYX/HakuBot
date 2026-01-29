@@ -92,7 +92,7 @@ async def yinpa_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool
                 tips = "恭喜你涩到了群友！"
             else:
                 # 【关键修改】如果@了人，但ROLL点失败 (X > HE)，则明确失败，而不是随机
-                await bot.send(event, f"涩群友失败了！自己炉管去吧！", at_sender=True)
+                await bot.send(event, f"涩涩警察出现！不许涩涩！", at_sender=True)
                 return False  # 停止
 
         # 如果代码执行到这里, yinpa_id 必定是 at_id

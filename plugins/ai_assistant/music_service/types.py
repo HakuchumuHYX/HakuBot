@@ -34,6 +34,14 @@ class MusicServiceConfig:
     # 是否启用“站点倾向/白名单”（meme/anime/game/music 场景）
     web_search_domain_bias_enabled: bool = True
 
+    # --- debug 日志（用于排查“抽象点歌”问题） ---
+    # 是否打印详细 debug 日志（LLM 原始输出、Tavily 结果摘要、候选列表等）
+    debug_log: bool = False
+    # 单条日志最大长度（超出截断）
+    debug_log_max_chars: int = 1200
+    # 是否包含 Tavily 的 content 全文（默认 false，只打 title/url/snippet）
+    debug_log_include_web_content: bool = False
+
     # --- 缓存/数据 ---
     clear_cache: bool = True
     playlist_limit: int = 100

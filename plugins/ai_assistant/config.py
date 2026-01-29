@@ -42,6 +42,11 @@ class MusicConfig(BaseModel):
     # 启用“站点倾向/白名单”
     web_search_domain_bias_enabled: bool = True
 
+    # === debug 日志 ===
+    debug_log: bool = False
+    debug_log_max_chars: int = 1200
+    debug_log_include_web_content: bool = False
+
 
 class PluginConfig(BaseModel):
     api_key: str
