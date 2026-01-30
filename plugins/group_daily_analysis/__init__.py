@@ -64,7 +64,7 @@ __plugin_meta__ = PluginMetadata(
 
 # --- 消息记录器 ---
 # 优先级设为 10，确保不阻塞其他高优先级命令，但能记录所有消息
-message_recorder = on_message(priority=10, block=False)
+message_recorder = on_message(priority=1, block=False)
 
 # --- Bot 自己发出的群消息回流事件记录器 (post_type=message_sent) ---
 message_sent_recorder = on_type(

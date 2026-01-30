@@ -10,6 +10,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import to_me
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
+from typing import Optional
 
 # 导入管理模块
 from ..plugin_manager.enable import is_plugin_enabled
@@ -17,31 +18,51 @@ from ..utils.common import create_exact_command_rule
 from .data_manager import daily_record_manager
 from nonebot.exception import FinishedException
 
-# 注册命令处理器 - 移除原有的启用/禁用命令，只保留鉴定命令
+# 注册命令处理器 - 鉴定自己
 identify = on_command("鉴定", priority=5, block=True, rule=create_exact_command_rule("鉴定"))
 
+# 注册命令处理器 - 鉴定别人
+identify_other = on_command("鉴定你", priority=4, block=True)
 
-async def create_identify_message(bot: Bot, group_id: int, user_id: int, image_path: str) -> list:
+
+async def create_identify_message(
+    bot: Bot, 
+    group_id: int, 
+    target_user_id: int, 
+    image_path: str,
+    initiator_user_id: Optional[int] = None
+) -> list:
     """
     创建鉴定合并转发消息
 
     Args:
         bot: 机器人实例
         group_id: 群组ID
-        user_id: 用户ID
+        target_user_id: 被鉴定的用户ID
         image_path: 图片路径
+        initiator_user_id: 发起鉴定的用户ID（如果是鉴定别人的情况）
 
     Returns:
         合并转发消息节点列表
     """
     try:
-        # 获取用户信息
-        user_info = await bot.get_group_member_info(group_id=group_id, user_id=user_id)
-        user_name = user_info.get("card") or user_info.get("nickname", "用户")
+        # 获取被鉴定用户信息
+        target_info = await bot.get_group_member_info(group_id=group_id, user_id=target_user_id)
+        target_name = target_info.get("card") or target_info.get("nickname", "用户")
 
         # 获取机器人信息
         bot_info = await bot.get_login_info()
         bot_name = bot_info.get("nickname", "鉴定机器人")
+
+        # 根据是否是鉴定别人来生成不同的文案
+        if initiator_user_id is not None and initiator_user_id != target_user_id:
+            # 鉴定别人的情况
+            initiator_info = await bot.get_group_member_info(group_id=group_id, user_id=initiator_user_id)
+            initiator_name = initiator_info.get("card") or initiator_info.get("nickname", "用户")
+            text_content = f"呀吼！@{initiator_name} 对 @{target_name} 的鉴定结果：\n@{target_name} 是"
+        else:
+            # 鉴定自己的情况
+            text_content = f"呀吼！@{target_name}，经鉴定你是"
 
         # 创建转发消息节点
         forward_nodes = [
@@ -50,7 +71,7 @@ async def create_identify_message(bot: Bot, group_id: int, user_id: int, image_p
                 "data": {
                     "name": bot_name,
                     "uin": str(bot.self_id),
-                    "content": f"呀吼！@{user_name}，经鉴定你是"
+                    "content": text_content
                 }
             },
             {
@@ -80,9 +101,27 @@ async def create_identify_message(bot: Bot, group_id: int, user_id: int, image_p
         ]
 
 
+def get_at_target(event: GroupMessageEvent) -> Optional[int]:
+    """
+    从消息中提取被@的用户ID
+    
+    Args:
+        event: 群消息事件
+        
+    Returns:
+        被@的用户ID，如果没有@则返回None
+    """
+    for seg in event.message:
+        if seg.type == "at":
+            qq = seg.data.get("qq")
+            if qq and qq != "all":  # 排除@全体成员
+                return int(qq)
+    return None
+
+
 @identify.handle()
 async def handle_identify(bot: Bot, event: GroupMessageEvent):
-    """处理鉴定命令"""
+    """处理鉴定命令（鉴定自己）"""
     try:
         group_id = event.group_id
         user_id = event.user_id
@@ -123,6 +162,66 @@ async def handle_identify(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.error(f"处理鉴定命令时出错: {e}")
         await identify.finish("鉴定失败，请稍后再试喵~")
+
+
+@identify_other.handle()
+async def handle_identify_other(bot: Bot, event: GroupMessageEvent):
+    """处理鉴定别人命令（鉴定你+@xxx）"""
+    try:
+        group_id = event.group_id
+        initiator_id = event.user_id  # 发起鉴定的人
+        user_id_str = str(event.user_id)
+        
+        # 检查群组是否启用鉴定功能
+        if not is_plugin_enabled("identify", str(group_id), user_id_str):
+            await identify_other.finish()
+            return
+
+        # 获取被@的用户
+        target_user_id = get_at_target(event)
+        
+        if target_user_id is None:
+            await identify_other.finish("请@一个要鉴定的人喵~\n用法：鉴定你 @某人")
+            return
+        
+        # 不能鉴定机器人自己
+        if target_user_id == int(bot.self_id):
+            await identify_other.finish("我不能鉴定我自己喵~")
+            return
+
+        # 检查被鉴定用户今天的鉴定结果
+        today_record = daily_record_manager.get_user_record(group_id, target_user_id)
+
+        if today_record:
+            # 如果今天已经被鉴定过，直接返回之前的结果
+            image_path = today_record
+        else:
+            # 获取随机图片
+            image_path = daily_record_manager.get_random_image()
+
+            if not image_path:
+                await identify_other.finish("鉴定系统暂时不可用，请稍后再试喵~")
+                return
+
+            # 保存被鉴定用户今天的鉴定结果
+            daily_record_manager.set_user_record(group_id, target_user_id, image_path)
+
+        # 创建合并转发消息（传入发起者ID以生成不同文案）
+        forward_nodes = await create_identify_message(
+            bot, group_id, target_user_id, image_path, initiator_user_id=initiator_id
+        )
+
+        # 发送合并转发消息
+        await bot.send_group_forward_msg(group_id=group_id, messages=forward_nodes)
+
+        logger.info(f"用户 {initiator_id} 在群 {group_id} 鉴定了用户 {target_user_id}")
+
+    except FinishedException:
+        # 忽略 FinishedException，这是正常的结束流程
+        raise
+    except Exception as e:
+        logger.error(f"处理鉴定别人命令时出错: {e}")
+        await identify_other.finish("鉴定失败，请稍后再试喵~")
 
 
 async def daily_cleanup():
