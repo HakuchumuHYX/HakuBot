@@ -26,12 +26,14 @@ class NetEaseMusic(BaseMusicPlayer):
             data={"s": keyword, "limit": limit, "type": 1, "offset": 0},
             cookies={"appver": "2.0.2"},
         )
-        if (
-            not isinstance(result, dict)
-            or "result" not in result
-            or "songs" not in result["result"]
-        ):
-            logger.error(f"[music_plugin] NetEaseMusic 返回了意料之外数据：{result}")
+        # 检查响应格式是否有效
+        if not isinstance(result, dict) or "result" not in result:
+            logger.warning(f"[music_plugin] NetEaseMusic API响应格式异常：{result}")
+            return []
+
+        # 当搜索结果为空时（songCount=0），API不返回 songs 字段，这是正常情况
+        if "songs" not in result["result"]:
+            logger.debug(f"[music_plugin] NetEaseMusic 搜索无结果：{keyword}")
             return []
 
         songs = result["result"]["songs"][:limit]
@@ -40,7 +42,8 @@ class NetEaseMusic(BaseMusicPlayer):
             Song(
                 id=str(s.get("id")),
                 name=s.get("name"),
-                artists="、".join(a["name"] for a in s["artists"]),
+                artists="、".join(a["name"] for a in s.get("artists", [])),
+                album=s.get("album", {}).get("name") if isinstance(s.get("album"), dict) else None,
                 duration=s.get("duration"),
             )
             for s in songs

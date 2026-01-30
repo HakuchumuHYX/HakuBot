@@ -20,7 +20,7 @@ from .logic.fast_path import FastPathMixin
 from .logic.logging import LoggingMixin
 from .logic.llm_plan import LLMPlanMixin
 from .logic.models import Plan
-from .logic.song_search import SongSearchMixin
+from .logic.song_search import SongSearchMixin, _cjk_fuzzy_match
 from .logic.web_search import WebSearchMixin
 
 
@@ -270,6 +270,27 @@ class MusicService(LoggingMixin, LLMPlanMixin, WebSearchMixin, FastPathMixin, So
                 if not song:
                     song = self.pick_song(pre_songs, strategy="best_match", raw_request=raw_request) or pre_songs[0]
 
+                # 新增：歌手一致性验证
+                # 当 LLM 解析出明确的 song_artist 时，验证快速路径选中的歌是否与之匹配
+                # 如果不匹配，降级到慢路径以获得更准确的搜索结果
+                if plan.song_artist and song:
+                    song_artists = song.artists or ""
+                    artist_match = _cjk_fuzzy_match(plan.song_artist, song_artists)
+                    
+                    if not artist_match:
+                        self._log(
+                            "music.play.fast_path.artist_mismatch",
+                            {
+                                "raw_request": raw_request,
+                                "expected_artist": plan.song_artist,
+                                "actual_artists": song_artists,
+                                "picked_song": song.name,
+                                "action": "降级到慢路径",
+                            },
+                        )
+                        # 不接受快速路径，走慢路径
+                        return await self._slow_path(bot, event, raw_request, plan)
+
                 self._log(
                     "music.play.fast_path.hit",
                     {
@@ -335,6 +356,7 @@ class MusicService(LoggingMixin, LLMPlanMixin, WebSearchMixin, FastPathMixin, So
     async def _slow_path(self, bot: Bot, event: MessageEvent, raw_request: str, plan: Plan) -> str | None:
         """
         慢路径：LLM解析 + 可选联网 + 多变体搜索 + LLM相关性验证
+        优化：如果从 web_context 能直接提取出歌名，可跳过 LLM 重解析
         """
         web_context_used = False
 
@@ -355,6 +377,7 @@ class MusicService(LoggingMixin, LLMPlanMixin, WebSearchMixin, FastPathMixin, So
             self._log("music.play.web_search.context", context or "")
 
             if context:
+                # 常规路径：调用 LLM 重解析（基于 web_context）
                 plan = await self._llm_plan(raw_request, extra_context=context)
                 self._log("music.play.plan2", self._plan_dump(plan))
                 web_context_used = True

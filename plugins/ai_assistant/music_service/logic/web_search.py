@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Optional
 
@@ -223,6 +224,32 @@ class WebSearchMixin:
             for sig in irrelevant_signals:
                 if sig in url:
                     score -= 10
+            
+            # 8. 惩罚通用性/目录类标题（这些页面通常不包含具体歌曲信息）
+            generic_title_signals = [
+                "目录", "合集", "大全", "汇总", "列表", "全曲",
+                "交流", "体验", "讨论", "评测", "攻略",
+                "原声音乐专辑", "原声带", "Soundtrack",
+                "配乐合集", "音乐合集",
+            ]
+            title_lower = title.lower()
+            for sig in generic_title_signals:
+                if sig.lower() in title_lower:
+                    score -= 5
+            
+            # 9. 额外奖励：content 中包含具体歌曲信息的结果
+            # 如果 content 中同时包含歌名关键词和歌手/来源关键词，加分
+            content_lower = content.lower()
+            content_has_song_signal = any(
+                kw.lower() in content_lower 
+                for kw in ["歌名", "原曲", "BGM", "OST", "曲名", "歌曲名"]
+            )
+            content_has_artist_signal = any(
+                kw.lower() in content_lower 
+                for kw in ["演唱", "歌手", "作曲", "原唱", "翻唱"]
+            )
+            if content_has_song_signal and content_has_artist_signal:
+                score += 5
 
             return score
 
@@ -235,9 +262,10 @@ class WebSearchMixin:
         *,
         include_domains: Optional[list[str]] = None,
     ) -> list[dict]:
-        merged: list[dict] = []
-        seen = set()
-
+        """
+        并行执行多个 Tavily 搜索查询，合并结果并去重。
+        优化：使用 asyncio.gather 并行执行以提高速度。
+        """
         # 按全局配置分配 max_results
         total_max = 5
         try:
@@ -258,14 +286,35 @@ class WebSearchMixin:
                 "include_domains": include_domains,
                 "total_max": total_max,
                 "per_query": per_query,
+                "parallel": True,
             },
         )
 
-        for q in queries:
+        # 定义单个查询的异步函数
+        async def _search_one(q: str) -> tuple[str, list[dict]]:
             try:
                 rs = await tavily_search(q, max_results=per_query, include_domains=include_domains)
+                return q, rs
+            except Exception as e:
+                logger.warning(f"[ai_assistant.music] Tavily 搜索失败: query={q!r} err={e}")
+                self._log("tavily.search.error", {"query": q, "error": str(e)})
+                return q, []
 
-                # 全量日志：Tavily 原始返回（可能很长，会被 debug_log_max_chars 自动截断）
+        # 并行执行所有查询
+        tasks = [_search_one(q) for q in queries]
+        results_list = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 合并结果并去重
+        merged: list[dict] = []
+        seen: set[str] = set()
+
+        for result in results_list:
+            if isinstance(result, Exception):
+                continue
+            q, rs = result
+            
+            if rs:
+                # 全量日志：Tavily 原始返回
                 self._log(
                     "tavily.search.raw",
                     {
@@ -276,15 +325,11 @@ class WebSearchMixin:
                     },
                 )
 
-                # 精简日志：title/url/snippet（默认）
+                # 精简日志：title/url/snippet
                 self._log(
                     "tavily.search.response",
                     {"query": q, "count": len(rs), "results": self._summarize_web_results(rs)},
                 )
-            except Exception as e:
-                logger.warning(f"[ai_assistant.music] Tavily 搜索失败: query={q!r} err={e}")
-                self._log("tavily.search.error", {"query": q, "error": str(e)})
-                continue
 
             for item in rs:
                 url = (item.get("url") or "").strip()

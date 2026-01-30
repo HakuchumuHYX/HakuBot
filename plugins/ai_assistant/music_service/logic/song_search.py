@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import random
 import re
+import unicodedata
 from typing import Optional
 
 from ..core.model import Song
@@ -15,6 +17,100 @@ try:
     _HAS_PYPINYIN = True
 except ImportError:
     _HAS_PYPINYIN = False
+
+
+def _normalize_cjk(text: str) -> str:
+    """
+    统一CJK汉字变体（简体/繁体/日文汉字）为同一表示，便于跨语言匹配。
+    
+    处理：
+    1. NFKC 规范化：统一全角/半角、合字等
+    2. 移除常见的装饰性标点（、。・等）
+    3. 转小写
+    """
+    if not text:
+        return ""
+    # NFKC 规范化
+    normalized = unicodedata.normalize("NFKC", text)
+    # 移除装饰性标点，保留核心文字
+    normalized = re.sub(r"[、。・，,．.\s]+", "", normalized)
+    return normalized.lower()
+
+
+def _cjk_fuzzy_match(query: str, target: str) -> bool:
+    """
+    宽松的CJK匹配：检查query的核心部分是否出现在target中。
+    支持简繁日汉字的模糊匹配。
+    """
+    if not query or not target:
+        return False
+    
+    q_norm = _normalize_cjk(query)
+    t_norm = _normalize_cjk(target)
+    
+    if not q_norm or not t_norm:
+        return False
+    
+    # 直接包含检查
+    if q_norm in t_norm or t_norm in q_norm:
+        return True
+    
+    # 提取数字部分进行匹配（如"25时" vs "25時"）
+    q_nums = re.findall(r'\d+', q_norm)
+    t_nums = re.findall(r'\d+', t_norm)
+    if q_nums and t_nums:
+        # 如果数字相同，且非数字部分有重叠，认为匹配
+        if set(q_nums) & set(t_nums):
+            q_alpha = re.sub(r'\d+', '', q_norm)
+            t_alpha = re.sub(r'\d+', '', t_norm)
+            # 检查非数字部分是否有足够重叠（至少1个字符）
+            if q_alpha and t_alpha:
+                for char in q_alpha:
+                    if char in t_alpha:
+                        return True
+            elif q_alpha == "" and t_alpha == "":
+                # 纯数字匹配
+                return True
+    
+    return False
+
+
+def _edit_distance(s1: str, s2: str) -> int:
+    """
+    计算两个字符串的编辑距离（Levenshtein距离）。
+    用于评估搜索结果与期望歌名的相似程度。
+    """
+    if len(s1) < len(s2):
+        s1, s2 = s2, s1
+    
+    if len(s2) == 0:
+        return len(s1)
+    
+    previous_row = list(range(len(s2) + 1))
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    
+    return previous_row[-1]
+
+
+def _edit_distance_ratio(s1: str, s2: str) -> float:
+    """
+    计算编辑距离比率（0-1之间，1表示完全相同，0表示完全不同）。
+    """
+    if not s1 and not s2:
+        return 1.0
+    if not s1 or not s2:
+        return 0.0
+    
+    max_len = max(len(s1), len(s2))
+    distance = _edit_distance(s1, s2)
+    return 1.0 - (distance / max_len)
 
 
 class SongSearchMixin:
@@ -122,20 +218,81 @@ class SongSearchMixin:
             default=0,
         )
 
-    def _is_low_quality(self, songs: list[Song], *, title_tokens: list[str], artist_tokens: list[str], raw_request: str = "") -> bool:
+    def _is_low_quality(
+        self, 
+        songs: list[Song], 
+        *, 
+        title_tokens: list[str], 
+        artist_tokens: list[str], 
+        raw_request: str = "",
+        song_artist: str | None = None,
+        song_title: str | None = None,
+    ) -> bool:
         """
         判断搜索结果是否低质量（不相关）。
         
-        修复：当 title_tokens 和 artist_tokens 都为空时，使用 raw_request 进行基础相关性检测。
+        优化：
+        1. 当 title_tokens 和 artist_tokens 都为空时，使用 raw_request 进行基础相关性检测
+        2. 使用 CJK 模糊匹配处理简繁日汉字差异（如"25时" vs "25時"）
+        3. 当 song_artist 存在时，用宽松匹配检查歌手名
+        4. 使用编辑距离验证歌名相似度
         """
         if not songs:
             return True
         
+        # 如果有 song_artist，先用 CJK 模糊匹配检查歌手
+        # 这可以解决"25时" vs "25時、ナイトコードで。"的问题
+        if song_artist:
+            for song in songs[:5]:
+                song_artists = song.artists or ""
+                if _cjk_fuzzy_match(song_artist, song_artists):
+                    # 找到匹配的歌手，不是低质量
+                    return False
+        
+        # 如果有 song_title，用编辑距离验证
+        # 这可以检测出完全不相关的结果（如搜"shukishuki"返回"Shushiki"）
+        if song_title:
+            title_norm = _normalize_cjk(song_title)
+            
+            # 检测song_title是否为"音译/罗马音"格式（纯ASCII字母，看起来像日语罗马音）
+            # 如果是音译格式，编辑距离验证容易产生误判，需要使用更高的阈值
+            is_romanization = bool(re.match(r'^[a-z]+$', title_norm)) and len(title_norm) >= 6
+            edit_threshold = 0.85 if is_romanization else 0.65
+            
+            for song in songs[:5]:
+                name_norm = _normalize_cjk(song.name or "")
+                if not name_norm:
+                    continue
+                
+                # 计算编辑距离相似度
+                ratio = _edit_distance_ratio(title_norm, name_norm)
+                
+                # 如果相似度超过阈值，认为是相关的
+                # - 对于音译格式（如"shukishuki"），使用更高阈值0.85，避免误判"Shushiki"(0.7)
+                # - 对于正常歌名，使用0.65阈值
+                if ratio >= edit_threshold:
+                    return False
+                
+                # 也检查是否包含关系
+                if title_norm in name_norm or name_norm in title_norm:
+                    return False
+        
         # 如果有token，用token匹配
         if title_tokens or artist_tokens:
             best = self._best_score(songs, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request)
-            # 如果完全不命中（best=0），视为"搜歪"
-            return best <= 0
+            # 如果完全不命中（best=0），再尝试 CJK 模糊匹配
+            if best <= 0:
+                # 尝试对每个 artist_token 做 CJK 模糊匹配
+                for song in songs[:5]:
+                    for tok in artist_tokens:
+                        if _cjk_fuzzy_match(tok, song.artists or ""):
+                            return False
+                    for tok in title_tokens:
+                        if _cjk_fuzzy_match(tok, song.name or ""):
+                            return False
+                # 所有方法都失败，视为"搜歪"
+                return True
+            return False  # best > 0，不是低质量
         
         # 如果没有token但有raw_request，用raw_request做基础相关性检测
         if raw_request:
@@ -151,6 +308,9 @@ class SongSearchMixin:
                         t = tok.lower()
                         if t in name or t in artists:
                             # 找到匹配，认为不是低质量
+                            return False
+                        # 尝试 CJK 模糊匹配
+                        if _cjk_fuzzy_match(tok, song.name or "") or _cjk_fuzzy_match(tok, song.artists or ""):
                             return False
                     
                     # 拼音匹配
@@ -211,7 +371,7 @@ class SongSearchMixin:
         # 1) 主查询（由 llm 已强制"歌名在前歌手在后"）
         songs = await player.fetch_songs(keyword=keyword, limit=limit, extra=extra)
         best_score = self._best_score(songs, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request)
-        lowq = self._is_low_quality(songs, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request)
+        lowq = self._is_low_quality(songs, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request, song_artist=song_artist, song_title=song_title)
         
         self._log(
             "music.search_songs.result",
@@ -234,47 +394,79 @@ class SongSearchMixin:
         final_songs = songs
         final_lowq = lowq
 
-        # 2) 多变体搜索：如果主查询低质量且有备选查询词
+        # 2) 多变体搜索：如果主查询低质量且有备选查询词（并行执行以提速）
         enable_alternatives = getattr(self.cfg, "enable_alternative_queries", True)
         if (not songs or lowq) and alternative_queries and enable_alternatives:
-            self._log(
-                "music.search_songs.trying_alternatives",
-                {"alternative_queries": alternative_queries},
-            )
+            # 过滤掉与主查询相同的备选词
+            alt_queries_filtered = [q for q in alternative_queries if q != keyword]
             
-            for alt_query in alternative_queries:
-                if alt_query == keyword:
-                    continue
-                    
-                alt_songs = await player.fetch_songs(keyword=alt_query, limit=limit, extra=extra)
-                alt_score = self._best_score(alt_songs, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request)
-                alt_lowq = self._is_low_quality(alt_songs, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request)
-                
+            if alt_queries_filtered:
                 self._log(
-                    "music.search_songs.alternative_result",
-                    {
-                        "alternative_query": alt_query,
-                        "count": len(alt_songs),
-                        "best_score_top5": alt_score,
-                        "low_quality": alt_lowq,
-                        "songs": self._summarize_songs(alt_songs, max_items=3),
-                    },
+                    "music.search_songs.trying_alternatives_parallel",
+                    {"alternative_queries": alt_queries_filtered},
                 )
                 
-                # 如果备选结果更好，使用备选结果
-                if alt_songs and not alt_lowq:
-                    final_songs = alt_songs
-                    final_lowq = False
+                # 并行执行所有备选查询
+                async def _fetch_alt(alt_query: str) -> tuple[str, list[Song]]:
+                    try:
+                        alt_songs = await player.fetch_songs(keyword=alt_query, limit=limit, extra=extra)
+                        return alt_query, alt_songs
+                    except Exception:
+                        return alt_query, []
+                
+                alt_tasks = [_fetch_alt(q) for q in alt_queries_filtered]
+                alt_results = await asyncio.gather(*alt_tasks, return_exceptions=True)
+                
+                # 处理并行结果，取第一个非低质量的
+                best_alt_songs: list[Song] = []
+                best_alt_query: str | None = None
+                best_alt_score = best_score
+                
+                for result in alt_results:
+                    if isinstance(result, Exception):
+                        continue
+                    alt_query, alt_songs = result
+                    if not alt_songs:
+                        continue
+                    
+                    alt_score = self._best_score(alt_songs, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request)
+                    alt_lowq = self._is_low_quality(alt_songs, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request, song_artist=song_artist, song_title=song_title)
+                    
                     self._log(
-                        "music.search_songs.alternative_accepted",
-                        {"accepted_query": alt_query},
+                        "music.search_songs.alternative_result",
+                        {
+                            "alternative_query": alt_query,
+                            "count": len(alt_songs),
+                            "best_score_top5": alt_score,
+                            "low_quality": alt_lowq,
+                            "songs": self._summarize_songs(alt_songs, max_items=3),
+                        },
                     )
-                    break
-                elif alt_songs and (not songs or alt_score > best_score):
-                    # 备选虽然也低质量，但比主查询好
-                    final_songs = alt_songs
-                    final_lowq = alt_lowq
-                    best_score = alt_score
+                    
+                    # 如果找到非低质量结果，立即采用
+                    if not alt_lowq:
+                        final_songs = alt_songs
+                        final_lowq = False
+                        self._log(
+                            "music.search_songs.alternative_accepted",
+                            {"accepted_query": alt_query},
+                        )
+                        break
+                    elif alt_score > best_alt_score:
+                        # 记录更好的低质量结果作为备选
+                        best_alt_songs = alt_songs
+                        best_alt_query = alt_query
+                        best_alt_score = alt_score
+                else:
+                    # 没有找到非低质量结果，但有更好的低质量结果
+                    if best_alt_songs and best_alt_score > best_score:
+                        final_songs = best_alt_songs
+                        final_lowq = True
+                        best_score = best_alt_score
+                        self._log(
+                            "music.search_songs.alternative_best_lowq",
+                            {"accepted_query": best_alt_query, "score": best_alt_score},
+                        )
 
         # 3) 兜底（方案B）：仅在"无结果 or 明显不相关"时，再做一次搜索
         # 兜底 query 优先用"纯歌名"，否则用"纯歌手"
@@ -288,7 +480,7 @@ class SongSearchMixin:
             if fallback_query and fallback_query != keyword:
                 songs2 = await player.fetch_songs(keyword=fallback_query, limit=limit, extra=extra)
                 best_score2 = self._best_score(songs2, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request)
-                lowq2 = self._is_low_quality(songs2, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request)
+                lowq2 = self._is_low_quality(songs2, title_tokens=title_tokens, artist_tokens=artist_tokens, raw_request=raw_request, song_artist=song_artist, song_title=song_title)
                 
                 self._log(
                     "music.search_songs.fallback",
@@ -311,12 +503,17 @@ class SongSearchMixin:
                     final_songs = songs2
                     final_lowq = lowq2
 
-        # 4) LLM相关性二次验证（如果仍然低质量且启用了LLM验证）
+        # 4) LLM相关性二次验证
+        # 优化：仅在以下条件全部满足时才调用LLM验证：
+        # - 结果标记为低质量
+        # - 启用了LLM验证
+        # - 有原始请求可供对比
+        # 这样可以在结果质量足够好时跳过LLM调用，节省时间
         enable_llm_check = getattr(self.cfg, "enable_llm_relevance_check", True)
         if final_songs and final_lowq and enable_llm_check and raw_request:
             self._log(
                 "music.search_songs.llm_relevance_check",
-                {"raw_request": raw_request, "candidate_count": len(final_songs)},
+                {"raw_request": raw_request, "candidate_count": len(final_songs), "song_artist": song_artist},
             )
             
             try:
@@ -326,7 +523,12 @@ class SongSearchMixin:
                     for s in final_songs[:5]
                 ]
                 
-                relevant, best_idx, reason = await self._llm_verify_relevance(raw_request, candidates)
+                # 传入 song_artist 以提供上下文，帮助LLM理解跨语言对应关系
+                relevant, best_idx, reason = await self._llm_verify_relevance(
+                    raw_request, 
+                    candidates,
+                    song_artist=song_artist,
+                )
                 
                 self._log(
                     "music.search_songs.llm_relevance_result",

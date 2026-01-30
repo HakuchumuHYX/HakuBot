@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -34,65 +36,30 @@ def _safe_filename(s: str, max_len: int = 30) -> str:
     return s or "unnamed"
 
 
-class LoggingMixin:
+@dataclass
+class LogSession:
     """
-    统一 debug 日志与"摘要化"工具。
-    
-    优化：debug 模式下不再打印到控制台，而是输出到 JSON 文件。
-    日志文件存储在 data/ai_assistant_music/debug_logs/ 目录下。
-    每次点歌请求生成一个独立的日志文件，便于追踪和分析。
-    
-    依赖：
-      - self.cfg: MusicServiceConfig
+    日志会话对象，每个请求独立一个会话。
+    使用 dataclass 确保每个会话有独立的状态。
     """
-
-    cfg: MusicServiceConfig  # for type checkers
+    session_id: str
+    raw_request: str
+    log_dir: Path
+    entries: list[dict] = field(default_factory=list)
     
-    # 日志会话状态
-    _log_dir: Path | None = None
-    _log_entries: list[dict] = []
-    _session_id: str | None = None
-    _session_raw_request: str | None = None
-
-    def _init_log_session(self, raw_request: str) -> None:
-        """
-        初始化日志会话（每次点歌请求一个新会话）
-        
-        Args:
-            raw_request: 用户的原始请求，用于生成日志文件名
-        """
-        if not getattr(self.cfg, "debug_log", False):
-            return
-        
-        self._log_dir = localstore.get_data_dir("ai_assistant_music") / "debug_logs"
-        self._log_dir.mkdir(parents=True, exist_ok=True)
-        self._session_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        self._session_raw_request = raw_request
-        self._log_entries = []
-        
-        # 记录会话开始
-        self._log_entries.append({
+    def __post_init__(self):
+        """初始化时记录会话开始"""
+        self.entries.append({
             "timestamp": datetime.now().isoformat(),
             "title": "_session_start",
             "payload": {
-                "session_id": self._session_id,
-                "raw_request": raw_request,
+                "session_id": self.session_id,
+                "raw_request": self.raw_request,
             },
         })
-
-    def _log(self, title: str, payload: Any) -> None:
-        """
-        记录日志条目（不打印到控制台，存储到内存列表）
-        
-        Args:
-            title: 日志标题/事件名
-            payload: 日志内容（字符串或可序列化对象）
-        """
-        if not getattr(self.cfg, "debug_log", False):
-            return
-        
-        max_chars = int(getattr(self.cfg, "debug_log_max_chars", 0) or 0)
-        
+    
+    def add_entry(self, title: str, payload: Any, *, max_chars: int = 0) -> None:
+        """添加日志条目"""
         # 处理 payload
         try:
             if isinstance(payload, str):
@@ -104,17 +71,111 @@ class LoggingMixin:
         except Exception:
             processed = _dbg(str(payload), max_chars=max_chars) if max_chars else str(payload)
         
-        # 记录到内存列表
-        entry = {
+        self.entries.append({
             "timestamp": datetime.now().isoformat(),
             "title": title,
             "payload": processed,
-        }
-        self._log_entries.append(entry)
+        })
+    
+    def flush(self) -> None:
+        """将日志写入 JSON 文件"""
+        if not self.entries:
+            return
+        
+        # 记录会话结束
+        self.entries.append({
+            "timestamp": datetime.now().isoformat(),
+            "title": "_session_end",
+            "payload": {
+                "session_id": self.session_id,
+                "entry_count": len(self.entries),
+            },
+        })
+        
+        # 生成文件名
+        safe_name = _safe_filename(self.raw_request or "unknown")
+        filename = f"{self.session_id}_{safe_name}.json"
+        log_path = self.log_dir / filename
+        
+        try:
+            with open(log_path, "w", encoding="utf-8") as f:
+                json.dump(self.entries, f, ensure_ascii=False, indent=2)
+            logger.debug(f"[ai_assistant.music] debug log saved to {log_path}")
+        except Exception as e:
+            logger.warning(f"[ai_assistant.music] failed to save debug log: {e}")
+
+
+# 使用 ContextVar 实现请求级别的日志隔离
+# 每个异步请求有独立的上下文，不会互相干扰
+_current_log_session: ContextVar[LogSession | None] = ContextVar("music_log_session", default=None)
+
+
+class LoggingMixin:
+    """
+    统一 debug 日志与"摘要化"工具。
+    
+    优化：
+    1. debug 模式下不再打印到控制台，而是输出到 JSON 文件
+    2. 使用 ContextVar 实现请求级别的日志隔离，避免并发问题
+    3. 日志文件存储在 data/ai_assistant_music/debug_logs/ 目录下
+    4. 每次点歌请求生成一个独立的日志文件，便于追踪和分析
+    
+    依赖：
+      - self.cfg: MusicServiceConfig
+    """
+
+    cfg: MusicServiceConfig  # for type checkers
+
+    def _init_log_session(self, raw_request: str) -> None:
+        """
+        初始化日志会话（每次点歌请求一个新会话）
+        
+        使用 ContextVar 确保每个异步请求有独立的日志会话，
+        避免并发请求之间的日志混淆。
+        
+        Args:
+            raw_request: 用户的原始请求，用于生成日志文件名
+        """
+        if not getattr(self.cfg, "debug_log", False):
+            _current_log_session.set(None)
+            return
+        
+        log_dir = localstore.get_data_dir("ai_assistant_music") / "debug_logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        
+        session_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        
+        # 创建新的日志会话并设置到当前上下文
+        session = LogSession(
+            session_id=session_id,
+            raw_request=raw_request,
+            log_dir=log_dir,
+        )
+        _current_log_session.set(session)
+
+    def _log(self, title: str, payload: Any) -> None:
+        """
+        记录日志条目（不打印到控制台，存储到当前会话的日志列表）
+        
+        使用 ContextVar 获取当前请求的日志会话，确保并发安全。
+        
+        Args:
+            title: 日志标题/事件名
+            payload: 日志内容（字符串或可序列化对象）
+        """
+        if not getattr(self.cfg, "debug_log", False):
+            return
+        
+        session = _current_log_session.get()
+        if session is None:
+            return
+        
+        max_chars = int(getattr(self.cfg, "debug_log_max_chars", 0) or 0)
+        session.add_entry(title, payload, max_chars=max_chars)
 
     def _flush_log(self) -> None:
         """
-        将日志写入 JSON 文件
+        将日志写入 JSON 文件并清理当前会话
         
         日志文件命名格式：{时间戳}_{请求摘要}.json
         存储位置：data/ai_assistant_music/debug_logs/
@@ -122,35 +183,14 @@ class LoggingMixin:
         if not getattr(self.cfg, "debug_log", False):
             return
         
-        if not self._log_entries or not self._log_dir:
+        session = _current_log_session.get()
+        if session is None:
             return
         
-        # 记录会话结束
-        self._log_entries.append({
-            "timestamp": datetime.now().isoformat(),
-            "title": "_session_end",
-            "payload": {
-                "session_id": self._session_id,
-                "entry_count": len(self._log_entries),
-            },
-        })
+        session.flush()
         
-        # 生成文件名
-        safe_name = _safe_filename(self._session_raw_request or "unknown")
-        filename = f"{self._session_id}_{safe_name}.json"
-        log_path = self._log_dir / filename
-        
-        try:
-            with open(log_path, "w", encoding="utf-8") as f:
-                json.dump(self._log_entries, f, ensure_ascii=False, indent=2)
-            logger.debug(f"[ai_assistant.music] debug log saved to {log_path}")
-        except Exception as e:
-            logger.warning(f"[ai_assistant.music] failed to save debug log: {e}")
-        
-        # 清空会话状态
-        self._log_entries = []
-        self._session_id = None
-        self._session_raw_request = None
+        # 清理当前上下文的会话
+        _current_log_session.set(None)
 
     def _plan_dump(self, plan: Plan) -> dict:
         return {

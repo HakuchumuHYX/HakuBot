@@ -98,15 +98,42 @@ class LLMPlanMixin:
                 return True
         return False
 
+    # 不应从 web_context 提取的标题模式（这些是目录/列表页，不是具体歌名）
+    _WEB_CONTEXT_TITLE_BLACKLIST_PATTERNS = [
+        r"演唱歌曲",
+        r"收[录錄]歌曲",
+        r"歌曲[列目]",
+        r"[目歌]录",
+        r"合[集辑輯]",
+        r"大全",
+        r"所有歌曲",
+        r"全部歌曲",
+        r"歌曲列表",
+        r"discography",
+        r"song\s*list",
+        r"music\s*list",
+    ]
+
     @staticmethod
     def _extract_song_title_from_web_context(web_context: str) -> str | None:
         """
         从 web_context 里提取"更可靠的正式歌名"，用于覆盖 LLM 规划时的 song_title。
+        
+        注意：此函数非常保守，只在高置信度时才返回结果。
+        它会过滤掉目录页、列表页等非具体歌名的标题。
         """
         if not web_context:
             return None
 
         text = web_context.strip()
+
+        def _is_blacklisted(t: str) -> bool:
+            """检查标题是否匹配黑名单模式（目录/列表页等）"""
+            t_lower = t.lower()
+            for pattern in LLMPlanMixin._WEB_CONTEXT_TITLE_BLACKLIST_PATTERNS:
+                if re.search(pattern, t_lower, re.I):
+                    return True
+            return False
 
         def _clean_title(t: str) -> str | None:
             t = (t or "").strip()
@@ -136,6 +163,10 @@ class LLMPlanMixin:
 
             # 必须包含一些"像歌名"的字符（中/日/英/数）
             if not re.search(r"[\u3040-\u30ff\u4e00-\u9fffA-Za-z0-9]", t):
+                return None
+            
+            # 检查是否匹配黑名单（目录页、列表页等）
+            if _is_blacklisted(t):
                 return None
 
             return t
@@ -231,7 +262,10 @@ class LLMPlanMixin:
             "\n"
             "5. 若已提供web_context：\n"
             "   - need_web_search必须为false\n"
-            "   - 优先使用web_context中的正式歌名/原名\n"
+            "   - 【重要】必须仔细阅读web_context，从中提取正式歌名/原名\n"
+            "   - 如果web_context中包含日文歌名（如\"しゅきしゅきソング\"），优先使用日文原名\n"
+            "   - 如果web_context中说明了用户请求的梗/音译对应哪首歌，必须使用那首歌的正式名称\n"
+            "   - 例如：用户说\"shukishuki\"，web_context说是\"自己肯定感爆上げ↑↑しゅきしゅきソング\"，则song_title应为该正式名称\n"
             "\n"
             "## Few-shot示例\n"
             "\n"
@@ -572,9 +606,17 @@ class LLMPlanMixin:
         self,
         raw_request: str,
         candidates: list[dict],
+        *,
+        song_artist: str | None = None,
+        parse_reason: str | None = None,
     ) -> tuple[bool, int | None, str]:
         """
         LLM相关性二次验证：判断搜索结果候选是否与用户请求匹配。
+        
+        新增参数：
+        - song_artist: LLM解析出的歌手/组合名（用于提供上下文）
+        - parse_reason: LLM解析的理由（用于提供上下文）
+        
         返回：(is_relevant, best_index_1based|None, reason)
         """
         if not candidates:
@@ -602,13 +644,29 @@ class LLMPlanMixin:
             "- best_index：如果relevant为true，指出最匹配的候选序号(1-5)\n"
             "- reason：简短说明判断理由\n"
             "\n"
+            "## 跨语言匹配规则（重要）\n"
+            "- 中文名与日文名可能对应同一事物（如\"25时\"=\"25時\"）\n"
+            "- 简体中文与日文汉字可能是同一个词（如\"时\"=\"時\"）\n"
+            "- 组合/乐队名可能有多种写法（如\"25时，在Nightcord。\"=\"25時、ナイトコードで。\"）\n"
+            "- 如果候选歌手名包含与用户请求相同的数字+相似的汉字，很可能是匹配的\n"
+            "\n"
             "注意：\n"
             "- 考虑音译/别名/翻译名的对应关系\n"
-            "- 用户可能用梗/外号/歌词片段来指代歌曲\n"
-            "- 如果不确定是否匹配，返回relevant=false\n"
+            "- 用户可能用梗/外号/缩写来指代歌曲或歌手\n"
+            "- 如果候选歌手与LLM解析的歌手在语义上等价，应认为匹配\n"
         )
 
-        user = f"用户请求: {raw_request}\n\n搜索结果:\n{candidates_text}"
+        # 构建用户消息，包含LLM解析上下文
+        user_parts = [f"用户请求: {raw_request}"]
+        
+        if song_artist:
+            user_parts.append(f"LLM解析的目标歌手/组合: {song_artist}")
+        if parse_reason:
+            user_parts.append(f"解析理由: {parse_reason}")
+        
+        user_parts.append(f"\n搜索结果:\n{candidates_text}")
+        
+        user = "\n".join(user_parts)
 
         self._log(
             "llm_verify_relevance.request",

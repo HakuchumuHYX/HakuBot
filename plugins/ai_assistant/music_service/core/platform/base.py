@@ -10,6 +10,9 @@ from nonebot.log import logger
 from ...types import MusicServiceConfig
 from ..model import Platform, Song
 
+# 默认请求超时配置（秒）
+DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
+
 
 class BaseMusicPlayer(ABC):
     """
@@ -37,13 +40,16 @@ class BaseMusicPlayer(ABC):
     def __init__(self, config: MusicServiceConfig):
         self.cfg = config
         proxy = self.cfg.proxy or None
-        self.session = aiohttp.ClientSession(proxy=proxy)
+        timeout = aiohttp.ClientTimeout(total=config.timeout, connect=10)
+        self.session = aiohttp.ClientSession(proxy=proxy, timeout=timeout)
 
     def __init_subclass__(cls, **kwargs):
-        """自动注册子类到 _registry"""
+        """自动注册子类到 _registry（防止重复注册）"""
         super().__init_subclass__(**kwargs)
         if ABC not in cls.__bases__:  # 跳过抽象类
-            BaseMusicPlayer._registry.append(cls)
+            # 检查是否已注册（防止热重载时重复注册）
+            if cls not in BaseMusicPlayer._registry:
+                BaseMusicPlayer._registry.append(cls)
 
     @classmethod
     def get_all_subclass(cls) -> list[type["BaseMusicPlayer"]]:

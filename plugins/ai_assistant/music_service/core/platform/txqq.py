@@ -117,8 +117,9 @@ class TXQQMusic(BaseMusicPlayer):
             },
             headers=self.HEADERS,
         )
+        # 检查响应格式是否有效
         if not isinstance(result, dict) or "data" not in result:
-            logger.error(f"[music_plugin] TXQQMusic 返回了意料之外的数据：{result}")
+            logger.warning(f"[music_plugin] TXQQMusic API响应格式异常：{result}")
             return []
 
         data = result.get("data")

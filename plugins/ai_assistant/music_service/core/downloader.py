@@ -18,7 +18,9 @@ class Downloader:
         self.cfg = cfg
         self.songs_dir = songs_dir
         proxy = self.cfg.proxy or None
-        self.session = aiohttp.ClientSession(proxy=proxy)
+        # 下载超时设置：总超时使用配置值，连接超时固定10秒
+        timeout = aiohttp.ClientTimeout(total=cfg.timeout, connect=10)
+        self.session = aiohttp.ClientSession(proxy=proxy, timeout=timeout)
 
     async def initialize(self) -> None:
         if self.cfg.clear_cache:

@@ -14,6 +14,9 @@ class Song:
     artists: str | None = None
     """歌手/艺人"""
 
+    album: str | None = None
+    """专辑名称"""
+
     duration: int | None = None
     """时长（毫秒）"""
 
