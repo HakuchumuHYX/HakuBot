@@ -185,47 +185,119 @@ debug_analysis_cmd = on_command("debug_daily_analysis", aliases={"日报调试"}
 
 async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = False):
     """
-    运行分析任务并发送结果 (带重试机制)
+    运行分析任务并发送结果 (带分阶段重试机制)
+    
+    流程分为三个独立阶段，每个阶段可独立重试：
+    1. 获取消息（从数据库）
+    2. LLM 分析（生成 AnalysisResult）
+    3. 渲染报告（生成图片）
+    
+    这样可以避免渲染失败时重新执行 LLM 分析（浪费 token）。
     """
     logger.info(f"开始分析群 {group_id} 的每日总结 (Debug={debug})...")
     
-    last_error = None
+    # === 阶段 1: 获取消息 ===
+    messages = None
+    fetch_error = None
     for i in range(retries):
         try:
             if i > 0:
-                logger.info(f"第 {i+1} 次重试群 {group_id} 的分析任务...")
+                logger.info(f"第 {i+1} 次重试获取群 {group_id} 消息...")
             
-            # 1. 获取消息 (从数据库)
             fetcher = MessageFetcher()
             messages = await fetcher.fetch_messages(bot, group_id)
-            
-            # Debug 模式下忽略消息数量限制
-            if not debug and len(messages) < plugin_config.min_messages_threshold:
-                logger.warning(f"群 {group_id} 消息数量不足 ({len(messages)} < {plugin_config.min_messages_threshold})，跳过分析")
-                return None
-
-            # 2. 分析消息
-            analyzer = MessageAnalyzer()
-            result = await analyzer.analyze_messages(messages, str(group_id), debug_mode=debug)
-            
-            # 3. 渲染报告
-            renderer = ReportRenderer()
-            image_bytes = await renderer.render_to_image(result, str(group_id))
-            
-            return image_bytes
+            break  # 成功则跳出
             
         except Exception as e:
-            logger.warning(f"群 {group_id} 分析失败 (尝试 {i+1}/{retries}): {e}")
-            last_error = e
-            # 简单的指数退避
+            logger.warning(f"获取群 {group_id} 消息失败 (尝试 {i+1}/{retries}): {e}")
+            fetch_error = e
+            await asyncio.sleep(1 * (i + 1))
+    
+    if messages is None:
+        logger.error(f"群 {group_id} 消息获取最终失败")
+        if fetch_error:
+            raise fetch_error
+        return None
+    
+    # Debug 模式下忽略消息数量限制
+    if not debug and len(messages) < plugin_config.min_messages_threshold:
+        logger.warning(f"群 {group_id} 消息数量不足 ({len(messages)} < {plugin_config.min_messages_threshold})，跳过分析")
+        return None
+    
+    logger.info(f"群 {group_id} 获取到 {len(messages)} 条消息")
+
+    # === 阶段 2: LLM 分析 ===
+    analysis_result = None
+    analysis_error = None
+    for i in range(retries):
+        try:
+            if i > 0:
+                logger.info(f"第 {i+1} 次重试群 {group_id} 的 LLM 分析...")
+            
+            analyzer = MessageAnalyzer()
+            analysis_result = await analyzer.analyze_messages(messages, str(group_id), debug_mode=debug)
+            
+            # 检查分析结果是否有效（至少有一项内容）
+            has_content = (
+                analysis_result.topics or 
+                analysis_result.user_titles or 
+                analysis_result.golden_quotes
+            )
+            
+            if not has_content and not debug:
+                logger.warning(f"群 {group_id} LLM 分析返回空结果，可能需要重试")
+                # 空结果也算一种"软失败"，但不抛异常
+                # 如果还有重试次数，继续尝试
+                if i < retries - 1:
+                    await asyncio.sleep(2 * (i + 1))
+                    continue
+            
+            break  # 有内容或已耗尽重试次数
+            
+        except Exception as e:
+            logger.warning(f"群 {group_id} LLM 分析失败 (尝试 {i+1}/{retries}): {e}")
+            analysis_error = e
             await asyncio.sleep(2 * (i + 1))
     
-    if last_error:
-        logger.error(f"群 {group_id} 分析最终失败: {last_error}")
-        # 这里可以选择抛出异常或者返回 None
-        # 如果抛出，外层可以捕获并提示用户
-        raise last_error
-    return None
+    if analysis_result is None:
+        logger.error(f"群 {group_id} LLM 分析最终失败")
+        if analysis_error:
+            raise analysis_error
+        return None
+    
+    # 记录分析结果统计
+    logger.info(
+        f"群 {group_id} 分析完成: "
+        f"话题={len(analysis_result.topics)}, "
+        f"称号={len(analysis_result.user_titles)}, "
+        f"金句={len(analysis_result.golden_quotes)}"
+    )
+
+    # === 阶段 3: 渲染报告 ===
+    image_bytes = None
+    render_error = None
+    for i in range(retries):
+        try:
+            if i > 0:
+                logger.info(f"第 {i+1} 次重试群 {group_id} 的报告渲染...")
+            
+            renderer = ReportRenderer()
+            image_bytes = await renderer.render_to_image(analysis_result, str(group_id))
+            break  # 成功则跳出
+            
+        except Exception as e:
+            logger.warning(f"群 {group_id} 报告渲染失败 (尝试 {i+1}/{retries}): {e}")
+            render_error = e
+            await asyncio.sleep(1 * (i + 1))
+    
+    if image_bytes is None:
+        logger.error(f"群 {group_id} 报告渲染最终失败")
+        if render_error:
+            raise render_error
+        return None
+    
+    logger.info(f"群 {group_id} 每日总结生成成功，图片大小: {len(image_bytes)} bytes")
+    return image_bytes
 
 @analysis_cmd.handle()
 async def handle_analysis(bot: Bot, event: GroupMessageEvent):

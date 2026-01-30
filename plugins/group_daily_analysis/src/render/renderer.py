@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime
+import asyncio
 import base64
 import aiohttp
 from aiohttp import ClientTimeout
@@ -135,23 +136,59 @@ class ReportRenderer:
             "watermark_text": plugin_config.watermark_text,
         }
 
-    async def _get_user_avatar(self, session: aiohttp.ClientSession, user_id: str) -> str | None:
-        """获取用户头像 Base64（带缓存、复用 session）"""
+    async def _get_user_avatar(
+        self, 
+        session: aiohttp.ClientSession, 
+        user_id: str,
+        max_retries: int = 2,
+    ) -> str | None:
+        """
+        获取用户头像 Base64（带缓存、复用 session、重试机制）
+        
+        Args:
+            session: aiohttp 会话
+            user_id: 用户 QQ 号
+            max_retries: 最大重试次数
+        
+        Returns:
+            头像的 data URI，失败时返回 None
+        """
         if not user_id:
             return None
+        
         cached = self._avatar_cache.get(user_id)
         if cached:
             return cached
 
-        try:
-            url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={user_id}&spec=100"
-            async with session.get(url) as resp:
-                if resp.status == 200:
-                    data = await resp.read()
-                    b64 = base64.b64encode(data).decode()
-                    data_uri = f"data:image/jpeg;base64,{b64}"
-                    self._avatar_cache[user_id] = data_uri
-                    return data_uri
-        except Exception as e:
-            logger.warning(f"获取头像失败: {e}")
+        # 多个头像 CDN 备选
+        avatar_urls = [
+            f"https://q4.qlogo.cn/headimg_dl?dst_uin={user_id}&spec=100",
+            f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100",
+            f"https://q2.qlogo.cn/headimg_dl?dst_uin={user_id}&spec=100",
+        ]
+        
+        for url in avatar_urls:
+            for attempt in range(max_retries):
+                try:
+                    async with session.get(url, timeout=ClientTimeout(total=3)) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            # 验证是否为有效图片（至少有一些数据）
+                            if len(data) > 100:
+                                b64 = base64.b64encode(data).decode()
+                                data_uri = f"data:image/jpeg;base64,{b64}"
+                                self._avatar_cache[user_id] = data_uri
+                                return data_uri
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(0.5)
+                        continue
+                except Exception as e:
+                    logger.debug(f"获取头像失败 (URL={url}, 尝试={attempt+1}): {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(0.5)
+                        continue
+                break  # 当前 URL 失败，尝试下一个
+        
+        logger.warning(f"获取用户 {user_id} 头像失败，所有 CDN 均不可用")
         return None

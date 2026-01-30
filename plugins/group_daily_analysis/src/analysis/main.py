@@ -3,6 +3,7 @@ import asyncio
 import re
 import traceback
 from datetime import datetime
+from typing import Callable, TypeVar, Any
 from nonebot.log import logger
 
 from ..config import plugin_config
@@ -13,6 +14,8 @@ from ..models import (
 from ..visualization.charts import ActivityVisualizer
 from ..utils.llm import call_chat_completion, fix_json
 from .user_analyzer import UserAnalyzer
+
+T = TypeVar('T')
 
 
 def safe_prompt_format(prompt: str, **kwargs) -> str:
@@ -150,23 +153,44 @@ class MessageAnalyzer:
             golden_quotes=golden_quotes
         )
 
-    async def _analyze_with_strategy(self, messages: list, single_func, merge_func=None):
-        """通用分析策略：自动选择直接分析或 Map-Reduce"""
+    async def _analyze_with_strategy(
+        self, 
+        messages: list, 
+        single_func: Callable[[str], Any], 
+        merge_func: Callable[[list], Any] | None = None,
+        chunk_retry_count: int = 2,
+    ):
+        """
+        通用分析策略：自动选择直接分析或 Map-Reduce
+        
+        Args:
+            messages: 消息列表
+            single_func: 单次分析函数
+            merge_func: 合并函数（可选）
+            chunk_retry_count: 单个分片失败时的重试次数
+        """
         total_len = sum(len(m["content"]) for m in messages)
 
         # Direct Mode
         if total_len <= plugin_config.max_input_length:
             text = self._msgs_to_text(messages)
-            return await single_func(text)
+            try:
+                return await single_func(text)
+            except Exception as e:
+                logger.error(f"直接分析模式失败: {e}")
+                return [], TokenUsage()
 
         # Map-Reduce Mode
         logger.info(f"消息长度 ({total_len}) 超过阈值，启用 Map-Reduce 分段分析...")
         chunks = self._split_messages(messages, plugin_config.max_input_length)
-
+        
+        # Map Phase: 并发处理所有分片
         map_tasks = []
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             text = self._msgs_to_text(chunk)
-            map_tasks.append(single_func(text))
+            map_tasks.append(self._run_chunk_with_retry(
+                single_func, text, chunk_index=i, max_retries=chunk_retry_count
+            ))
 
         # Map Results
         results = await asyncio.gather(*map_tasks, return_exceptions=True)
@@ -174,33 +198,89 @@ class MessageAnalyzer:
         # Flatten and Accumulate Tokens
         flattened = []
         total_usage = TokenUsage()
+        success_count = 0
+        fail_count = 0
 
-        for res in results:
+        for i, res in enumerate(results):
             if isinstance(res, tuple):
                 data, usage = res
-                flattened.extend(data)
+                if data:  # 有有效数据
+                    flattened.extend(data)
+                    success_count += 1
                 if isinstance(usage, TokenUsage):
                     total_usage.prompt_tokens += usage.prompt_tokens
                     total_usage.completion_tokens += usage.completion_tokens
                     total_usage.total_tokens += usage.total_tokens
             elif isinstance(res, Exception):
-                logger.warning(f"Map 任务失败: {res}")
+                logger.warning(f"Map 分片 {i} 最终失败: {res}")
+                fail_count += 1
             else:
                 # Fallback if someone returns just list (shouldn't happen with updated code)
-                if isinstance(res, list):
+                if isinstance(res, list) and res:
                     flattened.extend(res)
+                    success_count += 1
 
-        # Reduce
+        logger.info(f"Map 阶段完成: {success_count}/{len(chunks)} 分片成功, {fail_count} 失败, 收集到 {len(flattened)} 条结果")
+
+        # 如果所有分片都失败了，返回空结果
+        if not flattened:
+            logger.warning("所有 Map 分片都失败，无法生成分析结果")
+            return [], total_usage
+
+        # Reduce Phase
         if merge_func and flattened:
-            logger.info(f"Map 阶段完成，合并 {len(flattened)} 条结果...")
-            data, usage = await merge_func(flattened)
-            if isinstance(usage, TokenUsage):
-                total_usage.prompt_tokens += usage.prompt_tokens
-                total_usage.completion_tokens += usage.completion_tokens
-                total_usage.total_tokens += usage.total_tokens
-            return data, total_usage
+            logger.info(f"开始 Reduce 阶段，合并 {len(flattened)} 条结果...")
+            try:
+                data, usage = await merge_func(flattened)
+                if isinstance(usage, TokenUsage):
+                    total_usage.prompt_tokens += usage.prompt_tokens
+                    total_usage.completion_tokens += usage.completion_tokens
+                    total_usage.total_tokens += usage.total_tokens
+                return data, total_usage
+            except Exception as e:
+                logger.warning(f"Reduce 阶段失败，返回未合并的 Map 结果: {e}")
+                # Reduce 失败时，返回截断的未合并结果作为降级
+                return flattened, total_usage
 
         return flattened, total_usage
+
+    async def _run_chunk_with_retry(
+        self, 
+        func: Callable[[str], Any], 
+        text: str, 
+        chunk_index: int,
+        max_retries: int = 2,
+    ) -> tuple[list, TokenUsage]:
+        """
+        带重试的分片执行
+        
+        Args:
+            func: 分析函数
+            text: 文本内容
+            chunk_index: 分片索引（用于日志）
+            max_retries: 最大重试次数
+        
+        Returns:
+            (结果列表, TokenUsage)
+        """
+        last_error: Exception | None = None
+        
+        for attempt in range(max_retries):
+            try:
+                result = await func(text)
+                if attempt > 0:
+                    logger.info(f"分片 {chunk_index} 在第 {attempt + 1} 次尝试后成功")
+                return result
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    delay = 2.0 * (attempt + 1)
+                    logger.warning(f"分片 {chunk_index} 失败 ({e})，{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})...")
+                    await asyncio.sleep(delay)
+        
+        # 所有重试都失败
+        logger.error(f"分片 {chunk_index} 在 {max_retries} 次尝试后仍失败: {last_error}")
+        return [], TokenUsage()
 
     def _split_messages(self, messages: list, chunk_size: int) -> list[list]:
         """按字符数切分消息块"""
