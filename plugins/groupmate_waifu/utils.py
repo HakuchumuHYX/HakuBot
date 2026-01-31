@@ -1,24 +1,34 @@
-# waifu/utils.py
+"""
+groupmate_waifu/utils.py
+工具函数：头像下载、文字转图片、@解析等
+"""
+
 import io
-import httpx
 import hashlib
 import asyncio
+from typing import List
 
+import httpx
 from pil_utils import BuildImage, Text2Image
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.log import logger
 
 
-async def download_avatar(user_id: int) -> bytes:
-    url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=640"
-    data = await download_url(url)
-    if hashlib.md5(data).hexdigest() == "acef72340ac0e914090bd35799f5594e":
-        url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
-        data = await download_url(url)
-    return data
-
+# --- 头像下载相关 ---
 
 async def download_url(url: str) -> bytes:
+    """
+    下载 URL 内容
+    
+    Args:
+        url: 要下载的 URL
+    
+    Returns:
+        下载的字节内容
+    
+    Raises:
+        Exception: 下载失败时抛出
+    """
     async with httpx.AsyncClient() as client:
         for i in range(3):
             try:
@@ -30,63 +40,102 @@ async def download_url(url: str) -> bytes:
     raise Exception(f"{url} 下载失败！")
 
 
-async def download_user_img(user_id: int):
+async def download_avatar(user_id: int) -> bytes:
+    """
+    下载用户头像
+    
+    Args:
+        user_id: 用户 QQ 号
+    
+    Returns:
+        头像图片的字节内容
+    """
+    url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=640"
+    data = await download_url(url)
+    # 检查是否为默认头像
+    if hashlib.md5(data).hexdigest() == "acef72340ac0e914090bd35799f5594e":
+        url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
+        data = await download_url(url)
+    return data
+
+
+async def download_user_img(user_id: int) -> bytes:
+    """
+    下载用户头像并转换为 PNG 格式
+    
+    Args:
+        user_id: 用户 QQ 号
+    
+    Returns:
+        PNG 格式的头像字节内容
+    """
     data = await download_avatar(user_id)
     img = BuildImage.open(io.BytesIO(data))
     return img.save_png()
 
 
-async def user_img(user_id: int) -> bytes:
-    '''
-    获取用户头像url
-    '''
+async def user_img(user_id: int) -> str:
+    """
+    获取用户头像 URL
+    
+    Args:
+        user_id: 用户 QQ 号
+    
+    Returns:
+        头像 URL 字符串
+    """
     url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=640"
     data = await download_url(url)
+    # 检查是否为默认头像，如果是则使用小尺寸
     if hashlib.md5(data).hexdigest() == "acef72340ac0e914090bd35799f5594e":
         url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
     return url
 
 
-def text_to_png(msg):
-    '''
-    文字转png
-    '''
+# --- 文字转图片相关 ---
+
+def text_to_png(msg: str) -> io.BytesIO:
+    """
+    将文字转换为 PNG 图片
+    
+    Args:
+        msg: 要转换的文字内容
+    
+    Returns:
+        包含 PNG 图片数据的 BytesIO 对象
+    """
     output = io.BytesIO()
     try:
-        # 先创建文本图像对象
+        # 创建文本图像对象
         text_img = Text2Image.from_text(msg, 50)
-        # 设置一个合理的最大宽度（例如800像素）
+        # 设置最大宽度
         text_img.wrap(800)
-        # 生成透明背景的文本图片 (img 是 RGBA)
+        # 生成透明背景的文本图片 (RGBA)
         img = text_img.to_image()
 
-        # 创建一个白色背景的图片 (bg 是 RGB)
+        # 创建白色背景图片 (RGB)
         bg_width = img.width + 40
         bg_height = img.height + 40
         bg = BuildImage.new("RGB", (bg_width, bg_height), "white")
 
-        # --- 【修复 1/2：修复黑块问题】 ---
-        # 将文本图片粘贴到白色背景上，并明确启用 alpha 蒙版
+        # 将文本图片粘贴到白色背景上，启用 alpha 蒙版
         bg.paste(img, (20, 20), alpha=True)
 
-        # --- 【修复 2/2：修复 save 报错】 ---
-        # 保存为PNG (使用 .image 来访问底层的 PIL 对象)
+        # 保存为 PNG
         bg.image.save(output, format="png")
-        # --- 【修复结束】 ---
 
     except Exception as e:
         logger.error(f"text_to_png error: {e}")
-        # 如果失败，尝试更简单的方法 (fallback)
+        # fallback：使用 PIL 直接绘制
         try:
-            # 直接创建一个白色背景的图片，并在上面绘制文本
             from PIL import Image, ImageDraw, ImageFont
-            # 估算文本大小
-            font_path = "msyh.ttc"  # 尝试微软雅黑
+            
+            font_path = "msyh.ttc"  # 微软雅黑
             try:
                 font = ImageFont.truetype(font_path, 50)
             except IOError:
                 logger.warning(f"找不到字体 {font_path}，使用默认字体。")
-                font = ImageFont.load_default()  # 使用 PIL 默认字体
+                font = ImageFont.load_default()
 
             # 计算文本尺寸
             dummy_img = Image.new("RGB", (1, 1))
@@ -98,59 +147,71 @@ def text_to_png(msg):
             # 创建白色背景图片
             img = Image.new("RGB", (text_width + 40, text_height + 40), "white")
             draw = ImageDraw.Draw(img)
-
-            # 绘制文本
             draw.text((20, 20), msg, fill="black", font=font)
-
-            # 保存
             img.save(output, format="png")
+            
         except Exception as e2:
             logger.error(f"text_to_png fallback error: {e2}")
-            # 最后尝试返回纯文本
             raise Exception(f"无法生成图片: {e2}")
 
     return output
 
 
-def bbcode_to_png(msg, spacing: int = 10):
-    '''
-    bbcode文字转png
-    '''
+def bbcode_to_png(msg: str, spacing: int = 10) -> io.BytesIO:
+    """
+    将 BBCode 格式的文字转换为 PNG 图片
+    
+    Args:
+        msg: 要转换的 BBCode 文字内容
+        spacing: 行间距（暂未使用）
+    
+    Returns:
+        包含 PNG 图片数据的 BytesIO 对象
+    """
     output = io.BytesIO()
     try:
-        # 先创建文本图像对象
+        # 创建文本图像对象
         text_img = Text2Image.from_bbcode_text(msg, 50)
-        # 设置一个合理的最大宽度（例如800像素）
+        # 设置最大宽度
         text_img.wrap(800)
-        # 生成透明背景的文本图片 (img 是 RGBA)
+        # 生成透明背景的文本图片 (RGBA)
         img = text_img.to_image()
 
-        # 创建一个白色背景的图片 (bg 是 RGB)
+        # 创建白色背景图片 (RGB)
         bg_width = img.width + 40
         bg_height = img.height + 40
         bg = BuildImage.new("RGB", (bg_width, bg_height), "white")
 
-        # --- 【修复 1/2：修复黑块问题】 ---
-        # 将文本图片粘贴到白色背景上，并明确启用 alpha 蒙版
+        # 将文本图片粘贴到白色背景上，启用 alpha 蒙版
         bg.paste(img, (20, 20), alpha=True)
 
-        # --- 【修复 2/2：修复 save 报错】 ---
-        # 保存为PNG (使用 .image 来访问底层的 PIL 对象)
+        # 保存为 PNG
         bg.image.save(output, format="png")
-        # --- 【修复结束】 ---
 
     except Exception as e:
         logger.error(f"bbcode_to_png error: {e}")
-        # 如果失败，使用普通文本方法
-        return text_to_png(msg.replace("[align=left]", "").replace("[/align]", "").replace("[align=right]", ""))
+        # fallback：移除 BBCode 标签后使用普通文本转换
+        clean_msg = (msg
+            .replace("[align=left]", "")
+            .replace("[/align]", "")
+            .replace("[align=right]", ""))
+        return text_to_png(clean_msg)
 
     return output
 
 
-def get_message_at(message: Message) -> list:
-    '''
-    获取at列表
-    '''
+# --- 消息解析相关 ---
+
+def get_message_at(message: Message) -> List[int]:
+    """
+    从消息中提取所有 @ 的用户 QQ 号
+    
+    Args:
+        message: 消息对象
+    
+    Returns:
+        被 @ 的用户 QQ 号列表
+    """
     qq_list = []
     for msg in message:
         if msg.type == "at":
