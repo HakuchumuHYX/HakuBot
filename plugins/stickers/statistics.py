@@ -116,7 +116,20 @@ def draw_multiline_text(draw, text: str, font, max_width: int, x: int, y: int,
 
 async def render_stickers_preview() -> bytes:
     """
-    使用PIL渲染贴图预览图片
+    异步包装器：渲染贴图预览图片
+    
+    使用 asyncio.to_thread 将 CPU 密集型的图片渲染操作
+    放入线程池执行，避免阻塞事件循环。
+
+    返回: 图片的bytes数据
+    """
+    import asyncio
+    return await asyncio.to_thread(_render_stickers_preview_sync)
+
+
+def _render_stickers_preview_sync() -> bytes:
+    """
+    使用PIL渲染贴图预览图片（同步版本，将在线程中运行）
 
     返回: 图片的bytes数据
     """

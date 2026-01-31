@@ -108,18 +108,21 @@ async def handle_clean_confirm(event: GroupMessageEvent):
 
     if group_id not in cleanup_state:
         await clean_confirm_matcher.finish("没有待处理的清理任务")
-        return
+
     state = cleanup_state[group_id]
     if state['user_id'] != user_id:
         await clean_confirm_matcher.finish("这不是您的清理任务")
-        return
+
     if asyncio.get_event_loop().time() - state['timestamp'] > 300:
         del cleanup_state[group_id]
         await clean_confirm_matcher.finish("清理任务已超时，请重新发起")
-        return
 
+    # 执行清理
     removed_count, removed_files = await safe_remove_duplicates(state['duplicates'])
     report_bytes = await render_cleanup_report(removed_count, state['duplicates'])
+
+    # 清理状态（在发送消息前）
+    del cleanup_state[group_id]
 
     if report_bytes:
         await clean_confirm_matcher.finish(MessageSegment.image(report_bytes))
@@ -127,7 +130,6 @@ async def handle_clean_confirm(event: GroupMessageEvent):
         total_pairs = sum(len(duplicates) for duplicates in state['duplicates'].values())
         await clean_confirm_matcher.finish(
             f"安全清理完成！检测到{total_pairs}组重复，已移动{removed_count}张图片到备份文件夹")
-    del cleanup_state[group_id]
 
 
 @clean_cancel_matcher.handle()
@@ -135,13 +137,14 @@ async def handle_clean_cancel(event: GroupMessageEvent):
     """处理取消清理命令"""
     group_id = event.group_id
     user_id = event.user_id
+
     if group_id not in cleanup_state:
         await clean_cancel_matcher.finish("没有待处理的清理任务")
-        return
+
     state = cleanup_state[group_id]
     if state['user_id'] != user_id:
         await clean_cancel_matcher.finish("这不是您的清理任务")
-        return
+
     del cleanup_state[group_id]
     await clean_cancel_matcher.finish("已取消清理操作")
 

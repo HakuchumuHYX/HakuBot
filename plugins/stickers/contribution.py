@@ -1,66 +1,140 @@
 # stickers/contribution.py
+"""
+Stickers 插件 - 投稿功能模块
+"""
 import re
+import asyncio
 import aiohttp
 import aiofiles
 import tempfile
-import time
-import random
 from pathlib import Path
-from typing import List, Tuple, Optional, Set, Dict
+from typing import List, Tuple, Set, Dict, Optional
 from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot
-from nonebot import get_bot
 from nonebot.log import logger
 
-# vvvvvv 【修改：导入 get_next_image_id】 vvvvvv
 from .send import sticker_dir, sticker_folders, resolve_folder_name, count_images_in_folder, get_next_image_id
-# ^^^^^^ 【修改：导入 get_next_image_id】 ^^^^^^
-
 from .check import check_duplicate_images, render_duplicate_report
+from .config import DOWNLOAD_CONCURRENCY
 
 
 def extract_contribution_info(message_text: str) -> Tuple[str, bool, bool]:
     """
     提取投稿信息（支持别名和强制上传）
-    返回: (文件夹名, 是否为投稿格式, 是否强制上传)
+    
+    Returns:
+        (文件夹名, 是否为投稿格式, 是否强制上传)
     """
-    # 匹配格式：文件夹名投稿 图片 force
     match_force = re.match(r'^(.+?)投稿\s+force$', message_text.strip(), re.IGNORECASE)
     if match_force:
-        folder_name = match_force.group(1).strip()
-        return folder_name, True, True
+        return match_force.group(1).strip(), True, True
 
-    # 匹配格式：文件夹名投稿
     match_normal = re.match(r'^(.+?)投稿$', message_text.strip())
     if match_normal:
-        folder_name = match_normal.group(1).strip()
-        return folder_name, True, False
+        return match_normal.group(1).strip(), True, False
 
     return "", False, False
 
 
-async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessageEvent, force: bool = False) -> Tuple[
-    bool, str, int]:
-    """
-    保存投稿图片到指定文件夹（支持别名、查重、合并转发）
+def determine_image_extension(image_segment: MessageSegment, response: aiohttp.ClientResponse = None) -> str:
+    """根据图片消息段确定文件扩展名"""
+    if response:
+        content_type = response.headers.get('Content-Type', '')
+        if content_type:
+            type_map = {
+                'image/jpeg': '.jpg', 'image/jpg': '.jpg',
+                'image/png': '.png', 'image/gif': '.gif',
+                'image/bmp': '.bmp', 'image/webp': '.webp'
+            }
+            for mime_type, ext in type_map.items():
+                if mime_type in content_type:
+                    return ext
 
-    返回: (是否成功, 消息, 保存的图片数量)
-    """
+    url = image_segment.data.get("url", "")
+    if url:
+        for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+            if ext in url.lower():
+                return ext if ext != '.jpeg' else '.jpg'
+
+    return ".jpg"
+
+
+async def download_single_image(
+    session: aiohttp.ClientSession,
+    image_url: str,
+    segment: MessageSegment
+) -> Optional[Path]:
+    """下载单张图片到临时文件"""
+    try:
+        async with session.get(image_url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            if response.status == 200:
+                image_data = await response.read()
+                file_extension = determine_image_extension(segment, response)
+                
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
+                temp_path = Path(temp_file.name)
+                temp_file.close()
+                
+                async with aiofiles.open(temp_path, "wb") as f:
+                    await f.write(image_data)
+                
+                return temp_path
+            else:
+                logger.error(f"下载图片失败: {image_url}, 状态码: {response.status}")
+    except asyncio.TimeoutError:
+        logger.error(f"下载图片超时: {image_url}")
+    except Exception as e:
+        logger.error(f"下载图片异常: {image_url}, 错误: {e}")
+    return None
+
+
+async def download_images_parallel(image_urls: Dict[str, MessageSegment]) -> List[Path]:
+    """并行下载多张图片"""
+    if not image_urls:
+        return []
+    
+    temp_files: List[Path] = []
+    semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
+    
+    async def download_with_semaphore(session: aiohttp.ClientSession, url: str, segment: MessageSegment):
+        async with semaphore:
+            return await download_single_image(session, url, segment)
+    
+    connector = aiohttp.TCPConnector(limit=DOWNLOAD_CONCURRENCY)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        tasks = [download_with_semaphore(session, url, seg) for url, seg in image_urls.items()]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, Path):
+                temp_files.append(result)
+            elif isinstance(result, Exception):
+                logger.warning(f"下载任务异常: {result}")
+    
+    logger.info(f"并行下载完成: {len(temp_files)}/{len(image_urls)} 张图片成功")
+    return temp_files
+
+
+async def save_contribution_images(
+    bot: Bot,
+    folder_name: str,
+    event: GroupMessageEvent,
+    force: bool = False
+) -> Tuple[bool, str, int]:
+    """保存投稿图片到指定文件夹"""
     temp_files: List[Path] = []
 
     try:
-        # 解析实际文件夹名称
         actual_folder_name = resolve_folder_name(folder_name)
 
-        # 检查文件夹是否存在
         if actual_folder_name not in sticker_folders:
-            return False, "投稿失败！请使用”查看stickers“查看目前可投稿的文件夹！", 0
+            return False, "投稿失败！请使用「查看stickers」查看目前可投稿的文件夹！", 0
 
         folder_path = sticker_folders[actual_folder_name]
 
         # --- 提取图片 ---
         image_segments: List[MessageSegment] = []
 
-        # Case 1: 回复一个合并转发消息
+        # Case 1: 回复合并转发消息
         if event.reply:
             forward_id = None
             for segment in event.reply.message:
@@ -73,48 +147,48 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
                     forward_data = await bot.get_forward_msg(id=forward_id)
                     nodes = forward_data.get("messages", [])
 
-                    # 遍历节点列表
                     for node in nodes:
-                        content = None
                         try:
                             content = node.get("message", "")
                             segments_list = []
 
                             if isinstance(content, str):
-                                if content: segments_list.append({'type': 'text', 'data': {'text': content}})
+                                if content:
+                                    segments_list.append({'type': 'text', 'data': {'text': content}})
                             elif isinstance(content, dict):
                                 segments_list.append(content)
                             elif isinstance(content, list):
                                 for item in content:
                                     if isinstance(item, str):
-                                        if item: segments_list.append({'type': 'text', 'data': {'text': item}})
+                                        if item:
+                                            segments_list.append({'type': 'text', 'data': {'text': item}})
                                     elif isinstance(item, dict):
                                         segments_list.append(item)
 
                             for segment_dict in segments_list:
                                 if segment_dict.get('type') == 'image':
                                     try:
-                                        image_seg = MessageSegment(type=segment_dict['type'],
-                                                                   data=segment_dict.get('data', {}))
+                                        image_seg = MessageSegment(
+                                            type=segment_dict['type'],
+                                            data=segment_dict.get('data', {})
+                                        )
                                         image_segments.append(image_seg)
-                                    except Exception as segment_error:
-                                        logger.warning(
-                                            f"无法解析单个图片 segment: {segment_error} | Segment: {segment_dict}")
+                                    except Exception as e:
+                                        logger.warning(f"无法解析图片 segment: {e}")
                         except Exception as e:
-                            logger.error(f"解析合并转发 *节点* 失败: {e} | 节点内容: {content}")
-                            pass
+                            logger.error(f"解析合并转发节点失败: {e}")
 
                 except Exception as e:
-                    logger.error(f"获取合并转发消息失败: {e} | ID: {forward_id}")
+                    logger.error(f"获取合并转发消息失败: {e}")
                     return False, "投稿失败！解析合并转发内容失败，请稍后再试。", 0
 
-        # Case 2: 回复一个普通消息 (包含图片)
+        # Case 2: 回复普通消息
         if not image_segments and event.reply:
             for segment in event.reply.message:
                 if segment.type == "image":
                     image_segments.append(segment)
 
-        # Case 3: 投稿命令消息本身包含图片
+        # Case 3: 投稿命令本身包含图片
         if not image_segments:
             for segment in event.message:
                 if segment.type == "image":
@@ -123,32 +197,19 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
         if not image_segments:
             return False, "投稿失败！未检测到图片，请直接发送图片、回复图片或回复合并转发消息", 0
 
-        # --- 下载图片到临时文件 ---
+        # --- 并行下载图片 ---
         image_urls: Dict[str, MessageSegment] = {}
         for segment in image_segments:
             image_url = segment.data.get("url")
             if image_url:
                 image_urls[image_url] = segment
 
-        for image_url, segment in image_urls.items():
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(image_url) as response:
-                        if response.status == 200:
-                            image_data = await response.read()
-                            file_extension = determine_image_extension(segment, response)
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
-                                temp_file.write(image_data)
-                                temp_files.append(Path(temp_file.name))
-                        else:
-                            logger.error(f"下载图片失败: {image_url}, 状态码: {response.status}")
-            except Exception as e:
-                logger.error(f"下载图片到临时文件失败: {e}")
+        temp_files = await download_images_parallel(image_urls)
 
         if not temp_files:
             return False, "投稿失败！无法下载任何图片", 0
 
-        # --- 查重与保存 (部分成功逻辑) ---
+        # --- 查重与保存 ---
         duplicates: List[Tuple[Path, Path]] = []
         duplicate_temp_files: Set[Path] = set()
 
@@ -161,19 +222,13 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
         saved_files: List[Path] = []
         duplicate_count = len(duplicate_temp_files)
 
-        # 2. 遍历并保存非重复图片
         for temp_file in temp_files:
             if temp_file not in duplicate_temp_files:
                 try:
-                    # vvvvvv 【修改：使用全局编号命名】 vvvvvv
-                    # 旧逻辑: timestamp = int(time.time()); random_num = random.randint(1000, 9999); filename = ...
-
-                    # 新逻辑: 获取下一个编号
                     next_id = get_next_image_id()
                     filename = f"{next_id}{temp_file.suffix}"
-                    # ^^^^^^ 【修改：使用全局编号命名】 ^^^^^^
-
                     file_path = folder_path / filename
+
                     async with aiofiles.open(file_path, "wb") as f:
                         async with aiofiles.open(temp_file, "rb") as temp_f:
                             content = await temp_f.read()
@@ -195,38 +250,26 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
         if actual_folder_name != folder_name:
             display_name = f"{actual_folder_name}(通过别名'{folder_name}')"
 
-        # 1. 无论如何，只要有重复，就尝试生成报告
         report_bytes = None
         if duplicate_count > 0:
             report_bytes = await render_duplicate_report(folder_name, duplicates)
 
-        # Case B: 全部图片都重复 (0 saved, >0 duplicates)
         if saved_count == 0 and duplicate_count > 0:
             if report_bytes:
                 return False, MessageSegment.image(report_bytes), 0
             else:
                 return False, f"投稿失败！检测到 {duplicate_count} 张图片全部为重复图片。", 0
 
-        # Case C: 至少保存成功1张 (saved_count > 0)
-        message_segments = [
-            MessageSegment.text(f"投稿完成！成功保存 {saved_count} 张图片。")
-        ]
+        message_segments = [MessageSegment.text(f"投稿完成！成功保存 {saved_count} 张图片。")]
 
         if duplicate_count > 0:
-            message_segments.append(
-                MessageSegment.text(f"\n检测到 {duplicate_count} 张重复图片。")
-            )
+            message_segments.append(MessageSegment.text(f"\n检测到 {duplicate_count} 张重复图片。"))
             if report_bytes:
                 message_segments.append(MessageSegment.image(report_bytes))
             else:
-                message_segments.append(
-                    MessageSegment.text("\n（重复报告生成失败）")
-                )
+                message_segments.append(MessageSegment.text("\n（重复报告生成失败）"))
 
-        # 添加结尾
-        message_segments.append(
-            MessageSegment.text(f"\n现在 {display_name} 中共有 {image_count} 张表情~")
-        )
+        message_segments.append(MessageSegment.text(f"\n现在 {display_name} 中共有 {image_count} 张表情~"))
 
         return True, Message(message_segments), saved_count
 
@@ -234,35 +277,7 @@ async def save_contribution_images(bot: Bot, folder_name: str, event: GroupMessa
         logger.info(f"清理 {len(temp_files)} 个临时文件...")
         for temp_file in temp_files:
             try:
-                temp_file.unlink()
+                if temp_file.exists():
+                    temp_file.unlink()
             except Exception as e:
                 logger.error(f"清理临时文件失败 {temp_file}: {e}")
-
-
-def determine_image_extension(image_segment: MessageSegment, response: aiohttp.ClientResponse = None) -> str:
-    """
-    根据图片消息段确定文件扩展名
-    """
-    if response:
-        content_type = response.headers.get('Content-Type', '')
-        if content_type:
-            type_map = {
-                'image/jpeg': '.jpg',
-                'image/jpg': '.jpg',
-                'image/png': '.png',
-                'image/gif': '.gif',
-                'image/bmp': '.bmp',
-                'image/webp': '.webp'
-            }
-            for mime_type, ext in type_map.items():
-                if mime_type in content_type:
-                    return ext
-
-    url = image_segment.data.get("url", "")
-    if url:
-        extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
-        for ext in extensions:
-            if url.lower().endswith(ext) or f"{ext}?" in url.lower() or f"{ext}&" in url.lower():
-                return ext
-
-    return ".jpg"

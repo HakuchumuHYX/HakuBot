@@ -13,16 +13,14 @@ from nonebot.log import logger
 from nonebot.exception import FinishedException
 
 # 导入模块而非变量，确保获取最新值
-from .send import sticker_folders, resolve_folder_name
+from .send import sticker_folders, resolve_folder_name, get_all_images_in_folder
+from .config import IMAGE_EXTENSIONS, OVERVIEW_BATCH_SIZE, MAX_CANVAS_PIXELS
 from . import send
 
 # 注册命令
 view_all_matcher = on_command("看所有", aliases={"查看所有", "view all"}, priority=5, block=True)
 view_single_matcher = on_command("sticker", aliases={"看表情", "No.", "NO", "查看", "no", "no."}, priority=5,
                                  block=False)
-
-# 允许的最大图片像素数 (50MP)
-MAX_CANVAS_PIXELS = 50 * 1024 * 1024
 
 
 def get_sort_key(file_path: Path):
@@ -53,7 +51,6 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
 
     # 动态获取当前最大编号
     current_max_id = send.current_max_id
-    valid_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
 
     msg = Message()
     error_msgs = []
@@ -87,7 +84,7 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
             if not folder_path.exists():
                 continue
 
-            for ext in valid_extensions:
+            for ext in IMAGE_EXTENSIONS:
                 potential_path = folder_path / f"{target_id}{ext}"
                 potential_path_upper = folder_path / f"{target_id}{ext.upper()}"
 
@@ -138,13 +135,9 @@ async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()
 
     folder_path = sticker_folders[actual_folder_name]
 
-    valid_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
-    image_files = []
-
+    # 使用公共函数获取所有图片
     try:
-        for file in folder_path.iterdir():
-            if file.is_file() and file.suffix.lower() in valid_extensions:
-                image_files.append(file)
+        image_files = get_all_images_in_folder(folder_path)
     except Exception as e:
         await view_all_matcher.finish(f"扫描文件夹失败: {e}")
 
@@ -156,9 +149,7 @@ async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()
 
     total_count = len(image_files)
 
-    BATCH_SIZE = 2000
-
-    batches = [image_files[i:i + BATCH_SIZE] for i in range(0, total_count, BATCH_SIZE)]
+    batches = [image_files[i:i + OVERVIEW_BATCH_SIZE] for i in range(0, total_count, OVERVIEW_BATCH_SIZE)]
     total_pages = len(batches)
 
     if total_pages > 1:
