@@ -3,9 +3,13 @@ import io
 import time
 import uuid
 import asyncio
+import warnings
 from pathlib import Path
 from typing import List, Tuple, Dict, Set, Optional
 from PIL import Image, ImageDraw, ImageFont
+
+# 忽略 PIL 的 EXIF 损坏警告（不影响图片处理）
+warnings.filterwarnings("ignore", message="Corrupt EXIF data")
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.log import logger
 from .send import sticker_folders, sticker_dir, resolve_folder_name, count_images_in_folder, refresh_max_id

@@ -1,10 +1,15 @@
 # stickers/overview.py
 import math
 import asyncio
+import warnings
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor
+
+# 忽略 PIL 的 EXIF 损坏警告（不影响图片处理）
+warnings.filterwarnings("ignore", message="Corrupt EXIF data")
 
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent, Message
@@ -16,6 +21,66 @@ from nonebot.exception import FinishedException
 from .send import sticker_folders, resolve_folder_name, get_all_images_in_folder
 from .config import IMAGE_EXTENSIONS, OVERVIEW_BATCH_SIZE, MAX_CANVAS_PIXELS
 from . import send
+
+# === 字体缓存 ===
+_font_cache: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
+
+
+def get_cached_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
+    """获取缓存的字体，避免重复加载"""
+    key = (font_name, size)
+    if key not in _font_cache:
+        try:
+            _font_cache[key] = ImageFont.truetype(font_name, size)
+        except:
+            pass
+    return _font_cache.get(key)
+
+
+def load_fonts(font_size: int) -> Tuple[ImageFont.FreeTypeFont, ImageFont.FreeTypeFont]:
+    """加载标题和正文字体"""
+    # 尝试加载中文字体
+    for font_name in ["msyh.ttc", "simhei.ttf", "Arial Unicode.ttf"]:
+        title_font = get_cached_font(font_name, 32)
+        text_font = get_cached_font(font_name, font_size)
+        if title_font and text_font:
+            return title_font, text_font
+    # 回退到默认字体
+    return ImageFont.load_default(), ImageFont.load_default()
+
+
+# === 并行图片加载 ===
+def load_and_resize_single(args: Tuple[Path, int, int]) -> Tuple[Path, Optional[Image.Image]]:
+    """加载并缩放单张图片（用于线程池）"""
+    file_path, thumb_size, resample_mode = args
+    try:
+        with Image.open(file_path) as src_img:
+            # GIF 只取第一帧
+            if hasattr(src_img, 'is_animated') and src_img.is_animated:
+                src_img.seek(0)
+            
+            # 转换为 RGB
+            if src_img.mode not in ('RGB', 'RGBA'):
+                src_img = src_img.convert('RGB')
+            elif src_img.mode == 'RGBA':
+                # RGBA 需要处理透明背景
+                background = Image.new('RGB', src_img.size, (255, 255, 255))
+                background.paste(src_img, mask=src_img.split()[3])
+                src_img = background
+            
+            # 计算缩放
+            src_w, src_h = src_img.size
+            ratio = min(thumb_size / src_w, thumb_size / src_h)
+            new_w = int(src_w * ratio)
+            new_h = int(src_h * ratio)
+            
+            # 缩放图片
+            resized = src_img.resize((new_w, new_h), resample_mode)
+            return (file_path, resized.copy())  # copy() 确保图片数据独立
+    except Exception as e:
+        logger.debug(f"Failed to load {file_path}: {e}")
+        return (file_path, None)
+
 
 # 注册命令
 view_all_matcher = on_command("看所有", aliases={"查看所有", "view all"}, priority=5, block=True)
@@ -192,7 +257,7 @@ async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()
 def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
                                  page_num: Optional[int] = None, total_pages: Optional[int] = None) -> Optional[bytes]:
     """
-    同步绘图函数 (CPU密集型)
+    同步绘图函数 (CPU密集型，使用线程池并行加载图片)
     """
     total = len(image_files)
     if total == 0:
@@ -220,6 +285,14 @@ def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
         thumb_size = 80
         font_size = 12
 
+    # 根据图片数量选择重采样模式（数量越多，使用越快的算法）
+    if total <= 100:
+        resample_mode = Image.Resampling.LANCZOS
+    elif total <= 500:
+        resample_mode = Image.Resampling.BILINEAR
+    else:
+        resample_mode = Image.Resampling.NEAREST
+
     # 间距配置
     padding = 10
     text_height = font_size + 10
@@ -235,21 +308,24 @@ def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
         logger.error(f"Canvas size too large: {canvas_w}x{canvas_h}")
         return None
 
-    # === 2. 初始化画布 ===
-    img = Image.new('RGB', (canvas_w, canvas_h), color=(245, 247, 250))
-    draw = ImageDraw.Draw(img)
+    # === 2. 并行加载所有图片 ===
+    # 根据图片数量动态调整线程数
+    max_workers = min(16, max(4, total // 50))
+    
+    load_args = [(fp, thumb_size, resample_mode) for fp in image_files]
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(load_and_resize_single, load_args))
+    
+    # 构建 path -> resized_image 的映射
+    loaded_images: Dict[Path, Optional[Image.Image]] = {path: img for path, img in results}
 
-    # 加载字体
-    try:
-        title_font = ImageFont.truetype("msyh.ttc", 32)
-        text_font = ImageFont.truetype("msyh.ttc", font_size)
-    except:
-        try:
-            title_font = ImageFont.truetype("simhei.ttf", 32)
-            text_font = ImageFont.truetype("simhei.ttf", font_size)
-        except:
-            title_font = ImageFont.load_default()
-            text_font = ImageFont.load_default()
+    # === 3. 初始化画布 ===
+    canvas = Image.new('RGB', (canvas_w, canvas_h), color=(245, 247, 250))
+    draw = ImageDraw.Draw(canvas)
+
+    # 加载字体（使用缓存）
+    title_font, text_font = load_fonts(font_size)
 
     # 绘制标题
     title_text = f"Gallery: {folder_name} ({total} items)"
@@ -258,7 +334,7 @@ def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
 
     draw.text((20, 15), title_text, fill=(50, 50, 50), font=title_font)
 
-    # === 3. 循环绘图 ===
+    # === 4. 循环绘图（只做粘贴，不做IO） ===
     for idx, file_path in enumerate(image_files):
         row = idx // cols
         col = idx % cols
@@ -266,27 +342,19 @@ def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
         x = padding + col * cell_w
         y = header_height + padding + row * cell_h
 
-        try:
-            with Image.open(file_path) as src_img:
-                if src_img.mode != 'RGB':
-                    src_img = src_img.convert('RGB')
-
-                src_w, src_h = src_img.size
-                ratio = min(thumb_size / src_w, thumb_size / src_h)
-                new_w = int(src_w * ratio)
-                new_h = int(src_h * ratio)
-
-                resample_mode = Image.Resampling.BILINEAR if total > 200 else Image.Resampling.LANCZOS
-                src_img = src_img.resize((new_w, new_h), resample_mode)
-
-                paste_x = x + (thumb_size - new_w) // 2
-                paste_y = y + (thumb_size - new_h) // 2
-                img.paste(src_img, (paste_x, paste_y))
-
-        except Exception as e:
+        resized_img = loaded_images.get(file_path)
+        
+        if resized_img:
+            # 计算居中位置
+            paste_x = x + (thumb_size - resized_img.width) // 2
+            paste_y = y + (thumb_size - resized_img.height) // 2
+            canvas.paste(resized_img, (paste_x, paste_y))
+            # 释放内存
+            resized_img.close()
+        else:
+            # 绘制错误占位符
             draw.rectangle([x, y, x + thumb_size, y + thumb_size], fill=(220, 220, 220))
             draw.text((x + 5, y + thumb_size // 2), "Error", fill="red", font=text_font)
-            logger.error(f"Error loading {file_path}: {e}")
 
         # 绘制文件名 (ID)
         file_name = file_path.stem
@@ -302,7 +370,7 @@ def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
 
         draw.text((text_x, text_y), file_name, fill=(80, 80, 80), font=text_font)
 
-    # === 4. 输出 ===
+    # === 5. 输出 ===
     output = BytesIO()
-    img.save(output, format='JPEG', quality=85, optimize=True)
+    canvas.save(output, format='JPEG', quality=85, optimize=True)
     return output.getvalue()
