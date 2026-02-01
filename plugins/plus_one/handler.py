@@ -13,10 +13,22 @@ msg_dict = {}
 def is_equal(msg1: Message, msg2: Message):
     """判断是否相等"""
     if len(msg1) == len(msg2) == 1 and msg1[0].type == msg2[0].type == "image":
-        if msg1[0].data["file_size"] == msg2[0].data["file_size"]:
-            return True
-    if msg1 == msg2:
-        return True
+        # 优先使用 file_size 比较
+        file_size1 = msg1[0].data.get("file_size")
+        file_size2 = msg2[0].data.get("file_size")
+        if file_size1 is not None and file_size2 is not None:
+            return file_size1 == file_size2
+        
+        # 回退到 file 字段比较
+        file1 = msg1[0].data.get("file")
+        file2 = msg2[0].data.get("file")
+        if file1 is not None and file2 is not None:
+            return file1 == file2
+        
+        # 无法比较则认为不相等
+        return False
+    
+    return msg1 == msg2
 
 
 def contains_blocked_words(text: str) -> bool:

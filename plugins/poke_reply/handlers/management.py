@@ -21,7 +21,7 @@ from ..services.text import HTMLRENDER_AVAILABLE
 
 # --- 注册命令 ---
 apply_delete = on_command("申请删除", rule=to_me(), priority=5, block=True)
-su_direct_delete = on_command("删除", permission=SUPERUSER, rule=to_me(), priority=5, block=True)
+su_direct_delete = on_command("poke删除", permission=SUPERUSER, rule=to_me(), priority=5, block=True)
 handle_delete_request = on_command("处理删除", permission=SUPERUSER, rule=to_me(), priority=5, block=True)
 view_delete_requests = on_command("查看删除申请", permission=SUPERUSER, rule=to_me(), priority=5, block=True)
 clear_processed_requests = on_command("清理已处理申请", permission=SUPERUSER, rule=to_me(), priority=5, block=True)
