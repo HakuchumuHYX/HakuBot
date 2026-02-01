@@ -199,32 +199,32 @@ def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
         return None
 
     # === 1. 动态布局计算 ===
-    # 缩略图尺寸配置
-    if total <= 20:
-        thumb_size = 180;
-        cols = 5;
+    # 计算接近正方形的布局：让列数约等于 sqrt(total)
+    cols = max(5, math.ceil(math.sqrt(total)))  # 最少5列
+    rows = math.ceil(total / cols)
+
+    # 根据总数动态调整缩略图尺寸
+    if total <= 25:
+        thumb_size = 200
         font_size = 24
     elif total <= 100:
-        thumb_size = 120;
-        cols = 8;
+        thumb_size = 160
         font_size = 20
-    elif total <= 500:
-        thumb_size = 100;
-        cols = 10;
+    elif total <= 400:
+        thumb_size = 120
         font_size = 16
-    else:
-        thumb_size = 80;
-        cols = 15;
+    elif total <= 900:
+        thumb_size = 100
         font_size = 14
+    else:
+        thumb_size = 80
+        font_size = 12
 
     # 间距配置
     padding = 10
     text_height = font_size + 10
     cell_w = thumb_size + padding
     cell_h = thumb_size + text_height + padding
-
-    # 计算总宽高
-    rows = math.ceil(total / cols)
 
     header_height = 60
     canvas_w = cols * cell_w + padding

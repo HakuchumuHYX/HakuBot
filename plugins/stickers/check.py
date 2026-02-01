@@ -1,13 +1,14 @@
 # check.py - 优化版本：使用 dHash + 批量并行处理 + SQLite 缓存
 import io
 import time
+import uuid
 import asyncio
 from pathlib import Path
 from typing import List, Tuple, Dict, Set, Optional
 from PIL import Image, ImageDraw, ImageFont
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.log import logger
-from .send import sticker_folders, sticker_dir, resolve_folder_name, count_images_in_folder
+from .send import sticker_folders, sticker_dir, resolve_folder_name, count_images_in_folder, refresh_max_id
 from .manage import is_superuser
 from .config import (
     IMAGE_EXTENSIONS,
@@ -626,3 +627,115 @@ def _render_cleanup_report_sync(removed_count: int, all_duplicates: Dict[str, Li
 async def render_cleanup_report(removed_count: int, all_duplicates: Dict[str, List[Tuple[Path, Path]]]) -> Optional[bytes]:
     """异步包装器"""
     return await asyncio.to_thread(_render_cleanup_report_sync, removed_count, all_duplicates)
+
+
+# ==================== 批量重命名函数 ====================
+
+def _get_sort_key(file_path: Path) -> Tuple[int, ...]:
+    """
+    排序键生成函数
+    纯数字文件名排在前面，按数值排序
+    其他文件名按字母顺序排在后面
+    """
+    stem = file_path.stem
+    if stem.isdigit():
+        return (0, int(stem))
+    return (1, 0)  # 非数字文件名统一排序权重
+
+
+def _batch_rename_stickers_sync() -> Tuple[int, str]:
+    """
+    批量重命名所有贴图文件（同步版本）
+    
+    按照 list.json 的文件夹顺序，将所有图片重命名为连续编号
+    
+    返回: (重命名数量, 结果消息)
+    """
+    # 动态导入以获取最新的 folder_configs
+    from .send import folder_configs
+    
+    if not folder_configs:
+        return 0, "没有找到文件夹配置"
+    
+    logger.info(f"开始批量重命名，共 {len(folder_configs)} 个文件夹配置")
+    
+    # 收集所有待处理的文件路径，保持顺序
+    all_files_ordered: List[Path] = []
+    
+    # 按 list.json 的顺序遍历
+    for config in folder_configs:
+        folder_name = config["name"]
+        folder_path = sticker_dir / folder_name
+        
+        if not folder_path.exists():
+            logger.debug(f"跳过不存在的文件夹: {folder_path}")
+            continue
+        
+        # 获取该文件夹下所有图片
+        files_in_folder: List[Path] = []
+        for file in folder_path.iterdir():
+            if file.is_file() and file.suffix.lower() in IMAGE_EXTENSIONS:
+                files_in_folder.append(file)
+        
+        # 排序：纯数字文件名按数值排序，其他按字母顺序
+        files_in_folder.sort(key=_get_sort_key)
+        
+        all_files_ordered.extend(files_in_folder)
+    
+    total_files = len(all_files_ordered)
+    logger.info(f"扫描到 {total_files} 张图片待重命名")
+    
+    if total_files == 0:
+        return 0, "没有找到任何图片"
+    
+    # Step 1: 先将所有文件重命名为临时 UUID（避免命名冲突）
+    logger.info("Step 1: 将所有文件重命名为临时 UUID...")
+    temp_map: List[Path] = []
+    
+    for file_path in all_files_ordered:
+        temp_name = f"tmp_{uuid.uuid4()}{file_path.suffix}"
+        temp_path = file_path.parent / temp_name
+        
+        try:
+            file_path.rename(temp_path)
+            temp_map.append(temp_path)
+            # 清除旧路径的缓存
+            invalidate_cache(file_path)
+        except Exception as e:
+            logger.error(f"重命名临时文件失败 {file_path}: {e}")
+            # 尝试回滚已重命名的文件
+            return len(temp_map), f"重命名过程中出错: {e}"
+    
+    # Step 2: 按顺序赋予新编号
+    logger.info("Step 2: 按顺序赋予新编号...")
+    current_id = 1
+    renamed_count = 0
+    
+    for temp_path in temp_map:
+        final_name = f"{current_id}{temp_path.suffix}"
+        final_path = temp_path.parent / final_name
+        
+        try:
+            temp_path.rename(final_path)
+            current_id += 1
+            renamed_count += 1
+            # 清除临时路径的缓存
+            invalidate_cache(temp_path)
+        except Exception as e:
+            logger.error(f"重命名最终文件失败 {temp_path} -> {final_name}: {e}")
+    
+    logger.info(f"批量重命名完成！共重命名 {renamed_count} 张图片（编号 1 至 {current_id - 1}）")
+    
+    # 刷新全局编号计数器
+    refresh_max_id()
+    
+    return renamed_count, f"已将 {renamed_count} 张图片重新编号（1 至 {current_id - 1}）"
+
+
+async def batch_rename_stickers() -> Tuple[int, str]:
+    """
+    批量重命名所有贴图文件（异步版本）
+    
+    返回: (重命名数量, 结果消息)
+    """
+    return await asyncio.to_thread(_batch_rename_stickers_sync)

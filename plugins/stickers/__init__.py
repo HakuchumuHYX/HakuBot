@@ -20,7 +20,8 @@ from .check import (
     remove_duplicates,
     render_cleanup_report,
     preview_duplicates_before_cleanup,
-    safe_remove_duplicates
+    safe_remove_duplicates,
+    batch_rename_stickers
 )
 # 导入 help
 from . import help
@@ -78,6 +79,11 @@ async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[
         all_duplicates = await find_all_duplicates()
 
         if not all_duplicates:
+            # 即使没有重复，也执行批量重命名
+            rename_count, rename_msg = await batch_rename_stickers()
+            logger.info(f"无重复图片，自动重命名: {rename_msg}")
+            if rename_count > 0:
+                return f"未检测到重复图片\n📝 自动重命名完成：{rename_msg}"
             return "未检测到重复图片"
 
         preview_bytes = await preview_duplicates_before_cleanup(all_duplicates)
@@ -119,17 +125,30 @@ async def handle_clean_confirm(event: GroupMessageEvent):
 
     # 执行清理
     removed_count, removed_files = await safe_remove_duplicates(state['duplicates'])
+    
+    # 清理完成后自动执行批量重命名
+    rename_count, rename_msg = await batch_rename_stickers()
+    logger.info(f"清理后自动重命名: {rename_msg}")
+    
     report_bytes = await render_cleanup_report(removed_count, state['duplicates'])
 
     # 清理状态（在发送消息前）
     del cleanup_state[group_id]
 
+    # 构建完整的结果消息
     if report_bytes:
-        await clean_confirm_matcher.finish(MessageSegment.image(report_bytes))
+        await clean_confirm_matcher.send(MessageSegment.image(report_bytes))
+        # 发送重命名结果
+        if rename_count > 0:
+            await clean_confirm_matcher.finish(f"📝 自动重命名完成：{rename_msg}")
+        else:
+            await clean_confirm_matcher.finish()
     else:
         total_pairs = sum(len(duplicates) for duplicates in state['duplicates'].values())
-        await clean_confirm_matcher.finish(
-            f"安全清理完成！检测到{total_pairs}组重复，已移动{removed_count}张图片到备份文件夹")
+        result_msg = f"安全清理完成！检测到{total_pairs}组重复，已移动{removed_count}张图片到备份文件夹"
+        if rename_count > 0:
+            result_msg += f"\n📝 自动重命名完成：{rename_msg}"
+        await clean_confirm_matcher.finish(result_msg)
 
 
 @clean_cancel_matcher.handle()
