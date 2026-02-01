@@ -4,6 +4,7 @@ Stickers 插件 - 发送和文件管理模块
 """
 import random
 import json
+import time
 import threading
 from pathlib import Path
 from typing import Dict, Set, List, Optional
@@ -30,6 +31,12 @@ folder_configs: List[Dict] = []
 # 全局编号计数器
 current_max_id: int = 0
 _id_lock = threading.Lock()
+
+# 图片计数缓存
+_image_count_cache: Dict[str, int] = {}
+_image_count_cache_time: Dict[str, float] = {}
+_count_cache_lock = threading.Lock()
+_COUNT_CACHE_TTL = 60  # 缓存有效期（秒）
 
 
 # ==================== 公共函数 ====================
@@ -290,12 +297,13 @@ def get_random_stickers(folder_name: str, count: int) -> List[Path]:
 
 # ==================== 统计函数 ====================
 
-def count_images_in_folder(folder_name: str) -> int:
+def count_images_in_folder(folder_name: str, use_cache: bool = True) -> int:
     """
-    统计指定文件夹中的图片数量
+    统计指定文件夹中的图片数量（带缓存）
     
     Args:
         folder_name: 文件夹名称
+        use_cache: 是否使用缓存（默认启用）
         
     Returns:
         图片数量
@@ -305,8 +313,42 @@ def count_images_in_folder(folder_name: str) -> int:
     if actual_folder_name not in sticker_folders:
         return 0
 
+    # 检查缓存
+    if use_cache:
+        current_time = time.time()
+        with _count_cache_lock:
+            if actual_folder_name in _image_count_cache:
+                cache_time = _image_count_cache_time.get(actual_folder_name, 0)
+                if current_time - cache_time < _COUNT_CACHE_TTL:
+                    return _image_count_cache[actual_folder_name]
+
+    # 缓存未命中或过期，重新计算
     folder = sticker_folders[actual_folder_name]
-    return len(get_all_images_in_folder(folder))
+    count = len(get_all_images_in_folder(folder))
+    
+    # 更新缓存
+    with _count_cache_lock:
+        _image_count_cache[actual_folder_name] = count
+        _image_count_cache_time[actual_folder_name] = time.time()
+    
+    return count
+
+
+def invalidate_count_cache(folder_name: str = None) -> None:
+    """
+    使图片计数缓存失效
+    
+    Args:
+        folder_name: 指定文件夹名称，None 则清空所有缓存
+    """
+    with _count_cache_lock:
+        if folder_name is None:
+            _image_count_cache.clear()
+            _image_count_cache_time.clear()
+        else:
+            actual_folder_name = resolve_folder_name(folder_name)
+            _image_count_cache.pop(actual_folder_name, None)
+            _image_count_cache_time.pop(actual_folder_name, None)
 
 
 def get_folder_display_info() -> List[Dict]:

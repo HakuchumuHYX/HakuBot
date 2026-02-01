@@ -12,7 +12,7 @@ from typing import List, Tuple, Set, Dict, Optional
 from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot
 from nonebot.log import logger
 
-from .send import sticker_dir, sticker_folders, resolve_folder_name, count_images_in_folder, get_next_image_id
+from .send import sticker_dir, sticker_folders, resolve_folder_name, count_images_in_folder, get_next_image_id, invalidate_count_cache
 from .check import check_duplicate_images, render_duplicate_report
 from .config import DOWNLOAD_CONCURRENCY
 
@@ -238,6 +238,10 @@ async def save_contribution_images(
                     saved_files.append(file_path)
                 except Exception as e:
                     logger.error(f"保存图片时出错: {e}")
+
+        # 保存成功后使缓存失效
+        if saved_count > 0:
+            invalidate_count_cache(actual_folder_name)
 
         # --- 报告结果 ---
         total_processed = saved_count + duplicate_count

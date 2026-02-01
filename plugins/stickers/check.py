@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 warnings.filterwarnings("ignore", message="Corrupt EXIF data")
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.log import logger
-from .send import sticker_folders, sticker_dir, resolve_folder_name, count_images_in_folder, refresh_max_id
+from .send import sticker_folders, sticker_dir, resolve_folder_name, count_images_in_folder, refresh_max_id, invalidate_count_cache
 from .manage import is_superuser
 from .config import (
     IMAGE_EXTENSIONS,
@@ -362,6 +362,7 @@ async def safe_remove_duplicates(duplicates: Dict[str, List[Tuple[Path, Path]]])
     """安全删除重复图片（移动到备份文件夹）"""
     removed_count = 0
     removed_files = []
+    affected_folders: Set[str] = set()
 
     backup_dir = sticker_dir / "backup_duplicates"
     backup_dir.mkdir(exist_ok=True)
@@ -385,12 +386,17 @@ async def safe_remove_duplicates(duplicates: Dict[str, List[Tuple[Path, Path]]])
                     duplicate_img.rename(backup_path)
                     removed_files.append(backup_path)
                     removed_count += 1
+                    affected_folders.add(folder_name)
 
-                    # 清除缓存
+                    # 清除哈希缓存
                     invalidate_cache(duplicate_img)
 
             except Exception as e:
                 logger.error(f"安全删除失败 {duplicate_img}: {e}")
+
+    # 使受影响文件夹的计数缓存失效
+    for folder_name in affected_folders:
+        invalidate_count_cache(folder_name)
 
     return removed_count, removed_files
 
