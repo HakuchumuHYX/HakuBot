@@ -14,7 +14,7 @@ from nonebot.exception import FinishedException
 require("nonebot_plugin_localstore")
 require("nonebot_plugin_htmlrender")
 
-from .config import Config, plugin_config
+from .config import Config
 from .data_manager import data_manager
 from .data_source import hltv_data, EventInfo
 from .render import render_events, render_matches, render_results, render_stats
@@ -48,11 +48,6 @@ driver = get_driver()
 
 def is_group_enabled(group_id: int) -> bool:
     """检查群组是否启用插件"""
-    # 如果配置了白名单，检查是否在白名单中
-    if plugin_config.hltv_enabled_groups:
-        if group_id not in plugin_config.hltv_enabled_groups:
-            return False
-    # 检查是否启用
     return data_manager.is_enabled(group_id)
 
 
