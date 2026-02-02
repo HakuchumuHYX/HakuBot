@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+
+{% block title %}HLTV Match Stats{% endblock %}
+
+{% block extra_styles %}
+.match-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(40, 40, 60, 0.8);
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+.match-team {
+    flex: 1;
+    text-align: center;
+}
+
+.match-team-name {
+    font-size: 22px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 5px;
+}
+
+.match-team-name.winner {
+    color: #27ae60;
+}
+
+.match-score {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    padding: 0 30px;
+}
+
+.match-score-value {
+    font-size: 48px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.match-score-value.winner {
+    color: #27ae60;
+}
+
+.match-score-value.loser {
+    color: #888;
+}
+
+.match-score-separator {
+    font-size: 32px;
+    color: #555;
+}
+
+.match-status {
+    text-align: center;
+    margin-top: 10px;
+    font-size: 14px;
+    color: #888;
+}
+
+.maps-section {
+    margin-bottom: 20px;
+}
+
+.map-list {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.map-item {
+    flex: 1;
+    min-width: 150px;
+    background: rgba(40, 40, 60, 0.8);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+
+.map-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ff9800;
+    margin-bottom: 8px;
+}
+
+.map-score {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.map-score-value {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.map-score-value.winner {
+    color: #27ae60;
+}
+
+.map-score-value.loser {
+    color: #888;
+}
+
+.map-score-separator {
+    color: #555;
+}
+
+.map-pick {
+    font-size: 11px;
+    color: #666;
+    margin-top: 5px;
+}
+
+.map-pick.decider {
+    color: #9b59b6;
+    font-weight: 600;
+}
+
+.players-section {
+    margin-bottom: 20px;
+}
+
+.players-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+.team-players {
+    background: rgba(40, 40, 60, 0.8);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.team-players-header {
+    padding: 10px 15px;
+    font-weight: 600;
+    font-size: 14px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.team-players-header.team1 {
+    border-left: 3px solid #3498db;
+}
+
+.team-players-header.team2 {
+    border-left: 3px solid #e74c3c;
+}
+
+.player-list {
+    padding: 10px 15px;
+}
+
+.player-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.player-row:last-child {
+    border-bottom: none;
+}
+
+.player-name {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    color: #fff;
+}
+
+.player-stats {
+    display: flex;
+    gap: 15px;
+    font-size: 13px;
+}
+
+.player-stat {
+    text-align: center;
+    min-width: 50px;
+}
+
+.player-stat-label {
+    font-size: 10px;
+    color: #666;
+    margin-bottom: 2px;
+}
+
+.player-stat-value {
+    color: #ccc;
+}
+
+.player-stat-value.highlight {
+    color: #27ae60;
+    font-weight: 600;
+}
+
+.player-stat-value.low {
+    color: #e74c3c;
+}
+
+.empty-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-size: 14px;
+}
+
+.veto-section {
+    margin-bottom: 20px;
+    background: rgba(40, 40, 60, 0.8);
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.veto-list {
+    color: #ccc;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.veto-item {
+    margin-bottom: 4px;
+}
+{% endblock %}
+
+{% block content %}
+<div class="header">
+    <div class="header-icon">S</div>
+    <div>
+        <div class="header-title">比赛数据</div>
+        <div class="header-subtitle">{{ stats.event or '比赛详情' }}</div>
+    </div>
+</div>
+
+{% if stats %}
+{% set score1 = stats.score1|int %}
+{% set score2 = stats.score2|int %}
+{% set team1_won = score1 > score2 %}
+
+<div class="match-header">
+    <div class="match-team">
+        <div class="match-team-name {% if team1_won %}winner{% endif %}">{{ stats.team1 }}</div>
+    </div>
+    <div class="match-score">
+        <span class="match-score-value {% if team1_won %}winner{% else %}loser{% endif %}">{{ stats.score1 }}</span>
+        <span class="match-score-separator">:</span>
+        <span class="match-score-value {% if not team1_won %}winner{% else %}loser{% endif %}">{{ stats.score2 }}</span>
+    </div>
+    <div class="match-team">
+        <div class="match-team-name {% if not team1_won %}winner{% endif %}">{{ stats.team2 }}</div>
+    </div>
+</div>
+
+<div class="match-status">{{ stats.status }}</div>
+
+{% if stats.vetos %}
+<div class="veto-section section">
+    <div class="section-title">比赛流程 (BP)</div>
+    <div class="veto-list">
+        {% for veto in stats.vetos %}
+        <div class="veto-item">{{ veto }}</div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if stats.maps %}
+<div class="maps-section section">
+    <div class="section-title">地图比分</div>
+    <div class="map-list">
+        {% for map in stats.maps %}
+        {# 跳过未打的地图（比分为 "-" 的） #}
+        {% if map.score_team1 != '-' and map.score_team2 != '-' %}
+        {% set map_score1 = map.score_team1|int %}
+        {% set map_score2 = map.score_team2|int %}
+        {% set map_team1_won = map_score1 > map_score2 %}
+        <div class="map-item">
+            <div class="map-name">{{ map.map_name }}</div>
+            <div class="map-score">
+                <span class="map-score-value {% if map_team1_won %}winner{% else %}loser{% endif %}">{{ map.score_team1 }}</span>
+                <span class="map-score-separator">:</span>
+                <span class="map-score-value {% if not map_team1_won %}winner{% else %}loser{% endif %}">{{ map.score_team2 }}</span>
+            </div>
+            {% if map.pick_by %}
+            <div class="map-pick">{{ map.pick_by }} pick</div>
+            {% else %}
+            <div class="map-pick decider">Decider</div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if stats.players %}
+<div class="players-section section">
+    <div class="section-title">选手数据</div>
+    <div class="players-grid">
+        <div class="team-players">
+            <div class="team-players-header team1">{{ stats.team1 }}</div>
+            <div class="player-list">
+                {% for player in stats.players if player.team == 'team1' %}
+                <div class="player-row">
+                    <div class="player-name">{{ player.nickname }}</div>
+                    <div class="player-stats">
+                        <div class="player-stat">
+                            <div class="player-stat-label">K/D</div>
+                            <div class="player-stat-value">{{ player.kills }}/{{ player.deaths }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">ADR</div>
+                            <div class="player-stat-value">{{ player.adr }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">Rating</div>
+                            {% set rating = player.rating|float %}
+                            <div class="player-stat-value {% if rating >= 1.2 %}highlight{% elif rating < 0.8 %}low{% endif %}">
+                                {{ player.rating }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="team-players">
+            <div class="team-players-header team2">{{ stats.team2 }}</div>
+            <div class="player-list">
+                {% for player in stats.players if player.team == 'team2' %}
+                <div class="player-row">
+                    <div class="player-name">{{ player.nickname }}</div>
+                    <div class="player-stats">
+                        <div class="player-stat">
+                            <div class="player-stat-label">K/D</div>
+                            <div class="player-stat-value">{{ player.kills }}/{{ player.deaths }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">ADR</div>
+                            <div class="player-stat-value">{{ player.adr }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">Rating</div>
+                            {% set rating = player.rating|float %}
+                            <div class="player-stat-value {% if rating >= 1.2 %}highlight{% elif rating < 0.8 %}low{% endif %}">
+                                {{ player.rating }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-message">
+    无法获取比赛数据
+</div>
+{% endif %}
+{% endblock %}

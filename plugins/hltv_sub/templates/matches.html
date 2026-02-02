@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}HLTV Matches{% endblock %}
+
+{% block extra_styles %}
+.match-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.match-item {
+    display: flex;
+    align-items: center;
+    background: rgba(40, 40, 60, 0.8);
+    border-radius: 8px;
+    padding: 12px 15px;
+    border-left: 3px solid #3498db;
+}
+
+.match-item.live {
+    border-left-color: #e74c3c;
+    background: rgba(231, 76, 60, 0.1);
+}
+
+.match-time {
+    min-width: 80px;
+    text-align: center;
+}
+
+.match-time-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.match-date-value {
+    font-size: 11px;
+    color: #888;
+    margin-top: 2px;
+}
+
+.match-teams {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    margin: 0 15px;
+}
+
+.team {
+    flex: 1;
+    text-align: center;
+}
+
+.team-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: #fff;
+}
+
+.vs {
+    font-size: 14px;
+    color: #666;
+    font-weight: 600;
+}
+
+.match-info {
+    min-width: 100px;
+    text-align: right;
+}
+
+.match-event {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 4px;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.match-format {
+    font-size: 12px;
+    color: #666;
+}
+
+.match-id {
+    font-family: 'Consolas', monospace;
+    font-size: 11px;
+    color: #555;
+    margin-top: 2px;
+}
+
+.event-group {
+    margin-bottom: 20px;
+}
+
+.event-group-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #ff9800;
+    margin-bottom: 10px;
+    padding-left: 10px;
+    border-left: 3px solid #ff9800;
+}
+
+.empty-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-size: 14px;
+}
+
+.summary {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 15px;
+    padding: 10px 15px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+}
+
+.summary-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.summary-count {
+    font-size: 20px;
+    font-weight: 600;
+    color: #ff9800;
+}
+
+.summary-label {
+    font-size: 13px;
+    color: #888;
+}
+{% endblock %}
+
+{% block content %}
+<div class="header">
+    <div class="header-icon">M</div>
+    <div>
+        <div class="header-title">比赛列表</div>
+        <div class="header-subtitle">已订阅赛事的比赛</div>
+    </div>
+</div>
+
+{% if live_count > 0 or upcoming_count > 0 %}
+<div class="summary">
+    {% if live_count > 0 %}
+    <div class="summary-item">
+        <span class="summary-count">{{ live_count }}</span>
+        <span class="summary-label">场直播中</span>
+    </div>
+    {% endif %}
+    <div class="summary-item">
+        <span class="summary-count">{{ upcoming_count }}</span>
+        <span class="summary-label">场即将开始</span>
+    </div>
+</div>
+{% endif %}
+
+{% for event_name, matches in matches_by_event.items() %}
+<div class="event-group">
+    <div class="event-group-title">{{ event_name }}</div>
+    <div class="match-list">
+        {% for match in matches %}
+        <div class="match-item {% if match.is_live %}live{% endif %}">
+            <div class="match-time">
+                {% if match.is_live %}
+                <span class="badge badge-live">LIVE</span>
+                {% else %}
+                <div class="match-time-value">{{ match.time }}</div>
+                <div class="match-date-value">{{ match.date }}</div>
+                {% endif %}
+            </div>
+            <div class="match-teams">
+                <div class="team">
+                    <div class="team-name">{{ match.team1 }}</div>
+                </div>
+                <div class="vs">VS</div>
+                <div class="team">
+                    <div class="team-name">{{ match.team2 }}</div>
+                </div>
+            </div>
+            <div class="match-info">
+                <div class="match-format">BO{{ match.maps }}</div>
+                <div class="match-id">#{{ match.id }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endfor %}
+
+{% if not matches_by_event %}
+<div class="empty-message">
+    暂无比赛<br>
+    <small>请先订阅赛事，或等待比赛公布</small>
+</div>
+{% endif %}
+{% endblock %}

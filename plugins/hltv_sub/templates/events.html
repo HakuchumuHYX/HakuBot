@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}HLTV Events{% endblock %}
+
+{% block extra_styles %}
+.event-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.event-item {
+    display: flex;
+    align-items: center;
+    background: rgba(40, 40, 60, 0.8);
+    border-radius: 8px;
+    padding: 12px 15px;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+
+.event-item:hover {
+    background: rgba(50, 50, 70, 0.9);
+}
+
+.event-item.ongoing {
+    border-left-color: #27ae60;
+}
+
+.event-item.upcoming {
+    border-left-color: #3498db;
+}
+
+.event-id {
+    min-width: 70px;
+    font-family: 'Consolas', monospace;
+    font-size: 13px;
+    color: #888;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 4px 8px;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.event-info {
+    flex: 1;
+    margin-left: 15px;
+}
+
+.event-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.event-date {
+    font-size: 13px;
+    color: #999;
+}
+
+.event-status {
+    margin-left: 15px;
+}
+
+.subscribed-mark {
+    color: #ff9800;
+    font-size: 14px;
+}
+
+.empty-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-size: 14px;
+}
+
+.tip {
+    margin-top: 15px;
+    padding: 12px 15px;
+    background: rgba(255, 152, 0, 0.1);
+    border-radius: 8px;
+    border-left: 3px solid #ff9800;
+    font-size: 13px;
+    color: #ccc;
+}
+
+.tip-title {
+    font-weight: 600;
+    color: #ff9800;
+    margin-bottom: 5px;
+}
+{% endblock %}
+
+{% block content %}
+<div class="header">
+    <div class="header-icon">E</div>
+    <div>
+        <div class="header-title">HLTV 赛事列表</div>
+        <div class="header-subtitle">Big Events • 近期大型赛事</div>
+    </div>
+</div>
+
+{% if ongoing_events %}
+<div class="section">
+    <div class="section-title">正在进行</div>
+    <div class="event-list">
+        {% for event in ongoing_events %}
+        <div class="event-item ongoing">
+            <div class="event-id">#{{ event.id }}</div>
+            <div class="event-info">
+                <div class="event-title">{{ event.title }}</div>
+                <div class="event-date">📅 {{ event.start_date }} ~ {{ event.end_date }}</div>
+            </div>
+            <div class="event-status">
+                <span class="badge badge-ongoing">进行中</span>
+            </div>
+            {% if event.id in subscribed_ids %}
+            <div class="subscribed-mark">⭐</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if upcoming_events %}
+<div class="section">
+    <div class="section-title">即将举行</div>
+    <div class="event-list">
+        {% for event in upcoming_events %}
+        <div class="event-item upcoming">
+            <div class="event-id">#{{ event.id }}</div>
+            <div class="event-info">
+                <div class="event-title">{{ event.title }}</div>
+                <div class="event-date">📅 {{ event.start_date }} ~ {{ event.end_date }}</div>
+            </div>
+            <div class="event-status">
+                <span class="badge badge-upcoming">即将开始</span>
+            </div>
+            {% if event.id in subscribed_ids %}
+            <div class="subscribed-mark">⭐</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not ongoing_events and not upcoming_events %}
+<div class="empty-message">
+    暂无大型赛事
+</div>
+{% endif %}
+
+<div class="tip">
+    <div class="tip-title">💡 使用说明</div>
+    发送 <code>event订阅 [ID]</code> 订阅赛事<br>
+    发送 <code>event取消订阅 [ID]</code> 取消订阅<br>
+    ⭐ 标记表示已订阅
+</div>
+{% endblock %}
