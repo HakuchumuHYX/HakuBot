@@ -51,6 +51,21 @@ def is_group_enabled(group_id: int) -> bool:
     return data_manager.is_enabled(group_id)
 
 
+async def check_permission(bot: Bot, group_id: int, user_id: int) -> bool:
+    """检查权限：群主、管理员或超级用户"""
+    # 检查超级用户
+    superusers = getattr(bot.config, "superusers", set())
+    if str(user_id) in superusers:
+        return True
+    
+    # 检查群角色
+    try:
+        member_info = await bot.get_group_member_info(group_id=group_id, user_id=user_id)
+        return member_info.get("role") in ("owner", "admin")
+    except Exception:
+        return False
+
+
 # ==================== 命令处理 ====================
 
 # event列表命令
@@ -98,8 +113,14 @@ event_subscribe = on_command("event订阅", aliases={"订阅赛事", "subscribe"
 @event_subscribe.handle()
 async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     group_id = event.group_id
+    user_id = event.user_id
     
     if not is_group_enabled(group_id):
+        return
+    
+    # 权限检查
+    if not await check_permission(bot, group_id, user_id):
+        await event_subscribe.finish("❌ 只有群主或管理员可以订阅赛事")
         return
     
     event_id = args.extract_plain_text().strip()
@@ -161,8 +182,14 @@ event_unsubscribe = on_command("event取消订阅", aliases={"取消订阅赛事
 @event_unsubscribe.handle()
 async def handle_event_unsubscribe(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     group_id = event.group_id
+    user_id = event.user_id
     
     if not is_group_enabled(group_id):
+        return
+    
+    # 权限检查
+    if not await check_permission(bot, group_id, user_id):
+        await event_unsubscribe.finish("❌ 只有群主或管理员可以取消订阅")
         return
     
     event_id = args.extract_plain_text().strip()
@@ -388,12 +415,9 @@ async def handle_hltv_toggle(bot: Bot, event: GroupMessageEvent):
     group_id = event.group_id
     user_id = event.user_id
     
-    # 检查是否是管理员
-    member_info = await bot.get_group_member_info(group_id=group_id, user_id=user_id)
-    role = member_info.get("role", "")
-    
-    if role not in ("owner", "admin"):
-        await hltv_toggle.finish("需要管理员权限")
+    # 权限检查
+    if not await check_permission(bot, group_id, user_id):
+        await hltv_toggle.finish("❌ 需要管理员权限")
         return
     
     # 获取命令

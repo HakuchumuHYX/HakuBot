@@ -45,7 +45,8 @@ async def render_events(
             "ongoing_events": ongoing,
             "upcoming_events": upcoming,
             "subscribed_ids": subscribed_ids,
-            "timestamp": get_timestamp()
+            "timestamp": get_timestamp(),
+            "watermark_text": plugin_config.hltv_watermark_text
         },
         pages={
             "viewport": {"width": 650, "height": 100},
@@ -73,7 +74,8 @@ async def render_matches(
             "matches_by_event": matches_dict,
             "live_count": live_count,
             "upcoming_count": upcoming_count,
-            "timestamp": get_timestamp()
+            "timestamp": get_timestamp(),
+            "watermark_text": plugin_config.hltv_watermark_text
         },
         pages={
             "viewport": {"width": 700, "height": 100},
@@ -97,7 +99,8 @@ async def render_results(
         template_name="results.html",
         templates={
             "results_by_event": results_dict,
-            "timestamp": get_timestamp()
+            "timestamp": get_timestamp(),
+            "watermark_text": plugin_config.hltv_watermark_text
         },
         pages={
             "viewport": {"width": 700, "height": 100},
@@ -118,7 +121,8 @@ async def render_stats(stats: Optional[MatchStats]) -> bytes:
         template_name="stats.html",
         templates={
             "stats": stats_dict,
-            "timestamp": get_timestamp()
+            "timestamp": get_timestamp(),
+            "watermark_text": plugin_config.hltv_watermark_text
         },
         pages={
             "viewport": {"width": 800, "height": 100},
@@ -132,6 +136,7 @@ async def render_reminder(
     team2: str,
     event_title: str,
     minutes_until: int,
+    start_time_str: str = "",
     maps: str = ""
 ) -> bytes:
     """渲染比赛开始提醒图片
@@ -141,6 +146,7 @@ async def render_reminder(
         team2: 队伍2名称
         event_title: 赛事名称
         minutes_until: 距离开始的分钟数
+        start_time_str: 开始时间字符串
         maps: 比赛格式（如 "3" 表示 BO3）
     
     Returns:
@@ -154,8 +160,10 @@ async def render_reminder(
             "team2": team2,
             "event_title": event_title,
             "minutes_until": minutes_until,
+            "start_time_str": start_time_str,
             "maps": maps,
-            "timestamp": get_timestamp()
+            "timestamp": get_timestamp(),
+            "watermark_text": plugin_config.hltv_watermark_text
         },
         pages={
             "viewport": {"width": 550, "height": 100},

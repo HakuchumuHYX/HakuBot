@@ -144,6 +144,8 @@ class HLTVScheduler:
                     time_diff = match_time - now
                     minutes_until = int(time_diff.total_seconds() / 60)
                     
+                    logger.debug(f"[HLTV Check] Match {match.id}: {match.team1} vs {match.team2}, Time: {match_time}, Now: {now}, Diff: {minutes_until}m")
+
                     # 检查是否在提醒窗口内（12-17分钟，中心15分钟，给5分钟的轮询窗口）
                     if 12 <= minutes_until <= 17:
                         # 检查是否已经提醒过
@@ -241,24 +243,29 @@ class HLTVScheduler:
             return
         
         try:
+            # 格式化开始时间
+            start_time_str = match.start_time.strftime("%H:%M")
+            
             # 渲染提醒图片
             img = await render_reminder(
                 team1=match.team1,
                 team2=match.team2,
                 event_title=match.event_title,
                 minutes_until=match.minutes_until,
+                start_time_str=start_time_str,
                 maps=match.maps
             )
             msg = MessageSegment.image(img)
         except Exception as e:
             # 如果渲染失败，回退到文本消息
             logger.warning(f"[HLTV Scheduler] 渲染提醒图片失败，使用文本消息: {e}")
+            start_time_str = match.start_time.strftime("%H:%M")
             bo_text = f"BO{match.maps}" if match.maps else ""
             msg = f"""🔔 比赛即将开始
 
 🏆 {match.event_title}
 
-⏰ {match.minutes_until} 分钟后开始
+⏰ {start_time_str}
 🎮 {match.team1} vs {match.team2}
 {f'📋 {bo_text}' if bo_text else ''}""".strip()
         
