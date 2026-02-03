@@ -3,15 +3,89 @@ import aiohttp
 import os
 from typing import Optional
 from nonebot import get_driver
-from playwright.async_api import async_playwright, Browser, Playwright, BrowserContext, Page, Error as PlaywrightError
+from playwright.async_api import (
+    async_playwright,
+    Browser,
+    Playwright,
+    BrowserContext,
+    Page,
+    Error as PlaywrightError,
+)
 from PIL import Image
 from io import BytesIO
 import tenacity
 from tenacity import retry, stop_after_attempt, wait_fixed
 
+from .config import config
 from .tools import get_logger, TempFilePath, truncate, get_exc_desc
 
 logger = get_logger("Network")
+
+DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=120, connect=30, sock_read=120)
+
+
+def normalize_proxy(proxy: Optional[str]) -> Optional[str]:
+    """
+    统一代理格式：
+    - 允许填：127.0.0.1:7890
+    - 或：http://127.0.0.1:7890 / https://... / socks5://...
+    """
+    if not proxy:
+        return None
+    proxy = str(proxy).strip()
+    if not proxy:
+        return None
+
+    # 兼容误填：proxy="http://127.0.0.1:7890" 又被外层拼接导致 "http://http://..."
+    while proxy.startswith("http://http://"):
+        proxy = proxy.replace("http://http://", "http://", 1)
+    while proxy.startswith("https://https://"):
+        proxy = proxy.replace("https://https://", "https://", 1)
+
+    if "://" in proxy:
+        return proxy
+    return f"http://{proxy}"
+
+
+_cached_effective_proxy: Optional[str] = None
+_logged_effective_proxy: bool = False
+
+
+def get_effective_proxy() -> Optional[str]:
+    """
+    获取实际要使用的代理（统一入口）：
+    1) 优先使用插件配置 config.proxy
+    2) 否则回退读取环境变量 HTTP(S)_PROXY / ALL_PROXY（适配“系统全局代理/容器环境”）
+
+    注意：会做简单缓存，并在首次解析时打印一条日志，方便确认“实际用了哪个代理”。
+    """
+    global _cached_effective_proxy, _logged_effective_proxy
+
+    if _cached_effective_proxy is not None or _logged_effective_proxy:
+        return _cached_effective_proxy
+
+    proxy = normalize_proxy(config.get("proxy"))
+    if not proxy:
+        for key in (
+            "HTTPS_PROXY",
+            "https_proxy",
+            "HTTP_PROXY",
+            "http_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+        ):
+            val = os.environ.get(key)
+            val = normalize_proxy(val)
+            if val:
+                proxy = val
+                break
+
+    _cached_effective_proxy = proxy
+    if not _logged_effective_proxy:
+        logger.info(f"lunabot_imgexp effective_proxy = {_cached_effective_proxy}")
+        _logged_effective_proxy = True
+
+    return _cached_effective_proxy
 
 class HttpError(Exception):
     def __init__(self, status_code: int = 500, message: str = ''):
@@ -26,15 +100,32 @@ class HttpError(Exception):
 _global_client_session: Optional[aiohttp.ClientSession] = None
 
 def get_client_session() -> aiohttp.ClientSession:
+    """
+    用于本插件所有 aiohttp 请求的全局 session：
+    - trust_env=True: 允许读取环境变量代理（HTTP(S)_PROXY）
+    - timeout: 防止请求在网络不通/被墙时无限等待
+    """
     global _global_client_session
     if _global_client_session is None or _global_client_session.closed:
-        _global_client_session = aiohttp.ClientSession()
+        _global_client_session = aiohttp.ClientSession(
+            trust_env=True,
+            timeout=DEFAULT_TIMEOUT,
+        )
     return _global_client_session
 
-@get_driver().on_shutdown
-async def _close_session():
-    if _global_client_session is not None and not _global_client_session.closed:
-        await _global_client_session.close()
+try:
+    _driver = get_driver()
+except Exception:
+    # 允许在非 NoneBot 环境下 import（例如命令行检查/单测）
+    _driver = None
+
+
+if _driver:
+
+    @_driver.on_shutdown
+    async def _close_session():
+        if _global_client_session is not None and not _global_client_session.closed:
+            await _global_client_session.close()
 
 # ============================ Playwright ============================ #
 
@@ -117,15 +208,17 @@ class PlaywrightPage:
         self.context = None
         return False
 
-@get_driver().on_shutdown
-async def _close_playwright():
-    global _playwright_browser, _playwright_instance
-    if _playwright_browser:
-        await _playwright_browser.close()
-        _playwright_browser = None
-    if _playwright_instance:
-        await _playwright_instance.stop()
-        _playwright_instance = None
+if _driver:
+
+    @_driver.on_shutdown
+    async def _close_playwright():
+        global _playwright_browser, _playwright_instance
+        if _playwright_browser:
+            await _playwright_browser.close()
+            _playwright_browser = None
+        if _playwright_instance:
+            await _playwright_instance.stop()
+            _playwright_instance = None
 
 # ============================ Download ============================ #
 
@@ -134,10 +227,11 @@ async def download_file(url: str, file_path: str):
     """
     下载文件到指定路径
     """
-    async with get_client_session().get(url, verify_ssl=False) as resp:
+    proxy = get_effective_proxy()
+    async with get_client_session().get(url, verify_ssl=False, proxy=proxy, timeout=DEFAULT_TIMEOUT) as resp:
         if resp.status != 200:
             raise HttpError(resp.status, f"下载文件 {truncate(url, 32)} 失败: {resp.reason}")
-        with open(file_path, 'wb') as f:
+        with open(file_path, "wb") as f:
             f.write(await resp.read())
 
 class TempDownloadFilePath(TempFilePath):
@@ -166,7 +260,14 @@ async def download_image(image_url: str, force_http: bool = False) -> Image.Imag
     """
     if force_http and image_url.startswith("https"):
         image_url = image_url.replace("https", "http")
-    async with get_client_session().get(image_url, verify_ssl=False) as resp:
+
+    proxy = get_effective_proxy()
+    async with get_client_session().get(
+        image_url,
+        verify_ssl=False,
+        proxy=proxy,
+        timeout=DEFAULT_TIMEOUT,
+    ) as resp:
         if resp.status != 200:
             logger.error(f"下载图片 {image_url} 失败: {resp.status} {resp.reason}")
             raise HttpError(resp.status, f"下载图片 {image_url} 失败")
