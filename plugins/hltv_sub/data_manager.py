@@ -35,7 +35,8 @@ class GroupData:
         events = [EventSubscription(**e) for e in data.get("subscribed_events", [])]
         return cls(
             group_id=data["group_id"],
-            enabled=data.get("enabled", True),
+            # 默认关闭：只有显式开启才启用（缺字段的历史数据也应默认关闭）
+            enabled=data.get("enabled", False),
             subscribed_events=events
         )
 
@@ -58,13 +59,25 @@ class DataManager:
             try:
                 with open(self._data_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
+
+                    dirty = False
                     for group_data in data.get("groups", []):
+                        # 迁移：历史数据缺 enabled 字段时，补 False 并写回
+                        if "enabled" not in group_data:
+                            group_data["enabled"] = False
+                            dirty = True
+
                         gd = GroupData.from_dict(group_data)
                         self._groups[gd.group_id] = gd
+
                     # 加载推送状态
                     scheduler_state = data.get("scheduler_state", {})
                     self._notified_starts = set(scheduler_state.get("notified_starts", []))
                     self._notified_results = set(scheduler_state.get("notified_results", []))
+
+                    if dirty:
+                        self._save()
+
             except Exception as e:
                 print(f"[HLTV Sub] 加载数据失败: {e}")
     
@@ -102,6 +115,36 @@ class DataManager:
     def get_subscribed_events(self, group_id: int) -> list[EventSubscription]:
         """获取群组订阅的赛事列表"""
         return self.get_group(group_id).subscribed_events
+    
+    def get_single_subscription(self, group_id: int) -> Optional[EventSubscription]:
+        """获取群组的单个订阅（单订阅模式），不存在返回 None"""
+        subs = self.get_subscribed_events(group_id)
+        return subs[0] if subs else None
+    
+    def replace_subscriptions(self, group_id: int, subscription: EventSubscription) -> None:
+        """覆盖该群的订阅列表（单订阅模式）
+
+        约束/假设：
+        - 你的使用习惯是全局同一时间只关心一个赛事；
+        - 当订阅切换到新赛事后，不再需要旧赛事的推送去重状态，因此直接清空。
+        """
+        group = self.get_group(group_id)
+
+        old_event_id = group.subscribed_events[0].event_id if group.subscribed_events else ""
+        group.subscribed_events = [subscription]
+
+        # 订阅切换：清空旧赛事推送去重状态（避免 json 增长，也符合“旧赛事不再关注”）
+        if old_event_id and old_event_id != subscription.event_id:
+            self._notified_starts.clear()
+            self._notified_results.clear()
+
+        self._save()
+    
+    def clear_subscriptions(self, group_id: int) -> None:
+        """清空该群的订阅列表"""
+        group = self.get_group(group_id)
+        group.subscribed_events = []
+        self._save()
     
     def get_subscribed_event_ids(self, group_id: int) -> list[str]:
         """获取群组订阅的赛事ID列表"""
@@ -162,6 +205,16 @@ class DataManager:
                         groups.append(group.group_id)
                         break
         return groups
+    
+    def get_any_subscription_by_event(self, event_id: str) -> Optional[EventSubscription]:
+        """从任意启用群中获取某赛事的一条订阅记录（用于读取标题/日期范围等元信息）"""
+        for group in self._groups.values():
+            if not group.enabled:
+                continue
+            for event in group.subscribed_events:
+                if event.event_id == event_id:
+                    return event
+        return None
 
 
     def get_notified_starts(self) -> set[str]:
