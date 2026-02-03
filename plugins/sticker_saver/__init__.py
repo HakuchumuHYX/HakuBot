@@ -23,7 +23,7 @@ async def handle_face_extraction(bot: Bot, event: MessageEvent):
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("sticker_saver", str(event.group_id), user_id):
-            await face_extractor.finish("表情包保存功能当前已被禁用")
+            await face_extractor.finish()
 
     if event.reply:
         # 获取被回复的消息内容

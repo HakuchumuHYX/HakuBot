@@ -56,7 +56,7 @@ message: List[dict] = [
 async def _h(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     user_id = str(event.user_id)
     if not is_plugin_enabled("jrrp", str(event.group_id), user_id):
-        await jrrp.finish("今日人品功能当前已被禁用")
+        await jrrp.finish()
 
     words = args.extract_plain_text()
     if not words:

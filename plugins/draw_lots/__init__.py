@@ -125,7 +125,7 @@ async def lq_(bot: Bot, event: MessageEvent):
     # 群聊权限检查
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("draw_lots", str(event.group_id), user_id):
-            await command.finish("抽签功能当前已被禁用")
+            await command.finish()
 
     sign_index = -1
     is_retry = False

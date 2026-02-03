@@ -30,7 +30,7 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
 
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await leaderboard_handler.finish("猜歌功能在此群无法使用！")
+            await leaderboard_handler.finish()
             return
 
     group_id = str(event.group_id)

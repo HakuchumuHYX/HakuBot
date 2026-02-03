@@ -137,7 +137,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         group_id = str(event.group_id)
 
         if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
-            await lzst.finish("setu_plugin 在本群未开启")
+            await lzst.finish()
 
         remaining = check_cd(PLUGIN_ID, group_id, user_id)
         if remaining > 0:

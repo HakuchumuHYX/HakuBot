@@ -93,7 +93,7 @@ async def handle_deer(
             
             # 检查插件是否启用
             if not _is_enabled(group_id, caller_user_id):
-                await deer.finish(config.disabled_message)
+                await deer.finish()
             
             # 检查CD
             remaining_cd = _check_cd(group_id, caller_user_id)
@@ -179,7 +179,7 @@ async def handle_deer_past(
             
             # 检查插件是否启用
             if not _is_enabled(group_id, caller_user_id):
-                await deer_past.finish(config.disabled_message)
+                await deer_past.finish()
             
             # 检查CD
             remaining_cd = _check_cd(group_id, caller_user_id)
@@ -254,7 +254,7 @@ async def handle_deer_calendar(
             
             # 检查插件是否启用
             if not _is_enabled(group_id, caller_user_id):
-                await deer_calendar.finish(config.disabled_message)
+                await deer_calendar.finish()
         
         now = datetime.now()
         
@@ -301,7 +301,7 @@ async def handle_deer_help(event: Event):
             
             # 检查插件是否启用
             if not _is_enabled(group_id, caller_user_id):
-                await deer_help.finish(config.disabled_message)
+                await deer_help.finish()
         
         help_text = (
             f"== 🦌管插件 v{PLUGIN_VERSION} 帮助 ==\n"

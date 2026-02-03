@@ -25,7 +25,7 @@ async def _(bot: Bot, event: MessageEvent):
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await show_guess_song_help.finish("猜歌功能在此群无法使用！")
+            await show_guess_song_help.finish()
             return
     if not await _is_group_allowed(event):
         return
@@ -51,7 +51,7 @@ async def _(bot: Bot, event: MessageEvent):
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await show_guess_song_help.finish("猜歌功能在此群无法使用！")
+            await show_guess_song_help.finish()
             return
     if not await _is_group_allowed(event):
         return

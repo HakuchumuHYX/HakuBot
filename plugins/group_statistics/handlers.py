@@ -79,7 +79,7 @@ async def handle_stat_command(event: GroupMessageEvent):
 
     # 检查插件是否启用
     if not is_plugin_enabled("group_statistics", str(group_id), "0"):
-        await stat_command.finish("本群未开启消息统计功能")
+        await stat_command.finish()
         return
 
     total = get_total_messages(group_id)

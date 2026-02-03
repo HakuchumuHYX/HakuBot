@@ -40,7 +40,7 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await start_guess_song_unified.finish("猜歌功能在此群无法使用！")
+            await start_guess_song_unified.finish()
             return
 
     session_id = get_session_id(event)
@@ -161,7 +161,7 @@ async def _(bot: Bot, event: MessageEvent):
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await start_random_guess_song.finish("随机猜歌功能在此群无法使用！")
+            await start_random_guess_song.finish()
             return
 
     session_id = get_session_id(event)
@@ -262,7 +262,7 @@ async def _(bot: Bot, event: MessageEvent):
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await start_vocalist_game.finish("猜歌手功能在此群无法使用！")
+            await start_vocalist_game.finish()
             return
 
     if not cache_service.another_vocal_songs:
