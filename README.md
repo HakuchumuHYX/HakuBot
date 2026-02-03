@@ -23,16 +23,12 @@
 - **[pjsk_guess_song](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/pjsk_guess_song)**: PJSK 猜歌以及听歌插件。主要逻辑来自于 [astrbot-plugin-pjsk-guess-song](https://github.com/nichinichisou0609/astrbot_plugin_pjsk_guess_song) 并由我进行了一些修改。
 - **[pjskprofile_snowybot](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/pjskprofile_snowybot)**: 获取SnowyBot版的PJSK个人信息。
 
-### 🤖 AI & 智能助手
-
-- **[ai_assistant](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/ai_assistant)**: 群 AI 助手。目前支持 chat、生图以及点歌服务。
-  - Chat 和生图功能可以通过加 web 后缀来进行联网搜索信息。
-  - 点歌会调用 LLM 自行决定是否联网搜索信息（由 [astrbot_plugin_music](https://github.com/Zhalslar/astrbot_plugin_music) 重构而来）。
-- **[group_daily_analysis](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/group_daily_analysis)**: 基于 LLM 的群聊分析插件。从 [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis) 重构且微作修改后得来。
-
 ### 🛠️ 实用工具 & 管理
 
 - **[plugin_manager](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/plugin_manager)**: 插件管理核心，基本上把所有的插件以及子功能全部接入了管理。
+- **[ai_assistant](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/ai_assistant)**: 群 AI 助手。目前支持 chat、生图以及点歌服务。
+  - Chat 和生图功能可以通过加 web 后缀来进行联网搜索信息。
+  - 点歌会调用 LLM 自行决定是否联网搜索信息（由 [astrbot_plugin_music](https://github.com/Zhalslar/astrbot_plugin_music) 重构而来）。
 - **[analysis_bilibili](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/analysis_bilibili)**: [B站](bilibili.com) 链接解析。移植自 [nonebot-plugin-analysis-bilibili](https://github.com/mengshouer/nonebot_plugin_analysis_bilibili)。
 - **[daily_message](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/daily_message)**: 群聊定时消息推送。
 - **[help_plugin](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/help_plugin)**: 返回图片形式的帮助文档。
@@ -61,6 +57,7 @@
 
 ### 📊 统计 & 订阅
 
+- **[group_daily_analysis](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/group_daily_analysis)**: 基于 LLM 的群聊分析插件。从 [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis) 重构且微作修改后得来。
 - **[group_statistics](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/group_statistics)**: 简单的本日群聊消息统计插件。
 - **[hltv_sub](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/hltv_sub)**: [HLTV](https://www.hltv.org/) 比赛信息推送，支持手动及自动推送。
 
