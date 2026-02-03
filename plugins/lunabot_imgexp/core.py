@@ -8,7 +8,7 @@ from PicImageSearch import Ascii2D, Iqdb, Network, SauceNAO
 
 from .utils.config import config
 from .utils.tools import get_logger
-from .utils.network import DEFAULT_TIMEOUT, download_image, get_client_session, get_effective_proxy
+from .utils.network import DEFAULT_TIMEOUT, download_bytes, download_image, get_client_session, get_effective_proxy
 from .draw.painter import *
 from .draw.plot import *
 
@@ -34,6 +34,9 @@ class ImageSearchResult:
 
 # 缩略图下载并发限制：避免一次性开太多连接导致排队/卡死
 _THUMB_SEM = asyncio.Semaphore(8)
+# 注意：IQDB 本身有时 50s+ 才返回；如果缩略图域名再慢，会把整条 IQDB 任务拖到 _with_timeout 的上限。
+# 因此给“单张缩略图”单独设置更短的硬超时，超时就当没有缩略图，不影响主结果返回。
+_THUMB_TIMEOUT_SEC = 30
 
 
 async def download_batch_thumbnails(urls: list[str]) -> list[Image.Image]:
@@ -42,7 +45,10 @@ async def download_batch_thumbnails(urls: list[str]) -> list[Image.Image]:
             return None
         async with _THUMB_SEM:
             try:
-                return await download_image(url)
+                return await asyncio.wait_for(download_image(url), timeout=_THUMB_TIMEOUT_SEC)
+            except asyncio.TimeoutError:
+                logger.warning(f"下载缩略图超时({_THUMB_TIMEOUT_SEC}s): {url}")
+                return None
             except Exception as e:
                 logger.warning(f"下载缩略图 {url} 失败: {e}")
                 return None
@@ -149,15 +155,25 @@ async def search_iqdb(
     img_url: str,
     limit: int = 5,
 ) -> ImageSearchResult:
-    try:
-        if limit == 0:
-            return ImageSearchResult(source="IQDB", results=[])
-        logger.info("开始从 IQDB 搜索图片...")
+    """
+    默认使用 file upload（bot 先下载图片 bytes，再上传给 IQDB）：
 
-        iqdb = Iqdb(client=client)
-        results = await iqdb.search(url=img_url)
+    原因：
+    - 像 QQ multimedia 这类“临时鉴权链接”，IQDB 服务器端经常抓取失败，返回异常页面，
+      PicImageSearch 解析时会出现 IndexError（list index out of range）。
+    - 先 url 再 fallback 会导致最坏情况下做两次请求，整体更慢。
 
-        filtered_results = results.raw[:limit]
+    策略：
+    1) 优先：download_bytes(img_url) -> iqdb.search(file=bytes)
+    2) 若下载失败（图片 URL 无法下载）或上传失败：回退用 url 方式（让 IQDB 自己抓）
+    """
+    if limit == 0:
+        return ImageSearchResult(source="IQDB", results=[])
+
+    iqdb = Iqdb(client=client)
+
+    async def _build_result_items(iqdb_resp) -> list[ImageSearchResultItem]:
+        filtered_results = iqdb_resp.raw[:limit]
         thumbnails = await download_batch_thumbnails([item.thumbnail for item in filtered_results])
 
         res_items: list[ImageSearchResultItem] = []
@@ -172,10 +188,26 @@ async def search_iqdb(
                     source="IQDB",
                 )
             )
+        return res_items
 
-        logger.info(f"从 IQDB 搜索到 {len(res_items)} 个结果")
+    # 1) file upload 优先
+    try:
+        logger.info("开始从 IQDB 搜索图片 (file upload)...")
+        img_bytes = await download_bytes(img_url)
+        results = await iqdb.search(file=img_bytes)
+        res_items = await _build_result_items(results)
+        logger.info(f"从 IQDB 搜索到 {len(res_items)} 个结果 (file upload)")
         return ImageSearchResult(source="IQDB", results=res_items)
+    except Exception as e:
+        logger.warning(f"IQDB(file upload) 失败，将回退为 url: {e}")
 
+    # 2) 回退：url 搜索
+    try:
+        logger.info("开始从 IQDB 搜索图片 (url fallback)...")
+        results = await iqdb.search(url=img_url)
+        res_items = await _build_result_items(results)
+        logger.info(f"从 IQDB 搜索到 {len(res_items)} 个结果 (url fallback)")
+        return ImageSearchResult(source="IQDB", results=res_items)
     except Exception as e:
         logger.warning(f"从 IQDB 搜索图片 {img_url} 失败: {e}")
         return ImageSearchResult(source="IQDB", results=[], error=f"搜索失败: {e}")

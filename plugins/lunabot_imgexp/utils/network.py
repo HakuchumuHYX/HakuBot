@@ -234,6 +234,18 @@ async def download_file(url: str, file_path: str):
         with open(file_path, "wb") as f:
             f.write(await resp.read())
 
+
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
+async def download_bytes(url: str) -> bytes:
+    """
+    下载 URL 内容并返回 bytes（用于需要 file upload 的场景，例如 IQDB 不支持抓取某些带鉴权的图片 URL）
+    """
+    proxy = get_effective_proxy()
+    async with get_client_session().get(url, verify_ssl=False, proxy=proxy, timeout=DEFAULT_TIMEOUT) as resp:
+        if resp.status != 200:
+            raise HttpError(resp.status, f"下载内容 {truncate(url, 32)} 失败: {resp.reason}")
+        return await resp.read()
+
 class TempDownloadFilePath(TempFilePath):
     def __init__(self, url, ext: str = None, remove_after: bool = True):
         self.url = url
