@@ -2,11 +2,11 @@
 
 import re
 import asyncio
-from typing import Optional
+from typing import Optional, Dict, List
 from dataclasses import dataclass, field
 from datetime import datetime
 import pytz
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from curl_cffi.requests import AsyncSession
 from nonebot.log import logger
@@ -62,6 +62,7 @@ class MapStats:
     pick_by: str  # team1, team2, or decider
     score_team1: str
     score_team2: str
+    stats_id: str = ""  # 用于关联单图详细数据
 
 
 @dataclass
@@ -73,7 +74,9 @@ class PlayerStats:
     kills: str
     deaths: str
     adr: str
+    kast: str
     rating: str
+    swing: str = ""
 
 
 @dataclass
@@ -86,7 +89,8 @@ class MatchStats:
     score2: str
     status: str
     maps: list[MapStats]
-    players: list[PlayerStats]
+    players: list[PlayerStats]  # 总数据
+    map_stats_details: Dict[str, List[PlayerStats]] = field(default_factory=dict)  # 单图详细数据 {map_name: players}
     vetos: list[str] = field(default_factory=list)
     event: str = ""
 
@@ -640,6 +644,128 @@ class HLTVDataSource:
         
         return results
     
+    def _parse_player_table(self, table: Tag, team_idx: int) -> List[PlayerStats]:
+        """解析选手数据表格，动态查找列"""
+        players = []
+        
+        try:
+            # 1. 解析表头，确定列索引
+            headers = []
+            header_row = table.find("tr", class_="header-row")
+            if not header_row and table.find("thead"):
+                header_row = table.find("thead").find("tr")
+            if not header_row:
+                header_row = table.find("tr")
+            
+            if not header_row:
+                return []
+            
+            # 获取所有单元格文本（包括隐藏的）
+            cols = header_row.find_all(["th", "td"])
+            headers = [c.get_text(strip=True).upper() for c in cols]
+            
+            # 确定关键列的索引
+            idx_kd = -1
+            idx_adr = -1
+            idx_rating = -1
+            idx_swing = -1
+            idx_kast = -1
+            
+            for i, h in enumerate(headers):
+                if "K-D" in h:
+                    idx_kd = i
+                elif "ADR" in h and "EADR" not in h: # 避免匹配到 eADR
+                    idx_adr = i
+                elif "RATING" in h:
+                    idx_rating = i
+                elif "SWING" in h:
+                    idx_swing = i
+                elif "KAST" in h and "EKAST" not in h:
+                    idx_kast = i
+            
+            # 如果没找到，尝试默认值（虽然不太可能，作为回退）
+            if idx_kd == -1 and len(headers) > 1: idx_kd = 1
+            if idx_adr == -1 and len(headers) > 4: idx_adr = 4
+            if idx_rating == -1: idx_rating = len(headers) - 1
+            
+            # 2. 解析数据行
+            rows = table.find_all("tr")
+            # 过滤掉表头行
+            data_rows = [r for r in rows if not r.find("th") and "header-row" not in r.get("class", [])]
+            
+            for row in data_rows[:5]:  # 每队最多5人
+                cells = row.find_all("td")
+                if not cells:
+                    continue
+                
+                # 获取选手信息
+                player_link = row.find("a", href=re.compile(r"/player/\d+/"))
+                player_id = self._extract_id_from_url(player_link.get("href", "")) if player_link else ""
+                
+                # 获取昵称
+                nickname = ""
+                nick_elem = row.find("span", class_="player-nick")
+                if nick_elem:
+                    nickname = nick_elem.get_text(strip=True)
+                
+                if not nickname:
+                    mobile_name = row.find("div", class_="smartphone-only")
+                    if mobile_name:
+                        nickname = mobile_name.get_text(strip=True)
+                
+                if not nickname and player_link:
+                    nickname = player_link.get_text(strip=True)
+                    
+                if not nickname and len(cells) > 0:
+                    nickname = cells[0].get_text(strip=True)
+                
+                # 获取数据
+                kd = "0-0"
+                if idx_kd != -1 and idx_kd < len(cells):
+                    kd = cells[idx_kd].get_text(strip=True)
+                
+                adr = "0"
+                if idx_adr != -1 and idx_adr < len(cells):
+                    adr = cells[idx_adr].get_text(strip=True)
+                
+                rating = "0"
+                if idx_rating != -1 and idx_rating < len(cells):
+                    rating = cells[idx_rating].get_text(strip=True)
+                
+                swing = "-"
+                if idx_swing != -1 and idx_swing < len(cells):
+                    swing = cells[idx_swing].get_text(strip=True)
+                
+                kast = "-"
+                if idx_kast != -1 and idx_kast < len(cells):
+                    kast = cells[idx_kast].get_text(strip=True)
+                
+                # 处理 K-D
+                kd_parts = kd.replace("/", "-").split("-")
+                kills = kd_parts[0].strip() if len(kd_parts) > 0 else "0"
+                deaths = kd_parts[1].strip() if len(kd_parts) > 1 else "0"
+                
+                # 简单清理
+                if not kills.replace("-", "").isdigit(): kills = "0"
+                if not deaths.replace("-", "").isdigit(): deaths = "0"
+                
+                players.append(PlayerStats(
+                    id=player_id,
+                    nickname=nickname,
+                    team="team1" if team_idx == 0 else "team2",
+                    kills=kills,
+                    deaths=deaths,
+                    adr=adr,
+                    rating=rating,
+                    swing=swing,
+                    kast=kast
+                ))
+                
+        except Exception as e:
+            logger.debug(f"[HLTV] 解析表格失败: {e}")
+            
+        return players
+
     async def get_match_stats(self, match_id: str, team1: str = "", team2: str = "",
                               event_title: str = "") -> Optional[MatchStats]:
         """获取比赛详细数据"""
@@ -667,35 +793,27 @@ class HLTVDataSource:
             
             logger.debug(f"[HLTV] 队伍: {team1} vs {team2}")
             
-            # 获取比分 - 查找正确的元素
+            # 获取比分
             score1 = "0"
             score2 = "0"
-            
-            # 尝试多种方式获取比分
             team_boxes = soup.find_all("div", class_="team")
             for i, box in enumerate(team_boxes[:2]):
                 score_elem = box.find(class_=re.compile(r"score|won|lost"))
                 if score_elem:
                     score_text = score_elem.get_text(strip=True)
                     if score_text.isdigit():
-                        if i == 0:
-                            score1 = score_text
-                        else:
-                            score2 = score_text
+                        if i == 0: score1 = score_text
+                        else: score2 = score_text
             
-            # 备用方法：查找包含比分的元素
             if score1 == "0" and score2 == "0":
                 score_elems = soup.find_all(class_=re.compile(r"score$|won$|lost$"))
                 for elem in score_elems:
                     text = elem.get_text(strip=True)
                     if text.isdigit():
-                        if score1 == "0":
-                            score1 = text
-                        elif score2 == "0":
+                        if score1 == "0": score1 = text
+                        elif score2 == "0": 
                             score2 = text
                             break
-            
-            logger.debug(f"[HLTV] 比分: {score1} - {score2}")
             
             # 获取状态
             status = "完成"
@@ -707,30 +825,42 @@ class HLTVDataSource:
             vetos = []
             veto_boxes = soup.find_all("div", class_="veto-box")
             for box in veto_boxes:
-                # 提取文本，按行分割，去除空行和冗余信息
                 lines = [line.strip() for line in box.get_text("\n").split("\n") if line.strip()]
-                # 简单的过滤，保留有意义的 BP 信息
-                filtered_lines = []
-                for line in lines:
-                    if not line.startswith("*"):  # 过滤掉一些注释
-                        filtered_lines.append(line)
+                filtered_lines = [l for l in lines if not l.startswith("*")]
                 if filtered_lines:
                     vetos.extend(filtered_lines)
             
-            # 解析地图数据
+            # 解析地图列表和关联的 Stats ID
             maps = []
             map_holders = soup.find_all("div", class_="mapholder")
             
             for map_holder in map_holders:
                 try:
-                    # 获取地图名
                     map_name_elem = map_holder.find("div", class_="mapname")
                     map_name = map_name_elem.get_text(strip=True) if map_name_elem else ""
                     
                     if not map_name or map_name == "TBA":
                         continue
                     
-                    # 获取地图比分 - 查找 results-left 和 results-right
+                    # 获取 stats ID - 更激进的匹配方式
+                    stats_id = ""
+                    # 先尝试查找链接
+                    stats_link = map_holder.find("a", href=re.compile(r"mapstatsid/(\d+)"))
+                    if stats_link:
+                        match = re.search(r"mapstatsid/(\d+)", stats_link.get("href", ""))
+                        if match:
+                            stats_id = match.group(1)
+                    
+                    # 如果没找到，直接在 HTML 中搜索
+                    if not stats_id:
+                        html_str = str(map_holder)
+                        match = re.search(r"mapstatsid/(\d+)", html_str)
+                        if match:
+                            stats_id = match.group(1)
+                    
+                    logger.info(f"[HLTV] Map: {map_name}, Stats ID: {stats_id}")
+                    
+                    # 获取地图比分
                     map_score1 = "-"
                     map_score2 = "-"
                     
@@ -739,40 +869,35 @@ class HLTVDataSource:
                     
                     if results_left:
                         score_elem = results_left.find("div", class_="results-team-score")
-                        if score_elem:
-                            map_score1 = score_elem.get_text(strip=True)
+                        if score_elem: map_score1 = score_elem.get_text(strip=True)
                     
                     if results_right:
                         score_elem = results_right.find("div", class_="results-team-score")
-                        if score_elem:
-                            map_score2 = score_elem.get_text(strip=True)
+                        if score_elem: map_score2 = score_elem.get_text(strip=True)
                     
-                    # 备用方式：查找所有 results-team-score
                     if map_score1 == "-" and map_score2 == "-":
                         score_elems = map_holder.find_all(class_="results-team-score")
                         if len(score_elems) >= 2:
                             map_score1 = score_elems[0].get_text(strip=True)
                             map_score2 = score_elems[1].get_text(strip=True)
                     
-                    # 清理比分（确保只有数字）
                     map_score1 = re.sub(r'[^\d-]', '', map_score1) or "-"
                     map_score2 = re.sub(r'[^\d-]', '', map_score2) or "-"
                     
-                    # 获取 pick 信息
+                    # Pick info
                     pick_by = ""
                     pick_elem = map_holder.find(class_=re.compile(r"pick|picked"))
                     if pick_elem:
                         pick_text = pick_elem.get_text(strip=True)
-                        if team1 and team1.lower() in pick_text.lower():
-                            pick_by = team1
-                        elif team2 and team2.lower() in pick_text.lower():
-                            pick_by = team2
+                        if team1 and team1.lower() in pick_text.lower(): pick_by = team1
+                        elif team2 and team2.lower() in pick_text.lower(): pick_by = team2
                     
                     maps.append(MapStats(
                         map_name=map_name,
                         pick_by=pick_by,
                         score_team1=map_score1,
-                        score_team2=map_score2
+                        score_team2=map_score2,
+                        stats_id=stats_id
                     ))
                 except Exception as e:
                     logger.debug(f"[HLTV] 解析地图失败: {e}")
@@ -780,133 +905,48 @@ class HLTVDataSource:
             
             logger.info(f"[HLTV] 地图数: {len(maps)}")
             
-            # 解析选手数据
-            players = []
-            
-            # 查找统计表格 - 只查找 totalstats 以避免获取到 hidden 的 ct/t stats
-            stats_tables = soup.find_all("table", class_="totalstats")
-            
-            # 如果没找到 totalstats，尝试宽松搜索但过滤掉 hidden
-            if not stats_tables:
-                all_tables = soup.find_all("table", class_=re.compile(r"stats|totalstats"))
-                stats_tables = [t for t in all_tables if "hidden" not in t.get("class", [])]
-
-            if not stats_tables:
-                # 尝试查找其他格式的选手数据
-                player_rows = soup.find_all("tr", class_=re.compile(r"player"))
-                if player_rows:
-                    for i, row in enumerate(player_rows[:10]):
-                        try:
-                            player_link = row.find("a", href=re.compile(r"/player/\d+/"))
-                            if not player_link:
-                                continue
-                            
-                            player_id = self._extract_id_from_url(player_link.get("href", ""))
-                            nickname = player_link.get_text(strip=True)
-                            
-                            # 获取数据
-                            cells = row.find_all("td")
-                            kd = "0-0"
-                            adr = "0"
-                            rating = "0"
-                            
-                            for cell in cells:
-                                cell_class = cell.get("class", [])
-                                cell_text = cell.get_text(strip=True)
-                                
-                                if "kd" in str(cell_class).lower():
-                                    kd = cell_text
-                                elif "adr" in str(cell_class).lower():
-                                    adr = cell_text
-                                elif "rating" in str(cell_class).lower():
-                                    rating = cell_text
-                            
-                            kd_parts = kd.replace("/", "-").split("-")
-                            kills = kd_parts[0] if len(kd_parts) > 0 else "0"
-                            deaths = kd_parts[1] if len(kd_parts) > 1 else "0"
-                            
-                            players.append(PlayerStats(
-                                id=player_id,
-                                nickname=nickname,
-                                team="team1" if i < 5 else "team2",
-                                kills=kills,
-                                deaths=deaths,
-                                adr=adr,
-                                rating=rating
-                            ))
-                        except Exception:
-                            continue
+            # 解析总选手数据 (id="all-content")
+            total_players = []
+            all_content = soup.find("div", id="all-content")
+            if all_content:
+                stats_tables = all_content.find_all("table", class_="totalstats")
+                for idx, table in enumerate(stats_tables[:2]):
+                    team_players = self._parse_player_table(table, idx)
+                    total_players.extend(team_players)
             else:
-                # 解析统计表格
-                for table_idx, table in enumerate(stats_tables[:2]):
-                    rows = table.find_all("tr")[1:]  # 跳过表头
-                    for row in rows[:5]:  # 每队最多5个选手
-                        try:
-                            cells = row.find_all("td")
-                            if len(cells) < 2:
-                                continue
-                            
-                            player_link = row.find("a", href=re.compile(r"/player/\d+/"))
-                            player_id = self._extract_id_from_url(player_link.get("href", "")) if player_link else ""
-                            
-                            # 获取选手名 - 优先获取昵称部分
-                            nickname = ""
-                            
-                            # 尝试获取 .player-nick (通常在 flagAlign 内)
-                            nick_elem = cells[0].find("span", class_="player-nick")
-                            if nick_elem:
-                                nickname = nick_elem.get_text(strip=True)
-                            
-                            # 尝试获取 .smartphone-only (通常只包含昵称)
-                            if not nickname:
-                                mobile_name = cells[0].find("div", class_="smartphone-only")
-                                if mobile_name:
-                                    nickname = mobile_name.get_text(strip=True)
-                            
-                            # 如果还没找到，尝试从链接文本获取（可能包含多余信息，但比 get_text 好）
-                            if not nickname and player_link:
-                                # 有些页面结构不一样，链接文本可能就是昵称
-                                # 但在这里通常包含全名，所以这是一个备选
-                                nickname = player_link.get_text(strip=True)
-                                
-                            # 最后回退到单元格文本
-                            if not nickname:
-                                nickname = cells[0].get_text(strip=True)
-                            
-                            # 获取 K-D
-                            kd = cells[1].get_text(strip=True) if len(cells) > 1 else "0-0"
-                            kd_parts = kd.replace("/", "-").split("-")
-                            kills = kd_parts[0].strip() if len(kd_parts) > 0 else "0"
-                            deaths = kd_parts[1].strip() if len(kd_parts) > 1 else "0"
-                            
-                            # ADR 和 Rating
-                            adr = cells[2].get_text(strip=True) if len(cells) > 2 else "0"
-                            rating = cells[-1].get_text(strip=True) if len(cells) > 3 else "0"
-                            
-                            # 清理数据
-                            try:
-                                if not kills.replace("-", "").isdigit():
-                                    kills = "0"
-                                if not deaths.replace("-", "").isdigit():
-                                    deaths = "0"
-                            except:
-                                kills = "0"
-                                deaths = "0"
-                            
-                            players.append(PlayerStats(
-                                id=player_id,
-                                nickname=nickname,
-                                team="team1" if table_idx == 0 else "team2",
-                                kills=kills,
-                                deaths=deaths,
-                                adr=adr,
-                                rating=rating
-                            ))
-                        except Exception as e:
-                            logger.debug(f"[HLTV] 解析选手数据失败: {e}")
-                            continue
+                # 回退旧逻辑
+                stats_tables = soup.find_all("table", class_="totalstats")
+                if not stats_tables:
+                    all_tables = soup.find_all("table", class_=re.compile(r"stats|totalstats"))
+                    stats_tables = [t for t in all_tables if "hidden" not in t.get("class", [])]
+                
+                for idx, table in enumerate(stats_tables[:2]):
+                    team_players = self._parse_player_table(table, idx)
+                    total_players.extend(team_players)
             
-            logger.info(f"[HLTV] 选手数: {len(players)}")
+            logger.info(f"[HLTV] 总选手数: {len(total_players)}")
+            
+            # 解析单图选手数据
+            map_stats_details = {}
+            for map_info in maps:
+                if not map_info.stats_id:
+                    continue
+                
+                # 查找对应的 div ID (例如: "12345-content")
+                content_id = f"{map_info.stats_id}-content"
+                content_div = soup.find("div", id=content_id)
+                
+                if content_div:
+                    map_players = []
+                    # 通常单图里面也是 table.totalstats 或者 table.stats-table
+                    tables = content_div.find_all("table", class_=re.compile(r"stats-table|totalstats"))
+                    for idx, table in enumerate(tables[:2]):
+                        team_players = self._parse_player_table(table, idx)
+                        map_players.extend(team_players)
+                    
+                    if map_players:
+                        map_stats_details[map_info.map_name] = map_players
+                        logger.info(f"[HLTV] 解析地图 {map_info.map_name} 数据: {len(map_players)} 名选手")
             
             return MatchStats(
                 match_id=match_id,
@@ -916,7 +956,8 @@ class HLTVDataSource:
                 score2=score2,
                 status=status,
                 maps=maps,
-                players=players,
+                players=total_players,
+                map_stats_details=map_stats_details,
                 vetos=vetos,
                 event=event_title
             )

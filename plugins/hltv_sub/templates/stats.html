@@ -180,13 +180,13 @@
 
 .player-stats {
     display: flex;
-    gap: 15px;
-    font-size: 13px;
+    gap: 12px;
+    font-size: 12px;
 }
 
 .player-stat {
     text-align: center;
-    min-width: 50px;
+    min-width: 40px;
 }
 
 .player-stat-label {
@@ -205,6 +205,14 @@
 }
 
 .player-stat-value.low {
+    color: #e74c3c;
+}
+
+.player-stat-value.positive {
+    color: #27ae60;
+}
+
+.player-stat-value.negative {
     color: #e74c3c;
 }
 
@@ -247,6 +255,85 @@
 {% set score2 = stats.score2|int %}
 {% set team1_won = score1 > score2 %}
 
+{# 定义渲染选手表格的宏 #}
+{% macro render_players_grid(all_players, title_suffix='') %}
+<div class="players-section section">
+    <div class="section-title">选手数据 {{ title_suffix }}</div>
+    <div class="players-grid">
+        <div class="team-players">
+            <div class="team-players-header team1">{{ stats.team1 }}</div>
+            <div class="player-list">
+                {% for player in all_players if player.team == 'team1' %}
+                <div class="player-row">
+                    <div class="player-name">{{ player.nickname }}</div>
+                    <div class="player-stats">
+                        <div class="player-stat">
+                            <div class="player-stat-label">K/D</div>
+                            <div class="player-stat-value">{{ player.kills }}/{{ player.deaths }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">Swing</div>
+                            <div class="player-stat-value {% if '+' in player.swing %}positive{% elif '-' in player.swing %}negative{% endif %}">{{ player.swing }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">ADR</div>
+                            <div class="player-stat-value">{{ player.adr }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">KAST</div>
+                            <div class="player-stat-value">{{ player.kast }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">Rating</div>
+                            {% set rating = player.rating|float %}
+                            <div class="player-stat-value {% if rating >= 1.2 %}highlight{% elif rating < 0.8 %}low{% endif %}">
+                                {{ player.rating }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="team-players">
+            <div class="team-players-header team2">{{ stats.team2 }}</div>
+            <div class="player-list">
+                {% for player in all_players if player.team == 'team2' %}
+                <div class="player-row">
+                    <div class="player-name">{{ player.nickname }}</div>
+                    <div class="player-stats">
+                        <div class="player-stat">
+                            <div class="player-stat-label">K/D</div>
+                            <div class="player-stat-value">{{ player.kills }}/{{ player.deaths }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">Swing</div>
+                            <div class="player-stat-value {% if '+' in player.swing %}positive{% elif '-' in player.swing %}negative{% endif %}">{{ player.swing }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">ADR</div>
+                            <div class="player-stat-value">{{ player.adr }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">KAST</div>
+                            <div class="player-stat-value">{{ player.kast }}</div>
+                        </div>
+                        <div class="player-stat">
+                            <div class="player-stat-label">Rating</div>
+                            {% set rating = player.rating|float %}
+                            <div class="player-stat-value {% if rating >= 1.2 %}highlight{% elif rating < 0.8 %}low{% endif %}">
+                                {{ player.rating }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
 <div class="match-header">
     <div class="match-team">
         <div class="match-team-name {% if team1_won %}winner{% endif %}">{{ stats.team1 }}</div>
@@ -279,7 +366,7 @@
     <div class="section-title">地图比分</div>
     <div class="map-list">
         {% for map in stats.maps %}
-        {# 跳过未打的地图（比分为 "-" 的） #}
+        {# 跳过未打的地图 #}
         {% if map.score_team1 != '-' and map.score_team2 != '-' %}
         {% set map_score1 = map.score_team1|int %}
         {% set map_score2 = map.score_team2|int %}
@@ -304,65 +391,17 @@
 {% endif %}
 
 {% if stats.players %}
-<div class="players-section section">
-    <div class="section-title">选手数据</div>
-    <div class="players-grid">
-        <div class="team-players">
-            <div class="team-players-header team1">{{ stats.team1 }}</div>
-            <div class="player-list">
-                {% for player in stats.players if player.team == 'team1' %}
-                <div class="player-row">
-                    <div class="player-name">{{ player.nickname }}</div>
-                    <div class="player-stats">
-                        <div class="player-stat">
-                            <div class="player-stat-label">K/D</div>
-                            <div class="player-stat-value">{{ player.kills }}/{{ player.deaths }}</div>
-                        </div>
-                        <div class="player-stat">
-                            <div class="player-stat-label">ADR</div>
-                            <div class="player-stat-value">{{ player.adr }}</div>
-                        </div>
-                        <div class="player-stat">
-                            <div class="player-stat-label">Rating</div>
-                            {% set rating = player.rating|float %}
-                            <div class="player-stat-value {% if rating >= 1.2 %}highlight{% elif rating < 0.8 %}low{% endif %}">
-                                {{ player.rating }}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        <div class="team-players">
-            <div class="team-players-header team2">{{ stats.team2 }}</div>
-            <div class="player-list">
-                {% for player in stats.players if player.team == 'team2' %}
-                <div class="player-row">
-                    <div class="player-name">{{ player.nickname }}</div>
-                    <div class="player-stats">
-                        <div class="player-stat">
-                            <div class="player-stat-label">K/D</div>
-                            <div class="player-stat-value">{{ player.kills }}/{{ player.deaths }}</div>
-                        </div>
-                        <div class="player-stat">
-                            <div class="player-stat-label">ADR</div>
-                            <div class="player-stat-value">{{ player.adr }}</div>
-                        </div>
-                        <div class="player-stat">
-                            <div class="player-stat-label">Rating</div>
-                            {% set rating = player.rating|float %}
-                            <div class="player-stat-value {% if rating >= 1.2 %}highlight{% elif rating < 0.8 %}low{% endif %}">
-                                {{ player.rating }}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-</div>
+    {# 渲染总数据 #}
+    {{ render_players_grid(stats.players, '(总览)') }}
+    
+    {# 渲染单图数据 #}
+    {% if stats.map_stats_details %}
+        {% for map in stats.maps %}
+            {% if map.map_name in stats.map_stats_details %}
+                {{ render_players_grid(stats.map_stats_details[map.map_name], '- ' + map.map_name) }}
+            {% endif %}
+        {% endfor %}
+    {% endif %}
 {% endif %}
 
 {% else %}

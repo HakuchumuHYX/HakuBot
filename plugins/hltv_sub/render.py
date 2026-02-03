@@ -11,6 +11,11 @@ from nonebot_plugin_htmlrender import template_to_pic
 from .config import plugin_config
 from .data_source import EventInfo, MatchInfo, ResultInfo, MatchStats
 
+# 导入 UpcomingMatch 类型（用于类型提示）
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .scheduler import UpcomingMatch
+
 
 # 模板目录
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -106,17 +111,7 @@ async def render_stats(stats: Optional[MatchStats]) -> bytes:
     
     stats_dict = None
     if stats:
-        stats_dict = {
-            "match_id": stats.match_id,
-            "team1": stats.team1,
-            "team2": stats.team2,
-            "score1": stats.score1,
-            "score2": stats.score2,
-            "status": stats.status,
-            "event": stats.event,
-            "maps": [asdict(m) for m in stats.maps],
-            "players": [asdict(p) for p in stats.players]
-        }
+        stats_dict = asdict(stats)
     
     return await template_to_pic(
         template_path=str(TEMPLATE_DIR),
@@ -127,6 +122,43 @@ async def render_stats(stats: Optional[MatchStats]) -> bytes:
         },
         pages={
             "viewport": {"width": 800, "height": 100},
+            "base_url": f"file://{TEMPLATE_DIR}/"
+        }
+    )
+
+
+async def render_reminder(
+    team1: str,
+    team2: str,
+    event_title: str,
+    minutes_until: int,
+    maps: str = ""
+) -> bytes:
+    """渲染比赛开始提醒图片
+    
+    Args:
+        team1: 队伍1名称
+        team2: 队伍2名称
+        event_title: 赛事名称
+        minutes_until: 距离开始的分钟数
+        maps: 比赛格式（如 "3" 表示 BO3）
+    
+    Returns:
+        渲染后的图片字节
+    """
+    return await template_to_pic(
+        template_path=str(TEMPLATE_DIR),
+        template_name="reminder.html",
+        templates={
+            "team1": team1,
+            "team2": team2,
+            "event_title": event_title,
+            "minutes_until": minutes_until,
+            "maps": maps,
+            "timestamp": get_timestamp()
+        },
+        pages={
+            "viewport": {"width": 550, "height": 100},
             "base_url": f"file://{TEMPLATE_DIR}/"
         }
     )

@@ -8,7 +8,6 @@ import pytz
 
 from nonebot import get_bot, get_driver, require
 from nonebot.log import logger
-from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import Bot, MessageSegment
 
 require("nonebot_plugin_apscheduler")
@@ -17,7 +16,7 @@ from nonebot_plugin_apscheduler import scheduler
 from .config import plugin_config
 from .data_manager import data_manager
 from .data_source import hltv_data, MatchInfo
-from .render import render_stats
+from .render import render_stats, render_reminder
 
 T = TypeVar('T')
 
@@ -62,8 +61,6 @@ class HLTVScheduler:
         for attempt in range(max_retries):
             try:
                 return await coro_func()
-            except FinishedException:
-                raise
             except Exception as e:
                 if attempt == max_retries - 1:
                     logger.error(f"[HLTV Scheduler] 请求失败 (尝试 {attempt + 1}/{max_retries}): {e}")
@@ -100,8 +97,6 @@ class HLTVScheduler:
                             data_manager.add_notified_result(result.id)
                             count += 1
                             
-            except FinishedException:
-                raise
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 初始化赛事 {event_id} 结果失败: {e}")
                 continue
@@ -164,8 +159,6 @@ class HLTVScheduler:
                                 maps=match.maps
                             ))
                             
-            except FinishedException:
-                raise
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 检查赛事 {event_id} 比赛失败: {e}")
                 continue
@@ -206,8 +199,6 @@ class HLTVScheduler:
                             result.id
                         ))
                         
-            except FinishedException:
-                raise
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 检查赛事 {event_id} 结果失败: {e}")
                 continue
@@ -249,20 +240,32 @@ class HLTVScheduler:
         if not groups:
             return
         
-        # 构建消息
-        bo_text = f"BO{match.maps}" if match.maps else ""
-        msg = f"""🔔 比赛即将开始
+        try:
+            # 渲染提醒图片
+            img = await render_reminder(
+                team1=match.team1,
+                team2=match.team2,
+                event_title=match.event_title,
+                minutes_until=match.minutes_until,
+                maps=match.maps
+            )
+            msg = MessageSegment.image(img)
+        except Exception as e:
+            # 如果渲染失败，回退到文本消息
+            logger.warning(f"[HLTV Scheduler] 渲染提醒图片失败，使用文本消息: {e}")
+            bo_text = f"BO{match.maps}" if match.maps else ""
+            msg = f"""🔔 比赛即将开始
 
 🏆 {match.event_title}
 
 ⏰ {match.minutes_until} 分钟后开始
 🎮 {match.team1} vs {match.team2}
-{f'📋 {bo_text}' if bo_text else ''}"""
+{f'📋 {bo_text}' if bo_text else ''}""".strip()
         
         # 发送到各群组
         for group_id in groups:
             try:
-                await bot.send_group_msg(group_id=group_id, message=msg.strip())
+                await bot.send_group_msg(group_id=group_id, message=msg)
                 logger.info(f"[HLTV Scheduler] 已发送比赛提醒到群 {group_id}: {match.team1} vs {match.team2}")
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 发送比赛提醒到群 {group_id} 失败: {e}")

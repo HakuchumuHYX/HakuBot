@@ -488,7 +488,9 @@ async def handle_hltv_check(bot: Bot, event: GroupMessageEvent):
             msg += f"... 还有 {len(upcoming) - 10} 场比赛"
         
         await hltv_check.finish(msg.strip())
-        
+    
+    except FinishedException:
+        raise
     except Exception as e:
         logger.error(f"检查比赛失败: {e}")
         await hltv_check.finish(f"检查失败: {e}")
@@ -523,7 +525,9 @@ async def handle_hltv_trigger(bot: Bot, event: GroupMessageEvent):
                 msg += f"  - {err}\n"
         
         await hltv_trigger.finish(msg.strip())
-        
+    
+    except FinishedException:
+        raise
     except Exception as e:
         logger.error(f"手动触发检查失败: {e}")
         await hltv_trigger.finish(f"执行失败: {e}")
