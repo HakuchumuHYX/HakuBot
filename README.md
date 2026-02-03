@@ -29,7 +29,7 @@
 - **[ai_assistant](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/ai_assistant)**: 群 AI 助手。目前支持 chat、生图以及点歌服务。
   - Chat 和生图功能可以通过加 web 后缀来进行联网搜索信息。
   - 点歌会调用 LLM 自行决定是否联网搜索信息（由 [astrbot_plugin_music](https://github.com/Zhalslar/astrbot_plugin_music) 重构而来）。
-- **[analysis_bilibili](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/analysis_bilibili)**: [B站](bilibili.com) 链接解析。移植自 [nonebot-plugin-analysis-bilibili](https://github.com/mengshouer/nonebot_plugin_analysis_bilibili)。
+- **[analysis_bilibili](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/analysis_bilibili)**: B站链接解析。移植自 [nonebot-plugin-analysis-bilibili](https://github.com/mengshouer/nonebot_plugin_analysis_bilibili)。
 - **[daily_message](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/daily_message)**: 群聊定时消息推送。
 - **[help_plugin](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/help_plugin)**: 返回图片形式的帮助文档。
 - **[image_processor](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/image_processor)**: 图像处理工具箱（GIF 倒放/倍速/视频转 GIF、抠图、镜像、旋转、对称）。
