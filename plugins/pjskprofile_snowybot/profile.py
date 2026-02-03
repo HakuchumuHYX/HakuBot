@@ -1,10 +1,11 @@
 from typing import Tuple, Optional
 from nonebot import on_regex
-from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, GroupMessageEvent
 from nonebot.params import RegexGroup
 from nonebot.log import logger
 from nonebot.exception import FinishedException
 
+from ..plugin_manager.enable import is_plugin_enabled
 from .config import plugin_config
 from .data_manager import get_binding
 from .render import render_profile
@@ -28,6 +29,12 @@ def construct_url(server: str, pjsk_id: str) -> str:
 
 @profile_matcher.handle()
 async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup()):
+    # 插件开关检查
+    if isinstance(event, GroupMessageEvent):
+        user_id = str(event.get_user_id())
+        if not is_plugin_enabled("pjskprofile_snowybot", str(event.group_id), user_id):
+            await profile_matcher.finish()
+
     user_id = event.get_user_id()
     server_prefix = groups[0]
 

@@ -5,11 +5,12 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from nonebot import on_command, require, get_driver
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot, Event
 from nonebot.params import CommandArg
 from nonebot.log import logger
 
 # === 引入模块 ===
+from ..plugin_manager.enable import is_plugin_enabled
 from .config import load_config, DATA_DIR, CACHE_EXPIRE_SECONDS, FILE_CLEAN_SECONDS, AUTO_REFRESH_INTERVAL
 from .browser import manual_capture_page
 from .image import add_watermark
@@ -99,7 +100,13 @@ async def generate_screenshot_task(target_id: str = "", mode_override: str = Non
 
 
 @shot_cmd.handle()
-async def handle_screenshot(args: Message = CommandArg()):
+async def handle_screenshot(bot: Bot, event: Event, args: Message = CommandArg()):
+    # 插件开关检查
+    if isinstance(event, GroupMessageEvent):
+        user_id = str(event.user_id)
+        if not is_plugin_enabled("cnsk_predict", str(event.group_id), user_id):
+            await shot_cmd.finish()
+
     # === 1. 参数解析 ===
     raw_text = args.extract_plain_text().strip()
     arg_parts = raw_text.split()

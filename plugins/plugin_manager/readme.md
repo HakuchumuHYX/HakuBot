@@ -43,3 +43,7 @@ AI 点歌：ai_assistant:music
 推特图片：lunabot_imgexp:ximg  
 每日群总结：group_daily_analysis  
 来张涩图：setu_plugin
+存活统计：alive_stat
+CNSK活动预测：cnsk_predict
+PJSK剧情：pjsk_event_summary
+PJSK个人信息：pjskprofile_snowybot

@@ -7,12 +7,15 @@ from nonebot.params import CommandArg  # <--- 必须导入这个用来接收参�
 
 # 请根据适配器修改 (例如 OneBot V11)
 from nonebot.adapters.onebot.v11 import MessageSegment
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 # 导入同目录下的绘图模块
 from . import drawer
+# 导入管理模块
+from ..plugin_manager.enable import is_plugin_enabled
 
 # ================= 配置与数据初始化 =================
 
@@ -101,6 +104,12 @@ alive = on_command("alive-main", priority=5, block=True)
 @alive.handle()
 # 注意：这里增加了 args: Message = CommandArg() 用于接收参数
 async def handle_alive(bot: Bot, event: Event, args: Message = CommandArg()):
+    user_id = str(event.get_user_id())
+    # 插件开关检查
+    if isinstance(event, GroupMessageEvent):
+        if not is_plugin_enabled("alive_stat", str(event.group_id), user_id):
+            await alive.finish()
+
     now = datetime.now()
 
     # --- 判定白天/夜间模式 ---

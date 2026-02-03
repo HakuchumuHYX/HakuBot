@@ -1,9 +1,10 @@
 from nonebot import on_command
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent
 from nonebot.exception import FinishedException
 
+from ..plugin_manager.enable import is_plugin_enabled
 from .api import fetch_event_list, fetch_event_detail
 from .render import render_event_list_pic, render_event_detail_pic
 from .models import EventDetail
@@ -18,6 +19,12 @@ pjsk_detail = on_command("剧情总结", priority=5, block=True)
 
 @pjsk_list.handle()
 async def handle_list(bot: Bot, event: Event):
+    # 插件开关检查
+    if isinstance(event, GroupMessageEvent):
+        user_id = str(event.get_user_id())
+        if not is_plugin_enabled("pjsk_event_summary", str(event.group_id), user_id):
+            await pjsk_list.finish()
+
     await pjsk_list.send("正在获取剧情列表，请稍候...")
 
     try:
@@ -36,6 +43,12 @@ async def handle_list(bot: Bot, event: Event):
 
 @pjsk_detail.handle()
 async def handle_detail(bot: Bot, event: Event, args: Message = CommandArg()):
+    # 插件开关检查
+    if isinstance(event, GroupMessageEvent):
+        user_id = str(event.get_user_id())
+        if not is_plugin_enabled("pjsk_event_summary", str(event.group_id), user_id):
+            await pjsk_detail.finish()
+
     event_id = args.extract_plain_text().strip()
 
     if not event_id.isdigit():
