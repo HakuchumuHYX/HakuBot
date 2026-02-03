@@ -36,10 +36,12 @@ async def handle_hltv_toggle(bot: Bot, event: GroupMessageEvent):
         if "开启" in raw_cmd or "启用" in raw_cmd:
             data_manager.set_enabled(group_id, True)
             hltv_scheduler.ensure_job_state()
+            hltv_scheduler.refresh_wakeup_jobs()
             await hltv_toggle.finish("✅ HLTV 订阅功能已开启")
         else:
             data_manager.set_enabled(group_id, False)
             hltv_scheduler.ensure_job_state()
+            hltv_scheduler.refresh_wakeup_jobs()
             await hltv_toggle.finish("❌ HLTV 订阅功能已关闭")
     except FinishedException:
         raise

@@ -108,6 +108,7 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
             if event_info.is_ongoing:
                 await hltv_scheduler.initialize_event_results_as_notified(event_id)
             hltv_scheduler.ensure_job_state()
+            hltv_scheduler.refresh_wakeup_jobs()
 
             await event_subscribe.finish(f"✅ 成功订阅赛事：{event_info.title}")
         else:
@@ -125,6 +126,7 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
             from ..scheduler import hltv_scheduler
 
             hltv_scheduler.ensure_job_state()
+            hltv_scheduler.refresh_wakeup_jobs()
 
             await event_subscribe.finish(f"✅ 成功订阅赛事 #{event_id}")
 
@@ -160,6 +162,7 @@ async def handle_event_unsubscribe(bot: Bot, event: GroupMessageEvent, args: Mes
         from ..scheduler import hltv_scheduler
 
         hltv_scheduler.ensure_job_state()
+        hltv_scheduler.refresh_wakeup_jobs()
         await event_unsubscribe.finish(f"✅ 已取消订阅赛事 #{event_id}")
     else:
         await event_unsubscribe.finish(f"未订阅赛事 #{event_id}")
