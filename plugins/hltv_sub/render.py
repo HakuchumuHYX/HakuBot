@@ -131,6 +131,42 @@ async def render_stats(stats: Optional[MatchStats]) -> bytes:
     )
 
 
+async def render_help(sections: list[dict]) -> bytes:
+    """渲染帮助图片
+
+    Args:
+        sections: 帮助分组数据，格式：
+          [
+            {
+              "title": str,
+              "note": str,
+              "commands": [
+                {
+                  "name": str,
+                  "args": str,
+                  "aliases": list[str],
+                  "admin_only": bool,
+                  "superuser_only": bool
+                }
+              ]
+            }
+          ]
+    """
+    return await template_to_pic(
+        template_path=str(TEMPLATE_DIR),
+        template_name="help.html",
+        templates={
+            "sections": sections,
+            "timestamp": get_timestamp(),
+            "watermark_text": plugin_config.hltv_watermark_text,
+        },
+        pages={
+            "viewport": {"width": 820, "height": 100},
+            "base_url": f"file://{TEMPLATE_DIR}/",
+        },
+    )
+
+
 async def render_reminder(
     team1: str,
     team2: str,
