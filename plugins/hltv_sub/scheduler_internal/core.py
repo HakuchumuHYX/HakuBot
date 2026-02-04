@@ -37,6 +37,9 @@ class HLTVScheduler:
         self._current_interval_minutes: int = DEFAULT_INTERVAL_MINUTES
         self._next_minutes_hint: Optional[int] = None
 
+        # 本轮是否存在 LIVE 比赛（用于强制轮询频率，避免 results 推送延迟）
+        self._has_live_match: bool = False
+
         # 赛事结束判定缓冲（避免时区/页面延迟导致漏推最后结果）
         self._end_grace_days: int = 1
 
@@ -125,11 +128,16 @@ class HLTVScheduler:
         if not has_active_events(self._tz, self._end_grace_days):
             return
 
-        minutes = self._interval_from_next_minutes(self._next_minutes_hint)
+        # 关键修正：只要当前存在 LIVE match，就一直 5min 轮询，确保 results 推送及时
+        if self._has_live_match:
+            minutes = DEFAULT_INTERVAL_MINUTES
+        else:
+            minutes = self._interval_from_next_minutes(self._next_minutes_hint)
 
         logger.info(
             f"[HLTV Scheduler] 自适应轮询评估: next_minutes_until={self._next_minutes_hint}, "
-            f"target_interval={minutes}min, current_interval={self._current_interval_minutes}min"
+            f"has_live_match={self._has_live_match}, target_interval={minutes}min, "
+            f"current_interval={self._current_interval_minutes}min"
         )
 
         self._reschedule_job_interval(minutes)
@@ -224,7 +232,11 @@ class HLTVScheduler:
         event_ids = data_manager.get_all_subscribed_event_ids()
         if not event_ids:
             self._next_minutes_hint = None
+            self._has_live_match = False
             return upcoming
+
+        # 每轮重置：避免上一轮 LIVE 状态残留导致永久锁 5min
+        self._has_live_match = False
 
         # 用于自适应轮询：找全局最近的下一场比赛
         next_minutes_until: Optional[int] = None
@@ -251,6 +263,10 @@ class HLTVScheduler:
                     continue
 
                 matches, hints = pair
+
+                # 只要存在 LIVE（matches 或 hints 任意一方标记 live），本轮就锁定 5min 频率
+                if any(m.is_live for m in matches) or any(h.is_live for h in hints):
+                    self._has_live_match = True
 
                 logger.info(
                     f"[HLTV Scheduler] 赛事 {event_id} matches抓取: filtered={len(matches)}, hints={len(hints)} "

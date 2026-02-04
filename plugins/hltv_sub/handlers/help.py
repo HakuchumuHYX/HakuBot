@@ -10,7 +10,7 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from ..permissions import is_group_enabled
 
 
-hltv_help = on_command("hltv帮助", aliases={"hltv", "hltvhelp"}, priority=5, block=True)
+hltv_help = on_command("hltv帮助", aliases={"hltvhelp"}, priority=5, block=True)
 
 
 @hltv_help.handle()
