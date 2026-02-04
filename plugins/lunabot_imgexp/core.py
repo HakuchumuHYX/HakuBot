@@ -115,15 +115,20 @@ async def search_ascii2d(
     img_url: str,
     limit: int = 2,
 ) -> ImageSearchResult:
-    try:
-        if limit == 0:
-            return ImageSearchResult(source="Ascii2D", results=[])
-        logger.info("开始从 Ascii2D 搜索图片...")
+    """
+    默认使用 file upload（bot 先下载图片 bytes，再上传给 Ascii2D）：
 
-        ascii2d = Ascii2D(client=client)
-        results = await ascii2d.search(url=img_url)
-        filtered_results = results.raw[:limit]
+    原因：
+    - 对于 QQ 临时鉴权链接/需要特定 UA 的链接，Ascii2D 服务器端经常无法抓取，导致一直 0 结果。
+    - file upload 更稳定（Ascii2D 直接拿到图片本体）。
+    """
+    if limit == 0:
+        return ImageSearchResult(source="Ascii2D", results=[])
 
+    ascii2d = Ascii2D(client=client)
+
+    async def _build_items(resp) -> list[ImageSearchResultItem]:
+        filtered_results = resp.raw[:limit]
         thumbnails = await download_batch_thumbnails([item.thumbnail for item in filtered_results])
 
         res_items: list[ImageSearchResultItem] = []
@@ -136,15 +141,31 @@ async def search_ascii2d(
                 ImageSearchResultItem(
                     title=title,
                     url=item.url,
-                    similarity=None,  # Ascii2D 通常不提供相似度
+                    similarity=None,
                     thumbnail=thumbnail,
                     source="Ascii2D",
                 )
             )
+        return res_items
 
-        logger.info(f"从 Ascii2D 搜索到 {len(res_items)} 个结果")
+    # 1) file upload 优先
+    try:
+        logger.info("开始从 Ascii2D 搜索图片 (file upload)...")
+        img_bytes = await download_bytes(img_url)
+        results = await ascii2d.search(file=img_bytes)
+        res_items = await _build_items(results)
+        logger.info(f"从 Ascii2D 搜索到 {len(res_items)} 个结果 (file upload)")
         return ImageSearchResult(source="Ascii2D", results=res_items)
+    except Exception as e:
+        logger.warning(f"Ascii2D(file upload) 失败，将回退为 url: {e}")
 
+    # 2) 回退：url 搜索
+    try:
+        logger.info("开始从 Ascii2D 搜索图片 (url fallback)...")
+        results = await ascii2d.search(url=img_url)
+        res_items = await _build_items(results)
+        logger.info(f"从 Ascii2D 搜索到 {len(res_items)} 个结果 (url fallback)")
+        return ImageSearchResult(source="Ascii2D", results=res_items)
     except Exception as e:
         logger.warning(f"从 Ascii2D 搜索图片 {img_url} 失败: {e}")
         return ImageSearchResult(source="Ascii2D", results=[], error=f"搜索失败: {e}")
