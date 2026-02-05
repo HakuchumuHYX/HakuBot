@@ -4,13 +4,13 @@ from typing import Any, List, Optional, Tuple
 from urllib.parse import quote
 
 from PIL import Image
-from PicImageSearch import Ascii2D, Iqdb, Network, SauceNAO
+from PicImageSearch import Network, SauceNAO
 
-from .utils.config import config
-from .utils.tools import get_logger
-from .utils.network import DEFAULT_TIMEOUT, download_bytes, download_image, get_client_session, get_effective_proxy
-from .draw.painter import *
-from .draw.plot import *
+from .config import config
+from ..utils.tools import get_logger
+from ..utils.network import DEFAULT_TIMEOUT, download_image, get_client_session, get_effective_proxy
+from ..utils.draw.painter import *
+from ..utils.draw.plot import *
 
 logger = get_logger("ImgExp")
 
@@ -34,18 +34,22 @@ class ImageSearchResult:
 
 # 缩略图下载并发限制：避免一次性开太多连接导致排队/卡死
 _THUMB_SEM = asyncio.Semaphore(8)
-# 注意：IQDB 本身有时 50s+ 才返回；如果缩略图域名再慢，会把整条 IQDB 任务拖到 _with_timeout 的上限。
-# 因此给“单张缩略图”单独设置更短的硬超时，超时就当没有缩略图，不影响主结果返回。
+# 给“单张缩略图”单独设置更短的硬超时，超时就当没有缩略图，不影响主结果返回。
 _THUMB_TIMEOUT_SEC = 30
 
 
 async def download_batch_thumbnails(urls: list[str]) -> list[Image.Image]:
+    plugin_proxy = config.get("proxy")
+
     async def download_nothrow(url: str):
         if not url:
             return None
         async with _THUMB_SEM:
             try:
-                return await asyncio.wait_for(download_image(url), timeout=_THUMB_TIMEOUT_SEC)
+                return await asyncio.wait_for(
+                    download_image(url, proxy=plugin_proxy),
+                    timeout=_THUMB_TIMEOUT_SEC,
+                )
             except asyncio.TimeoutError:
                 logger.warning(f"下载缩略图超时({_THUMB_TIMEOUT_SEC}s): {url}")
                 return None
@@ -110,128 +114,6 @@ async def search_saucenao(
         return ImageSearchResult(source="SauceNAO", results=[], error=f"搜索失败: {e}")
 
 
-async def search_ascii2d(
-    client: Any,
-    img_url: str,
-    limit: int = 2,
-) -> ImageSearchResult:
-    """
-    默认使用 file upload（bot 先下载图片 bytes，再上传给 Ascii2D）：
-
-    原因：
-    - 对于 QQ 临时鉴权链接/需要特定 UA 的链接，Ascii2D 服务器端经常无法抓取，导致一直 0 结果。
-    - file upload 更稳定（Ascii2D 直接拿到图片本体）。
-    """
-    if limit == 0:
-        return ImageSearchResult(source="Ascii2D", results=[])
-
-    ascii2d = Ascii2D(client=client)
-
-    async def _build_items(resp) -> list[ImageSearchResultItem]:
-        filtered_results = resp.raw[:limit]
-        thumbnails = await download_batch_thumbnails([item.thumbnail for item in filtered_results])
-
-        res_items: list[ImageSearchResultItem] = []
-        for item, thumbnail in zip(filtered_results, thumbnails):
-            title = item.title or "Unknown"
-            if hasattr(item, "detail") and item.detail:
-                title += f" ({item.detail})"
-
-            res_items.append(
-                ImageSearchResultItem(
-                    title=title,
-                    url=item.url,
-                    similarity=None,
-                    thumbnail=thumbnail,
-                    source="Ascii2D",
-                )
-            )
-        return res_items
-
-    # 1) file upload 优先
-    try:
-        logger.info("开始从 Ascii2D 搜索图片 (file upload)...")
-        img_bytes = await download_bytes(img_url)
-        results = await ascii2d.search(file=img_bytes)
-        res_items = await _build_items(results)
-        logger.info(f"从 Ascii2D 搜索到 {len(res_items)} 个结果 (file upload)")
-        return ImageSearchResult(source="Ascii2D", results=res_items)
-    except Exception as e:
-        logger.warning(f"Ascii2D(file upload) 失败，将回退为 url: {e}")
-
-    # 2) 回退：url 搜索
-    try:
-        logger.info("开始从 Ascii2D 搜索图片 (url fallback)...")
-        results = await ascii2d.search(url=img_url)
-        res_items = await _build_items(results)
-        logger.info(f"从 Ascii2D 搜索到 {len(res_items)} 个结果 (url fallback)")
-        return ImageSearchResult(source="Ascii2D", results=res_items)
-    except Exception as e:
-        logger.warning(f"从 Ascii2D 搜索图片 {img_url} 失败: {e}")
-        return ImageSearchResult(source="Ascii2D", results=[], error=f"搜索失败: {e}")
-
-
-async def search_iqdb(
-    client: Any,
-    img_url: str,
-    limit: int = 5,
-) -> ImageSearchResult:
-    """
-    默认使用 file upload（bot 先下载图片 bytes，再上传给 IQDB）：
-
-    原因：
-    - 像 QQ multimedia 这类“临时鉴权链接”，IQDB 服务器端经常抓取失败，返回异常页面，
-      PicImageSearch 解析时会出现 IndexError（list index out of range）。
-    - 先 url 再 fallback 会导致最坏情况下做两次请求，整体更慢。
-
-    策略：
-    1) 优先：download_bytes(img_url) -> iqdb.search(file=bytes)
-    2) 若下载失败（图片 URL 无法下载）或上传失败：回退用 url 方式（让 IQDB 自己抓）
-    """
-    if limit == 0:
-        return ImageSearchResult(source="IQDB", results=[])
-
-    iqdb = Iqdb(client=client)
-
-    async def _build_result_items(iqdb_resp) -> list[ImageSearchResultItem]:
-        filtered_results = iqdb_resp.raw[:limit]
-        thumbnails = await download_batch_thumbnails([item.thumbnail for item in filtered_results])
-
-        res_items: list[ImageSearchResultItem] = []
-        for item, thumbnail in zip(filtered_results, thumbnails):
-            similarity = getattr(item, "similarity", None)
-            res_items.append(
-                ImageSearchResultItem(
-                    title="IQDB Result",
-                    url=item.url,
-                    similarity=similarity,
-                    thumbnail=thumbnail,
-                    source="IQDB",
-                )
-            )
-        return res_items
-
-    # 1) file upload 优先
-    try:
-        logger.info("开始从 IQDB 搜索图片 (file upload)...")
-        img_bytes = await download_bytes(img_url)
-        results = await iqdb.search(file=img_bytes)
-        res_items = await _build_result_items(results)
-        logger.info(f"从 IQDB 搜索到 {len(res_items)} 个结果 (file upload)")
-        return ImageSearchResult(source="IQDB", results=res_items)
-    except Exception as e:
-        logger.warning(f"IQDB(file upload) 失败，将回退为 url: {e}")
-
-    # 2) 回退：url 搜索
-    try:
-        logger.info("开始从 IQDB 搜索图片 (url fallback)...")
-        results = await iqdb.search(url=img_url)
-        res_items = await _build_result_items(results)
-        logger.info(f"从 IQDB 搜索到 {len(res_items)} 个结果 (url fallback)")
-        return ImageSearchResult(source="IQDB", results=res_items)
-    except Exception as e:
-        logger.warning(f"从 IQDB 搜索图片 {img_url} 失败: {e}")
-        return ImageSearchResult(source="IQDB", results=[], error=f"搜索失败: {e}")
 
 
 async def search_googlelens(
@@ -253,7 +135,7 @@ async def search_googlelens(
             f"https://serpapi.com/search.json?engine=google_lens&url={img_url_encoded}&api_key={serp_apikey}"
         )
 
-        proxy = get_effective_proxy()
+        proxy = get_effective_proxy(config.get("proxy"))
         async with get_client_session().get(
             serp_url,
             verify_ssl=False,
@@ -304,14 +186,12 @@ async def search_image(
     if img_size > SIZE_LIMIT_MB * 1024 * 1024:
         raise ValueError(f"图片大小超过{SIZE_LIMIT_MB}MB，请先缩小后再进行搜索")
 
-    proxy = get_effective_proxy()
+    proxy = get_effective_proxy(config.get("proxy"))
 
     async with Network(timeout=120, proxies=proxy) as client:
         # 并行执行所有搜索（已移除 TraceMoe）
         results = await asyncio.gather(
             _with_timeout(search_saucenao(client, img_url), "SauceNAO"),
-            _with_timeout(search_ascii2d(client, img_url), "Ascii2D"),
-            _with_timeout(search_iqdb(client, img_url), "IQDB"),
             _with_timeout(search_googlelens(img_url), "GoogleLens"),
         )
 

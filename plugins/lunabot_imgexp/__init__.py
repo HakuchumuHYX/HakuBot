@@ -8,8 +8,9 @@ from nonebot.matcher import Matcher
 from nonebot.rule import to_me
 
 from .core import search_image
-from .utils.tools import get_logger, send_forward_msg, TempFilePath
-from .utils.network import download_image
+from .config import config
+from ..utils.tools import get_logger, send_forward_msg, TempFilePath
+from ..utils.network import download_image
 from . import twitter  # noqa: F401
 
 try:

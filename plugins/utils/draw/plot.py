@@ -6,9 +6,12 @@ from dataclasses import dataclass
 from copy import deepcopy
 from datetime import datetime
 
-from ..utils.config import config as global_config
 from .painter import *
 
+# plot 模块的通用默认开关（不绑定任何插件的 config）
+PLOT_DEBUG = False
+PLOT_LOG_DRAW_TIME = False
+PLOT_CANVAS_SIZE_LIMIT = (10000, 10000)
 
 DEFAULT_PADDING = 0
 DEFAULT_MARGIN = 0
@@ -322,7 +325,7 @@ class Widget:
         return (cx, cy)
         
     def _draw_self(self, p: Painter):
-        if global_config.get('plot.debug', False):
+        if PLOT_DEBUG:
             import random
             color = (random.randint(0, 200), random.randint(0, 200), random.randint(0, 200), 255)
             p.rect((0, 0), (p.w, p.h), TRANSPARENT, stroke=color, stroke_width=2)
@@ -1074,21 +1077,21 @@ class Canvas(Frame):
     async def get_img(self, scale: float = None, cache_key: str=None):
         t = datetime.now()
         size = self._get_self_size()
-        size_limit = global_config.get('plot.canvas_size_limit', (10000, 10000))
+        size_limit = PLOT_CANVAS_SIZE_LIMIT
         # assert size[0] * size[1] <= size_limit[0] * size_limit[1], f'Canvas size is too large ({size[0]}x{size[1]})'
         if size[0] * size[1] > size_limit[0] * size_limit[1]:
-             print(f"Warning: Canvas size is too large ({size[0]}x{size[1]})")
+            print(f"Warning: Canvas size is too large ({size[0]}x{size[1]})")
 
         p = Painter(size=size)
         self.draw(p)
-        if global_config.get('plot.log_draw_time', False):
+        if PLOT_LOG_DRAW_TIME:
             print(f"Canvas layouted in {(datetime.now() - t).total_seconds():.3f}s, size={size}")
 
         t = datetime.now()
         img = await p.get(cache_key)
         if scale:
             img = img.resize((int(size[0] * scale), int(size[1] * scale)), Image.Resampling.BILINEAR)
-        if global_config.get('plot.log_draw_time', False):
+        if PLOT_LOG_DRAW_TIME:
             print(f"Canvas drawn in {(datetime.now() - t).total_seconds():.3f}s, size={size}")
         return img
     

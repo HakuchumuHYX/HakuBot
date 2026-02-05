@@ -16,10 +16,11 @@ from nonebot.rule import to_me
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from PIL import Image
 
-from .utils.tools import get_logger, get_exc_desc, run_in_pool, truncate, TempFilePath, send_forward_msg
-from .utils.network import download_image
-from .utils.browser import PlaywrightPage
-from .draw.img_utils import concat_images, save_transparent_static_gif
+from .config import config
+from ..utils.tools import get_logger, get_exc_desc, run_in_pool, truncate, TempFilePath, send_forward_msg
+from ..utils.network import download_image
+from ..utils.browser import PlaywrightPage
+from ..utils.draw.img_utils import concat_images, save_transparent_static_gif
 
 logger = get_logger('Twitter')
 
@@ -204,7 +205,9 @@ async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message 
 
     if force_download_image or concat_mode or args_obj.gif:
         try:
-            images = await asyncio.gather(*[download_image(u) for u in image_urls])
+            images = await asyncio.gather(
+                *[download_image(u, proxy=config.get("proxy")) for u in image_urls]
+            )
         except Exception as e:
             await ximg.finish(f"下载图片失败: {e}")
             return

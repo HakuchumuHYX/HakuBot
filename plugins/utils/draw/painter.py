@@ -39,8 +39,7 @@ import colour
 import struct
 from concurrent.futures import ThreadPoolExecutor
 
-from ..utils.config import Config
-from ..utils.tools import get_logger
+from ..tools import get_logger
 from .img_utils import adjust_image_alpha_inplace, save_transparent_static_gif
 
 logger = get_logger("Painter")
@@ -161,7 +160,7 @@ def deterministic_hash(obj: Any, raise_error: bool = False) -> str:
 
 # =========================== 基础定义 =========================== #
 
-PAINTER_CACHE_DIR = "data/lunabot_imgexp/painter_cache/"
+PAINTER_CACHE_DIR = "data/utils/painter_cache/"
 
 Color = Tuple[int, int, int, int]
 Position = Tuple[int, int]
@@ -176,7 +175,11 @@ BLUE = (0, 0, 255, 255)
 TRANSPARENT = (0, 0, 0, 0)
 SHADOW = (0, 0, 0, 150)
 
-FONT_DIR = "data/lunabot_imgexp/fonts/"
+# 字体目录（通用）
+FONT_DIR = "data/utils/fonts/"
+# 兼容旧部署：搜图插件早期用的是 data/lunabot_imgexp/fonts/
+LEGACY_FONT_DIR = "data/lunabot_imgexp/fonts/"
+
 DEFAULT_FONT = "SourceHanSansCN-Regular"
 DEFAULT_BOLD_FONT = "SourceHanSansCN-Bold"
 DEFAULT_HEAVY_FONT = "SourceHanSansCN-Heavy"
@@ -253,26 +256,33 @@ def adjust_color(c, r=None, g=None, b=None, a=None):
 def get_font(path: str, size: int) -> Font:
     global font_cache
     key = f"{path}_{size}"
-    paths = [path]
-    paths.append(os.path.join(FONT_DIR, path))
-    paths.append(os.path.join(FONT_DIR, path + ".ttf"))
-    paths.append(os.path.join(FONT_DIR, path + ".otf"))
+
+    # 支持：
+    # - 直接传入绝对/相对路径
+    # - 传入字体名（不带后缀），从 FONT_DIR / LEGACY_FONT_DIR 下查找
+    candidates = [path]
+    for base in (FONT_DIR, LEGACY_FONT_DIR):
+        candidates.append(os.path.join(base, path))
+        candidates.append(os.path.join(base, path + ".ttf"))
+        candidates.append(os.path.join(base, path + ".otf"))
+
     if key not in font_cache:
         font = None
-        for path in paths:
-            if os.path.exists(path):
-                font = ImageFont.truetype(path, size)
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                font = ImageFont.truetype(candidate, size)
                 break
+
         if font is None:
-            # 尝试使用系统默认字体或fallback
+            # 尝试使用系统默认字体或 fallback
             try:
                 font = ImageFont.truetype("arial.ttf", size)
-            except:
+            except Exception:
                 font = ImageFont.load_default()
             logger.warning(f"Font file not found: {path}, using default")
-        
+
         font_cache[key] = FontCacheEntry(
-            font=font, 
+            font=font,
             last_used=datetime.now(),
         )
         # 清理过期的字体缓存
