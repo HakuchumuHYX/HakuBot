@@ -1,6 +1,7 @@
 # plugin_manager/enable.py
 from nonebot import on_command, get_loaded_plugins, get_driver
-from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent, MessageSegment
+from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import Plugin
 from typing import Dict
@@ -9,8 +10,11 @@ from typing import Dict
 from . import (
     load_readme_plugins,
     plugin_status,  # 导入全局状态字典
-    save_plugin_status  # 导入保存函数
+    save_plugin_status,  # 导入保存函数
+    watermark_config,
 )
+
+from .render import PluginStatusGroup, PluginStatusRow, render_plugin_status_image
 
 
 # --- 插件/功能开关的核心API函数 ---
@@ -135,55 +139,97 @@ async def handle_disable(bot: Bot, event: MessageEvent):
 
 @list_plugins.handle()
 async def handle_list(bot: Bot, event: MessageEvent):
-    """显示插件列表 - 以合并转发形式"""
+    """显示插件列表 - 返回图片（按主插件分组，子功能合并在同一框内）"""
     if not isinstance(event, GroupMessageEvent):
         await list_plugins.finish("请在群聊中使用此命令")
 
-    readme_plugins = load_readme_plugins()  # 导入的
+    readme_plugins = load_readme_plugins()
     group_id = str(event.group_id)
 
     if not readme_plugins:
         await list_plugins.finish("未找到插件列表配置，请检查 readme.md 文件")
 
-    plugin_list = []
+    # 兜底文本（渲染失败时发送）
+    plugin_list_text = []
     for plugin_id, plugin_name in readme_plugins.items():
         is_enabled = is_plugin_enabled(plugin_id, group_id, "0")
-        
+
         # 如果是子功能（带冒号），且主插件被禁用，则显示为禁用
         if ":" in plugin_id:
-            parent_id = plugin_id.split(":")[0]
+            parent_id = plugin_id.split(":", 1)[0]
             if not is_plugin_enabled(parent_id, group_id, "0"):
                 is_enabled = False
 
-        status = "✅ 启用" if is_enabled else "❌ 禁用"  # 本地的
-        plugin_list.append(f"{plugin_name} ({plugin_id}) - {status}")
+        status = "✅ 启用" if is_enabled else "❌ 禁用"
+        plugin_list_text.append(f"{plugin_name} ({plugin_id}) - {status}")
 
-    if plugin_list:
-        message = "目前接入了管理插件的有:\n" + "\n".join(plugin_list)
-    else:
-        message = "暂无其他插件"
+    message = "目前接入了管理插件的有:\n" + "\n".join(plugin_list_text) if plugin_list_text else "暂无其他插件"
+
+    # 分组：按主插件出一张卡片，子功能（xxx:yyy）归入主插件卡片
+    parent_order: list[str] = []
+    parent_name: dict[str, str] = {}
+    children: dict[str, list[tuple[str, str]]] = {}
+
+    for plugin_id, plugin_name in readme_plugins.items():
+        if ":" in plugin_id:
+            pid = plugin_id.split(":", 1)[0]
+            children.setdefault(pid, []).append((plugin_id, plugin_name))
+            if pid not in parent_order:
+                parent_order.append(pid)
+            parent_name.setdefault(pid, pid)  # 若 readme 没有主插件行，用 id 兜底显示
+        else:
+            pid = plugin_id
+            if pid not in parent_order:
+                parent_order.append(pid)
+            parent_name[pid] = plugin_name
+
+    groups: list[PluginStatusGroup] = []
+    for pid in parent_order:
+        p_enabled = is_plugin_enabled(pid, group_id, "0")
+        p_row = PluginStatusRow(
+            name=parent_name.get(pid, pid),
+            plugin_id=pid,
+            enabled=p_enabled,
+            is_child=False,
+        )
+
+        c_rows: list[PluginStatusRow] = []
+        for cid, cname in children.get(pid, []):
+            c_enabled = is_plugin_enabled(cid, group_id, "0")
+            if not p_enabled:
+                c_enabled = False  # 主插件禁用时，子功能强制禁用显示
+            c_rows.append(
+                PluginStatusRow(
+                    name=cname,
+                    plugin_id=cid,
+                    enabled=c_enabled,
+                    is_child=True,
+                )
+            )
+
+        # 子功能按英文 id 排序
+        c_rows.sort(key=lambda r: r.plugin_id.lower())
+
+        groups.append(PluginStatusGroup(parent=p_row, children=c_rows))
+
+    # 主插件按英文 id 排序
+    groups.sort(key=lambda g: g.parent.plugin_id.lower())
 
     try:
-        bot_info = await bot.get_login_info()
-        bot_uin = bot_info['user_id']
-        bot_nickname = bot_info['nickname']
-
-        forward_nodes = [
-            {
-                "type": "node",
-                "data": {
-                    "name": bot_nickname,
-                    "uin": str(bot_uin),
-                    "content": message
-                }
-            }
-        ]
-        await bot.send_forward_msg(
-            group_id=event.group_id,
-            messages=forward_nodes
+        wm_text = str(watermark_config.get("text", "")).strip()
+        wm_pos = str(watermark_config.get("position", "bottom_right")).strip() or "bottom_right"
+        img_bytes = await render_plugin_status_image(
+            groups=groups,
+            group_id=group_id,
+            watermark_text=wm_text,
+            watermark_position=wm_pos,
         )
+        await list_plugins.finish(MessageSegment.image(img_bytes))
+    except FinishedException:
+        # finish() 会抛 FinishedException 用于中断流程；不要当作渲染失败处理
+        raise
     except Exception as e:
-        print(f"合并转发失败: {e}")
+        print(f"渲染插件开关状态图片失败: {e}")
         await list_plugins.finish(message)
 
 
