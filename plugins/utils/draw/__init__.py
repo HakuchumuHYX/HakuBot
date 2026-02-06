@@ -4,4 +4,7 @@
 - painter.py：底层绘图操作封装（基于 PIL）
 - plot.py：简单的布局/控件系统（基于 painter）
 - img_utils.py：图像处理工具函数（透明 GIF / 拼图等）
+- cards.py：可复用的卡片渲染（排行榜/统计等）
 """
+
+from .cards import LeaderboardCardColors, render_leaderboard_card

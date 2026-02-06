@@ -8,6 +8,10 @@ from datetime import datetime
 
 from .painter import *
 
+from ..tools import get_logger
+
+logger = get_logger("draw.plot")
+
 # plot 模块的通用默认开关（不绑定任何插件的 config）
 PLOT_DEBUG = False
 PLOT_LOG_DRAW_TIME = False
@@ -333,7 +337,7 @@ class Widget:
             s += f"self={self._get_self_size()}"
             s += f"content={self._get_content_size()}"
             p.text(s, (3, 3), font=get_font_desc(DEFAULT_FONT, 16), fill=color)
-            print(f"Draw {self.__class__.__name__} at {p.offset} size={p.size}")
+            logger.debug(f"Draw {self.__class__.__name__} at {p.offset} size={p.size}")
         
         if self.bg:
             self.bg.draw(p)
@@ -1080,19 +1084,19 @@ class Canvas(Frame):
         size_limit = PLOT_CANVAS_SIZE_LIMIT
         # assert size[0] * size[1] <= size_limit[0] * size_limit[1], f'Canvas size is too large ({size[0]}x{size[1]})'
         if size[0] * size[1] > size_limit[0] * size_limit[1]:
-            print(f"Warning: Canvas size is too large ({size[0]}x{size[1]})")
+            logger.warning(f"Canvas size is too large ({size[0]}x{size[1]})")
 
         p = Painter(size=size)
         self.draw(p)
         if PLOT_LOG_DRAW_TIME:
-            print(f"Canvas layouted in {(datetime.now() - t).total_seconds():.3f}s, size={size}")
+            logger.info(f"Canvas layouted in {(datetime.now() - t).total_seconds():.3f}s, size={size}")
 
         t = datetime.now()
         img = await p.get(cache_key)
         if scale:
             img = img.resize((int(size[0] * scale), int(size[1] * scale)), Image.Resampling.BILINEAR)
         if PLOT_LOG_DRAW_TIME:
-            print(f"Canvas drawn in {(datetime.now() - t).total_seconds():.3f}s, size={size}")
+            logger.info(f"Canvas drawn in {(datetime.now() - t).total_seconds():.3f}s, size={size}")
         return img
     
 

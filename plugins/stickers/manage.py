@@ -6,6 +6,10 @@ from typing import Tuple, Optional, Dict, List
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from nonebot import get_driver
 
+from ..utils.tools import get_logger
+
+logger = get_logger("stickers.manage")
+
 from . import send
 from .send import sticker_dir, list_json_path, load_sticker_list, folder_configs, alias_to_folder, sticker_folders, \
     resolve_folder_name
@@ -192,7 +196,7 @@ def create_new_gallery(gallery_name: str) -> str:
         # --- 1. 创建物理文件夹 ---
         new_folder_path = sticker_dir / gallery_name
         new_folder_path.mkdir(exist_ok=True)
-        print(f"已创建新文件夹: {new_folder_path}")
+        logger.info(f"已创建新文件夹: {new_folder_path}")
 
         # --- 2. 更新 list.json ---
         if not list_json_path.exists():
@@ -206,7 +210,7 @@ def create_new_gallery(gallery_name: str) -> str:
             except json.JSONDecodeError:
                 list_json_path.rename(list_json_path.with_suffix('.json.bak'))
                 data = {"folders": []}
-                print("警告: list.json 文件损坏，已备份并重置。")
+                logger.warning("list.json 文件损坏，已备份并重置。")
 
         # 添加新配置
         new_config = {

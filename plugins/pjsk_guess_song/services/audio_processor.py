@@ -17,15 +17,16 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
+from nonebot.log import logger
+
 try:
     from pydub import AudioSegment
     PYDUB_AVAILABLE = True
 except ImportError:
     AudioSegment = None
     PYDUB_AVAILABLE = False
-    print("Pydub not installed, audio processing features will be limited.")
+    logger.warning("Pydub not installed, audio processing features will be limited.")
 
-from nonebot.log import logger
 from .cache_service import CacheService
 
 

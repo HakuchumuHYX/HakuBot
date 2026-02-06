@@ -6,6 +6,10 @@ from nonebot import on_command, get_driver
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.permission import SUPERUSER
 
+from ..utils.tools import get_logger
+
+logger = get_logger("plugin_manager.cd_manager")
+
 # 从 __init__.py 导入核心数据和 I/O 函数
 from . import (
     load_readme_plugins,
@@ -259,5 +263,5 @@ async def handle_list_cd(bot: Bot, event: MessageEvent):
             messages=forward_nodes
         )
     except Exception as e:
-        print(f"合并转发失败: {e}")
+        logger.exception(f"合并转发失败: {e}")
         await list_cd.finish(message)

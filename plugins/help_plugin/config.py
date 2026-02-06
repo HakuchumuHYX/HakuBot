@@ -3,6 +3,10 @@ from pathlib import Path
 import json
 from typing import List  # 引入 List
 
+from ..utils.tools import get_logger
+
+logger = get_logger("help_plugin.config")
+
 PLUGIN_DIR = Path(__file__).parent.absolute()
 CONFIG_PATH = PLUGIN_DIR / "config.json"
 
@@ -23,6 +27,6 @@ def load_config() -> HelpConfig:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 return HelpConfig.parse_obj(json.load(f))
         except Exception as e:
-            print(f"ERROR: 读取 config.json 失败: {e}")
+            logger.exception(f"读取 config.json 失败: {e}")
             return HelpConfig()
     return HelpConfig()

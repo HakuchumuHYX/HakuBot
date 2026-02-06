@@ -4,7 +4,12 @@ import json
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field, asdict
+
 from nonebot_plugin_localstore import get_plugin_data_dir
+
+from ..utils.tools import get_logger
+
+logger = get_logger("hltv_sub.data_manager")
 
 
 @dataclass
@@ -79,7 +84,7 @@ class DataManager:
                         self._save()
 
             except Exception as e:
-                print(f"[HLTV Sub] 加载数据失败: {e}")
+                logger.exception(f"[HLTV Sub] 加载数据失败: {e}")
     
     def _save(self) -> None:
         """保存数据"""
@@ -95,7 +100,7 @@ class DataManager:
             with open(self._data_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"[HLTV Sub] 保存数据失败: {e}")
+            logger.exception(f"[HLTV Sub] 保存数据失败: {e}")
     
     def get_group(self, group_id: int) -> GroupData:
         """获取群组数据，不存在则创建"""

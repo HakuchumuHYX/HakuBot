@@ -2,10 +2,14 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, List, Set
+
 from .config import STATS_FILE
 
 # 导入管理模块
 from ..plugin_manager.enable import is_plugin_enabled
+from ..utils.tools import get_logger
+
+logger = get_logger("group_statistics.data_manager")
 
 
 class GroupStatisticsData:
@@ -24,7 +28,7 @@ class GroupStatisticsData:
                     self.group_stats = {int(k): v for k, v in data.get('group_stats', {}).items()}
                     self.user_info = {int(k): v for k, v in data.get('user_info', {}).items()}
             except Exception as e:
-                print(f"加载统计数据失败: {e}")
+                logger.exception(f"加载统计数据失败: {e}")
 
     def save_stats(self):
         """保存统计数据到文件"""
@@ -36,7 +40,7 @@ class GroupStatisticsData:
             with open(STATS_FILE, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"保存统计数据失败: {e}")
+            logger.exception(f"保存统计数据失败: {e}")
 
     def record_user_message(self, group_id: int, user_id: int, user_card: str):
         """记录用户消息"""

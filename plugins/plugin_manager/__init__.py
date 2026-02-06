@@ -4,6 +4,10 @@ import os
 from pathlib import Path
 from typing import Dict, Any
 
+from ..utils.tools import get_logger
+
+logger = get_logger("plugin_manager")
+
 # --- 路径定义 ---
 DATA_DIR = Path("data/plugin_manager")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -36,7 +40,7 @@ def load_readme_plugins() -> Dict[str, str]:
                         plugin_id = parts[1].strip()
                         plugins[plugin_id] = plugin_name
     except Exception as e:
-        print(f"读取 readme.md 失败: {e}")
+        logger.exception(f"读取 readme.md 失败: {e}")
     return plugins
 
 
@@ -48,7 +52,7 @@ def load_plugin_status() -> Dict[str, Dict[str, bool]]:
             with open(STATUS_DATA_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            print(f"插件状态文件 {STATUS_DATA_FILE} 损坏，将创建新文件。")
+            logger.warning(f"插件状态文件 {STATUS_DATA_FILE} 损坏，将创建新文件。")
             return {}
     return {}
 
@@ -67,7 +71,7 @@ def load_cd_config() -> Dict[str, Dict[str, int]]:
             with open(CD_CONFIG_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            print(f"CD配置文件 {CD_CONFIG_FILE} 损坏，将创建新文件。")
+            logger.warning(f"CD配置文件 {CD_CONFIG_FILE} 损坏，将创建新文件。")
             return {}
     return {}
 
@@ -85,7 +89,7 @@ def load_cd_runtime() -> Dict[str, Dict[str, Dict[str, float]]]:
             with open(CD_RUNTIME_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            print(f"CD运行时文件 {CD_RUNTIME_FILE} 损坏，将创建新文件。")
+            logger.warning(f"CD运行时文件 {CD_RUNTIME_FILE} 损坏，将创建新文件。")
             return {}
     return {}
 
@@ -122,10 +126,10 @@ def load_watermark_config() -> Dict[str, Any]:
                 "position": str(data.get("position", default["position"])),
             }
         except json.JSONDecodeError:
-            print(f"水印配置文件 {WATERMARK_CONFIG_FILE} 损坏，将使用默认配置。")
+            logger.warning(f"水印配置文件 {WATERMARK_CONFIG_FILE} 损坏，将使用默认配置。")
             return default
         except Exception as e:
-            print(f"读取水印配置失败: {e}")
+            logger.exception(f"读取水印配置失败: {e}")
             return default
 
     # 不存在则创建一份，方便用户直接改

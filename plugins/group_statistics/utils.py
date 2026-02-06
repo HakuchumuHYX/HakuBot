@@ -1,6 +1,10 @@
 from typing import List, Tuple
+
 from .data_manager import data_manager
 from .config import TOP_N_USERS, MESSAGE_THRESHOLDS, DEFAULT_THRESHOLD_TEXT
+from ..utils.tools import get_logger
+
+logger = get_logger("group_statistics.utils")
 
 
 def get_top_users(group_id: int, top_n: int = TOP_N_USERS) -> List[Tuple[str, int]]:
@@ -63,4 +67,4 @@ def reset_daily_stats():
     data_manager.group_stats = {}
     data_manager.user_info = {}
     data_manager.save_stats()
-    print("已重置每日统计数据")
+    logger.info("已重置每日统计数据")

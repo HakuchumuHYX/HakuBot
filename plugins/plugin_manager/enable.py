@@ -6,6 +6,10 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import Plugin
 from typing import Dict
 
+from ..utils.tools import get_logger
+
+logger = get_logger("plugin_manager.enable")
+
 # 从 __init__.py 导入核心数据和 I/O 函数
 from . import (
     load_readme_plugins,
@@ -229,7 +233,7 @@ async def handle_list(bot: Bot, event: MessageEvent):
         # finish() 会抛 FinishedException 用于中断流程；不要当作渲染失败处理
         raise
     except Exception as e:
-        print(f"渲染插件开关状态图片失败: {e}")
+        logger.exception(f"渲染插件开关状态图片失败: {e}")
         await list_plugins.finish(message)
 
 
