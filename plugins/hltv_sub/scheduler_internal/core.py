@@ -18,7 +18,13 @@ from ..data_manager import data_manager
 from ..data_source import hltv_data
 from ..models import ResultInfo
 from ..render import render_reminder, render_stats
-from .constants import ADAPTIVE_INTERVAL_TABLE, DEFAULT_INTERVAL_MINUTES
+from .constants import (
+    ADAPTIVE_INTERVAL_TABLE,
+    DEFAULT_INTERVAL_MINUTES,
+    POST_LIVE_GRACE_MINUTES,
+    REMINDER_WINDOW_MAX,
+    REMINDER_WINDOW_MIN,
+)
 from .state import get_event_state, has_active_events
 from .types import UpcomingMatch
 from .wakeup import refresh_wakeup_jobs as _refresh_wakeup_jobs
@@ -39,6 +45,9 @@ class HLTVScheduler:
 
         # 本轮是否存在 LIVE 比赛（用于强制轮询频率，避免 results 推送延迟）
         self._has_live_match: bool = False
+
+        # 赛后冷却期：记录最后一次检测到 LIVE 的时间，用于冷却期内保持高频轮询
+        self._last_live_seen_at: Optional[datetime] = None
 
         # 赛事结束判定缓冲（避免时区/页面延迟导致漏推最后结果）
         self._end_grace_days: int = 1
@@ -115,28 +124,41 @@ class HLTVScheduler:
     def _interval_from_next_minutes(self, next_minutes_until: Optional[int]) -> int:
         """根据下一场比赛剩余分钟数，计算建议轮询间隔（分钟）"""
         if next_minutes_until is None:
-            return 180
+            return 360
         if next_minutes_until <= 0:
             return 15
         for upper, interval in ADAPTIVE_INTERVAL_TABLE:
             if next_minutes_until <= upper:
                 return interval
-        return 180
+        return 360
+
+    def _in_post_live_grace(self) -> bool:
+        """判断当前是否处于赛后冷却期（LIVE 刚结束，需要继续高频轮询以捕获结果）"""
+        if self._last_live_seen_at is None:
+            return False
+        now = datetime.now(self._tz)
+        elapsed = (now - self._last_live_seen_at).total_seconds() / 60
+        return elapsed <= POST_LIVE_GRACE_MINUTES
 
     def _apply_adaptive_schedule(self) -> None:
         """在一次 run_check 后，根据下一场比赛时间动态调整 interval"""
         if not has_active_events(self._tz, self._end_grace_days):
             return
 
-        # 关键修正：只要当前存在 LIVE match，就一直 5min 轮询，确保 results 推送及时
+        # 优先级：LIVE > 赛后冷却期 > 正常自适应
         if self._has_live_match:
+            minutes = DEFAULT_INTERVAL_MINUTES
+        elif self._in_post_live_grace():
+            # 赛后冷却期：保持高频轮询，确保最后比赛的结果能及时推送
             minutes = DEFAULT_INTERVAL_MINUTES
         else:
             minutes = self._interval_from_next_minutes(self._next_minutes_hint)
 
         logger.info(
             f"[HLTV Scheduler] 自适应轮询评估: next_minutes_until={self._next_minutes_hint}, "
-            f"has_live_match={self._has_live_match}, target_interval={minutes}min, "
+            f"has_live_match={self._has_live_match}, "
+            f"post_live_grace={self._in_post_live_grace()}, "
+            f"target_interval={minutes}min, "
             f"current_interval={self._current_interval_minutes}min"
         )
 
@@ -264,9 +286,10 @@ class HLTVScheduler:
 
                 matches, hints = pair
 
-                # 只要存在 LIVE（matches 或 hints 任意一方标记 live），本轮就锁定 5min 频率
+                # 只要存在 LIVE（matches 或 hints 任意一方标记 live），本轮就锁定高频
                 if any(m.is_live for m in matches) or any(h.is_live for h in hints):
                     self._has_live_match = True
+                    self._last_live_seen_at = datetime.now(self._tz)
 
                 logger.info(
                     f"[HLTV Scheduler] 赛事 {event_id} matches抓取: filtered={len(matches)}, hints={len(hints)} "
@@ -306,8 +329,8 @@ class HLTVScheduler:
 
                     minutes_until = int((match_time - now).total_seconds() / 60)
 
-                    # 提醒窗口（12-17分钟）
-                    if 12 <= minutes_until <= 17:
+                    # 提醒窗口
+                    if REMINDER_WINDOW_MIN <= minutes_until <= REMINDER_WINDOW_MAX:
                         if not data_manager.is_start_notified(match.id):
                             upcoming.append(
                                 UpcomingMatch(
