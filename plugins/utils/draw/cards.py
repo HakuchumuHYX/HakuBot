@@ -45,6 +45,22 @@ class LeaderboardCardColors:
     badge_other_bg: tuple[int, int, int, int] = (219, 234, 254, 255)  # 淡蓝
 
 
+# Dark mode 配色预设，适合深夜推送场景
+DARK_COLORS = LeaderboardCardColors(
+    canvas_bg=(30, 32, 40, 255),          # 深灰蓝底
+    card_bg=(40, 44, 55, 255),            # 深色卡片
+    card_border=(60, 65, 80, 255),        # 低对比边框
+    row_bg=(48, 52, 65, 255),             # 行背景
+    text_main=(220, 225, 235, 255),       # 浅白文字
+    text_sub=(160, 170, 185, 255),        # 次要文字
+    text_muted=(110, 120, 135, 255),      # 水印等
+    badge_1_bg=(180, 150, 60, 255),       # 金（降低亮度）
+    badge_2_bg=(120, 130, 145, 255),      # 银
+    badge_3_bg=(170, 110, 80, 255),       # 铜
+    badge_other_bg=(55, 65, 90, 255),     # 深蓝
+)
+
+
 def _badge_bg_by_rank(colors: LeaderboardCardColors, rank: int) -> tuple[int, int, int, int]:
     if rank == 1:
         return colors.badge_1_bg
