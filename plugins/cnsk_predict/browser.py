@@ -38,80 +38,124 @@ async def manual_capture_page(url: str, dark_mode: bool = False, viewport: dict 
             else:
                 break
 
-        # === 核心修改：V6 完美版 CSS ===
+        # === 暗色模式 CSS（适配 simple 页面） ===
         if dark_mode:
-            logger.debug("正在注入 V6 完美版 CSS...")
+            logger.debug("正在注入暗色模式 CSS（simple 页面版）...")
             await page.add_style_tag(content="""
-                /* 1. 全局背景深灰 */
+                /* 1. 全局背景深灰，覆盖点阵背景 */
                 html, body {
                     background-color: #181a1b !important;
+                    background-image: none !important;
                     color: #e8e6e3 !important;
                 }
 
-                /* 2. 卡片背景与边框 */
-                .card, .kline-card, .movers-section {
+                /* 2. 市场概览卡片 */
+                .market-inner {
                     background-color: #242526 !important;
                     border: 1px solid #3c3e40 !important;
                     box-shadow: none !important;
+                }
+                .market-info {
+                    background: #1e1f20 !important;
+                    border-right: 1px solid #3c3e40 !important;
+                }
+                .mi-title, .mi-sub {
+                    color: #a8a095 !important;
+                }
+                .mi-value {
                     color: #e8e6e3 !important;
                 }
 
-                /* 3. 移除卡片头部的白色渐变 */
-                .card-header {
-                    background: transparent !important;
-                    border-bottom: 1px solid #3c3e40 !important;
+                /* 3. 涨跌排行卡片 */
+                .movers-col {
+                    background-color: #242526 !important;
+                    border: 1px solid #3c3e40 !important;
+                    box-shadow: none !important;
+                }
+                .movers-head {
+                    color: #a8a095 !important;
                 }
 
-                /* 4. 修复预测值颜色 (粉色) */
-                /* 提高权重，确保粉色不被全局白色覆盖 */
-                span.stat-value.predict, .stat-value.predict {
+                /* 4. 迷你卡片 */
+                .mini-card {
+                    background-color: #2c2e30 !important;
+                }
+                .mini-card.bg-up-light {
+                    background-color: rgba(246, 70, 93, 0.1) !important;
+                }
+                .mini-card.bg-down-light {
+                    background-color: rgba(14, 203, 129, 0.1) !important;
+                }
+                .mc-rank {
+                    color: #999 !important;
+                }
+                .mc-val {
+                    color: #e8e6e3 !important;
+                }
+                .mc-speed {
+                    color: #777 !important;
+                }
+
+                /* 5. 排名卡片 */
+                .rank-card {
+                    background-color: #242526 !important;
+                    border: 1px solid #3c3e40 !important;
+                    box-shadow: none !important;
+                }
+                .col-rank {
+                    background: #1e1f20 !important;
+                    border-left: 4px solid var(--p-teal) !important;
+                }
+                .rank-label {
+                    color: #a8a095 !important;
+                }
+                .rank-num {
+                    color: #e8e6e3 !important;
+                }
+                .score-main {
+                    color: #e8e6e3 !important;
+                }
+
+                /* 6. 预测值保持粉色 */
+                .score-predict-row {
                     color: #FF6699 !important;
-                    -webkit-text-fill-color: #FF6699 !important; /* 强制填充颜色 */
+                }
+                .badge-predict {
+                    background: rgba(255, 102, 153, 0.2) !important;
+                    color: #FF6699 !important;
                 }
 
-                /* 修复涨跌幅颜色 (保持原色) */
+                /* 7. 涨跌颜色保持原色 */
                 .color-up { color: #f6465d !important; }
                 .color-down { color: #0ecb81 !important; }
 
-                /* 5. 通用文字颜色修复 (浅灰) */
-                .stat-label, .kline-sub, .movers-head, .mc-rank {
-                    color: #a8a095 !important;
+                /* 8. 图表容器背景透明 */
+                .col-chart {
+                    background: #1e1f20 !important;
+                    border: 1px solid #3c3e40 !important;
                 }
-                /* 数值高亮 (亮白) */
-                .stat-value, .current-index, .mc-val {
-                    color: #e8e6e3 !important;
+                .chart-container, #kline-mini, .market-chart-wrapper {
+                    background: transparent !important;
                 }
-
-                /* 6. 图表处理 (关键修改：取消反色！) */
-                /* 原图表的坐标轴线是浅色(#eee)，在深色背景下刚好可见。
-                   取消滤镜后，红色不再偏色，坐标轴也能显示为原本的浅白色。
-                */
                 canvas {
                     filter: none !important;
                 }
 
-                /* 7. 确保图表容器背景透明 */
-                /* 这一步至关重要，让深色卡片背景透出来衬托浅色坐标轴 */
-                .chart-box, #kline-chart, .kline-card > div {
-                    background: transparent !important;
-                    background-color: transparent !important;
+                /* 9. 底部文字 */
+                .footer {
+                    color: #666 !important;
                 }
-
-                /* 8. 迷你卡片微调 */
-                .mini-card {
-                    background-color: #2c2e30 !important;
-                    border: 1px solid #3c3e40 !important;
+                .source-hl {
+                    color: #3DD1BF !important;
                 }
-
-                /* 9. 隐藏加载动画 */
-                .loading-overlay { display: none !important; }
+                .predict-hl {
+                    color: #FF6699 !important;
+                }
             """)
 
+        # === 等待页面渲染完成 ===
         try:
-            loading_selector = ".loading-text"
-            if await page.locator(loading_selector).is_visible():
-                await page.locator(loading_selector).wait_for(state="hidden", timeout=15000)
-
+            # simple 页面无 .loading-text，直接等待 canvas 图表渲染
             await page.wait_for_selector("canvas", state="visible", timeout=5000)
             await page.wait_for_timeout(800)
         except Exception as e:

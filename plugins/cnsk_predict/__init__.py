@@ -38,7 +38,7 @@ def get_is_dark_mode(mode_override: str = None) -> bool:
         return current_hour >= 19 or current_hour < 6
 
 
-async def generate_screenshot_task(target_id: str = "", mode_override: str = None) -> Tuple[Optional[bytes], Path, str]:
+async def generate_screenshot_task(mode_override: str = None) -> Tuple[Optional[bytes], Path, str]:
     """
     核心任务：执行一次截图、处理并保存。
     返回: (图片bytes, 图片路径Path, 错误信息str)
@@ -51,14 +51,9 @@ async def generate_screenshot_task(target_id: str = "", mode_override: str = Non
     config = await loop.run_in_executor(None, load_config)
 
     # 确定 URL 和 路径
-    if not target_id:
-        target_url = config.get("url_home", "https://sekairanking.exmeaning.com/")
-        cache_filename = f"home{suffix}.jpg"
-        log_name = "主页预测"
-    else:
-        target_url = f"{config.get('url_event_prefix', 'https://sekairanking.exmeaning.com/event/')}{target_id}"
-        cache_filename = f"{target_id}{suffix}.jpg"
-        log_name = f"活动 {target_id}"
+    target_url = config.get("url_home", "https://sekaibangdan.exmeaning.com/simple")
+    cache_filename = f"home{suffix}.jpg"
+    log_name = "主页预测"
 
     log_name += " [夜间]" if is_dark_mode else " [日间]"
     image_path = DATA_DIR / cache_filename
@@ -112,7 +107,6 @@ async def handle_screenshot(bot: Bot, event: Event, args: Message = CommandArg()
     arg_parts = raw_text.split()
 
     force_reload = False
-    target_id = ""
     mode_override = None
 
     for part in arg_parts:
@@ -122,14 +116,11 @@ async def handle_screenshot(bot: Bot, event: Event, args: Message = CommandArg()
             mode_override = "day"
         elif part == "night":
             mode_override = "night"
-        elif part.isdigit():
-            target_id = part
 
     # === 2. 路径预判 ===
-    # 为了检查缓存是否存在，我们需要先知道文件名
     is_dark = get_is_dark_mode(mode_override)
     suffix = "_dark" if is_dark else ""
-    filename = f"{target_id}{suffix}.jpg" if target_id else f"home{suffix}.jpg"
+    filename = f"home{suffix}.jpg"
     image_path = DATA_DIR / filename
 
     # === 3. 逻辑分流 ===
@@ -151,17 +142,15 @@ async def handle_screenshot(bot: Bot, event: Event, args: Message = CommandArg()
         await shot_cmd.finish(Message(msg_text) + MessageSegment.image(image_path))
 
     # 情况 B: 用户强制刷新，或者本地没有文件 (需要现场获取)
-    # 注意：如果是指定 ID 的活动查询，通常没有后台自动任务，所以大部分会走这里
-
     if force_reload:
         await shot_cmd.send("正在强制刷新数据，请稍候...")
     else:
         await shot_cmd.send("本地暂无缓存，正在获取数据...")
 
-    img_bytes, path, err = await generate_screenshot_task(target_id, mode_override)
+    img_bytes, path, err = await generate_screenshot_task(mode_override)
 
     if img_bytes:
-        # 现场获取成功，直接发图，不带“xx分钟前”的提示，因为是新的
+        # 现场获取成功，直接发图
         await shot_cmd.finish(MessageSegment.image(img_bytes))
     elif path.exists():
         # 获取失败，但有旧图（兜底）
@@ -186,8 +175,7 @@ async def auto_refresh_job():
     success = False
 
     for i in range(retry_count + 1):
-        # 默认获取主页(target_id="")，且自动判断日夜模式(mode_override=None)
-        img_bytes, path, err = await generate_screenshot_task(target_id="", mode_override=None)
+        img_bytes, path, err = await generate_screenshot_task(mode_override=None)
 
         if img_bytes:
             success = True
@@ -202,7 +190,7 @@ async def auto_refresh_job():
         logger.error("后台刷新任务最终失败，已达最大重试次数。")
 
 
-# === 定时清理任务 (保持不变) ===
+# === 定时清理任务 ===
 @scheduler.scheduled_job("cron", hour=4, minute=0, id="clean_sekai_cache")
 async def clean_cache():
     logger.info("开始清理截图缓存...")
@@ -210,8 +198,6 @@ async def clean_cache():
     current_time = time.time()
     for file in DATA_DIR.iterdir():
         if file.is_file() and file.suffix in [".png", ".jpg", ".jpeg"]:
-            # 注意：如果后台任务正常运行，home.jpg 是一直被更新的，不会被删除
-            # 这个清理主要清理过期的指定ID活动的查询截图
             if current_time - file.stat().st_mtime > FILE_CLEAN_SECONDS:
                 try:
                     file.unlink()
@@ -224,7 +210,7 @@ async def clean_cache():
 # === 启动时立即执行一次 ===
 driver = get_driver()
 
-# 定义一个后台执行的函数
+
 async def run_init_task():
     # 等待10秒，让浏览器和系统资源准备就绪
     await asyncio.sleep(10)
@@ -235,5 +221,4 @@ async def run_init_task():
 @driver.on_startup
 async def start_prefetch_task():
     # 使用 create_task 创建非阻塞后台任务
-    # 这样 Bot 可以立即启动，不用傻等 10 秒
     asyncio.create_task(run_init_task())
