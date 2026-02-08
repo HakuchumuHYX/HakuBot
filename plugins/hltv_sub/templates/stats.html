@@ -273,7 +273,8 @@
                         </div>
                         <div class="player-stat">
                             <div class="player-stat-label">Swing</div>
-                            <div class="player-stat-value {% if '+' in player.swing %}positive{% elif '-' in player.swing %}negative{% endif %}">{{ player.swing }}</div>
+                            {% set swing_val = player.swing|replace('%', '')|replace('+', '')|float(0) %}
+                            <div class="player-stat-value {% if swing_val > 1 %}positive{% elif swing_val < -1 %}negative{% endif %}">{{ player.swing }}</div>
                         </div>
                         <div class="player-stat">
                             <div class="player-stat-label">ADR</div>
@@ -285,8 +286,8 @@
                         </div>
                         <div class="player-stat">
                             <div class="player-stat-label">Rating</div>
-                            {% set rating = player.rating|float %}
-                            <div class="player-stat-value {% if rating >= 1.2 %}highlight{% elif rating < 0.8 %}low{% endif %}">
+                            {% set rating = player.rating|float(0) %}
+                            <div class="player-stat-value {% if rating > 1.05 %}highlight{% elif rating < 0.95 %}low{% endif %}">
                                 {{ player.rating }}
                             </div>
                         </div>
@@ -308,7 +309,8 @@
                         </div>
                         <div class="player-stat">
                             <div class="player-stat-label">Swing</div>
-                            <div class="player-stat-value {% if '+' in player.swing %}positive{% elif '-' in player.swing %}negative{% endif %}">{{ player.swing }}</div>
+                            {% set swing_val = player.swing|replace('%', '')|replace('+', '')|float(0) %}
+                            <div class="player-stat-value {% if swing_val > 1 %}positive{% elif swing_val < -1 %}negative{% endif %}">{{ player.swing }}</div>
                         </div>
                         <div class="player-stat">
                             <div class="player-stat-label">ADR</div>
@@ -320,8 +322,8 @@
                         </div>
                         <div class="player-stat">
                             <div class="player-stat-label">Rating</div>
-                            {% set rating = player.rating|float %}
-                            <div class="player-stat-value {% if rating >= 1.2 %}highlight{% elif rating < 0.8 %}low{% endif %}">
+                            {% set rating = player.rating|float(0) %}
+                            <div class="player-stat-value {% if rating > 1.05 %}highlight{% elif rating < 0.95 %}low{% endif %}">
                                 {{ player.rating }}
                             </div>
                         </div>
