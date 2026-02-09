@@ -126,20 +126,27 @@ class DataManager:
         subs = self.get_subscribed_events(group_id)
         return subs[0] if subs else None
     
-    def replace_subscriptions(self, group_id: int, subscription: EventSubscription) -> None:
-        """覆盖该群的订阅列表（单订阅模式）
+    def subscribe_event(self, group_id: int, subscription: EventSubscription) -> None:
+        """覆盖所有启用群的订阅（全局单订阅模式）
 
         约束/假设：
-        - 你的使用习惯是全局同一时间只关心一个赛事；
+        - 全局同一时间只关心一个赛事；
+        - 在任一群切换订阅后，所有启用群同步切换到新赛事；
         - 当订阅切换到新赛事后，不再需要旧赛事的推送去重状态，因此直接清空。
         """
-        group = self.get_group(group_id)
+        old_event_ids = self.get_all_subscribed_event_ids()
 
-        old_event_id = group.subscribed_events[0].event_id if group.subscribed_events else ""
-        group.subscribed_events = [subscription]
+        # 更新所有启用群的订阅为新赛事
+        for group in self._groups.values():
+            if group.enabled:
+                group.subscribed_events = [subscription]
 
-        # 订阅切换：清空旧赛事推送去重状态（避免 json 增长，也符合“旧赛事不再关注”）
-        if old_event_id and old_event_id != subscription.event_id:
+        # 也更新当前群（即使未启用也要更新，确保发起操作的群有订阅）
+        current_group = self.get_group(group_id)
+        current_group.subscribed_events = [subscription]
+
+        # 订阅切换：清空旧赛事推送去重状态（避免 json 增长，也符合"旧赛事不再关注"）
+        if old_event_ids and subscription.event_id not in old_event_ids:
             self._notified_starts.clear()
             self._notified_results.clear()
 
@@ -155,37 +162,30 @@ class DataManager:
         """获取群组订阅的赛事ID列表"""
         return [e.event_id for e in self.get_subscribed_events(group_id)]
     
-    def subscribe_event(self, group_id: int, event_id: str, event_title: str, 
-                       start_date: str = "", end_date: str = "") -> bool:
-        """订阅赛事，返回是否成功（已订阅返回 False）"""
-        group = self.get_group(group_id)
-        
-        # 检查是否已订阅
-        for event in group.subscribed_events:
-            if event.event_id == event_id:
-                return False
-        
-        # 添加订阅
-        group.subscribed_events.append(EventSubscription(
-            event_id=event_id,
-            event_title=event_title,
-            start_date=start_date,
-            end_date=end_date
-        ))
-        self._save()
-        return True
-    
     def unsubscribe_event(self, group_id: int, event_id: str) -> bool:
-        """取消订阅赛事，返回是否成功（未订阅返回 False）"""
-        group = self.get_group(group_id)
-        
-        for i, event in enumerate(group.subscribed_events):
+        """取消订阅赛事（全局同步：所有启用群同时取消），返回是否成功"""
+        found = False
+
+        # 从所有启用群中移除该赛事的订阅
+        for group in self._groups.values():
+            if group.enabled:
+                for i, event in enumerate(group.subscribed_events):
+                    if event.event_id == event_id:
+                        group.subscribed_events.pop(i)
+                        found = True
+                        break
+
+        # 也检查当前群（即使未启用）
+        current_group = self.get_group(group_id)
+        for i, event in enumerate(current_group.subscribed_events):
             if event.event_id == event_id:
-                group.subscribed_events.pop(i)
-                self._save()
-                return True
-        
-        return False
+                current_group.subscribed_events.pop(i)
+                found = True
+                break
+
+        if found:
+            self._save()
+        return found
     
     def is_subscribed(self, group_id: int, event_id: str) -> bool:
         """检查是否已订阅赛事"""
@@ -248,12 +248,6 @@ class DataManager:
         """检查比赛结果是否已推送"""
         return match_id in self._notified_results
     
-    def clean_old_notifications(self, valid_match_ids: set[str]) -> None:
-        """清理过期的通知记录（保留仍有效的比赛ID）"""
-        self._notified_starts = self._notified_starts & valid_match_ids
-        self._notified_results = self._notified_results & valid_match_ids
-        self._save()
-
 
 # 全局数据管理器实例
 data_manager = DataManager()

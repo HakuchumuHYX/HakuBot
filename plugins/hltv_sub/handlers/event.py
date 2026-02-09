@@ -72,8 +72,9 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
         await event_subscribe.finish("请提供赛事ID，例如：event订阅 7148")
         return
 
-    # 检查是否已订阅
-    if data_manager.is_subscribed(group_id, event_id):
+    # 全局单订阅模式：检查是否所有启用群都已同步订阅了该赛事
+    all_subscribed_ids = data_manager.get_all_subscribed_event_ids()
+    if event_id in all_subscribed_ids and data_manager.is_subscribed(group_id, event_id):
         await event_subscribe.finish(f"已经订阅了赛事 #{event_id}")
         return
 
@@ -92,7 +93,7 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
 
         if event_info:
             # 单订阅模式：订阅新赛事时覆盖旧订阅（内部会清空旧赛事的推送去重状态）
-            data_manager.replace_subscriptions(
+            data_manager.subscribe_event(
                 group_id=group_id,
                 subscription=EventSubscription(
                     event_id=event_id,
@@ -113,7 +114,7 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
             await event_subscribe.finish(f"✅ 成功订阅赛事：{event_info.title}")
         else:
             # 未获取到详细信息：仍允许订阅，但不自动恢复定时任务
-            data_manager.replace_subscriptions(
+            data_manager.subscribe_event(
                 group_id=group_id,
                 subscription=EventSubscription(
                     event_id=event_id,

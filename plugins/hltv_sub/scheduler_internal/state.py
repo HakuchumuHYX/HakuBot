@@ -48,8 +48,8 @@ def get_event_state(tz: pytz.BaseTzInfo, end_grace_days: int, event_id: str) -> 
     if now > end_dt + timedelta(days=end_grace_days):
         return "ENDED"
 
-    # ONGOING：start_dt ~ end_dt
-    if start_dt <= now <= end_dt:
+    # ONGOING：start_dt ~ end_dt + grace（包含赛事结束缓冲期，避免决赛跨日时状态空洞）
+    if start_dt <= now <= end_dt + timedelta(days=end_grace_days):
         return "ONGOING"
 
     # UPCOMING：start_dt 前 UPCOMING_WINDOW_HOURS 进入窗口（恢复轮询）

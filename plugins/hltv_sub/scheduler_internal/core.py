@@ -126,7 +126,7 @@ class HLTVScheduler:
         if next_minutes_until is None:
             return 360
         if next_minutes_until <= 0:
-            return 15
+            return DEFAULT_INTERVAL_MINUTES
         for upper, interval in ADAPTIVE_INTERVAL_TABLE:
             if next_minutes_until <= upper:
                 return interval
@@ -438,6 +438,8 @@ class HLTVScheduler:
         if not groups:
             return
 
+        any_success = False
+
         try:
             stats = await self._fetch_with_retry(
                 lambda: hltv_data.get_match_stats(
@@ -461,6 +463,7 @@ class HLTVScheduler:
             for group_id in groups:
                 try:
                     await bot.send_group_msg(group_id=group_id, message=msg)
+                    any_success = True
                     logger.info(
                         f"[HLTV Scheduler] 已发送比赛结果到群 {group_id}: {result.team1} vs {result.team2}"
                     )
@@ -470,7 +473,13 @@ class HLTVScheduler:
         except Exception as e:
             logger.error(f"[HLTV Scheduler] 处理比赛结果 {result.id} 失败: {e}")
 
-        data_manager.add_notified_result(result.id)
+        # 仅在至少一个群发送成功时才标记为已推送，否则下次轮询会重试
+        if any_success:
+            data_manager.add_notified_result(result.id)
+        else:
+            logger.warning(
+                f"[HLTV Scheduler] 比赛结果 {result.id} 所有群发送失败，不标记为已推送，下轮将重试"
+            )
 
     async def run_check(self) -> dict:
         """执行一次检查，返回检查结果"""
