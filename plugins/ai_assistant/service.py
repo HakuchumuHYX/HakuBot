@@ -9,8 +9,270 @@ from .config import plugin_config
 
 HEADERS = {
     "Authorization": f"Bearer {plugin_config.api_key}",
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
 }
+
+
+def _get_llm_provider() -> str:
+    return (getattr(plugin_config, "provider", None) or "openai_compatible").strip().lower()
+
+
+def _get_google_api_key() -> str:
+    # Gemini Developer API uses API Key (usually via query param ?key=)
+    key = (getattr(plugin_config, "google_api_key", None) or "").strip()
+    if key:
+        return key
+    return (getattr(plugin_config, "api_key", None) or "").strip()
+
+
+def _parse_data_url(data_url: str) -> Tuple[str, str]:
+    """
+    Parse `data:<mime>;base64,<data>` to (mime, base64_data)
+    """
+    if not data_url:
+        raise ValueError("Empty data url")
+    if not data_url.startswith("data:"):
+        raise ValueError("Not a data url")
+    # data:image/jpeg;base64,AAAA...
+    header, b64 = data_url.split(",", 1)
+    header = header[5:]  # remove 'data:'
+    mime = header.split(";", 1)[0].strip() if ";" in header else header.strip()
+    if not mime:
+        mime = "application/octet-stream"
+    return mime, b64.strip()
+
+
+def _openai_content_to_gemini_parts(content) -> List[dict]:
+    """
+    Convert OpenAI-style content (str or [{type,text}/...]) into Gemini parts.
+    """
+    parts: List[dict] = []
+    if content is None:
+        return parts
+    if isinstance(content, str):
+        t = content.strip()
+        if t:
+            parts.append({"text": t})
+        return parts
+
+    if isinstance(content, list):
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            t = item.get("type")
+            if t == "text":
+                text = (item.get("text") or "").strip()
+                if text:
+                    parts.append({"text": text})
+            elif t == "image_url":
+                url = ((item.get("image_url") or {}).get("url") or "").strip()
+                if not url:
+                    continue
+                # We currently pass `data:*;base64,...` for images
+                mime, b64 = _parse_data_url(url)
+                parts.append(
+                    {
+                        "inlineData": {
+                            "mimeType": mime,
+                            "data": b64,
+                        }
+                    }
+                )
+    return parts
+
+
+def _openai_messages_to_gemini(messages: list) -> Tuple[str, List[dict]]:
+    """
+    Convert OpenAI messages into (system_text, gemini_contents)
+    """
+    system_chunks: List[str] = []
+    contents: List[dict] = []
+
+    for msg in messages or []:
+        if not isinstance(msg, dict):
+            continue
+        role = (msg.get("role") or "").strip().lower()
+        content = msg.get("content")
+
+        if role == "system":
+            if isinstance(content, str) and content.strip():
+                system_chunks.append(content.strip())
+            elif isinstance(content, list):
+                # if someone puts multimodal content in system, just take texts
+                for p in _openai_content_to_gemini_parts(content):
+                    if "text" in p:
+                        system_chunks.append(p["text"])
+            continue
+
+        gemini_role = "user" if role == "user" else "model"  # assistant -> model
+        parts = _openai_content_to_gemini_parts(content)
+        if not parts:
+            continue
+
+        contents.append({"role": gemini_role, "parts": parts})
+
+    return "\n".join(system_chunks).strip(), contents
+
+
+async def _call_chat_completion_google(
+    messages: list,
+    *,
+    max_tokens: int = 1000,
+    model: Optional[str] = None,
+    temperature: Optional[float] = None,
+    top_p: Optional[float] = None,
+) -> Tuple[str, str, int]:
+    """
+    Google AI Studio / Gemini Developer API: generateContent
+    Keep return signature compatible with call_chat_completion.
+    """
+    system_text, contents = _openai_messages_to_gemini(messages)
+    used_model = model or plugin_config.chat_model
+
+    payload: dict = {"contents": contents}
+
+    generation_config: dict = {"maxOutputTokens": int(max_tokens)}
+    if temperature is not None:
+        generation_config["temperature"] = float(temperature)
+    if top_p is not None:
+        generation_config["topP"] = float(top_p)
+    payload["generationConfig"] = generation_config
+
+    if system_text:
+        payload["systemInstruction"] = {"parts": [{"text": system_text}]}
+
+    api_key = _get_google_api_key()
+    if not api_key:
+        raise Exception("未配置 google_api_key（或 api_key 为空），无法调用 Google AI Studio。")
+
+    base_url = (getattr(plugin_config, "google_base_url", None) or "https://generativelanguage.googleapis.com/v1beta").rstrip(
+        "/"
+    )
+
+    async with httpx.AsyncClient(
+        base_url=base_url,
+        proxy=plugin_config.proxy,
+        timeout=plugin_config.timeout,
+    ) as client:
+        resp = await client.post(
+            f"/models/{used_model}:generateContent",
+            params={"key": api_key},
+            json=payload,
+        )
+
+        if resp.status_code != 200:
+            raise Exception(f"Google API Error {resp.status_code}: {resp.text}")
+
+        data = resp.json()
+
+    # Parse text parts
+    text_parts: List[str] = []
+    candidates = data.get("candidates") or []
+    if candidates:
+        c0 = candidates[0] or {}
+        content = (c0.get("content") or {})
+        parts = content.get("parts") or []
+        for p in parts:
+            if isinstance(p, dict) and p.get("text"):
+                text_parts.append(str(p.get("text")))
+
+    out_text = "\n".join([t for t in text_parts if t is not None]).strip()
+
+    usage = data.get("usageMetadata") or {}
+    total_tokens = int(
+        usage.get("totalTokenCount")
+        or usage.get("total_token_count")
+        or 0
+    )
+
+    return out_text, used_model, total_tokens
+
+
+async def _call_image_generation_google(
+    content_list: List[dict],
+    *,
+    extra_context: Optional[str] = None,
+) -> Tuple[str, dict]:
+    """
+    Google AI Studio image generation (nano banana / Gemini image models)
+    Returns OneBot-compatible base64:// payload.
+    """
+    used_model = plugin_config.image_model
+    api_key = _get_google_api_key()
+    if not api_key:
+        raise Exception("未配置 google_api_key（或 api_key 为空），无法调用 Google AI Studio 生图。")
+
+    base_url = (getattr(plugin_config, "google_base_url", None) or "https://generativelanguage.googleapis.com/v1beta").rstrip(
+        "/"
+    )
+
+    system_instruction = (
+        "Please generate an image based on the user's request.\n"
+        "If you also output text, keep it minimal.\n"
+        "Prefer manga/anime style.\n"
+    )
+    if extra_context:
+        system_instruction += (
+            "\n\n[Web Search Context - Reference Only]\n"
+            "以下内容仅用于补充事实/外观设定。请提炼其中对画面有用的 3~8 条要点融入绘制，不要照抄整段。"
+            "若与用户描述冲突，以用户描述为准。\n\n"
+            + extra_context
+        )
+
+    parts = _openai_content_to_gemini_parts(content_list)
+    payload: dict = {
+        "contents": [{"role": "user", "parts": parts}],
+        "systemInstruction": {"parts": [{"text": system_instruction}]},
+        "generationConfig": {
+            # Request image output. Some models may also output TEXT; we handle both.
+            "responseModalities": ["IMAGE", "TEXT"],
+        },
+    }
+
+    async with httpx.AsyncClient(
+        base_url=base_url,
+        proxy=plugin_config.proxy,
+        timeout=plugin_config.timeout,
+    ) as client:
+        resp = await client.post(
+            f"/models/{used_model}:generateContent",
+            params={"key": api_key},
+            json=payload,
+        )
+
+        if resp.status_code != 200:
+            raise Exception(f"Google Image API Error {resp.status_code}: {resp.text}")
+
+        data = resp.json()
+
+    # Find inlineData for image
+    candidates = data.get("candidates") or []
+    if not candidates:
+        raise Exception(f"Google Image API 返回无 candidates: {json.dumps(data, ensure_ascii=False)[:500]}")
+
+    c0 = candidates[0] or {}
+    content = (c0.get("content") or {})
+    parts = content.get("parts") or []
+
+    for p in parts:
+        if not isinstance(p, dict):
+            continue
+        inline = p.get("inlineData") or p.get("inline_data")
+        if inline and isinstance(inline, dict):
+            b64 = (inline.get("data") or "").strip()
+            mime = (inline.get("mimeType") or inline.get("mime_type") or "image/png").strip()
+            if b64:
+                return f"base64://{b64}", {"mime_type": mime, "provider": "google_ai_studio", "model": used_model}
+
+    # If no image found, provide text for diagnostics
+    text_preview = ""
+    for p in parts:
+        if isinstance(p, dict) and p.get("text"):
+            text_preview += str(p.get("text"))
+    text_preview = text_preview.strip()
+    if text_preview:
+        raise Exception(f"Google 生图未返回图片 inlineData，仅返回文本：{text_preview[:200]}")
+    raise Exception("Google 生图未返回图片 inlineData。")
 
 
 def _strip_control_chars(text: str) -> str:
@@ -358,6 +620,16 @@ async def call_chat_completion(
     model:
       可选覆盖模型（默认使用 plugin_config.chat_model）。
     """
+    provider = _get_llm_provider()
+    if provider == "google_ai_studio":
+        return await _call_chat_completion_google(
+            messages,
+            max_tokens=max_tokens,
+            model=model,
+            temperature=temperature,
+            top_p=top_p,
+        )
+
     payload = {
         "model": model or plugin_config.chat_model,
         "messages": messages,
@@ -400,6 +672,10 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
       meta.used_safe_rewrite: 是否进行过“合规化改写后重试”
       meta.safe_rewrite_attempts: 改写重试次数
     """
+
+    provider = _get_llm_provider()
+    if provider == "google_ai_studio":
+        return await _call_image_generation_google(content_list, extra_context=extra_context)
 
     def _normalize_content_list_for_retry(original: List[dict], new_text: str) -> List[dict]:
         """保留图片输入，仅替换/合并文本输入为一段。"""

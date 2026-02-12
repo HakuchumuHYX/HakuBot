@@ -42,34 +42,74 @@ def _is_retryable_error(exc: Exception) -> bool:
 
 
 async def call_chat_completion(
-    messages: list, 
+    messages: list,
     temperature: float = 0.5,
     max_retries: int = 3,
     base_delay: float = 2.0,
 ) -> Tuple[str, TokenUsage]:
     """
     调用聊天接口（带重试机制）
-    
+
+    Provider:
+    - openai_compatible: POST /chat/completions (OpenAI 兼容接口)
+    - google_ai_studio: POST /models/{model}:generateContent (Gemini Developer API / AI Studio 官方接口)
+
     Args:
-        messages: 消息列表
+        messages: OpenAI 风格消息列表
         temperature: 温度参数
         max_retries: 最大重试次数（默认3次）
         base_delay: 基础延迟秒数，实际延迟为 base_delay * (2 ** attempt)
-    
+
     Returns: (content, token_usage)
 
     说明：
-    - total_tokens / prompt_tokens / completion_tokens 会从 OpenAI 兼容接口的 usage 字段读取
-    - 如果某些兼容实现不返回 usage，将返回全 0
-    - 遇到可重试错误（网络超时、429限流、5xx错误）会自动重试
-    - 重试采用指数退避策略
+    - OpenAI 兼容接口从 usage 字段读取 token
+    - Google AI Studio 从 usageMetadata 字段读取 token
+    - 遇到可重试错误（网络超时、429限流、5xx错误）会自动重试（指数退避）
     """
-    headers = {
+    provider = (getattr(plugin_config.llm, "provider", None) or "openai_compatible").strip().lower()
+
+    def _google_api_key() -> str:
+        return (
+            (getattr(plugin_config.llm, "google_api_key", None) or "").strip()
+            or (getattr(plugin_config.llm, "api_key", None) or "").strip()
+        )
+
+    def _openai_messages_to_gemini(messages_: list) -> tuple[str, list[dict]]:
+        system_chunks: list[str] = []
+        contents: list[dict] = []
+
+        for m in messages_ or []:
+            if not isinstance(m, dict):
+                continue
+            role = (m.get("role") or "").strip().lower()
+            content = m.get("content")
+
+            if role == "system":
+                if isinstance(content, str) and content.strip():
+                    system_chunks.append(content.strip())
+                continue
+
+            # group_daily_analysis 的 messages 只会是纯文本；这里保持简单
+            if isinstance(content, str):
+                text = content.strip()
+            else:
+                text = str(content).strip() if content is not None else ""
+
+            if not text:
+                continue
+
+            gemini_role = "user" if role == "user" else "model"
+            contents.append({"role": gemini_role, "parts": [{"text": text}]})
+
+        return "\n".join(system_chunks).strip(), contents
+
+    # --- build request payload for openai-compatible ---
+    headers_openai = {
         "Authorization": f"Bearer {plugin_config.llm.api_key}",
         "Content-Type": "application/json",
     }
-
-    payload = {
+    payload_openai = {
         "model": plugin_config.llm.model,
         "messages": messages,
         "temperature": temperature,
@@ -77,31 +117,84 @@ async def call_chat_completion(
     }
 
     last_exception: Exception | None = None
-    
+
     for attempt in range(max_retries):
         try:
             async with _LLM_SEMAPHORE:
-                async with httpx.AsyncClient(
-                    base_url=plugin_config.llm.base_url,
-                    proxy=plugin_config.llm.proxy,
-                    timeout=plugin_config.llm.timeout,
-                ) as client:
-                    resp = await client.post("/chat/completions", json=payload, headers=headers)
+                if provider == "google_ai_studio":
+                    api_key = _google_api_key()
+                    if not api_key:
+                        raise Exception("未配置 google_api_key（或 api_key 为空），无法调用 Google AI Studio。")
 
-                if resp.status_code != 200:
-                    error_msg = f"API Error {resp.status_code}: {resp.text}"
-                    # 检查是否可重试
-                    if resp.status_code in _RETRYABLE_STATUS_CODES and attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)
-                        logger.warning(f"LLM API 返回 {resp.status_code}，{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})...")
-                        await asyncio.sleep(delay)
-                        continue
-                    logger.error(f"LLM API Error: {error_msg}")
-                    raise Exception(error_msg)
+                    base_url = (
+                        getattr(plugin_config.llm, "google_base_url", None)
+                        or "https://generativelanguage.googleapis.com/v1beta"
+                    ).rstrip("/")
 
-                data = resp.json()
+                    system_text, contents = _openai_messages_to_gemini(messages)
+                    payload_google: dict = {
+                        "contents": contents,
+                        "generationConfig": {
+                            "temperature": float(temperature),
+                            "maxOutputTokens": 4096,
+                        },
+                    }
+                    if system_text:
+                        payload_google["systemInstruction"] = {"parts": [{"text": system_text}]}
+
+                    async with httpx.AsyncClient(
+                        base_url=base_url,
+                        proxy=plugin_config.llm.proxy,
+                        timeout=plugin_config.llm.timeout,
+                    ) as client:
+                        resp = await client.post(
+                            f"/models/{plugin_config.llm.model}:generateContent",
+                            params={"key": api_key},
+                            json=payload_google,
+                        )
+                else:
+                    async with httpx.AsyncClient(
+                        base_url=plugin_config.llm.base_url,
+                        proxy=plugin_config.llm.proxy,
+                        timeout=plugin_config.llm.timeout,
+                    ) as client:
+                        resp = await client.post("/chat/completions", json=payload_openai, headers=headers_openai)
+
+            if resp.status_code != 200:
+                error_msg = f"API Error {resp.status_code}: {resp.text}"
+                if resp.status_code in _RETRYABLE_STATUS_CODES and attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(
+                        f"LLM API 返回 {resp.status_code}，{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})..."
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                logger.error(f"LLM API Error: {error_msg}")
+                raise Exception(error_msg)
+
+            data = resp.json()
+
+            if provider == "google_ai_studio":
+                # Parse Gemini response
+                candidates = data.get("candidates") or []
+                text_parts: list[str] = []
+                if candidates:
+                    c0 = candidates[0] or {}
+                    c0_content = (c0.get("content") or {})
+                    parts = c0_content.get("parts") or []
+                    for p in parts:
+                        if isinstance(p, dict) and p.get("text"):
+                            text_parts.append(str(p.get("text")))
+                content = "\n".join(text_parts).strip()
+
+                usage = data.get("usageMetadata") or {}
+                token_usage = TokenUsage(
+                    prompt_tokens=int(usage.get("promptTokenCount") or 0),
+                    completion_tokens=int(usage.get("candidatesTokenCount") or 0),
+                    total_tokens=int(usage.get("totalTokenCount") or 0),
+                )
+            else:
                 content = data["choices"][0]["message"]["content"]
-
                 usage = data.get("usage") or {}
                 token_usage = TokenUsage(
                     prompt_tokens=int(usage.get("prompt_tokens") or 0),
@@ -109,30 +202,28 @@ async def call_chat_completion(
                     total_tokens=int(usage.get("total_tokens") or 0),
                 )
 
-                # 成功时如果有过重试，记录日志
-                if attempt > 0:
-                    logger.info(f"LLM 调用在第 {attempt + 1} 次尝试后成功")
+            if attempt > 0:
+                logger.info(f"LLM 调用在第 {attempt + 1} 次尝试后成功")
 
-                return content, token_usage
-                
+            return content, token_usage
+
         except Exception as e:
             last_exception = e
-            
-            # 判断是否可重试
+
             if _is_retryable_error(e) and attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
-                logger.warning(f"LLM 调用失败 ({type(e).__name__}: {e})，{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})...")
+                logger.warning(
+                    f"LLM 调用失败 ({type(e).__name__}: {e})，{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})..."
+                )
                 await asyncio.sleep(delay)
                 continue
-            
-            # 不可重试或已耗尽重试次数
+
             if attempt == max_retries - 1:
                 logger.error(f"LLM 调用在 {max_retries} 次尝试后仍失败: {e}")
             else:
                 logger.error(f"LLM 调用遇到不可重试错误: {e}")
             raise
-    
-    # 理论上不会走到这里，但为了类型安全
+
     if last_exception:
         raise last_exception
     raise Exception("LLM 调用失败: 未知错误")

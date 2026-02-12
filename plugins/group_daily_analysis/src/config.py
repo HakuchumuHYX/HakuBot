@@ -5,8 +5,19 @@ from pydantic import BaseModel, Field
 from nonebot.log import logger
 
 class LLMConfig(BaseModel):
+    # openai_compatible: /chat/completions (OpenAI 兼容接口，保持现状)
+    # google_ai_studio: Gemini Developer API (AI Studio 官方接口 generateContent)
+    provider: str = "openai_compatible"
+
+    # OpenAI compatible config
     api_key: str
     base_url: str = "https://api.openai.com/v1"
+
+    # Google AI Studio config (optional)
+    # 为空时回退使用 api_key
+    google_api_key: Optional[str] = None
+    google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+
     model: str = "gpt-3.5-turbo"
     timeout: float = 60.0
     proxy: Optional[str] = None
@@ -66,6 +77,15 @@ def load_config() -> PluginConfig:
                     data["llm"]["base_url"] = ai_data.get("base_url", data["llm"]["base_url"])
                     data["llm"]["model"] = ai_data.get("chat_model", data["llm"]["model"])
                     data["llm"]["proxy"] = ai_data.get("proxy", data["llm"]["proxy"])
+
+                    # Sync provider switch + google fields (optional)
+                    if "provider" in ai_data:
+                        data["llm"]["provider"] = ai_data.get("provider", data["llm"].get("provider", "openai_compatible"))
+                    if "google_api_key" in ai_data:
+                        data["llm"]["google_api_key"] = ai_data.get("google_api_key", data["llm"].get("google_api_key"))
+                    if "google_base_url" in ai_data:
+                        data["llm"]["google_base_url"] = ai_data.get("google_base_url", data["llm"].get("google_base_url"))
+
                     logger.info("已从 ai_assistant 插件加载 LLM 配置")
             else:
                 logger.warning("未找到 ai_assistant 配置文件，请手动配置 LLM API")

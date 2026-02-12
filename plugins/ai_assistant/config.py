@@ -49,9 +49,21 @@ class MusicConfig(BaseModel):
 
 
 class PluginConfig(BaseModel):
+    # --- Provider Switch ---
+    # openai_compatible: 走 /chat/completions 的 OpenAI 兼容接口（保持现状）
+    # google_ai_studio: 走 Google AI Studio / Gemini Developer API 官方接口（generateContent）
+    provider: str = "openai_compatible"
+
+    # OpenAI compatible config (legacy / default)
     api_key: str
-    music: MusicConfig = MusicConfig()
     base_url: str = "https://api.openai.com/v1"
+
+    # Google AI Studio config (optional)
+    # 为空时会回退使用 api_key
+    google_api_key: Optional[str] = None
+    google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+
+    music: MusicConfig = MusicConfig()
     chat_model: str = "gpt-3.5-turbo"
     system_prompt: str = (
         "你好！我是HakuBot的AI助手。请用活泼、亲切且自然的语气回答用户的问题。"
