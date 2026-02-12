@@ -2,6 +2,7 @@ import json
 import asyncio
 import re
 import traceback
+from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Callable, TypeVar, Any
 from nonebot.log import logger
@@ -438,57 +439,219 @@ class MessageAnalyzer:
             logger.error(f"用户称号分析失败: {e}\n{tb}")
             return [], TokenUsage()
 
+    def _norm_key(self, s: str) -> str:
+        return re.sub(r"\s+", " ", (s or "").strip()).lower()
+
+    def _local_merge_topics(self, topics: list[SummaryTopic]) -> list[SummaryTopic]:
+        """
+        本地合并话题（Reduce 失败时兜底，不依赖 LLM，尽量不丢数据）
+        - key: 归一化后的 topic
+        - contributors: 合并去重
+        - detail: 取信息量更大的版本（更长者）
+        - rank: 出现频次 + detail 长度 + 参与者数量
+        """
+        buckets: dict[str, dict] = {}
+        for t in topics or []:
+            try:
+                topic_name = (t.topic or "").strip()
+                key = self._norm_key(topic_name)
+                if not key:
+                    continue
+                b = buckets.get(key)
+                if not b:
+                    b = {
+                        "topic": topic_name,
+                        "contributors": set(),
+                        "detail": (t.detail or "").strip(),
+                        "count": 0,
+                    }
+                    buckets[key] = b
+
+                b["count"] += 1
+                for c in (t.contributors or []):
+                    if c and str(c).strip():
+                        b["contributors"].add(str(c).strip())
+
+                detail = (t.detail or "").strip()
+                if len(detail) > len(b["detail"]):
+                    b["detail"] = detail
+            except Exception:
+                continue
+
+        merged: list[SummaryTopic] = []
+        for b in buckets.values():
+            merged.append(
+                SummaryTopic(
+                    topic=b["topic"],
+                    contributors=sorted(list(b["contributors"]))[:5],
+                    detail=b["detail"] or "",
+                )
+            )
+
+        def _score(x: SummaryTopic) -> tuple[int, int, int]:
+            key = self._norm_key(x.topic)
+            cnt = int(buckets.get(key, {}).get("count", 1))
+            return (cnt, len(x.detail or ""), len(x.contributors or []))
+
+        merged.sort(key=_score, reverse=True)
+        return merged
+
+    def _local_merge_quotes(self, quotes: list[GoldenQuote]) -> list[GoldenQuote]:
+        """
+        本地合并金句（Reduce 失败时兜底，不依赖 LLM，尽量不丢数据）
+        - key: 归一化后的 content
+        - sender: 取出现次数最多的 sender
+        - reason: 合并去重（用分号拼接）
+        - rank: 出现频次 + reason 信息量
+        """
+        buckets: dict[str, dict] = {}
+        for q in quotes or []:
+            try:
+                content = (q.content or "").strip()
+                key = self._norm_key(content)
+                if not key:
+                    continue
+                b = buckets.get(key)
+                if not b:
+                    b = {
+                        "content": content,
+                        "senders": Counter(),
+                        "reasons": set(),
+                        "count": 0,
+                    }
+                    buckets[key] = b
+
+                b["count"] += 1
+                sender = (q.sender or "").strip()
+                if sender:
+                    b["senders"][sender] += 1
+                reason = (q.reason or "").strip()
+                if reason:
+                    b["reasons"].add(reason)
+            except Exception:
+                continue
+
+        merged: list[GoldenQuote] = []
+        for b in buckets.values():
+            sender = b["senders"].most_common(1)[0][0] if b["senders"] else "群友"
+            reason = "；".join(sorted(b["reasons"], key=len, reverse=True)[:3])
+            merged.append(GoldenQuote(content=b["content"], sender=sender, reason=reason))
+
+        def _score(x: GoldenQuote) -> tuple[int, int]:
+            key = self._norm_key(x.content)
+            cnt = int(buckets.get(key, {}).get("count", 1))
+            return (cnt, len(x.reason or ""))
+
+        merged.sort(key=_score, reverse=True)
+        return merged
+
     # --- Mergers (Reduce) ---
 
     async def _merge_topics(self, topics: list[SummaryTopic]) -> tuple[list[SummaryTopic], TokenUsage]:
         if not topics:
             return [], TokenUsage()
-        
-        # 将对象转为简化文本供 LLM 合并
-        topics_text = json.dumps([t.dict() for t in topics], ensure_ascii=False, indent=2)
-        
+
+        # Reduce 也可能输入非常多，先做一次本地预合并，避免 prompt 爆长导致输出截断/跑偏
+        topics_for_llm = topics
+        if len(topics_for_llm) > 60:
+            topics_for_llm = self._local_merge_topics(topics_for_llm)[:60]
+
+        topics_text = json.dumps([t.dict() for t in topics_for_llm], ensure_ascii=False, indent=2)
+
         prompt = safe_prompt_format(
             plugin_config.topic_merge_prompt,
             max_topics=plugin_config.max_topics,
             topics_text=topics_text,
         )
-        try:
-            # Merging needs structure, low temp
-            content, tokens = await call_chat_completion(
-                [{"role": "user", "content": prompt}],
-                temperature=0.1
-            )
-            json_str = fix_json(content)
-            data = json.loads(json_str)
-            return [SummaryTopic(**item) for item in data], tokens
-        except Exception as e:
-            logger.warning(f"话题合并(Reduce)降级处理，使用未合并数据: {e}")
-            # 降级：直接返回前 N 个
-            return topics[:plugin_config.max_topics], TokenUsage()
+
+        strict_tail = (
+            "\n\n---\n\n"
+            "## 重要：只允许输出纯 JSON 数组\n"
+            "1. 不要输出任何解释性文字\n"
+            "2. 不要输出 markdown 代码块（```）\n"
+            "3. 必须返回一个 JSON 数组，每个元素字段为：topic / contributors / detail\n"
+        )
+
+        total_usage = TokenUsage()
+        last_exc: Exception | None = None
+
+        for attempt in range(2):
+            try:
+                _prompt = prompt if attempt == 0 else (prompt + strict_tail)
+                content, usage = await call_chat_completion(
+                    [{"role": "user", "content": _prompt}],
+                    temperature=0.1 if attempt == 0 else 0.0,
+                )
+                total_usage.prompt_tokens += usage.prompt_tokens
+                total_usage.completion_tokens += usage.completion_tokens
+                total_usage.total_tokens += usage.total_tokens
+
+                json_str = fix_json(content)
+                data = json.loads(json_str)
+                if not isinstance(data, list):
+                    raise ValueError("Reduce 返回 JSON 不是数组")
+                merged = [SummaryTopic(**item) for item in data]
+                return merged[: plugin_config.max_topics], total_usage
+            except Exception as e:
+                last_exc = e
+
+        # 仍失败：本地兜底合并（不丢数据）
+        logger.warning(f"话题合并(Reduce)降级处理，改用本地合并结果: {last_exc}")
+        merged_local = self._local_merge_topics(topics)[: plugin_config.max_topics]
+        return merged_local, total_usage
 
     async def _merge_golden_quotes(self, quotes: list[GoldenQuote]) -> tuple[list[GoldenQuote], TokenUsage]:
         if not quotes:
             return [], TokenUsage()
-            
-        quotes_text = json.dumps([q.dict() for q in quotes], ensure_ascii=False, indent=2)
-        
+
+        # Reduce 也可能输入很多候选，先本地预合并用于缩短 prompt（不影响最终兜底：兜底仍用全量 quotes）
+        quotes_for_llm = quotes
+        if len(quotes_for_llm) > 80:
+            quotes_for_llm = self._local_merge_quotes(quotes_for_llm)[:80]
+
+        quotes_text = json.dumps([q.dict() for q in quotes_for_llm], ensure_ascii=False, indent=2)
+
         prompt = safe_prompt_format(
             plugin_config.golden_quote_merge_prompt,
             max_golden_quotes=plugin_config.max_golden_quotes,
             quotes_text=quotes_text,
         )
-        try:
-            # Merging quotes still needs structure even if content is creative
-            content, tokens = await call_chat_completion(
-                [{"role": "user", "content": prompt}],
-                temperature=0.1
-            )
-            json_str = fix_json(content)
-            data = json.loads(json_str)
-            return [GoldenQuote(**item) for item in data], tokens
-        except Exception as e:
-            logger.warning(f"金句合并(Reduce)降级处理，使用未合并数据: {e}")
-            return quotes[:plugin_config.max_golden_quotes], TokenUsage()
+
+        strict_tail = (
+            "\n\n---\n\n"
+            "## 重要：只允许输出纯 JSON 数组\n"
+            "1. 不要输出任何解释性文字\n"
+            "2. 不要输出 markdown 代码块（```）\n"
+            "3. 必须返回一个 JSON 数组，每个元素字段为：content / sender / reason\n"
+        )
+
+        total_usage = TokenUsage()
+        last_exc: Exception | None = None
+
+        for attempt in range(2):
+            try:
+                _prompt = prompt if attempt == 0 else (prompt + strict_tail)
+                content, usage = await call_chat_completion(
+                    [{"role": "user", "content": _prompt}],
+                    temperature=0.1 if attempt == 0 else 0.0,
+                )
+                total_usage.prompt_tokens += usage.prompt_tokens
+                total_usage.completion_tokens += usage.completion_tokens
+                total_usage.total_tokens += usage.total_tokens
+
+                json_str = fix_json(content)
+                data = json.loads(json_str)
+                if not isinstance(data, list):
+                    raise ValueError("Reduce 返回 JSON 不是数组")
+                merged = [GoldenQuote(**item) for item in data]
+                return merged[: plugin_config.max_golden_quotes], total_usage
+            except Exception as e:
+                last_exc = e
+
+        # 仍失败：本地兜底合并（关键：不再 quotes[:N]，避免丢后续分片数据）
+        logger.warning(f"金句合并(Reduce)降级处理，改用本地合并结果: {last_exc}")
+        merged_local = self._local_merge_quotes(quotes)[: plugin_config.max_golden_quotes]
+        return merged_local, total_usage
 
     # --- Helpers ---
 

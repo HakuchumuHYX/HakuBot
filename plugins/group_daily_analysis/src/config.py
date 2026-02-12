@@ -50,12 +50,58 @@ class PluginConfig(BaseModel):
     
     # Prompts
     topic_analysis_prompt: str
-    topic_merge_prompt: str = "以下是分段分析得到的群聊话题列表，请将它们合并、去重，并总结出全天最重要的 **{max_topics}** 个话题。\n\n## 待合并话题：\n{topics_text}\n\n---\n\n## 要求：\n1. 合并相似话题（如上午讨论'游戏'，下午讨论'游戏'，合并为一个）\n2. 保留细节最丰富、讨论最热烈的话题\n3. 返回格式与原话题分析一致，使用 JSON 格式。"
+    topic_merge_prompt: str = (
+        "你是群聊总结助手。以下是分段分析得到的群聊话题列表，请将它们**合并、去重**，并输出全天最重要的 "
+        "**{max_topics}** 个话题。\n\n"
+        "## 待合并话题：\n{topics_text}\n\n"
+        "---\n\n"
+        "## 重要：必须返回标准 JSON 格式（只允许输出 JSON，不要任何解释/前后缀/markdown）\n"
+        "严格遵守：\n"
+        "1. 只输出一个 JSON 数组，数组元素为对象\n"
+        "2. 字段必须为：topic（字符串）, contributors（字符串数组）, detail（字符串）\n"
+        "3. 不要输出 markdown 代码块标记（```）\n"
+        "4. 不要在 JSON 外添加任何文字说明\n\n"
+        "## 合并规则：\n"
+        "1. 合并相似话题（同义、同事件、同人物同主题都算相似）\n"
+        "2. contributors 合并去重，最多保留 5 人\n"
+        "3. detail 保留信息量最大、最具体的一条，并可适当融合关键信息\n\n"
+        "### 返回格式示例：\n"
+        "[\n"
+        "  {\n"
+        "    \"topic\": \"话题名称\",\n"
+        "    \"contributors\": [\"用户1\", \"用户2\"],\n"
+        "    \"detail\": \"具体描述（包含关键信息和结论）\"\n"
+        "  }\n"
+        "]"
+    )
     
     user_title_analysis_prompt: str
     
     golden_quote_analysis_prompt: str
-    golden_quote_merge_prompt: str = "以下是分段分析选出的候选金句，请从中通过 PK 决选出最逆天的 **{max_golden_quotes}** 句。\n\n## 候选金句：\n{quotes_text}\n\n---\n\n## 要求：\n1. 严格按照'逆天指数'排序\n2. 去除重复或相似的句子\n3. 返回格式与原金句分析一致，使用 JSON 格式。"
+    golden_quote_merge_prompt: str = (
+        "你是毒舌、幽默、热衷网络冲浪的乐子人。以下是分段分析选出的候选金句，请从中进行 PK，"
+        "决选出最逆天的 **{max_golden_quotes}** 句。\n\n"
+        "## 候选金句：\n{quotes_text}\n\n"
+        "---\n\n"
+        "## 重要：必须返回标准 JSON 格式（只允许输出 JSON，不要任何解释/前后缀/markdown）\n"
+        "严格遵守：\n"
+        "1. 只输出一个 JSON 数组\n"
+        "2. 字段必须为：content（字符串）, sender（字符串）, reason（字符串）\n"
+        "3. 不要输出 markdown 代码块标记（```）\n"
+        "4. 不要在 JSON 外添加任何文字说明\n\n"
+        "## 规则：\n"
+        "1. 严格按“逆天指数”从高到低排序\n"
+        "2. 去除重复或高度相似的句子（语义相同也算重复）\n"
+        "3. reason 要像群友吐槽，拒绝 AI 腔，短而狠\n\n"
+        "### 返回格式示例：\n"
+        "[\n"
+        "  {\n"
+        "    \"content\": \"金句原文\",\n"
+        "    \"sender\": \"发言人昵称\",\n"
+        "    \"reason\": \"你的毒舌辣评\"\n"
+        "  }\n"
+        "]"
+    )
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 

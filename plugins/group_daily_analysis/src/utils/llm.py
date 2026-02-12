@@ -229,21 +229,54 @@ async def call_chat_completion(
     raise Exception("LLM 调用失败: 未知错误")
 
 def fix_json(text: str) -> str:
-    """尝试修复JSON字符串"""
-    text = text.strip()
-    
+    """
+    尝试从模型输出中“提取并修复”JSON字符串。
+
+    目标：
+    - 允许模型输出解释性文字 + JSON（常见于 Gemini），我们尽量把 JSON 抠出来再交给 json.loads
+    - 支持 ```json ... ``` / ``` ... ``` 代码块
+    - 支持提取最外层 JSON 数组 `[...]` 或对象 `{...}`
+
+    返回：
+    - 若无法提取，返回 "[]"（避免上层 json.loads 直接报 Expecting value）
+    """
+    raw = (text or "").strip()
+
     # 处理空响应，返回空数组避免 JSON 解析错误
-    if not text:
+    if not raw:
         return "[]"
-    
-    # 移除 markdown 代码块标记
-    if text.startswith("```json"):
-        text = text[7:]
-    if text.startswith("```"):
-        text = text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    
-    result = text.strip()
-    # 再次检查处理后是否为空
-    return result if result else "[]"
+
+    # 1) 移除 markdown 代码块标记（宽松处理）
+    s = raw
+    if s.startswith("```json"):
+        s = s[7:]
+    elif s.startswith("```"):
+        s = s[3:]
+    if s.endswith("```"):
+        s = s[:-3]
+    s = s.strip()
+
+    if not s:
+        return "[]"
+
+    # 2) 如果已经是 JSON 开头，直接返回
+    if s[0] in ("[", "{"):
+        return s
+
+    # 3) 尝试从混杂文本中提取 JSON 数组
+    lbr = s.find("[")
+    rbr = s.rfind("]")
+    if lbr != -1 and rbr != -1 and rbr > lbr:
+        candidate = s[lbr : rbr + 1].strip()
+        if candidate:
+            return candidate
+
+    # 4) 尝试提取 JSON 对象
+    lcb = s.find("{")
+    rcb = s.rfind("}")
+    if lcb != -1 and rcb != -1 and rcb > lcb:
+        candidate = s[lcb : rcb + 1].strip()
+        if candidate:
+            return candidate
+
+    return "[]"
