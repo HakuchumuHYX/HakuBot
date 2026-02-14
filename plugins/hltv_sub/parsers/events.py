@@ -22,13 +22,14 @@ def is_ongoing(start_date: str, end_date: str, tz) -> bool:
 
         if start_date and "-" in start_date:
             start_month, start_day = map(int, start_date.split("-"))
-            start = datetime(current_year, start_month, start_day, tzinfo=tz)
+            # pytz 注意事项：不能直接用 tzinfo=tz（会导致 LMT 等错误 offset），必须 localize
+            start = tz.localize(datetime(current_year, start_month, start_day))
         else:
             return False
 
         if end_date and "-" in end_date:
             end_month, end_day = map(int, end_date.split("-"))
-            end = datetime(current_year, end_month, end_day, 23, 59, 59, tzinfo=tz)
+            end = tz.localize(datetime(current_year, end_month, end_day, 23, 59, 59))
         else:
             return False
 

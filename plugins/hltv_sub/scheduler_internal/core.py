@@ -5,6 +5,7 @@ HLTVScheduler 核心类
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import datetime, timedelta
 from typing import Callable, Optional, TypeVar
 
@@ -234,13 +235,14 @@ class HLTVScheduler:
             month, day = map(int, date_str.split("-"))
             hour, minute = map(int, time_str.split(":"))
 
-            match_time = datetime(now.year, month, day, hour, minute, tzinfo=self._tz)
+            # pytz 注意事项：不能直接用 tzinfo=tz（会导致 LMT 等错误 offset），必须 localize
+            naive = datetime(now.year, month, day, hour, minute)
+            match_time = self._tz.localize(naive)
 
             # 如果时间已经过去很久，可能是明年的比赛
             if match_time < now - timedelta(days=30):
-                match_time = datetime(
-                    now.year + 1, month, day, hour, minute, tzinfo=self._tz
-                )
+                naive_next = datetime(now.year + 1, month, day, hour, minute)
+                match_time = self._tz.localize(naive_next)
 
             return match_time
         except Exception:
@@ -304,8 +306,9 @@ class HLTVScheduler:
                     match_time = self._parse_match_time(h.date, h.time)
                     if not match_time:
                         continue
-                    minutes_until = int((match_time - now).total_seconds() / 60)
-                    if minutes_until > 0:
+                    seconds_until = (match_time - now).total_seconds()
+                    if seconds_until > 0:
+                        minutes_until = int(seconds_until // 60)
                         if local_next is None or minutes_until < local_next:
                             local_next = minutes_until
                         if next_minutes_until is None or minutes_until < next_minutes_until:
@@ -327,10 +330,14 @@ class HLTVScheduler:
                     if not match_time:
                         continue
 
-                    minutes_until = int((match_time - now).total_seconds() / 60)
+                    seconds_until = (match_time - now).total_seconds()
+                    if seconds_until < 0:
+                        continue
 
-                    # 提醒窗口
-                    if REMINDER_WINDOW_MIN <= minutes_until <= REMINDER_WINDOW_MAX:
+                    # 提醒窗口（按秒判断，避免 int() 向下取整导致擦边漏推）
+                    if (REMINDER_WINDOW_MIN * 60) <= seconds_until <= (
+                        REMINDER_WINDOW_MAX * 60
+                    ):
                         if not data_manager.is_start_notified(match.id):
                             upcoming.append(
                                 UpcomingMatch(
@@ -340,7 +347,7 @@ class HLTVScheduler:
                                     event_id=event_id,
                                     event_title=event_title,
                                     start_time=match_time,
-                                    minutes_until=minutes_until,
+                                    minutes_until=int(math.ceil(seconds_until / 60)),
                                     maps=match.maps,
                                 )
                             )
@@ -553,8 +560,8 @@ class HLTVScheduler:
                     if not match_time:
                         continue
 
-                    minutes_until = int((match_time - now).total_seconds() / 60)
-                    if minutes_until > 0:
+                    seconds_until = (match_time - now).total_seconds()
+                    if seconds_until > 0:
                         upcoming.append(
                             UpcomingMatch(
                                 match_id=match.id,
@@ -563,7 +570,7 @@ class HLTVScheduler:
                                 event_id=event_id,
                                 event_title=event_title,
                                 start_time=match_time,
-                                minutes_until=minutes_until,
+                                minutes_until=int(math.ceil(seconds_until / 60)),
                                 maps=match.maps,
                             )
                         )

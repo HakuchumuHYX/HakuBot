@@ -22,11 +22,14 @@ def parse_mmdd(tz: pytz.BaseTzInfo, mmdd: str, end_of_day: bool) -> Optional[dat
         now = datetime.now(tz)
         hour, minute, second = (23, 59, 59) if end_of_day else (0, 0, 0)
 
-        dt = datetime(now.year, month, day, hour, minute, second, tzinfo=tz)
+        # pytz 注意事项：不能直接用 tzinfo=tz（会导致 LMT 等错误 offset），必须 localize
+        naive = datetime(now.year, month, day, hour, minute, second)
+        dt = tz.localize(naive)
 
         # 如果日期比现在早很多（例如当前 01 月却解析到了上一年 12 月），则认为跨年
         if dt < now - timedelta(days=30):
-            dt = datetime(now.year + 1, month, day, hour, minute, second, tzinfo=tz)
+            naive_next = datetime(now.year + 1, month, day, hour, minute, second)
+            dt = tz.localize(naive_next)
         return dt
     except Exception:
         return None
