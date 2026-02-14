@@ -205,15 +205,30 @@ def bbcode_to_png(msg: str, spacing: int = 10) -> io.BytesIO:
 def get_message_at(message: Message) -> List[int]:
     """
     从消息中提取所有 @ 的用户 QQ 号
-    
+
+    注意：
+        OneBot v11 中“@全体成员”的 at 段 `qq` 字段为字符串 "all"，
+        不能直接 int()，这里跳过非数字的 qq 以避免异常。
+
     Args:
         message: 消息对象
-    
+
     Returns:
         被 @ 的用户 QQ 号列表
     """
-    qq_list = []
+    qq_list: List[int] = []
     for msg in message:
-        if msg.type == "at":
-            qq_list.append(int(msg.data["qq"]))
+        if msg.type != "at":
+            continue
+
+        qq = msg.data.get("qq")
+        if qq is None:
+            continue
+
+        # 兼容 qq 为 int / str 的情况；"all" 等非数字直接忽略
+        if isinstance(qq, int):
+            qq_list.append(qq)
+        elif isinstance(qq, str) and qq.isdigit():
+            qq_list.append(int(qq))
+
     return qq_list
