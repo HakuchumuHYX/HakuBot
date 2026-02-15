@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}HLTV Match Reminder{% endblock %}
+{% block title %}HLTV Match Live{% endblock %}
 
 {% block extra_styles %}
 .reminder-card {
@@ -163,16 +163,16 @@
 
 {% block content %}
 <div class="header">
-    <div class="header-icon">🔔</div>
+    <div class="header-icon">🔴</div>
     <div>
-        <div class="header-title">比赛即将开始</div>
-        <div class="header-subtitle">Match Starting Soon</div>
+        <div class="header-title">比赛已开始</div>
+        <div class="header-subtitle">Match Live Now</div>
     </div>
 </div>
 
 <div class="reminder-card">
     <div class="countdown">
-        <div class="countdown-label">比赛时间 Starting Time</div>
+        <div class="countdown-label">当前状态 Status</div>
         <span class="countdown-value">{{ start_time_str }}</span>
     </div>
 

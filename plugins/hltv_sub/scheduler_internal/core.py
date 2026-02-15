@@ -318,39 +318,33 @@ class HLTVScheduler:
                     f"[HLTV Scheduler] 赛事 {event_id} next_minutes_until(hints)={local_next}"
                 )
 
-                # 2) 提醒：仍然只对过滤后的 matches 生效（不会对 TBD 发提醒）
+                # 2) 开赛提醒：改为“检测到比赛 LIVE 后再提醒”
+                # 避免 HLTV 开赛时间更新不及时导致提醒时间与实际开赛不一致
                 if not matches:
                     continue
 
                 for match in matches:
-                    if match.is_live:
+                    # 只在 HLTV 标记为 LIVE 后提醒
+                    if not match.is_live:
                         continue
 
-                    match_time = self._parse_match_time(match.date, match.time)
-                    if not match_time:
+                    # 去重：同一场比赛只提醒一次
+                    if data_manager.is_start_notified(match.id):
                         continue
 
-                    seconds_until = (match_time - now).total_seconds()
-                    if seconds_until < 0:
-                        continue
-
-                    # 提醒窗口（按秒判断，避免 int() 向下取整导致擦边漏推）
-                    if (REMINDER_WINDOW_MIN * 60) <= seconds_until <= (
-                        REMINDER_WINDOW_MAX * 60
-                    ):
-                        if not data_manager.is_start_notified(match.id):
-                            upcoming.append(
-                                UpcomingMatch(
-                                    match_id=match.id,
-                                    team1=match.team1,
-                                    team2=match.team2,
-                                    event_id=event_id,
-                                    event_title=event_title,
-                                    start_time=match_time,
-                                    minutes_until=int(math.ceil(seconds_until / 60)),
-                                    maps=match.maps,
-                                )
-                            )
+                    # LIVE 提醒不依赖网页显示时间，直接用当前时间占位
+                    upcoming.append(
+                        UpcomingMatch(
+                            match_id=match.id,
+                            team1=match.team1,
+                            team2=match.team2,
+                            event_id=event_id,
+                            event_title=event_title,
+                            start_time=now,
+                            minutes_until=0,
+                            maps=match.maps,
+                        )
+                    )
 
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 检查赛事 {event_id} 比赛失败: {e}")
@@ -402,7 +396,9 @@ class HLTVScheduler:
             return
 
         try:
-            start_time_str = match.start_time.strftime("%H:%M")
+            start_time_str = (
+                "LIVE" if match.minutes_until <= 0 else match.start_time.strftime("%H:%M")
+            )
             img = await render_reminder(
                 team1=match.team1,
                 team2=match.team2,
@@ -414,10 +410,12 @@ class HLTVScheduler:
             msg = MessageSegment.image(img)
         except Exception as e:
             logger.warning(f"[HLTV Scheduler] 渲染提醒图片失败，使用文本消息: {e}")
-            start_time_str = match.start_time.strftime("%H:%M")
+            start_time_str = (
+                "LIVE" if match.minutes_until <= 0 else match.start_time.strftime("%H:%M")
+            )
             bo_text = f"BO{match.maps}" if match.maps else ""
             msg = (
-                f"""🔔 比赛即将开始
+                f"""🔴 比赛已开始
 
 🏆 {match.event_title}
 
@@ -458,6 +456,43 @@ class HLTVScheduler:
             )
 
             if stats:
+                # HLTV 数据可能“比赛已结束但 stats 未更新完整”
+                # 典型表现：比分已是 2-1（应有3张图），但单图数据缺最后一张
+                expected_maps = 0
+                try:
+                    if str(stats.score1).isdigit() and str(stats.score2).isdigit():
+                        expected_maps = int(stats.score1) + int(stats.score2)
+                except Exception:
+                    expected_maps = 0
+
+                played_maps = [
+                    m
+                    for m in (stats.maps or [])
+                    if m.score_team1 != "-" and m.score_team2 != "-"
+                ]
+
+                if expected_maps > 0:
+                    # 1) 地图比分数量与总比分不一致：直接跳过，等待下次轮询
+                    if len(played_maps) < expected_maps:
+                        logger.info(
+                            f"[HLTV Scheduler] match {result.id} stats 未更新完整："
+                            f"expected_maps={expected_maps}, played_maps={len(played_maps)}，跳过本次推送等待下次轮询"
+                        )
+                        return
+
+                    # 2) 单图选手数据缺失：也跳过，避免少图
+                    missing_details = [
+                        m.map_name
+                        for m in played_maps
+                        if m.map_name not in (stats.map_stats_details or {})
+                    ]
+                    if missing_details:
+                        logger.info(
+                            f"[HLTV Scheduler] match {result.id} 单图数据未更新完整："
+                            f"missing_map_details={missing_details}，跳过本次推送等待下次轮询"
+                        )
+                        return
+
                 img = await render_stats(stats)
                 msg = MessageSegment.text("🏁 比赛已结束\n\n") + MessageSegment.image(img)
             else:
