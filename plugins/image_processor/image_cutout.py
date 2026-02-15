@@ -48,14 +48,28 @@ MIN_FOREGROUND_RATIO = 0.01
 REMBG_UPSCALE = 2
 REMBG_UPSCALE_MAX_SIDE = 1600
 
-# rembg 模型：isnet 对很多插画/贴纸更稳
-REMBG_MODEL_NAME = "isnet-general-use"
+# rembg 模型：
+# - 对二次元/线稿类图片，isnet-anime 往往比 isnet-general-use 更稳
+# - 纯色背景贴纸通常会走 solid-bg，不太依赖 rembg
+REMBG_MODEL_PRIMARY = os.getenv("HAKUBOT_REMBG_MODEL", "isnet-anime").strip().lower()
+REMBG_MODEL_FALLBACK = os.getenv("HAKUBOT_REMBG_MODEL_FALLBACK", "isnet-general-use").strip().lower()
 
 # rembg 推理设备选择：
 # - auto: 有 CUDAExecutionProvider 就用 GPU，否则 CPU
 # - cpu: 强制 CPU
 # - cuda/gpu: 强制 GPU（若不可用会回退 CPU）
 REMBG_DEVICE = os.getenv("HAKUBOT_REMBG_DEVICE", "auto").strip().lower()
+
+# rembg 质量检测：alpha 太“边缘化/过小”就尝试 fallback 模型
+REMBG_MIN_FG_RATIO = 0.03
+REMBG_MIN_CORE_RATIO = 0.012
+
+# 线稿/描边类 fallback（适用于“背景和主体很接近，但黑色描边明显”的表情包）
+LINEART_MIN_AREA_RATIO = 0.03
+LINEART_MAX_AREA_RATIO = 0.98
+LINEART_MIN_CONTOUR_AREA = 200
+LINEART_EDGE_CLOSE_ITERS = 2
+LINEART_EDGE_DILATE_ITERS = 2
 
 
 def _select_onnx_providers() -> list[str]:
@@ -230,6 +244,98 @@ def _mask_to_rgba(img_bgr: np.ndarray, fg_mask: np.ndarray) -> np.ndarray:
     return bgra
 
 
+def _alpha_quality_from_png_path(png_path: str) -> tuple[float, float]:
+    """
+    对输出 PNG 的 alpha 做一个粗略“质量评估”，用于检测“只剩描边/前景过小”。
+    返回：(fg_ratio, core_ratio)
+      - fg_ratio: alpha>8 的比例
+      - core_ratio: 对 fg 侵蚀 3 次后仍为前景的比例（越大越像“有实体填充”）
+    """
+    try:
+        im_out = Image.open(png_path).convert("RGBA")
+        alpha = np.array(im_out)[:, :, 3]
+        fg = (alpha > 8).astype(np.uint8)
+        fg_ratio = float(fg.mean())
+        core = fg
+        if fg_ratio > 0:
+            core = cv2.erode(core, np.ones((3, 3), np.uint8), iterations=3)
+        core_ratio = float(core.mean())
+        return fg_ratio, core_ratio
+    except Exception:
+        return 0.0, 0.0
+
+
+async def remove_background_lineart(image_path: str) -> str:
+    """
+    线稿/描边类表情包兜底：
+    - 当 rembg 也只抠出线条时，用“线条作墙 + flood fill”把封闭区域填成前景。
+    适用于：背景与主体颜色接近、但黑色/深色描边很明显的图。
+    """
+    try:
+        img_bgr = _read_cv_bgr(image_path)
+        h, w = img_bgr.shape[:2]
+
+        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+
+        # 用自适应阈值抓“深色描边”（比单纯 Canny 稳定一些）
+        line = cv2.adaptiveThreshold(
+            gray,
+            255,
+            cv2.ADAPTIVE_THRESH_MEAN_C,
+            cv2.THRESH_BINARY_INV,
+            15,
+            8,
+        )
+
+        # 再叠加一点边缘，补一些断开的线
+        edges = cv2.Canny(gray, 50, 150)
+        walls = cv2.bitwise_or(line, edges)
+
+        kernel = np.ones((3, 3), np.uint8)
+
+        if LINEART_EDGE_CLOSE_ITERS and LINEART_EDGE_CLOSE_ITERS > 0:
+            walls = cv2.morphologyEx(
+                walls, cv2.MORPH_CLOSE, kernel, iterations=LINEART_EDGE_CLOSE_ITERS
+            )
+        if LINEART_EDGE_DILATE_ITERS and LINEART_EDGE_DILATE_ITERS > 0:
+            walls = cv2.dilate(walls, kernel, iterations=LINEART_EDGE_DILATE_ITERS)
+
+        walls = (walls > 0).astype(np.uint8)
+
+        # free: 255 表示可通行区域（非墙），0 表示墙
+        free = ((1 - walls) * 255).astype(np.uint8)
+
+        # flood fill：从图像边界把外部区域填成 0，剩下的 255 就是“被墙围起来的内部”
+        mask = np.zeros((h + 2, w + 2), np.uint8)
+
+        # 多个种子点，提高鲁棒性
+        seeds = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1), (w // 2, 0), (w // 2, h - 1)]
+        for x, y in seeds:
+            if free[y, x] == 255:
+                cv2.floodFill(free, mask, (x, y), 0)
+
+        inside = (free == 255).astype(np.uint8)
+
+        # 前景 = inside + walls
+        fg = np.maximum(inside, walls).astype(np.uint8)
+
+        area_ratio = float(fg.mean())
+        if not (LINEART_MIN_AREA_RATIO <= area_ratio <= LINEART_MAX_AREA_RATIO):
+            return ""
+
+        rgba = _mask_to_rgba(img_bgr, fg)
+
+        output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
+        output_dir.mkdir(exist_ok=True)
+        output_path = output_dir / f"cutout_lineart_{os.urandom(4).hex()}.png"
+        cv2.imwrite(str(output_path), rgba)
+        return str(output_path)
+
+    except Exception as e:
+        logger.error(f"线稿兜底抠图错误: {e}")
+        return ""
+
+
 async def remove_background_solid_bg(image_path: str) -> str:
     """
     贴纸/表情包专用：针对近纯色背景的高保真抠图。
@@ -256,6 +362,16 @@ async def remove_background_solid_bg(image_path: str) -> str:
         lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
         dist = np.linalg.norm(lab - bg_lab.reshape(1, 1, 3), axis=2)
 
+        # 低对比场景检测：如果主体也接近背景色，纯色阈值分割会“只剩描边”
+        # 用中心区域（通常是主体所在）做对比度判定
+        ch, cw = max(1, h // 4), max(1, w // 4)
+        center = dist[ch : h - ch, cw : w - cw]
+        if center.size > 0:
+            # 中心区域如果连 90 分位都不够“远离背景”，说明前景/背景不可分
+            p90 = float(np.percentile(center, 90))
+            if p90 < SOLID_BG_DIST_THRESHOLD * 1.25:
+                return ""
+
         bg_candidate = (dist < SOLID_BG_DIST_THRESHOLD).astype(np.uint8)
 
         # 关键：边缘作为“墙”，不允许 bg_candidate 通过边缘连通到主体内部
@@ -276,7 +392,13 @@ async def remove_background_solid_bg(image_path: str) -> str:
         protect = edges
         if EDGE_DILATE_ITERS and EDGE_DILATE_ITERS > 0:
             protect = cv2.dilate(protect, edge_kernel, iterations=EDGE_DILATE_ITERS)
-        fg = np.maximum(fg, (protect > 0).astype(np.uint8))
+        protect_bin = (protect > 0).astype(np.uint8)
+        fg = np.maximum(fg, protect_bin)
+
+        # “只剩描边”检测：如果去掉边缘保护后，核心前景几乎没有，则认为失败回退 rembg
+        core = (fg & (1 - protect_bin)).astype(np.uint8)
+        if float(core.mean()) < 0.02:
+            return ""
 
         fg_ratio = float(fg.mean())
         if fg_ratio < MIN_FOREGROUND_RATIO:
@@ -303,7 +425,6 @@ async def remove_background_rembg(image_path: str) -> str:
 
         providers = _select_onnx_providers()
         logger.info(f"rembg providers: {providers} (device={REMBG_DEVICE})")
-        session = new_session(REMBG_MODEL_NAME, providers=providers)
 
         # 可选：放大输入以保留细节（对文字/线条更友好）
         with Image.open(image_path) as im:
@@ -317,13 +438,48 @@ async def remove_background_rembg(image_path: str) -> str:
                     upscale = max(1, int(REMBG_UPSCALE_MAX_SIDE / max_side))
 
             if upscale > 1:
-                im = im.resize((orig_size[0] * upscale, orig_size[1] * upscale), Image.LANCZOS)
+                im = im.resize(
+                    (orig_size[0] * upscale, orig_size[1] * upscale), Image.LANCZOS
+                )
 
             buf = io.BytesIO()
             im.save(buf, format="PNG")
             input_data = buf.getvalue()
 
-        output_data = remove(input_data, session=session)
+        def _run_model(model_name: str) -> bytes:
+            logger.info(f"rembg model: {model_name}")
+            session = new_session(model_name, providers=providers)
+            return remove(input_data, session=session)
+
+        def _score_alpha(png_bytes: bytes) -> tuple[float, float]:
+            """返回 (fg_ratio, core_ratio)"""
+            im_out = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+            alpha = np.array(im_out)[:, :, 3]
+            fg = (alpha > 8).astype(np.uint8)
+            fg_ratio = float(fg.mean())
+
+            # core: 侵蚀后仍为前景的比例，用于检测“只剩描边”
+            core = fg
+            if fg_ratio > 0:
+                core = cv2.erode(core, np.ones((3, 3), np.uint8), iterations=3)
+            core_ratio = float(core.mean())
+            return fg_ratio, core_ratio
+
+        # 第一次：primary
+        out1 = _run_model(REMBG_MODEL_PRIMARY)
+        fg1, core1 = _score_alpha(out1)
+
+        # 如果出现“只剩描边/前景过小”，再跑 fallback
+        out_best, best = out1, (fg1, core1)
+        if fg1 < REMBG_MIN_FG_RATIO or core1 < REMBG_MIN_CORE_RATIO:
+            out2 = _run_model(REMBG_MODEL_FALLBACK)
+            fg2, core2 = _score_alpha(out2)
+
+            # 选择 core 更大的结果（更像“有实体填充”），core 相同时选 fg 更大的
+            if (core2, fg2) > (best[1], best[0]):
+                out_best, best = out2, (fg2, core2)
+
+        output_data = out_best
 
         # 如果做过放大，需要缩回去
         if upscale > 1:
@@ -434,6 +590,12 @@ async def remove_background_file(image_path: str) -> str:
     # 2) rembg 兜底（需要依赖）
     rem = await remove_background_rembg(image_path)
     if rem and os.path.exists(rem):
+        # 如果 rembg 结果“只剩描边/前景过小”，尝试线稿兜底（对表情包更友好）
+        fg_ratio, core_ratio = _alpha_quality_from_png_path(rem)
+        if fg_ratio < REMBG_MIN_FG_RATIO or core_ratio < REMBG_MIN_CORE_RATIO:
+            lineart = await remove_background_lineart(image_path)
+            if lineart and os.path.exists(lineart):
+                return lineart
         return rem
 
     # 3) OpenCV GrabCut 兜底

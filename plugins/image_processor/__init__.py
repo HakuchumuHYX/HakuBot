@@ -3,7 +3,12 @@ from nonebot.rule import to_me
 from nonebot.adapters import Event, Message
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent, PrivateMessageEvent, Bot
+from nonebot.adapters.onebot.v11 import (
+    MessageSegment,
+    GroupMessageEvent,
+    PrivateMessageEvent,
+    Bot,
+)
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 import asyncio
@@ -23,6 +28,48 @@ from .image_rotate import process_image_rotate
 
 from ..plugin_manager.enable import *
 from ..plugin_manager.cd_manager import *
+
+
+# ========== rembg 模型启动预下载/校验 ==========
+# 目的：避免首次调用 imgcut 时 rembg 在线下载模型中断，留下半截 .onnx 导致后续一直失败。
+driver = get_driver()
+
+
+@driver.on_startup
+async def _image_processor_prefetch_rembg_models() -> None:
+    """
+    启动时确保 rembg 模型完整可用（默认严格模式：下载失败会阻止 bot 启动）。
+    可用环境变量：
+      - HAKUBOT_REMBG_PREFETCH_STRICT=1/0 （默认 1）
+      - HAKUBOT_REMBG_PREFETCH_TIMEOUT=300 （秒，默认 300）
+      - HAKUBOT_REMBG_PREFETCH_RETRIES=8 （默认 8）
+    """
+    try:
+        from .rembg_prefetch import ensure_rembg_models_downloaded
+        from .image_cutout import REMBG_MODEL_PRIMARY, REMBG_MODEL_FALLBACK
+
+        strict_env = os.getenv("HAKUBOT_REMBG_PREFETCH_STRICT", "1").strip().lower()
+        strict = strict_env not in ("0", "false", "no", "off")
+
+        timeout_sec = int(os.getenv("HAKUBOT_REMBG_PREFETCH_TIMEOUT", "300"))
+        retries = int(os.getenv("HAKUBOT_REMBG_PREFETCH_RETRIES", "8"))
+
+        logger.info(
+            f"[rembg] 启动预检查模型: primary={REMBG_MODEL_PRIMARY}, fallback={REMBG_MODEL_FALLBACK}, "
+            f"strict={strict}, timeout={timeout_sec}s, retries={retries}"
+        )
+
+        await ensure_rembg_models_downloaded(
+            [REMBG_MODEL_PRIMARY, REMBG_MODEL_FALLBACK],
+            timeout_sec=timeout_sec,
+            retries=retries,
+            strict=strict,
+        )
+
+    except Exception as e:
+        # strict=True 时，ensure_rembg_models_downloaded 会抛异常；这里继续抛出以阻止启动
+        logger.exception(f"[rembg] 启动预下载/校验模型失败: {e}")
+        raise
 
 
 async def download_and_check_gif(url: str) -> bool:
