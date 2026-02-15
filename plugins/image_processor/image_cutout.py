@@ -1,208 +1,485 @@
 # image_cutout.py
 import os
 
-# 强制使用CPU，避免CUDA依赖问题
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 禁用GPU
-os.environ['ORT_DISABLE_CUDA'] = '1'  # 禁用ONNX Runtime的CUDA
-
+import io
 import tempfile
-import aiohttp
-from PIL import Image
 from pathlib import Path
-import numpy as np
+
+import aiohttp
 import cv2
+import numpy as np
+from PIL import Image, ImageSequence
 from nonebot.log import logger
+
+# ========= 可调参数（面向“贴纸/表情包 + 纯色背景 + 文字”） =========
+# 角落采样块大小（像素）
+SOLID_BG_CORNER_SIZE = 12
+
+# 认为“近纯色背景”的阈值（LAB 空间标准差，越小越严格）
+SOLID_BG_MAX_STD = 8.0
+
+# 四角背景色互相接近的阈值（LAB 空间距离）
+SOLID_BG_MAX_CORNER_DELTA = 12.0
+
+# 与背景色距离小于该阈值的像素视为背景候选（LAB 空间距离）
+# 这个值越大越“敢删背景”，但也更容易从抗锯齿边缘“渗入”前景造成缺块
+SOLID_BG_DIST_THRESHOLD = 16.0
+
+# 边缘保护：Canny 边缘膨胀半径（迭代次数）
+EDGE_DILATE_ITERS = 1
+
+# 边缘屏障：用于阻止“背景连通域”穿过主体边缘渗入内部（解决头顶高光被挖洞）
+EDGE_BARRIER_ITERS = 2
+
+# 渗漏检测：若边缘屏障区域被判为背景的比例过高，则认为纯色抠图失败，回退 rembg
+EDGE_BG_LEAK_MAX_RATIO = 0.12
+
+# 形态学平滑（填小洞 + 连接细笔画）
+MORPH_CLOSE_ITERS = 1
+MORPH_DILATE_ITERS = 1
+
+# alpha 羽化：高斯模糊 sigma（0 表示不羽化）
+ALPHA_FEATHER_SIGMA = 1.0
+
+# 结果 sanity check：前景比例过小直接判失败（避免把整图抠没）
+MIN_FOREGROUND_RATIO = 0.01
+
+# rembg 输入可选放大（提升细节保留）；设置为 1 表示禁用
+REMBG_UPSCALE = 2
+REMBG_UPSCALE_MAX_SIDE = 1600
+
+# rembg 模型：isnet 对很多插画/贴纸更稳
+REMBG_MODEL_NAME = "isnet-general-use"
+
+# rembg 推理设备选择：
+# - auto: 有 CUDAExecutionProvider 就用 GPU，否则 CPU
+# - cpu: 强制 CPU
+# - cuda/gpu: 强制 GPU（若不可用会回退 CPU）
+REMBG_DEVICE = os.getenv("HAKUBOT_REMBG_DEVICE", "auto").strip().lower()
+
+
+def _select_onnx_providers() -> list[str]:
+    """为 rembg/new_session 选择 onnxruntime providers（支持 CUDA 自动探测）。"""
+    try:
+        import onnxruntime as ort  # type: ignore
+
+        available = set(ort.get_available_providers())
+    except Exception as e:
+        logger.warning(f"onnxruntime providers 探测失败，将使用 CPU: {e}")
+        return ["CPUExecutionProvider"]
+
+    if REMBG_DEVICE in ("cpu",):
+        # 这两行可显著避免某些环境里误加载 CUDA 相关 DLL
+        os.environ["ORT_DISABLE_CUDA"] = "1"
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+        return ["CPUExecutionProvider"]
+
+    if REMBG_DEVICE in ("cuda", "gpu"):
+        if "CUDAExecutionProvider" in available:
+            # GPU 优先，CPU 兜底
+            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        logger.warning("当前 onnxruntime 未提供 CUDAExecutionProvider，已回退到 CPU")
+        return ["CPUExecutionProvider"]
+
+    # auto
+    if "CUDAExecutionProvider" in available:
+        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    return ["CPUExecutionProvider"]
 
 
 async def download_image(url: str) -> str:
     """下载图片到临时目录"""
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
-            if response.status == 200:
-                temp_dir = tempfile.gettempdir()
-                file_ext = '.png'
-                temp_path = os.path.join(temp_dir, f"temp_img_{os.urandom(4).hex()}{file_ext}")
-
-                content = await response.read()
-                with open(temp_path, 'wb') as f:
-                    f.write(content)
-
-                return temp_path
-            else:
+            if response.status != 200:
                 raise Exception(f"下载图片失败: {response.status}")
+
+            temp_dir = tempfile.gettempdir()
+            file_ext = ".png"
+            temp_path = os.path.join(
+                temp_dir, f"temp_img_{os.urandom(4).hex()}{file_ext}"
+            )
+
+            content = await response.read()
+            with open(temp_path, "wb") as f:
+                f.write(content)
+
+            return temp_path
+
+
+def _read_cv_bgr(image_path: str) -> np.ndarray:
+    """
+    读取图片为 BGR（uint8）。
+    - 如果源图带 alpha，会先按 alpha 合成到白底，保证颜色特征稳定（尤其是贴纸）。
+    """
+    img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise Exception("无法读取图像")
+
+    if img.ndim == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+    if img.shape[2] == 4:
+        bgr = img[:, :, :3].astype(np.float32)
+        alpha = (img[:, :, 3:4].astype(np.float32)) / 255.0
+        white = np.full_like(bgr, 255.0)
+        comp = bgr * alpha + white * (1.0 - alpha)
+        return comp.clip(0, 255).astype(np.uint8)
+
+    return img[:, :, :3]
+
+
+def _estimate_bg_lab(img_bgr: np.ndarray) -> tuple[np.ndarray, bool]:
+    """
+    用四角采样估计背景色（LAB），并判断是否为“近纯色背景”。
+    返回：
+      (bg_lab_mean(3,), is_solid_bg)
+    """
+    h, w = img_bgr.shape[:2]
+    s = int(max(4, min(SOLID_BG_CORNER_SIZE, min(h, w) // 6)))
+
+    corners = [
+        img_bgr[0:s, 0:s],
+        img_bgr[0:s, w - s : w],
+        img_bgr[h - s : h, 0:s],
+        img_bgr[h - s : h, w - s : w],
+    ]
+
+    # BGR -> LAB
+    corner_labs = []
+    corner_stds = []
+    for c in corners:
+        lab = cv2.cvtColor(c, cv2.COLOR_BGR2LAB).astype(np.float32)
+        corner_labs.append(lab.reshape(-1, 3).mean(axis=0))
+        corner_stds.append(lab.reshape(-1, 3).std(axis=0).mean())
+
+    corner_labs = np.stack(corner_labs, axis=0)  # (4,3)
+    corner_stds = np.array(corner_stds, dtype=np.float32)  # (4,)
+
+    # 近纯色：角落内部方差小 + 四角均值相互接近
+    is_low_var = float(corner_stds.max()) <= SOLID_BG_MAX_STD
+
+    # 角落间最大距离
+    max_delta = 0.0
+    for i in range(4):
+        for j in range(i + 1, 4):
+            d = float(np.linalg.norm(corner_labs[i] - corner_labs[j]))
+            max_delta = max(max_delta, d)
+
+    is_similar = max_delta <= SOLID_BG_MAX_CORNER_DELTA
+    is_solid = is_low_var and is_similar
+
+    bg_lab = corner_labs.mean(axis=0)
+    return bg_lab.astype(np.float32), is_solid
+
+
+def _connected_bg_from_border(bg_candidate: np.ndarray) -> np.ndarray:
+    """
+    仅把“与图像边界连通”的背景候选当作背景（避免误删前景内部的浅色块）。
+    bg_candidate: uint8, 1=候选背景, 0=非背景
+    return: uint8, 1=背景, 0=非背景
+    """
+    h, w = bg_candidate.shape[:2]
+    num, labels = cv2.connectedComponents(bg_candidate, connectivity=8)
+
+    if num <= 1:
+        return bg_candidate
+
+    border = np.concatenate(
+        [
+            labels[0, :],
+            labels[h - 1, :],
+            labels[:, 0],
+            labels[:, w - 1],
+        ]
+    )
+    border_labels = np.unique(border)
+    # label=0 是背景（bg_candidate==0 的区域），不要选
+    border_labels = border_labels[border_labels != 0]
+
+    if border_labels.size == 0:
+        # 没有任何候选与边界连通，说明阈值过严，返回全 0（让上层判失败）
+        return np.zeros_like(bg_candidate)
+
+    bg = np.isin(labels, border_labels).astype(np.uint8)
+    return bg
+
+
+def _mask_to_rgba(img_bgr: np.ndarray, fg_mask: np.ndarray) -> np.ndarray:
+    """
+    fg_mask: uint8 {0,1}
+    返回 BGRA uint8
+    """
+    fg = (fg_mask > 0).astype(np.uint8)
+
+    # 形态学：连接细笔画、填小洞
+    kernel = np.ones((3, 3), np.uint8)
+    if MORPH_CLOSE_ITERS > 0:
+        fg = cv2.morphologyEx(
+            fg, cv2.MORPH_CLOSE, kernel, iterations=MORPH_CLOSE_ITERS
+        )
+    if MORPH_DILATE_ITERS > 0:
+        fg = cv2.dilate(fg, kernel, iterations=MORPH_DILATE_ITERS)
+
+    alpha = (fg * 255).astype(np.uint8)
+    if ALPHA_FEATHER_SIGMA and ALPHA_FEATHER_SIGMA > 0:
+        alpha = cv2.GaussianBlur(alpha, (0, 0), sigmaX=ALPHA_FEATHER_SIGMA)
+
+    bgra = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2BGRA)
+    bgra[:, :, 3] = alpha
+    return bgra
+
+
+async def remove_background_solid_bg(image_path: str) -> str:
+    """
+    贴纸/表情包专用：针对近纯色背景的高保真抠图。
+    能显著提升“细小文字/描边”保留率，解决 u2net 容易把字抠没的问题。
+    """
+    try:
+        img_bgr = _read_cv_bgr(image_path)
+        h, w = img_bgr.shape[:2]
+
+        bg_lab, is_solid = _estimate_bg_lab(img_bgr)
+        if not is_solid:
+            return ""
+
+        # 先做边缘检测，构造“边缘屏障”，防止背景连通域从抗锯齿边缘渗入前景内部
+        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 50, 150)
+
+        edge_kernel = np.ones((3, 3), np.uint8)
+        edge_barrier = edges
+        if EDGE_BARRIER_ITERS and EDGE_BARRIER_ITERS > 0:
+            edge_barrier = cv2.dilate(edge_barrier, edge_kernel, iterations=EDGE_BARRIER_ITERS)
+        edge_barrier = (edge_barrier > 0).astype(np.uint8)
+
+        lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+        dist = np.linalg.norm(lab - bg_lab.reshape(1, 1, 3), axis=2)
+
+        bg_candidate = (dist < SOLID_BG_DIST_THRESHOLD).astype(np.uint8)
+
+        # 关键：边缘作为“墙”，不允许 bg_candidate 通过边缘连通到主体内部
+        bg_candidate = (bg_candidate & (1 - edge_barrier)).astype(np.uint8)
+
+        bg = _connected_bg_from_border(bg_candidate)
+
+        # 渗漏检测：如果边缘屏障区域大量被判成背景，说明发生了“穿透”，直接失败回退 rembg
+        barrier_pixels = int(edge_barrier.sum())
+        if barrier_pixels > 0:
+            leak_ratio = float(bg[edge_barrier > 0].mean())
+            if leak_ratio > EDGE_BG_LEAK_MAX_RATIO:
+                return ""
+
+        fg = (1 - bg).astype(np.uint8)
+
+        # 边缘保护：把明显边缘像素强制视为前景，避免阈值误杀细笔画/浅色字边缘
+        protect = edges
+        if EDGE_DILATE_ITERS and EDGE_DILATE_ITERS > 0:
+            protect = cv2.dilate(protect, edge_kernel, iterations=EDGE_DILATE_ITERS)
+        fg = np.maximum(fg, (protect > 0).astype(np.uint8))
+
+        fg_ratio = float(fg.mean())
+        if fg_ratio < MIN_FOREGROUND_RATIO:
+            return ""
+
+        rgba = _mask_to_rgba(img_bgr, fg)
+
+        output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
+        output_dir.mkdir(exist_ok=True)
+        output_path = output_dir / f"cutout_solid_{os.urandom(4).hex()}.png"
+        cv2.imwrite(str(output_path), rgba)
+
+        return str(output_path)
+    except Exception as e:
+        logger.error(f"纯色背景抠图错误: {e}")
+        return ""
 
 
 async def remove_background_rembg(image_path: str) -> str:
-    """使用rembg进行高质量背景移除"""
+    """使用 rembg 背景移除（用于非纯色背景兜底）"""
     try:
-        # 在导入rembg之前确保环境变量已设置
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-        os.environ['ORT_DISABLE_CUDA'] = '1'
-
         from rembg import remove
         from rembg.session_factory import new_session
 
-        # 使用u2net模型，但强制使用CPU
-        session = new_session("u2net", providers=['CPUExecutionProvider'])
+        providers = _select_onnx_providers()
+        logger.info(f"rembg providers: {providers} (device={REMBG_DEVICE})")
+        session = new_session(REMBG_MODEL_NAME, providers=providers)
 
-        with open(image_path, 'rb') as input_file:
-            input_data = input_file.read()
+        # 可选：放大输入以保留细节（对文字/线条更友好）
+        with Image.open(image_path) as im:
+            im = im.convert("RGBA")
+            orig_size = im.size
 
-        # 移除背景
+            upscale = int(max(1, REMBG_UPSCALE))
+            if upscale > 1:
+                max_side = max(orig_size)
+                if max_side * upscale > REMBG_UPSCALE_MAX_SIDE:
+                    upscale = max(1, int(REMBG_UPSCALE_MAX_SIDE / max_side))
+
+            if upscale > 1:
+                im = im.resize((orig_size[0] * upscale, orig_size[1] * upscale), Image.LANCZOS)
+
+            buf = io.BytesIO()
+            im.save(buf, format="PNG")
+            input_data = buf.getvalue()
+
         output_data = remove(input_data, session=session)
 
-        # 保存结果
+        # 如果做过放大，需要缩回去
+        if upscale > 1:
+            out_im = Image.open(io.BytesIO(output_data)).convert("RGBA")
+            out_im = out_im.resize(orig_size, Image.LANCZOS)
+            out_buf = io.BytesIO()
+            out_im.save(out_buf, format="PNG")
+            output_data = out_buf.getvalue()
+
         output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
         output_dir.mkdir(exist_ok=True)
         output_path = output_dir / f"cutout_rembg_{os.urandom(4).hex()}.png"
 
-        with open(output_path, 'wb') as output_file:
+        with open(output_path, "wb") as output_file:
             output_file.write(output_data)
 
         return str(output_path)
 
     except ImportError:
-        logger.error("rembg未安装，请安装: pip install rembg")
-        return await remove_background_opencv(image_path)
+        logger.error("rembg未安装，请安装: pip install rembg onnxruntime")
+        return ""
     except Exception as e:
         logger.error(f"rembg抠图错误: {e}")
-        return await remove_background_opencv(image_path)
+        return ""
 
 
-# 其余代码保持不变...
 async def remove_background_opencv(image_path: str) -> str:
-    """使用OpenCV进行精确的背景移除"""
+    """使用 OpenCV 的 GrabCut（最终兜底）"""
     try:
-        import cv2
-        import numpy as np
+        img_bgr = _read_cv_bgr(image_path)
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-        # 读取图像
-        img = cv2.imread(image_path)
-        if img is None:
-            raise Exception("无法读取图像")
-
-        # 转换为RGB
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        # 创建掩码
-        mask = np.zeros(img.shape[:2], np.uint8)
-
-        # 定义前景和背景模型
+        mask = np.zeros(img_rgb.shape[:2], np.uint8)
         bgd_model = np.zeros((1, 65), np.float64)
         fgd_model = np.zeros((1, 65), np.float64)
 
-        # 定义矩形ROI (x, y, width, height)，可以根据需要调整
-        height, width = img.shape[:2]
-        rect = (int(width * 0.1), int(height * 0.1), int(width * 0.8), int(height * 0.8))
+        height, width = img_rgb.shape[:2]
+        rect = (int(width * 0.08), int(height * 0.08), int(width * 0.84), int(height * 0.84))
 
-        # 应用GrabCut算法
         cv2.grabCut(img_rgb, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
 
-        # 创建前景掩码
-        mask2 = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
+        # 0/2 是背景，1/3 是前景
+        fg = np.where((mask == 0) | (mask == 2), 0, 1).astype("uint8")
 
-        # 应用掩码
-        result = img_rgb * mask2[:, :, np.newaxis]
+        if float(fg.mean()) < MIN_FOREGROUND_RATIO:
+            return ""
 
-        # 创建透明背景
-        rgba = cv2.cvtColor(result, cv2.COLOR_RGB2RGBA)
-        rgba[:, :, 3] = mask2 * 255
+        rgba = _mask_to_rgba(cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR), fg)
 
-        # 保存结果
         output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
         output_dir.mkdir(exist_ok=True)
         output_path = output_dir / f"cutout_cv_{os.urandom(4).hex()}.png"
-
-        cv2.imwrite(str(output_path), cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA))
+        cv2.imwrite(str(output_path), rgba)
 
         return str(output_path)
-
     except Exception as e:
         logger.error(f"OpenCV抠图错误: {e}")
-        return await remove_background_simple(image_path)
+        return ""
 
 
 async def remove_background_simple(image_path: str) -> str:
-    """改进的简单背景移除"""
+    """
+    最简方案兜底（尽量不要走到这里）
+    通过检测近白背景并保留边缘。
+    """
     try:
-        img = Image.open(image_path).convert('RGBA')
+        img = Image.open(image_path).convert("RGBA")
         img_array = np.array(img)
 
-        # 更精确的背景检测
-        r, g, b, a = img_array[:, :, 0], img_array[:, :, 1], img_array[:, :, 2], img_array[:, :, 3]
+        r, g, b, a = (
+            img_array[:, :, 0],
+            img_array[:, :, 1],
+            img_array[:, :, 2],
+            img_array[:, :, 3],
+        )
 
-        # 检测多种背景颜色（白色、浅色等）
-        white_threshold = 230
-        light_threshold = 240
-
-        # 白色背景检测
+        white_threshold = 235
         white_mask = (r > white_threshold) & (g > white_threshold) & (b > white_threshold)
 
-        # 浅色背景检测
-        light_mask = (r > light_threshold) | (g > light_threshold) | (b > light_threshold)
-
-        # 边缘检测辅助
         gray = cv2.cvtColor(img_array[:, :, :3], cv2.COLOR_RGB2GRAY)
         edges = cv2.Canny(gray, 50, 150)
+        edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
         edge_mask = edges > 0
 
-        # 合并掩码：保留边缘区域，移除纯色背景
-        background_mask = (white_mask | light_mask) & ~edge_mask
-
-        # 设置背景为透明
+        background_mask = white_mask & ~edge_mask
         img_array[background_mask] = [0, 0, 0, 0]
 
-        result_img = Image.fromarray(img_array, 'RGBA')
+        result_img = Image.fromarray(img_array, "RGBA")
 
         output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
         output_dir.mkdir(exist_ok=True)
         output_path = output_dir / f"cutout_simple_{os.urandom(4).hex()}.png"
-
-        result_img.save(output_path, 'PNG')
+        result_img.save(output_path, "PNG")
 
         return str(output_path)
-
     except Exception as e:
         logger.error(f"简单抠图错误: {e}")
         return ""
 
 
+async def remove_background_file(image_path: str) -> str:
+    """对本地文件做抠图：纯色背景优先 -> rembg -> grabcut -> simple"""
+    # 1) 贴纸最常见：纯/近纯色背景
+    solid = await remove_background_solid_bg(image_path)
+    if solid and os.path.exists(solid):
+        return solid
+
+    # 2) rembg 兜底（需要依赖）
+    rem = await remove_background_rembg(image_path)
+    if rem and os.path.exists(rem):
+        return rem
+
+    # 3) OpenCV GrabCut 兜底
+    cvp = await remove_background_opencv(image_path)
+    if cvp and os.path.exists(cvp):
+        return cvp
+
+    # 4) 最简兜底
+    simp = await remove_background_simple(image_path)
+    if simp and os.path.exists(simp):
+        return simp
+
+    return ""
+
+
 async def remove_background_gif(image_path: str) -> str:
-    """处理GIF抠图 - 逐帧处理"""
+    """处理 GIF 抠图 - 逐帧处理（复用同样的策略）"""
     try:
-        from PIL import Image, ImageSequence
-
-        # 读取GIF
         gif = Image.open(image_path)
-        frames = []
-        durations = []
+        frames: list[Image.Image] = []
+        durations: list[int] = []
 
-        # 处理每一帧
         for frame in ImageSequence.Iterator(gif):
-            # 转换为RGBA
-            frame_rgba = frame.convert('RGBA')
+            frame_rgba = frame.convert("RGBA")
+            temp_frame_path = os.path.join(
+                tempfile.gettempdir(), f"temp_frame_{os.urandom(4).hex()}.png"
+            )
+            frame_rgba.save(temp_frame_path, "PNG")
 
-            # 保存当前帧为临时文件
-            temp_frame_path = os.path.join(tempfile.gettempdir(), f"temp_frame_{os.urandom(4).hex()}.png")
-            frame_rgba.save(temp_frame_path, 'PNG')
-
-            # 对当前帧进行抠图
-            processed_frame_path = await remove_background_rembg(temp_frame_path)
-            if processed_frame_path and os.path.exists(processed_frame_path):
-                processed_frame = Image.open(processed_frame_path).convert('RGBA')
-                frames.append(processed_frame)
-                durations.append(frame.info.get('duration', 100))
-
-            # 清理临时文件
-            if os.path.exists(temp_frame_path):
-                os.unlink(temp_frame_path)
-            if os.path.exists(processed_frame_path):
-                os.unlink(processed_frame_path)
+            processed_frame_path = ""
+            try:
+                processed_frame_path = await remove_background_file(temp_frame_path)
+                if processed_frame_path and os.path.exists(processed_frame_path):
+                    processed_frame = Image.open(processed_frame_path).convert("RGBA")
+                    frames.append(processed_frame)
+                    durations.append(frame.info.get("duration", 100))
+            finally:
+                # 清理临时文件
+                if os.path.exists(temp_frame_path):
+                    os.unlink(temp_frame_path)
+                if processed_frame_path and os.path.exists(processed_frame_path):
+                    os.unlink(processed_frame_path)
 
         if not frames:
             raise Exception("没有成功处理的帧")
 
-        # 保存为新的GIF
         output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
         output_dir.mkdir(exist_ok=True)
         output_path = output_dir / f"cutout_gif_{os.urandom(4).hex()}.gif"
@@ -213,48 +490,46 @@ async def remove_background_gif(image_path: str) -> str:
             append_images=frames[1:],
             duration=durations,
             loop=0,
-            format='GIF',
-            disposal=2,  # 恢复背景色
-            transparency=0
+            format="GIF",
+            disposal=2,
+            transparency=0,
         )
 
         return str(output_path)
 
     except Exception as e:
         logger.error(f"GIF抠图错误: {e}")
-        return await remove_background_rembg(image_path)
+        # GIF 失败时退回静态抠图（可能是伪 GIF 或解析失败）
+        return await remove_background_file(image_path)
 
 
 async def remove_background(image_url: str) -> str:
-    """主抠图函数 - 支持静态图片和GIF"""
+    """主抠图函数 - 支持静态图片和 GIF"""
+    image_path = ""
     try:
-        # 下载图片
         image_path = await download_image(image_url)
 
-        # 检查是否为GIF
+        # 是否为 GIF
         is_gif = False
         try:
             with Image.open(image_path) as img:
-                if hasattr(img, 'is_animated') and img.is_animated:
-                    is_gif = True
-        except:
-            pass
+                is_gif = bool(getattr(img, "is_animated", False))
+        except Exception:
+            is_gif = False
 
-        # 根据类型选择处理方法
         if is_gif:
             result_path = await remove_background_gif(image_path)
         else:
-            # 优先使用rembg，失败时降级
-            result_path = await remove_background_rembg(image_path)
-
-        # 清理临时文件
-        if os.path.exists(image_path):
-            os.unlink(image_path)
+            result_path = await remove_background_file(image_path)
 
         return result_path if result_path and os.path.exists(result_path) else ""
 
     except Exception as e:
         logger.error(f"抠图处理错误: {e}")
-        if 'image_path' in locals() and os.path.exists(image_path):
-            os.unlink(image_path)
         return ""
+    finally:
+        if image_path and os.path.exists(image_path):
+            try:
+                os.unlink(image_path)
+            except Exception:
+                pass
