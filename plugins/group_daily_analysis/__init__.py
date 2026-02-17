@@ -227,6 +227,8 @@ async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = 
     logger.info(f"群 {group_id} 获取到 {len(messages)} 条消息")
 
     # === 阶段 2: LLM 分析 ===
+    # 子任务内部已经有独立重试机制（_run_subtask_with_retry），
+    # 外层仅在"全部为空"时才触发整体重试（避免浪费 token）。
     analysis_result = None
     analysis_error = None
     for i in range(retries):
@@ -237,20 +239,32 @@ async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = 
             analyzer = MessageAnalyzer()
             analysis_result = await analyzer.analyze_messages(messages, str(group_id), debug_mode=debug)
             
-            # 检查分析结果是否有效（至少有一项内容）
-            has_content = (
-                analysis_result.topics or 
-                analysis_result.user_titles or 
-                analysis_result.golden_quotes
-            )
+            # 按实际开启的分析项检查完整性
+            expected_items: dict[str, list] = {}
+            if plugin_config.topic_analysis_enabled:
+                expected_items["topics"] = analysis_result.topics
+            if plugin_config.user_title_analysis_enabled:
+                expected_items["user_titles"] = analysis_result.user_titles
+            if plugin_config.golden_quote_analysis_enabled:
+                expected_items["golden_quotes"] = analysis_result.golden_quotes
+
+            filled = {k: v for k, v in expected_items.items() if v}
+            missing = [k for k, v in expected_items.items() if not v]
             
-            if not has_content and not debug:
-                logger.warning(f"群 {group_id} LLM 分析返回空结果，可能需要重试")
-                # 空结果也算一种"软失败"，但不抛异常
-                # 如果还有重试次数，继续尝试
+            if not filled and not debug:
+                # 全部为空 → 触发外层重试
+                logger.warning(
+                    f"群 {group_id} LLM 分析返回全空结果 (缺失: {missing})，触发整体重试"
+                )
                 if i < retries - 1:
                     await asyncio.sleep(2 * (i + 1))
                     continue
+            elif missing and not debug:
+                # 部分缺失 → 警告但继续渲染（避免因单项反复失败而浪费更多 token）
+                logger.warning(
+                    f"群 {group_id} LLM 分析部分缺失: {missing}，已有: {list(filled.keys())}。"
+                    f"子任务内部已重试过，继续渲染。"
+                )
             
             break  # 有内容或已耗尽重试次数
             

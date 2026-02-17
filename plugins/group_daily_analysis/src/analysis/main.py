@@ -13,7 +13,7 @@ from ..models import (
     UserTitle, GoldenQuote, TokenUsage, EmojiStatistics
 )
 from ..visualization.charts import ActivityVisualizer
-from ..utils.llm import call_chat_completion, fix_json
+from ..utils.llm import call_chat_completion, fix_json, _is_retryable_error
 from .user_analyzer import UserAnalyzer
 
 T = TypeVar('T')
@@ -37,8 +37,57 @@ class MessageAnalyzer:
         self.activity_visualizer = ActivityVisualizer()
         self.user_analyzer = UserAnalyzer()
 
+    async def _run_subtask_with_retry(
+        self,
+        name: str,
+        coro_factory: Callable[[], Any],
+        max_retries: int = 3,
+        base_delay: float = 3.0,
+    ) -> tuple[list, TokenUsage]:
+        """
+        对单个分析子任务进行独立重试包装
+
+        只有网络类/可重试异常才触发重试，JSON 解析等逻辑错误直接降级返回空。
+
+        Args:
+            name: 子任务名称（用于日志）
+            coro_factory: 一个无参 callable，每次调用返回一个新的 coroutine
+            max_retries: 最大重试次数
+            base_delay: 基础退避延迟(秒)，实际延迟 = base_delay * attempt
+        """
+        last_error: Exception | None = None
+
+        for attempt in range(max_retries):
+            try:
+                result = await coro_factory()
+                if attempt > 0:
+                    logger.info(f"子任务[{name}] 在第 {attempt + 1} 次尝试后成功")
+                return result
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+                # JSON 解析 / 数据结构错误：属于 LLM 输出质量问题，重试意义不大
+                logger.warning(f"子任务[{name}] 数据解析失败，不重试: {e}")
+                return [], TokenUsage()
+            except Exception as e:
+                last_error = e
+                if _is_retryable_error(e) and attempt < max_retries - 1:
+                    delay = base_delay * (attempt + 1)
+                    logger.warning(
+                        f"子任务[{name}] 失败 ({type(e).__name__}: {e})，"
+                        f"{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})..."
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                # 不可重试的异常，或已耗尽重试次数
+                break
+
+        # 所有重试用尽或遇到不可重试异常
+        if last_error:
+            tb = "".join(traceback.format_exception(type(last_error), last_error, last_error.__traceback__))
+            logger.error(f"子任务[{name}] 在 {max_retries} 次尝试后仍失败: {last_error}\n{tb}")
+        return [], TokenUsage()
+
     async def analyze_messages(self, messages: list, group_id: str, debug_mode: bool = False) -> AnalysisResult:
-        """主分析流程"""
+        """主分析流程（带子任务独立重试）"""
         # 0. Debug 模式下的统计数据处理
         if debug_mode and not messages:
             stats = self._generate_mock_statistics()
@@ -70,66 +119,90 @@ class MessageAnalyzer:
                 user_titles=[]
             )
 
-        # 3. LLM 分析 (Map-Reduce / Direct)
-        tasks = []
+        # 3. LLM 分析 — 每个子任务独立重试，三者并发执行
+        subtasks = []
+        subtask_names: list[str | None] = []  # 用于最后的完整性检查
         
         # 话题分析
         if plugin_config.topic_analysis_enabled:
-            tasks.append(self._analyze_with_strategy(
-                text_messages, 
-                self._analyze_topics_single, 
-                self._merge_topics
+            subtasks.append(self._run_subtask_with_retry(
+                "话题分析",
+                lambda: self._analyze_with_strategy(
+                    text_messages, 
+                    self._analyze_topics_single, 
+                    self._merge_topics
+                ),
             ))
+            subtask_names.append("topics")
         else:
-            tasks.append(asyncio.sleep(0, result=([], TokenUsage())))
+            subtasks.append(asyncio.sleep(0, result=([], TokenUsage())))
+            subtask_names.append(None)
 
         # 用户称号
         # 注意：用户称号分析需要原始消息(raw messages)来做 user_id 统计；
         # text_messages 仅用于拼接 prompt 文本。
         if plugin_config.user_title_analysis_enabled:
-            tasks.append(self._analyze_user_titles_safe(messages, text_messages))
+            subtasks.append(self._run_subtask_with_retry(
+                "用户称号",
+                lambda: self._analyze_user_titles_safe(messages, text_messages),
+            ))
+            subtask_names.append("user_titles")
         else:
-            tasks.append(asyncio.sleep(0, result=([], TokenUsage())))
+            subtasks.append(asyncio.sleep(0, result=([], TokenUsage())))
+            subtask_names.append(None)
 
         # 金句分析
         if plugin_config.golden_quote_analysis_enabled:
-            tasks.append(self._analyze_with_strategy(
-                text_messages,
-                self._analyze_golden_quotes_single,
-                self._merge_golden_quotes
+            subtasks.append(self._run_subtask_with_retry(
+                "金句分析",
+                lambda: self._analyze_with_strategy(
+                    text_messages,
+                    self._analyze_golden_quotes_single,
+                    self._merge_golden_quotes
+                ),
             ))
+            subtask_names.append("golden_quotes")
         else:
-            tasks.append(asyncio.sleep(0, result=([], TokenUsage())))
+            subtasks.append(asyncio.sleep(0, result=([], TokenUsage())))
+            subtask_names.append(None)
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*subtasks, return_exceptions=True)
 
-        # 把子任务异常显式打出来，避免“模块悄悄消失”
-        for idx, res in enumerate(results):
-            if isinstance(res, Exception):
-                tb = "".join(traceback.format_exception(type(res), res, res.__traceback__))
-                logger.error(f"分析子任务失败 idx={idx}: {res}\n{tb}")
-
+        # 解包结果
         topics = []
         user_titles = []
         golden_quotes = []
 
-        # 优化4：详细的 Token 统计（拆分 prompt / completion / total）
         topic_usage = TokenUsage()
         user_title_usage = TokenUsage()
         golden_quote_usage = TokenUsage()
 
-        # Unpack results
         # 0: Topics
         if isinstance(results[0], tuple):
             topics, topic_usage = results[0]
+        elif isinstance(results[0], Exception):
+            logger.error(f"话题分析子任务异常: {results[0]}")
 
         # 1: User Titles
         if isinstance(results[1], tuple):
             user_titles, user_title_usage = results[1]
+        elif isinstance(results[1], Exception):
+            logger.error(f"用户称号子任务异常: {results[1]}")
 
         # 2: Golden Quotes
         if isinstance(results[2], tuple):
             golden_quotes, golden_quote_usage = results[2]
+        elif isinstance(results[2], Exception):
+            logger.error(f"金句分析子任务异常: {results[2]}")
+
+        # 完整性检查：打印哪些已开启的分析项仍为空
+        missing_parts = []
+        items_map = {"topics": topics, "user_titles": user_titles, "golden_quotes": golden_quotes}
+        for sname in subtask_names:
+            if sname and not items_map.get(sname):
+                missing_parts.append(sname)
+        if missing_parts:
+            logger.warning(f"以下分析项在重试后仍为空: {missing_parts}")
 
         # 汇总 TokenUsage
         stats.token_usage = TokenUsage(
@@ -172,14 +245,12 @@ class MessageAnalyzer:
         """
         total_len = sum(len(m["content"]) for m in messages)
 
-        # Direct Mode
+        # Direct Mode（也带重试，避免网络波动导致分析缺失）
         if total_len <= plugin_config.max_input_length:
             text = self._msgs_to_text(messages)
-            try:
-                return await single_func(text)
-            except Exception as e:
-                logger.error(f"直接分析模式失败: {e}")
-                return [], TokenUsage()
+            return await self._run_chunk_with_retry(
+                single_func, text, chunk_index=0, max_retries=chunk_retry_count
+            )
 
         # Map-Reduce Mode
         logger.info(f"消息长度 ({total_len}) 超过阈值，启用 Map-Reduce 分段分析...")
@@ -317,18 +388,14 @@ class MessageAnalyzer:
             max_topics=plugin_config.max_topics,
             messages_text=messages_text,
         )
-        try:
-            # Topic analysis needs structure, low temp
-            content, tokens = await call_chat_completion(
-                [{"role": "user", "content": prompt}], 
-                temperature=0.1
-            )
-            json_str = fix_json(content)
-            data = json.loads(json_str)
-            return [SummaryTopic(**item) for item in data], tokens
-        except Exception as e:
-            logger.error(f"话题分析(Single)失败: {e}")
-            return [], TokenUsage()
+        # 不再 catch 异常 - 由上层 _run_subtask_with_retry / _run_chunk_with_retry 负责重试
+        content, tokens = await call_chat_completion(
+            [{"role": "user", "content": prompt}], 
+            temperature=0.1
+        )
+        json_str = fix_json(content)
+        data = json.loads(json_str)
+        return [SummaryTopic(**item) for item in data], tokens
 
     async def _analyze_golden_quotes_single(self, messages_text: str) -> tuple[list[GoldenQuote], TokenUsage]:
         prompt = safe_prompt_format(
@@ -336,18 +403,14 @@ class MessageAnalyzer:
             max_golden_quotes=plugin_config.max_golden_quotes,
             messages_text=messages_text,
         )
-        try:
-            # Golden quotes need creativity, high temp
-            content, tokens = await call_chat_completion(
-                [{"role": "user", "content": prompt}],
-                temperature=1.1
-            )
-            json_str = fix_json(content)
-            data = json.loads(json_str)
-            return [GoldenQuote(**item) for item in data], tokens
-        except Exception as e:
-            logger.error(f"金句分析(Single)失败: {e}")
-            return [], TokenUsage()
+        # 不再 catch 异常 - 由上层 _run_subtask_with_retry / _run_chunk_with_retry 负责重试
+        content, tokens = await call_chat_completion(
+            [{"role": "user", "content": prompt}],
+            temperature=1.1
+        )
+        json_str = fix_json(content)
+        data = json.loads(json_str)
+        return [GoldenQuote(**item) for item in data], tokens
 
     async def _analyze_user_titles_safe(self, raw_messages: list, text_messages: list) -> tuple[list[UserTitle], TokenUsage]:
         """
@@ -401,43 +464,39 @@ class MessageAnalyzer:
 {base_prompt}
 """
 
-        try:
-            content, tokens = await call_chat_completion(
-                [{"role": "user", "content": prompt}],
-                temperature=0.1,
-            )
-            json_str = fix_json(content)
-            data = json.loads(json_str)
+        # 不再 catch 异常 - 由上层 _run_subtask_with_retry 负责重试
+        content, tokens = await call_chat_completion(
+            [{"role": "user", "content": prompt}],
+            temperature=0.1,
+        )
+        json_str = fix_json(content)
+        data = json.loads(json_str)
 
-            # 4) 尝试补齐 qq（如果 LLM 没给）
-            user_titles: list[UserTitle] = []
-            for item in data:
-                name = item.get("name", "")
-                qq = item.get("qq", 0)
+        # 4) 尝试补齐 qq（如果 LLM 没给）
+        user_titles: list[UserTitle] = []
+        for item in data:
+            name = item.get("name", "")
+            qq = item.get("qq", 0)
 
-                if not qq:
-                    for u in top_users:
-                        if name and name in {_display_name(u), u.get("nickname", ""), u.get("card", "")}:
-                            uid = u.get("user_id", "")
-                            qq = int(uid) if str(uid).isdigit() else 0
-                            break
+            if not qq:
+                for u in top_users:
+                    if name and name in {_display_name(u), u.get("nickname", ""), u.get("card", "")}:
+                        uid = u.get("user_id", "")
+                        qq = int(uid) if str(uid).isdigit() else 0
+                        break
 
-                user_titles.append(
-                    UserTitle(
-                        name=name,
-                        qq=qq or None,
-                        title=item.get("title", ""),
-                        mbti=item.get("mbti", ""),
-                        reason=item.get("reason", ""),
-                    )
+            user_titles.append(
+                UserTitle(
+                    name=name,
+                    qq=qq or None,
+                    title=item.get("title", ""),
+                    mbti=item.get("mbti", ""),
+                    reason=item.get("reason", ""),
                 )
+            )
 
-            logger.info(f"用户称号分析完成，生成了 {len(user_titles)} 个称号")
-            return user_titles, tokens
-        except Exception as e:
-            tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-            logger.error(f"用户称号分析失败: {e}\n{tb}")
-            return [], TokenUsage()
+        logger.info(f"用户称号分析完成，生成了 {len(user_titles)} 个称号")
+        return user_titles, tokens
 
     def _norm_key(self, s: str) -> str:
         return re.sub(r"\s+", " ", (s or "").strip()).lower()

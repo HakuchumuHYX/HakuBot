@@ -220,6 +220,9 @@ async def _call_image_generation_google(
         )
 
     parts = _openai_content_to_gemini_parts(content_list)
+    # 将画风约束直接注入 user 消息，提高模型对画风的遵从度
+    style_hint = {"text": "（画风要求：必须是二次元/动漫/manga 风格，禁止写实/照片风格）"}
+    parts.insert(0, style_hint)
     payload: dict = {
         "contents": [{"role": "user", "parts": parts}],
         "systemInstruction": {"parts": [{"text": system_instruction}]},
@@ -747,11 +750,14 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
                 + extra_context
             )
 
+        # 将画风约束直接注入 user 消息，提高模型对画风的遵从度
+        style_hint = {"type": "text", "text": "（画风要求：必须是二次元/动漫/manga 风格，禁止写实/照片风格）"}
+        augmented_items = [style_hint] + (items if isinstance(items, list) else [{"type": "text", "text": str(items)}])
         payload = {
             "model": plugin_config.image_model,
             "messages": [
                 {"role": "system", "content": system_instruction},
-                {"role": "user", "content": items},
+                {"role": "user", "content": augmented_items},
             ],
         }
 
