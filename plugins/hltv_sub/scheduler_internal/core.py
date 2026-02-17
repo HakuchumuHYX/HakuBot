@@ -298,14 +298,27 @@ class HLTVScheduler:
                     f"(hints包含TBD时间)"
                 )
 
+                hint_by_id = {h.match_id: h for h in hints}
+
                 # 1) 自适应轮询：优先使用 hints（即使 TBD 也能拿到 data-unix 时间）
+                #    额外：若检测到“阶段2（时间不可解析且非TBD且非LIVE）”，视为即将开始，next_minutes_until=0，避免降频
                 local_next: Optional[int] = None
                 for h in hints:
                     if h.is_live:
                         continue
+
                     match_time = self._parse_match_time(h.date, h.time)
                     if not match_time:
+                        # 阶段2：时间消失/不可解析，但队伍已确定（非TBD），通常意味着“快开了但还没 LIVE”
+                        if not h.is_tbd:
+                            local_next = 0 if local_next is None else min(local_next, 0)
+                            next_minutes_until = (
+                                0
+                                if next_minutes_until is None
+                                else min(next_minutes_until, 0)
+                            )
                         continue
+
                     seconds_until = (match_time - now).total_seconds()
                     if seconds_until > 0:
                         minutes_until = int(seconds_until // 60)
@@ -318,21 +331,38 @@ class HLTVScheduler:
                     f"[HLTV Scheduler] 赛事 {event_id} next_minutes_until(hints)={local_next}"
                 )
 
-                # 2) 开赛提醒：改为“检测到比赛 LIVE 后再提醒”
-                # 避免 HLTV 开赛时间更新不及时导致提醒时间与实际开赛不一致
+                # 2) 开赛提醒：阶段2（时间不可解析）或 阶段3（LIVE）任一满足即提醒一次
                 if not matches:
                     continue
 
                 for match in matches:
-                    # 只在 HLTV 标记为 LIVE 后提醒
-                    if not match.is_live:
-                        continue
-
                     # 去重：同一场比赛只提醒一次
                     if data_manager.is_start_notified(match.id):
                         continue
 
-                    # LIVE 提醒不依赖网页显示时间，直接用当前时间占位
+                    should_remind = False
+                    remind_reason = ""
+
+                    if match.is_live:
+                        # 阶段3：HLTV 标记为 LIVE
+                        should_remind = True
+                        remind_reason = "stage3_live"
+                    else:
+                        # 阶段2：HLTV 隐藏/清空了明确时间（不可解析），但还没 LIVE
+                        h = hint_by_id.get(match.id)
+                        if h and (not h.is_live) and (not h.is_tbd):
+                            if self._parse_match_time(h.date, h.time) is None:
+                                should_remind = True
+                                remind_reason = "stage2_no_time"
+
+                    if not should_remind:
+                        continue
+
+                    logger.info(
+                        f"[HLTV Scheduler] 开赛提醒触发: match_id={match.id}, reason={remind_reason}"
+                    )
+
+                    # 阶段2/阶段3：都按“LIVE”模板推送（用当前时间占位，minutes_until=0）
                     upcoming.append(
                         UpcomingMatch(
                             match_id=match.id,

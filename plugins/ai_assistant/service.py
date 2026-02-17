@@ -207,9 +207,9 @@ async def _call_image_generation_google(
     )
 
     system_instruction = (
-        "Please generate an image based on the user's request.\n"
+        "You are an AI specialized in generating 2D anime/manga style art.\n"
+        "The style MUST be 2D anime/manga. Do NOT generate realistic or photorealistic images.\n"
         "If you also output text, keep it minimal.\n"
-        "Prefer manga/anime style.\n"
     )
     if extra_context:
         system_instruction += (
@@ -728,13 +728,14 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
 
     async def _request_once(items: List[dict]) -> str:
         system_instruction = (
-            "Please generate an image based on the user's request.\n"
+            "You are an AI specialized in generating 2D anime/manga style art.\n"
+            "The style MUST be 2D anime/manga. Do NOT generate realistic or photorealistic images.\n"
             "Output policy:\n"
             "1) If successful: return ONLY a Markdown image link: ![image](https://...)\n"
             "2) If you cannot comply (e.g. safety/policy/unsupported): return ONLY a JSON object like:\n"
             '   {"error":{"type":"safety_refusal","message":"...","suggestion":"..."} }\n'
             "Do not output any other text.\n"
-            "生成的图片画风用漫画/二次元画风为佳。"
+            "生成的图片画风必须是二次元/动漫风格。禁止生成写实/光影写实的图片。"
         )
 
         if extra_context:
