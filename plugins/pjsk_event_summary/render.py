@@ -36,9 +36,38 @@ LIST_TEMPLATE = """
         white-space: pre-wrap;     /* 支持换行符 \n */
         line-height: 1.6;
     }
+
+    /* 全屏水印样式 */
+    .watermark-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 9999;
+    }
 </style>
 </head>
-<body>
+<body style="position: relative;">
+{% if global_watermark %}
+<div class="watermark-overlay">
+    <svg width="100%" height="100%">
+        <defs>
+            <pattern id="watermark-pattern" width="400" height="300" patternUnits="userSpaceOnUse">
+                <text x="200" y="150" text-anchor="middle" dominant-baseline="middle" 
+                      transform="rotate(-30, 200, 150)" 
+                      fill="rgba(255, 255, 255, 0.15)" 
+                      font-size="24" font-family="Microsoft YaHei" font-weight="bold">
+                    {{ global_watermark }}
+                </text>
+            </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#watermark-pattern)" />
+    </svg>
+</div>
+{% endif %}
+
 <div class="container">
     <div class="header">
         <h1>剧情活动列表 (仅显示最新20条，可搭配”查活动“命令查询指定活动ID)</h1>
@@ -98,9 +127,38 @@ DETAIL_TEMPLATE = """
         white-space: pre-wrap;     /* 支持换行符 \n */
         line-height: 1.6;
     }
+
+    /* 全屏水印样式 */
+    .watermark-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 9999;
+    }
 </style>
 </head>
-<body>
+<body style="position: relative;">
+{% if global_watermark %}
+<div class="watermark-overlay">
+    <svg width="100%" height="100%">
+        <defs>
+            <pattern id="watermark-pattern" width="400" height="300" patternUnits="userSpaceOnUse">
+                <text x="200" y="150" text-anchor="middle" dominant-baseline="middle" 
+                      transform="rotate(-30, 200, 150)" 
+                      fill="rgba(255, 255, 255, 0.15)" 
+                      font-size="24" font-family="Microsoft YaHei" font-weight="bold">
+                    {{ global_watermark }}
+                </text>
+            </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#watermark-pattern)" />
+    </svg>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="hero">
         <div class="event-id">Event #{{ data.event_id }}</div>
@@ -134,13 +192,13 @@ DETAIL_TEMPLATE = """
 """
 
 
-async def render_event_list_pic(events: List[EventSimple], watermark: str = "") -> bytes:
+async def render_event_list_pic(events: List[EventSimple], watermark: str = "", global_watermark: str = "") -> bytes:
     template = Template(LIST_TEMPLATE)
-    html = template.render(events=events, watermark=watermark)
+    html = template.render(events=events, watermark=watermark, global_watermark=global_watermark)
     return await html_to_pic(html=html, viewport={"width": 850, "height": 1000})
 
 
-async def render_event_detail_pic(data: EventDetail, watermark: str = "") -> bytes:
+async def render_event_detail_pic(data: EventDetail, watermark: str = "", global_watermark: str = "") -> bytes:
     template = Template(DETAIL_TEMPLATE)
-    html = template.render(data=data, watermark=watermark)
+    html = template.render(data=data, watermark=watermark, global_watermark=global_watermark)
     return await html_to_pic(html=html, viewport={"width": 750, "height": 1000}, wait=2)
