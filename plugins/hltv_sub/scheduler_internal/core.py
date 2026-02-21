@@ -22,6 +22,7 @@ from ..render import render_reminder, render_stats
 from .constants import (
     ADAPTIVE_INTERVAL_TABLE,
     DEFAULT_INTERVAL_MINUTES,
+    OVERDUE_THRESHOLD_MINUTES,
     POST_LIVE_GRACE_MINUTES,
     REMINDER_WINDOW_MAX,
     REMINDER_WINDOW_MIN,
@@ -326,12 +327,23 @@ class HLTVScheduler:
                             local_next = minutes_until
                         if next_minutes_until is None or minutes_until < next_minutes_until:
                             next_minutes_until = minutes_until
+                    else:
+                        # Stage1 (overdue): 比赛预定时间已过但未标 LIVE
+                        # 在阈值窗口内保持高频轮询，避免 HLTV 延迟标 LIVE 导致降频
+                        elapsed_minutes = abs(seconds_until) / 60
+                        if elapsed_minutes <= OVERDUE_THRESHOLD_MINUTES:
+                            local_next = 0 if local_next is None else min(local_next, 0)
+                            next_minutes_until = (
+                                0
+                                if next_minutes_until is None
+                                else min(next_minutes_until, 0)
+                            )
 
                 logger.info(
                     f"[HLTV Scheduler] 赛事 {event_id} next_minutes_until(hints)={local_next}"
                 )
 
-                # 2) 开赛提醒：阶段2（时间不可解析）或 阶段3（LIVE）任一满足即提醒一次
+                # 2) 开赛提醒：阶段1（overdue：时间已过未标LIVE） / 阶段2（时间不可解析） / 阶段3（LIVE）任一满足即提醒一次
                 if not matches:
                     continue
 
@@ -348,12 +360,19 @@ class HLTVScheduler:
                         should_remind = True
                         remind_reason = "stage3_live"
                     else:
-                        # 阶段2：HLTV 隐藏/清空了明确时间（不可解析），但还没 LIVE
                         h = hint_by_id.get(match.id)
                         if h and (not h.is_live) and (not h.is_tbd):
-                            if self._parse_match_time(h.date, h.time) is None:
+                            match_time = self._parse_match_time(h.date, h.time)
+                            if match_time is None:
+                                # 阶段2：HLTV 隐藏/清空了明确时间（不可解析），但还没 LIVE
                                 should_remind = True
                                 remind_reason = "stage2_no_time"
+                            else:
+                                # 阶段1 (overdue)：预定时间已过但 HLTV 未标 LIVE
+                                elapsed = (now - match_time).total_seconds()
+                                if 0 < elapsed <= OVERDUE_THRESHOLD_MINUTES * 60:
+                                    should_remind = True
+                                    remind_reason = "stage1_overdue"
 
                     if not should_remind:
                         continue

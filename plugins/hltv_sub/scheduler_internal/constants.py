@@ -27,6 +27,9 @@ ADAPTIVE_INTERVAL_TABLE: list[tuple[int, int]] = [
 # 赛后冷却期（分钟）：_has_live_match 从 True 变 False 后，仍保持高频轮询的时长
 POST_LIVE_GRACE_MINUTES = 30
 
+# 比赛超时阈值（分钟）：预定时间已过但 HLTV 未标 LIVE，在此窗口内视为"已开赛"
+OVERDUE_THRESHOLD_MINUTES = 30
+
 EVENT_STATE = Literal["ONGOING", "UPCOMING", "NOT_ONGOING", "ENDED", "UNKNOWN"]
 
 # 开赛提醒窗口（分钟）
