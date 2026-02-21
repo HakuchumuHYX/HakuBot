@@ -63,13 +63,11 @@ class MessageAnalyzer:
                 if attempt > 0:
                     logger.info(f"子任务[{name}] 在第 {attempt + 1} 次尝试后成功")
                 return result
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
-                # JSON 解析 / 数据结构错误：属于 LLM 输出质量问题，重试意义不大
-                logger.warning(f"子任务[{name}] 数据解析失败，不重试: {e}")
-                return [], TokenUsage()
             except Exception as e:
                 last_error = e
-                if _is_retryable_error(e) and attempt < max_retries - 1:
+                # JSON 解析等数据结构错误，现在也视为可重试的异常
+                is_retryable = _is_retryable_error(e) or isinstance(e, (json.JSONDecodeError, KeyError, TypeError, ValueError))
+                if is_retryable and attempt < max_retries - 1:
                     delay = base_delay * (attempt + 1)
                     logger.warning(
                         f"子任务[{name}] 失败 ({type(e).__name__}: {e})，"

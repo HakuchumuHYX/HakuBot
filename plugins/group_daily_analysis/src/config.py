@@ -72,7 +72,8 @@ class PluginConfig(BaseModel):
         "    \"contributors\": [\"用户1\", \"用户2\"],\n"
         "    \"detail\": \"具体描述（包含关键信息和结论）\"\n"
         "  }\n"
-        "]"
+        "]\n\n"
+        "**注意**：请以纯正的 JSON 数组格式返回，绝不能包含 markdown 代码块标记(即前后不要有 ```json 和 ```)。"
     )
     
     user_title_analysis_prompt: str
@@ -100,7 +101,8 @@ class PluginConfig(BaseModel):
         "    \"sender\": \"发言人昵称\",\n"
         "    \"reason\": \"你的毒舌辣评\"\n"
         "  }\n"
-        "]"
+        "]\n\n"
+        "**注意**：请以纯正的 JSON 数组格式返回，绝不能包含 markdown 代码块标记(即前后不要有 ```json 和 ```)。"
     )
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
