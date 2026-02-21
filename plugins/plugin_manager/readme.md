@@ -42,6 +42,9 @@ AI 点歌：ai_assistant:music
 搜图功能：lunabot_imgexp:search  
 推特图片：lunabot_imgexp:ximg  
 每日群总结：group_daily_analysis  
+每日事件总结：group_daily_analysis:topics
+群友画像总结：group_daily_analysis:user_titles
+金句锐评：group_daily_analysis:golden_quotes
 来张涩图：setu_plugin
 存活统计：alive_stat
 PJSK国服活动预测：cnsk_predict

@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Callable, TypeVar, Any
 from nonebot.log import logger
+from plugins.plugin_manager.enable import is_feature_enabled
 
 from ..config import plugin_config
 from ..models import (
@@ -117,18 +118,31 @@ class MessageAnalyzer:
                 user_titles=[]
             )
 
+        # 自适应数量计算：基于有效文本消息数量
+        msg_count = len(text_messages)
+        dynamic_topics = min(10, plugin_config.max_topics + msg_count // 500)
+        dynamic_quotes = min(10, plugin_config.max_golden_quotes + msg_count // 500)
+        dynamic_titles = min(15, plugin_config.max_user_titles + msg_count // 500)
+        
+        logger.info(f"自适应数量计算：话题 {dynamic_topics}，称号 {dynamic_titles}，金句 {dynamic_quotes} (有效消息数: {msg_count})")
+
         # 3. LLM 分析 — 每个子任务独立重试，三者并发执行
         subtasks = []
         subtask_names: list[str | None] = []  # 用于最后的完整性检查
         
         # 话题分析
-        if plugin_config.topic_analysis_enabled:
+        if plugin_config.topic_analysis_enabled and is_feature_enabled("group_daily_analysis", "topics", group_id, "0"):
+            async def topics_single(text):
+                return await self._analyze_topics_single(text, dynamic_topics)
+            async def topics_merge(items):
+                return await self._merge_topics(items, dynamic_topics)
+                
             subtasks.append(self._run_subtask_with_retry(
                 "话题分析",
                 lambda: self._analyze_with_strategy(
                     text_messages, 
-                    self._analyze_topics_single, 
-                    self._merge_topics
+                    topics_single, 
+                    topics_merge
                 ),
             ))
             subtask_names.append("topics")
@@ -139,10 +153,10 @@ class MessageAnalyzer:
         # 用户称号
         # 注意：用户称号分析需要原始消息(raw messages)来做 user_id 统计；
         # text_messages 仅用于拼接 prompt 文本。
-        if plugin_config.user_title_analysis_enabled:
+        if plugin_config.user_title_analysis_enabled and is_feature_enabled("group_daily_analysis", "user_titles", group_id, "0"):
             subtasks.append(self._run_subtask_with_retry(
                 "用户称号",
-                lambda: self._analyze_user_titles_safe(messages, text_messages),
+                lambda: self._analyze_user_titles_safe(messages, text_messages, dynamic_titles),
             ))
             subtask_names.append("user_titles")
         else:
@@ -150,13 +164,18 @@ class MessageAnalyzer:
             subtask_names.append(None)
 
         # 金句分析
-        if plugin_config.golden_quote_analysis_enabled:
+        if plugin_config.golden_quote_analysis_enabled and is_feature_enabled("group_daily_analysis", "golden_quotes", group_id, "0"):
+            async def quotes_single(text):
+                return await self._analyze_golden_quotes_single(text, dynamic_quotes)
+            async def quotes_merge(items):
+                return await self._merge_golden_quotes(items, dynamic_quotes)
+                
             subtasks.append(self._run_subtask_with_retry(
                 "金句分析",
                 lambda: self._analyze_with_strategy(
                     text_messages,
-                    self._analyze_golden_quotes_single,
-                    self._merge_golden_quotes
+                    quotes_single,
+                    quotes_merge
                 ),
             ))
             subtask_names.append("golden_quotes")
@@ -380,10 +399,10 @@ class MessageAnalyzer:
 
     # --- Single Analyzers (Map) ---
 
-    async def _analyze_topics_single(self, messages_text: str) -> tuple[list[SummaryTopic], TokenUsage]:
+    async def _analyze_topics_single(self, messages_text: str, max_topics: int) -> tuple[list[SummaryTopic], TokenUsage]:
         prompt = safe_prompt_format(
             plugin_config.topic_analysis_prompt,
-            max_topics=plugin_config.max_topics,
+            max_topics=max_topics,
             messages_text=messages_text,
         )
         # 不再 catch 异常 - 由上层 _run_subtask_with_retry / _run_chunk_with_retry 负责重试
@@ -395,10 +414,10 @@ class MessageAnalyzer:
         data = json.loads(json_str)
         return [SummaryTopic(**item) for item in data], tokens
 
-    async def _analyze_golden_quotes_single(self, messages_text: str) -> tuple[list[GoldenQuote], TokenUsage]:
+    async def _analyze_golden_quotes_single(self, messages_text: str, max_golden_quotes: int) -> tuple[list[GoldenQuote], TokenUsage]:
         prompt = safe_prompt_format(
             plugin_config.golden_quote_analysis_prompt,
-            max_golden_quotes=plugin_config.max_golden_quotes,
+            max_golden_quotes=max_golden_quotes,
             messages_text=messages_text,
         )
         # 不再 catch 异常 - 由上层 _run_subtask_with_retry / _run_chunk_with_retry 负责重试
@@ -410,7 +429,7 @@ class MessageAnalyzer:
         data = json.loads(json_str)
         return [GoldenQuote(**item) for item in data], tokens
 
-    async def _analyze_user_titles_safe(self, raw_messages: list, text_messages: list) -> tuple[list[UserTitle], TokenUsage]:
+    async def _analyze_user_titles_safe(self, raw_messages: list, text_messages: list, max_titles: int) -> tuple[list[UserTitle], TokenUsage]:
         """
         用户称号分析（安全版）
 
@@ -421,7 +440,7 @@ class MessageAnalyzer:
         # 1) 用 raw_messages 统计活跃用户（这里才能拿到 user_id）
         user_analysis = self.user_analyzer.analyze_users(raw_messages)
         top_users = self.user_analyzer.get_top_users(
-            user_analysis, limit=plugin_config.max_user_titles
+            user_analysis, limit=max_titles
         )
 
         if not top_users:
@@ -453,7 +472,11 @@ class MessageAnalyzer:
             ]
         )
 
-        base_prompt = safe_prompt_format(plugin_config.user_title_analysis_prompt, users_text=text)
+        base_prompt = safe_prompt_format(
+            plugin_config.user_title_analysis_prompt, 
+            users_text=text,
+            max_user_titles=max_titles
+        )
 
         prompt = f"""以下是群聊中最活跃的用户（按消息数量排序）。请**优先**为这些用户生成称号，并尽量在输出中包含 qq（若模板要求输出 qq 字段）：
 
@@ -604,7 +627,7 @@ class MessageAnalyzer:
 
     # --- Mergers (Reduce) ---
 
-    async def _merge_topics(self, topics: list[SummaryTopic]) -> tuple[list[SummaryTopic], TokenUsage]:
+    async def _merge_topics(self, topics: list[SummaryTopic], max_topics: int) -> tuple[list[SummaryTopic], TokenUsage]:
         if not topics:
             return [], TokenUsage()
 
@@ -617,7 +640,7 @@ class MessageAnalyzer:
 
         prompt = safe_prompt_format(
             plugin_config.topic_merge_prompt,
-            max_topics=plugin_config.max_topics,
+            max_topics=max_topics,
             topics_text=topics_text,
         )
 
@@ -648,16 +671,16 @@ class MessageAnalyzer:
                 if not isinstance(data, list):
                     raise ValueError("Reduce 返回 JSON 不是数组")
                 merged = [SummaryTopic(**item) for item in data]
-                return merged[: plugin_config.max_topics], total_usage
+                return merged[: max_topics], total_usage
             except Exception as e:
                 last_exc = e
 
         # 仍失败：本地兜底合并（不丢数据）
         logger.warning(f"话题合并(Reduce)降级处理，改用本地合并结果: {last_exc}")
-        merged_local = self._local_merge_topics(topics)[: plugin_config.max_topics]
+        merged_local = self._local_merge_topics(topics)[: max_topics]
         return merged_local, total_usage
 
-    async def _merge_golden_quotes(self, quotes: list[GoldenQuote]) -> tuple[list[GoldenQuote], TokenUsage]:
+    async def _merge_golden_quotes(self, quotes: list[GoldenQuote], max_golden_quotes: int) -> tuple[list[GoldenQuote], TokenUsage]:
         if not quotes:
             return [], TokenUsage()
 
@@ -670,7 +693,7 @@ class MessageAnalyzer:
 
         prompt = safe_prompt_format(
             plugin_config.golden_quote_merge_prompt,
-            max_golden_quotes=plugin_config.max_golden_quotes,
+            max_golden_quotes=max_golden_quotes,
             quotes_text=quotes_text,
         )
 
@@ -701,13 +724,13 @@ class MessageAnalyzer:
                 if not isinstance(data, list):
                     raise ValueError("Reduce 返回 JSON 不是数组")
                 merged = [GoldenQuote(**item) for item in data]
-                return merged[: plugin_config.max_golden_quotes], total_usage
+                return merged[: max_golden_quotes], total_usage
             except Exception as e:
                 last_exc = e
 
         # 仍失败：本地兜底合并（关键：不再 quotes[:N]，避免丢后续分片数据）
         logger.warning(f"金句合并(Reduce)降级处理，改用本地合并结果: {last_exc}")
-        merged_local = self._local_merge_quotes(quotes)[: plugin_config.max_golden_quotes]
+        merged_local = self._local_merge_quotes(quotes)[: max_golden_quotes]
         return merged_local, total_usage
 
     # --- Helpers ---

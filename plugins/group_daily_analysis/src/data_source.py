@@ -56,6 +56,7 @@ class MessageFetcher:
             # 限制最大消息数 (如果配置 > 0)
             if plugin_config.max_messages > 0 and len(valid_messages) > plugin_config.max_messages:
                 # 简单截断，保留最新的 N 条
+                logger.warning(f"获取到的消息数({len(valid_messages)})超过 max_messages({plugin_config.max_messages})，将截断保留最新记录。建议在 config 中调大或设为 0 以防丢失数据。")
                 valid_messages = valid_messages[-plugin_config.max_messages:]
                 
             return valid_messages

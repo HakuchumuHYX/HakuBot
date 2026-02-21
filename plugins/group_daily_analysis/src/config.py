@@ -25,7 +25,7 @@ class LLMConfig(BaseModel):
 class PluginConfig(BaseModel):
     llm: LLMConfig
     max_concurrent_tasks: int = 3
-    max_messages: int = 1000
+    max_messages: int = 0  # 设为 0 表示不限制最大消息数，依靠 LLM 长窗口和自适应算法处理
     analysis_days: int = 1
     auto_analysis_time: str = "09:00"
     enable_auto_analysis: bool = False
@@ -46,7 +46,7 @@ class PluginConfig(BaseModel):
     max_golden_quotes: int = 5
     
     # Map-Reduce Settings
-    max_input_length: int = 6000  # 字符数阈值，超过则分块
+    max_input_length: int = 30000  # 字符数阈值，超过则分块 (建议调大以发挥现代长窗口模型优势)
     
     # Prompts
     topic_analysis_prompt: str

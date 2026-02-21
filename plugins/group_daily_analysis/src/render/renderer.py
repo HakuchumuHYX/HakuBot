@@ -70,7 +70,7 @@ class ReportRenderer:
 
         # 渲染 Titles
         titles_list = []
-        for t in result.user_titles[: plugin_config.max_user_titles]:
+        for t in result.user_titles:
             avatar_data = (
                 await self._get_user_avatar(session, str(t.qq)) if t.qq else None
             )
@@ -92,7 +92,7 @@ class ReportRenderer:
         )
 
         quotes_list = []
-        for q in quotes_src[: plugin_config.max_golden_quotes]:
+        for q in quotes_src:
             avatar_url = (
                 await self._get_user_avatar(session, str(q.qq)) if getattr(q, "qq", None) else None
             )

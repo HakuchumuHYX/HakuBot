@@ -113,7 +113,7 @@ async def call_chat_completion(
         "model": plugin_config.llm.model,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": 4096,  # Reasonable default
+        "max_tokens": 8192,  # 增大输出上限，避免长 JSON 截断
     }
 
     last_exception: Exception | None = None
@@ -136,7 +136,7 @@ async def call_chat_completion(
                         "contents": contents,
                         "generationConfig": {
                             "temperature": float(temperature),
-                            "maxOutputTokens": 4096,
+                            "maxOutputTokens": 8192,
                         },
                     }
                     if system_text:

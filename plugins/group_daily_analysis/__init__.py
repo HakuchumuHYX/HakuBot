@@ -17,7 +17,7 @@ require("nonebot_plugin_apscheduler")
 require("plugins.plugin_manager")
 from nonebot_plugin_apscheduler import scheduler
 
-from plugins.plugin_manager.enable import is_plugin_enabled
+from plugins.plugin_manager.enable import is_plugin_enabled, is_feature_enabled
 from plugins.plugin_manager import plugin_status
 
 from .src.config import plugin_config, save_config
@@ -101,7 +101,8 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
             logger.debug(f"消息序列化失败: {e}")
             raw_message = ""
 
-        db.add_message(
+        await asyncio.to_thread(
+            db.add_message,
             group_id=str(event.group_id),
             user_id=str(event.user_id),
             sender_name=nickname,
@@ -166,7 +167,8 @@ async def record_message_sent(bot: Bot, event: OneBotEvent):
         except Exception:
             content = ""
 
-        db.add_message(
+        await asyncio.to_thread(
+            db.add_message,
             group_id=str(group_id),
             user_id=str(user_id),
             sender_name=sender_name,
@@ -241,11 +243,11 @@ async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = 
             
             # 按实际开启的分析项检查完整性
             expected_items: dict[str, list] = {}
-            if plugin_config.topic_analysis_enabled:
+            if plugin_config.topic_analysis_enabled and is_feature_enabled("group_daily_analysis", "topics", str(group_id), "0"):
                 expected_items["topics"] = analysis_result.topics
-            if plugin_config.user_title_analysis_enabled:
+            if plugin_config.user_title_analysis_enabled and is_feature_enabled("group_daily_analysis", "user_titles", str(group_id), "0"):
                 expected_items["user_titles"] = analysis_result.user_titles
-            if plugin_config.golden_quote_analysis_enabled:
+            if plugin_config.golden_quote_analysis_enabled and is_feature_enabled("group_daily_analysis", "golden_quotes", str(group_id), "0"):
                 expected_items["golden_quotes"] = analysis_result.golden_quotes
 
             filled = {k: v for k, v in expected_items.items() if v}
