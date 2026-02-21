@@ -117,7 +117,7 @@ def _openai_messages_to_gemini(messages: list) -> Tuple[str, List[dict]]:
 async def _call_chat_completion_google(
     messages: list,
     *,
-    max_tokens: int = 1000,
+    max_tokens: Optional[int] = None,
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     top_p: Optional[float] = None,
@@ -129,14 +129,20 @@ async def _call_chat_completion_google(
     system_text, contents = _openai_messages_to_gemini(messages)
     used_model = model or plugin_config.chat_model
 
+    used_max_tokens = max_tokens if max_tokens is not None else plugin_config.chat_max_tokens
+
     payload: dict = {"contents": contents}
 
-    generation_config: dict = {"maxOutputTokens": int(max_tokens)}
+    generation_config: dict = {}
+    if used_max_tokens and used_max_tokens > 0:
+        generation_config["maxOutputTokens"] = int(used_max_tokens)
     if temperature is not None:
         generation_config["temperature"] = float(temperature)
     if top_p is not None:
         generation_config["topP"] = float(top_p)
-    payload["generationConfig"] = generation_config
+        
+    if generation_config:
+        payload["generationConfig"] = generation_config
 
     if system_text:
         payload["systemInstruction"] = {"parts": [{"text": system_text}]}
@@ -610,7 +616,7 @@ async def web_search_with_rewrite(raw_text: str, *, mode: str = "chat") -> Tuple
 async def call_chat_completion(
     messages: list,
     *,
-    max_tokens: int = 1000,
+    max_tokens: Optional[int] = None,
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     top_p: Optional[float] = None,
@@ -620,6 +626,7 @@ async def call_chat_completion(
 
     max_tokens:
       用于控制不同用途的 token 消耗（例如：检索 query 重写通常只需要很少 token）。
+      若为 None，则尝试从 config 中读取；如果配置中也为 0/None，则不限制最大输出。
     model:
       可选覆盖模型（默认使用 plugin_config.chat_model）。
     """
@@ -633,11 +640,15 @@ async def call_chat_completion(
             top_p=top_p,
         )
 
+    used_max_tokens = max_tokens if max_tokens is not None else plugin_config.chat_max_tokens
+
     payload = {
         "model": model or plugin_config.chat_model,
         "messages": messages,
-        "max_tokens": max_tokens,
     }
+
+    if used_max_tokens and used_max_tokens > 0:
+        payload["max_tokens"] = used_max_tokens
 
     if temperature is not None:
         payload["temperature"] = temperature

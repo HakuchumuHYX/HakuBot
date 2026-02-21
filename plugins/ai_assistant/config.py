@@ -65,6 +65,7 @@ class PluginConfig(BaseModel):
 
     music: MusicConfig = MusicConfig()
     chat_model: str = "gpt-3.5-turbo"
+    chat_max_tokens: Optional[int] = 8192
     system_prompt: str = (
         "你好！我是HakuBot的AI助手。请用活泼、亲切且自然的语气回答用户的问题。"
         "避免过于生硬的机器回复。如果回答包含长文本，请注意分段和排版。"
