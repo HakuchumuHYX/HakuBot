@@ -1,6 +1,7 @@
 import base64
 import httpx
 import re
+from typing import Tuple, List
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from .config import plugin_config
 
@@ -106,3 +107,110 @@ def remove_markdown(text: str) -> str:
 
     # 7. 去除多余的首尾空白
     return text.strip()
+
+
+HEADERS = {
+    "Authorization": f"Bearer {plugin_config.api_key}",
+    "Content-Type": "application/json",
+}
+
+
+def get_llm_provider() -> str:
+    return (getattr(plugin_config, "provider", None) or "openai_compatible").strip().lower()
+
+
+def get_google_api_key() -> str:
+    # Gemini Developer API uses API Key (usually via query param ?key=)
+    key = (getattr(plugin_config, "google_api_key", None) or "").strip()
+    if key:
+        return key
+    return (getattr(plugin_config, "api_key", None) or "").strip()
+
+
+def parse_data_url(data_url: str) -> Tuple[str, str]:
+    """
+    Parse `data:<mime>;base64,<data>` to (mime, base64_data)
+    """
+    if not data_url:
+        raise ValueError("Empty data url")
+    if not data_url.startswith("data:"):
+        raise ValueError("Not a data url")
+    # data:image/jpeg;base64,AAAA...
+    header, b64 = data_url.split(",", 1)
+    header = header[5:]  # remove 'data:'
+    mime = header.split(";", 1)[0].strip() if ";" in header else header.strip()
+    if not mime:
+        mime = "application/octet-stream"
+    return mime, b64.strip()
+
+
+def openai_content_to_gemini_parts(content) -> List[dict]:
+    """
+    Convert OpenAI-style content (str or [{type,text}/...]) into Gemini parts.
+    """
+    parts: List[dict] = []
+    if content is None:
+        return parts
+    if isinstance(content, str):
+        t = content.strip()
+        if t:
+            parts.append({"text": t})
+        return parts
+
+    if isinstance(content, list):
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            t = item.get("type")
+            if t == "text":
+                text = (item.get("text") or "").strip()
+                if text:
+                    parts.append({"text": text})
+            elif t == "image_url":
+                url = ((item.get("image_url") or {}).get("url") or "").strip()
+                if not url:
+                    continue
+                # We currently pass `data:*;base64,...` for images
+                mime, b64 = parse_data_url(url)
+                parts.append(
+                    {
+                        "inlineData": {
+                            "mimeType": mime,
+                            "data": b64,
+                        }
+                    }
+                )
+    return parts
+
+
+def openai_messages_to_gemini(messages: list) -> Tuple[str, List[dict]]:
+    """
+    Convert OpenAI messages into (system_text, gemini_contents)
+    """
+    system_chunks: List[str] = []
+    contents: List[dict] = []
+
+    for msg in messages or []:
+        if not isinstance(msg, dict):
+            continue
+        role = (msg.get("role") or "").strip().lower()
+        content = msg.get("content")
+
+        if role == "system":
+            if isinstance(content, str) and content.strip():
+                system_chunks.append(content.strip())
+            elif isinstance(content, list):
+                # if someone puts multimodal content in system, just take texts
+                for p in openai_content_to_gemini_parts(content):
+                    if "text" in p:
+                        system_chunks.append(p["text"])
+            continue
+
+        gemini_role = "user" if role == "user" else "model"  # assistant -> model
+        parts = openai_content_to_gemini_parts(content)
+        if not parts:
+            continue
+
+        contents.append({"role": gemini_role, "parts": parts})
+
+    return "\n".join(system_chunks).strip(), contents

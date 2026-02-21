@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ...service import call_chat_completion
+from ...chat_service import call_chat_completion
 from ..core.model import Song
 from ..core.platform import BaseMusicPlayer
 from ..types import MusicServiceConfig

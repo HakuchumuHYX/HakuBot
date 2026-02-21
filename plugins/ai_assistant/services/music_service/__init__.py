@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from nonebot.log import logger
 
-from ..config import plugin_config
+from ...config import plugin_config
 from .runtime import MusicService
 from .types import MusicServiceConfig
 

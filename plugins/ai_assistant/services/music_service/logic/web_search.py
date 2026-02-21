@@ -6,7 +6,7 @@ from typing import Optional
 
 from nonebot.log import logger
 
-from ...service import format_search_results, tavily_search
+from ...search_service import format_search_results, tavily_search
 from ..types import MusicServiceConfig
 from .models import Plan
 

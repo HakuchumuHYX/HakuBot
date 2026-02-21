@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 
 
@@ -48,6 +48,52 @@ class MusicConfig(BaseModel):
     debug_log_include_web_content: bool = False
 
 
+class ChatConfig(BaseModel):
+    model: str = "gpt-3.5-turbo"
+    max_tokens: Optional[int] = 8192
+    system_prompt: str = (
+        "你好！我是HakuBot的AI助手。请用活泼、亲切且自然的语气回答用户的问题。"
+        "避免过于生硬的机器回复。如果回答包含长文本，请注意分段和排版。"
+    )
+
+
+class ImageConfig(BaseModel):
+    model: str = "dall-e-3"
+    size: Optional[str] = None
+    quality: Optional[str] = None # standard, hd, medium
+    size_param: Optional[str] = None # 1K, 2K, 4K
+    
+    # --- Image generation reliability / safety fallback ---
+    # 当生图返回 content=None / 无 images 时，自动进行“安全改写”并重试，以提升成功率
+    retry_on_empty: bool = True
+    # 最大重试次数（建议 1；过多会增加成本与延迟）
+    retry_max_times: int = 1
+    # 安全改写使用的模型（默认 None 表示复用 chat.model）
+    safe_rewrite_model: Optional[str] = None
+    # 安全改写最大 token
+    safe_rewrite_max_tokens: int = 256
+
+
+class SearchConfig(BaseModel):
+    # --- Web Search (manual command only) ---
+    # Tavily: https://tavily.com/
+    tavily_api_key: Optional[str] = None
+    max_results: int = 5
+    depth: str = "basic"
+
+    # --- Web Search Query Rewrite / Multi-query ---
+    # 启用后，会先对用户输入做“检索 query 提炼/重写”，再进行搜索，避免直接拿长段口语去搜。
+    query_rewrite: bool = True
+    # 允许使用 LLM 进行 query 重写（默认启用；会产生一次额外模型调用，仅在触发条件满足时执行）
+    query_rewrite_use_llm: bool = True
+    # 当原始文本长度超过该阈值时，触发一次 LLM 重写（否则只用启发式提炼）
+    query_rewrite_llm_trigger_len: int = 200
+    # 最终单条 query 最大长度（字符数）
+    query_max_len: int = 120
+    # 一次问题最多生成多少条 query（多角度检索）
+    num_queries: int = 3
+
+
 class PluginConfig(BaseModel):
     # --- Provider Switch ---
     # openai_compatible: 走 /chat/completions 的 OpenAI 兼容接口（保持现状）
@@ -63,45 +109,14 @@ class PluginConfig(BaseModel):
     google_api_key: Optional[str] = None
     google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
 
-    music: MusicConfig = MusicConfig()
-    chat_model: str = "gpt-3.5-turbo"
-    chat_max_tokens: Optional[int] = 8192
-    system_prompt: str = (
-        "你好！我是HakuBot的AI助手。请用活泼、亲切且自然的语气回答用户的问题。"
-        "避免过于生硬的机器回复。如果回答包含长文本，请注意分段和排版。"
-    )
-    image_model: str = "dall-e-3"
-    image_size: Optional[str] = None
-    timeout: float = 60.0
     proxy: Optional[str] = None
+    timeout: float = 60.0
 
-    # --- Image generation reliability / safety fallback ---
-    # 当生图返回 content=None / 无 images 时，自动进行“安全改写”并重试，以提升成功率
-    image_retry_on_empty: bool = True
-    # 最大重试次数（建议 1；过多会增加成本与延迟）
-    image_retry_max_times: int = 1
-    # 安全改写使用的模型（默认 None 表示复用 chat_model）
-    image_safe_rewrite_model: Optional[str] = None
-    # 安全改写最大 token
-    image_safe_rewrite_max_tokens: int = 256
-
-    # --- Web Search (manual command only) ---
-    # Tavily: https://tavily.com/
-    tavily_api_key: Optional[str] = None
-    web_search_max_results: int = 5
-    web_search_depth: str = "basic"
-
-    # --- Web Search Query Rewrite / Multi-query ---
-    # 启用后，会先对用户输入做“检索 query 提炼/重写”，再进行搜索，避免直接拿长段口语去搜。
-    web_search_query_rewrite: bool = True
-    # 允许使用 LLM 进行 query 重写（默认启用；会产生一次额外模型调用，仅在触发条件满足时执行）
-    web_search_query_rewrite_use_llm: bool = True
-    # 当原始文本长度超过该阈值时，触发一次 LLM 重写（否则只用启发式提炼）
-    web_search_query_rewrite_llm_trigger_len: int = 200
-    # 最终单条 query 最大长度（字符数）
-    web_search_query_max_len: int = 120
-    # 一次问题最多生成多少条 query（多角度检索）
-    web_search_num_queries: int = 3
+    # Modules
+    chat: ChatConfig = ChatConfig()
+    image: ImageConfig = ImageConfig()
+    search: SearchConfig = SearchConfig()
+    music: MusicConfig = MusicConfig()
 
 
 CURRENT_PATH = Path(__file__).parent
@@ -114,6 +129,48 @@ def load_config() -> PluginConfig:
 
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
+
+    # Migrate old flat config to nested config structure if needed
+    if "chat_model" in data or "image_model" in data:
+        migrated = {
+            "provider": data.get("provider", "openai_compatible"),
+            "api_key": data.get("api_key", ""),
+            "base_url": data.get("base_url", "https://api.openai.com/v1"),
+            "google_api_key": data.get("google_api_key"),
+            "google_base_url": data.get("google_base_url", "https://generativelanguage.googleapis.com/v1beta"),
+            "proxy": data.get("proxy"),
+            "timeout": data.get("timeout", 60.0),
+            "chat": {
+                "model": data.get("chat_model", "gpt-3.5-turbo"),
+                "max_tokens": data.get("chat_max_tokens", 8192),
+                "system_prompt": data.get("system_prompt", "")
+            },
+            "image": {
+                "model": data.get("image_model", "dall-e-3"),
+                "size": data.get("image_size"),
+                "quality": data.get("image_quality"),
+                "size_param": data.get("image_size_param"),
+                "retry_on_empty": data.get("image_retry_on_empty", True),
+                "retry_max_times": data.get("image_retry_max_times", 1),
+                "safe_rewrite_model": data.get("image_safe_rewrite_model"),
+                "safe_rewrite_max_tokens": data.get("image_safe_rewrite_max_tokens", 256)
+            },
+            "search": {
+                "tavily_api_key": data.get("tavily_api_key"),
+                "max_results": data.get("web_search_max_results", 5),
+                "depth": data.get("web_search_depth", "basic"),
+                "query_rewrite": data.get("web_search_query_rewrite", True),
+                "query_rewrite_use_llm": data.get("web_search_query_rewrite_use_llm", True),
+                "query_rewrite_llm_trigger_len": data.get("web_search_query_rewrite_llm_trigger_len", 200),
+                "query_max_len": data.get("web_search_query_max_len", 120),
+                "num_queries": data.get("web_search_num_queries", 3)
+            },
+            "music": data.get("music", {})
+        }
+        data = migrated
+        # Auto-save migrated config
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
 
     return PluginConfig(**data)
 

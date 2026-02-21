@@ -9,8 +9,10 @@ from nonebot.exception import FinishedException
 
 from .utils import *
 from .config import plugin_config, save_config
-from .service import call_chat_completion, call_image_generation, format_search_results, web_search_with_rewrite
-from .music_service import get_music_service
+from .services.chat_service import call_chat_completion
+from .services.imagen_service import call_image_generation
+from .services.search_service import format_search_results, web_search_with_rewrite
+from .services.music_service import get_music_service
 
 try:
     from ..plugin_manager.enable import is_plugin_enabled, is_feature_enabled
@@ -118,7 +120,7 @@ async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg(
             await chat_matcher.finish("请提供对话内容，或回复包含内容的消息。")
 
         messages = [
-            {"role": "system", "content": plugin_config.system_prompt},
+            {"role": "system", "content": plugin_config.chat.system_prompt},
             {"role": "user", "content": content_list}
         ]
 
@@ -214,7 +216,7 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         queries_hint = " / ".join(queries) if queries else "（无）"
 
         messages = [
-            {"role": "system", "content": plugin_config.system_prompt},
+            {"role": "system", "content": plugin_config.chat.system_prompt},
             {
                 "role": "system",
                 "content": (
@@ -408,14 +410,14 @@ async def handle_change_model(bot: Bot, event: MessageEvent, args: Message = Com
     if not new_model:
         await model_cmd.finish("请提供新的模型名称。例如：切换模型 gpt-4")
     
-    old_model = plugin_config.chat_model
+    old_model = plugin_config.chat.model
     if old_model == new_model:
         await model_cmd.finish(f"当前已经是 {new_model} 模型了。")
 
     await model_cmd.send(f"正在尝试切换到模型: {new_model}\n正在进行连接测试，请稍候...")
     
     # 临时修改配置
-    plugin_config.chat_model = new_model
+    plugin_config.chat.model = new_model
     
     try:
         # 构造测试消息
@@ -443,7 +445,7 @@ async def handle_change_model(bot: Bot, event: MessageEvent, args: Message = Com
 
     except Exception as e:
         # 测试失败，回滚配置
-        plugin_config.chat_model = old_model
+        plugin_config.chat.model = old_model
         
         error_msg = str(e)
         if len(error_msg) > 100:

@@ -10,7 +10,7 @@ from nonebot.log import logger
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as localstore
 
-from ..utils import remove_markdown
+from ...utils import remove_markdown
 from .core import Downloader, MusicRenderer, MusicSender, Playlist, SendContext
 from .core.model import Song
 from .core.platform import BaseMusicPlayer, NetEaseMusic, NetEaseMusicNodeJS, TXQQMusic

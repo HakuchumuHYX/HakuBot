@@ -6,7 +6,7 @@ from typing import Optional
 
 from nonebot.log import logger
 
-from ...service import call_chat_completion
+from ...chat_service import call_chat_completion
 from ..types import MusicServiceConfig
 from .models import Plan
 
@@ -391,7 +391,7 @@ class LLMPlanMixin:
 
         content, model_name, total_tokens = await call_chat_completion(
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            max_tokens=400,  # 增加token限制以容纳新字段
+            max_tokens=4096,  # 增加token限制以容纳新字段
             temperature=self.cfg.llm_temperature,
             top_p=self.cfg.llm_top_p,
         )
@@ -413,6 +413,7 @@ class LLMPlanMixin:
             fallback = Plan(
                 search_query=raw_request.strip()[:40] or raw_request,
                 need_web_search=has_web_hints and self.cfg.allow_web_search,  # 根据关键词提示判断
+                pick_strategy=self.cfg.pick_default,
                 platform_hint=None,
                 confidence=30,
                 parse_reason="JSON解析失败，使用原始输入",
