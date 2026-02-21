@@ -109,6 +109,8 @@ async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[
 @clean_confirm_matcher.handle()
 async def handle_clean_confirm(event: GroupMessageEvent):
     """处理确认清理命令"""
+    if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
+        return
     group_id = event.group_id
     user_id = event.user_id
 
@@ -154,6 +156,8 @@ async def handle_clean_confirm(event: GroupMessageEvent):
 @clean_cancel_matcher.handle()
 async def handle_clean_cancel(event: GroupMessageEvent):
     """处理取消清理命令"""
+    if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
+        return
     group_id = event.group_id
     user_id = event.user_id
 

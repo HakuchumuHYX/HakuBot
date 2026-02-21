@@ -21,6 +21,7 @@ from nonebot.exception import FinishedException
 from .send import sticker_folders, resolve_folder_name, get_all_images_in_folder
 from .config import IMAGE_EXTENSIONS, OVERVIEW_BATCH_SIZE, MAX_CANVAS_PIXELS
 from . import send
+from ..plugin_manager.enable import is_plugin_enabled
 
 # === 字体缓存 ===
 _font_cache: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
@@ -98,6 +99,9 @@ def get_sort_key(file_path: Path):
 
 @view_single_matcher.handle()
 async def handle_view_single(event: GroupMessageEvent, args: Message = CommandArg()):
+    if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
+        return
+
     arg_text = args.extract_plain_text().strip()
 
     if not arg_text:
@@ -124,7 +128,6 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
     for id_str in id_list:
         # 1. 基础格式校验
         if not id_str.isdigit():
-            error_msgs.append(f"参数 '{id_str}' 不是合法的数字编号")
             continue
 
         target_id = int(id_str)
@@ -189,6 +192,9 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
 
 @view_all_matcher.handle()
 async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()):
+    if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
+        return
+
     folder_name = args.extract_plain_text().strip()
 
     if not folder_name:

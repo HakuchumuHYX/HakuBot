@@ -1,8 +1,9 @@
 # stickers/help.py
 import io
 from nonebot import on_command, logger
-from nonebot.adapters.onebot.v11 import MessageSegment
+from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent
 from nonebot.exception import FinishedException
+from ..plugin_manager.enable import is_plugin_enabled
 
 # 尝试导入 htmlrender 和 jinja2
 try:
@@ -227,8 +228,11 @@ HTML_TEMPLATE = """
 """
 
 @help_matcher.handle()
-async def handle_help():
+async def handle_help(event: GroupMessageEvent):
     """处理帮助命令，发送图片"""
+    if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
+        return
+
     try:
         if HTMLRENDER_AVAILABLE:
             image_data = await render_help_html()
