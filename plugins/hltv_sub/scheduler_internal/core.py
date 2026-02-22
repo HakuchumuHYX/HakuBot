@@ -54,6 +54,9 @@ class HLTVScheduler:
         # 赛事结束判定缓冲（避免时区/页面延迟导致漏推最后结果）
         self._end_grace_days: int = 1
 
+        # 抓取错误状态：如果本轮有请求失败，强制高频重试
+        self._has_fetch_error: bool = False
+
     async def _fetch_with_retry(
         self,
         coro_func: Callable[[], T],
@@ -69,6 +72,7 @@ class HLTVScheduler:
                     logger.error(
                         f"[HLTV Scheduler] 请求失败 (尝试 {attempt + 1}/{max_retries}): {e}"
                     )
+                    self._has_fetch_error = True
                     return None
                 logger.warning(
                     f"[HLTV Scheduler] 请求失败 (尝试 {attempt + 1}/{max_retries}): {e}，{delay * (attempt + 1)}秒后重试"
@@ -147,8 +151,10 @@ class HLTVScheduler:
         if not has_active_events(self._tz, self._end_grace_days):
             return
 
-        # 优先级：LIVE > 赛后冷却期 > 正常自适应
-        if self._has_live_match:
+        # 优先级：错误重试 > LIVE > 赛后冷却期 > 正常自适应
+        if self._has_fetch_error:
+            minutes = DEFAULT_INTERVAL_MINUTES
+        elif self._has_live_match:
             minutes = DEFAULT_INTERVAL_MINUTES
         elif self._in_post_live_grace():
             # 赛后冷却期：保持高频轮询，确保最后比赛的结果能及时推送
@@ -160,6 +166,7 @@ class HLTVScheduler:
             f"[HLTV Scheduler] 自适应轮询评估: next_minutes_until={self._next_minutes_hint}, "
             f"has_live_match={self._has_live_match}, "
             f"post_live_grace={self._in_post_live_grace()}, "
+            f"has_fetch_error={self._has_fetch_error}, "
             f"target_interval={minutes}min, "
             f"current_interval={self._current_interval_minutes}min"
         )
@@ -397,6 +404,7 @@ class HLTVScheduler:
 
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 检查赛事 {event_id} 比赛失败: {e}")
+                self._has_fetch_error = True
                 continue
 
         self._next_minutes_hint = next_minutes_until
@@ -434,6 +442,7 @@ class HLTVScheduler:
                         new_results.append((event_id, event_title, r))
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 检查赛事 {event_id} 结果失败: {e}")
+                self._has_fetch_error = True
                 continue
 
         return new_results
@@ -575,6 +584,8 @@ class HLTVScheduler:
     async def run_check(self) -> dict:
         """执行一次检查，返回检查结果"""
         result: dict = {"upcoming_matches": [], "new_results": [], "errors": []}
+
+        self._has_fetch_error = False
 
         try:
             # 核心：如果没有 active 赛事（ONGOING/UPCOMING），直接暂停 job 并退出
