@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 
 # 定义源文件所在的绝对路径
-SOURCE_DIR = r"E:\Download\bot\haruki-sekai-master\master"
+SOURCE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "haruki-sekai-master", "master"))
 
 
 def load_json(filename):
@@ -92,7 +92,7 @@ def main():
     # 5. 输出结果 (保存在当前脚本运行的目录下)
     output_filename = 'guess_song.json'
     # 如果你想强制保存到 resources 目录，可以使用下面这行（可选）：
-    # output_filename = os.path.join(r"E:\Download\bot\HakuBot\data\pjsk_guess_song\resources", 'guess_song.json')
+    # output_filename = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "pjsk_guess_song", "resources", "guess_song.json"))
 
     with open(output_filename, 'w', encoding='utf-8') as f:
         json.dump(guess_song_list, f, indent=2, ensure_ascii=False)

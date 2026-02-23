@@ -67,7 +67,7 @@ async def _(bot: Bot, event: MessageEvent):
     }
 
     # 2. 读取外部数据版本
-    target_json_path = Path(r"E:\Download\bot\haruki-sekai-master\versions\current_version.json")
+    target_json_path = Path("..") / "haruki-sekai-master" / "versions" / "current_version.json"
 
     external_version_info = "未知 (文件未找到)"
 
