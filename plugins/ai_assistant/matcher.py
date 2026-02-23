@@ -6,10 +6,14 @@ from nonebot.params import CommandArg
 from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
-from nonebot import require
+from nonebot import require, get_driver
+import aiofiles
+import os
+from pathlib import Path
 
 require("nonebot_plugin_htmlrender")
 from nonebot_plugin_htmlrender import md_to_pic
+from nonebot_plugin_htmlrender.data_source import read_tpl
 
 from .utils import *
 from .config import plugin_config, save_config
@@ -28,6 +32,39 @@ except ImportError:
     MANAGER_AVAILABLE = False
 
 PLUGIN_NAME = "ai_assistant"
+
+# 自定义 CSS 生成路径
+CUSTOM_CSS_DIR = Path("data/ai_assistant")
+CUSTOM_CSS_PATH = CUSTOM_CSS_DIR / "custom_markdown.css"
+
+@get_driver().on_startup
+async def generate_custom_css():
+    """机器人启动时生成合并好的自定义 Markdown CSS"""
+    try:
+        # 获取基础样式
+        base_css = await read_tpl("github-markdown-light.css")
+        highlight_css = await read_tpl("pygments-default.css")
+        
+        # 加上配置的背景颜色覆盖
+        bg_color = plugin_config.chat.bg_color
+        custom_css = f"""
+{base_css}
+{highlight_css}
+
+/* 自定义背景颜色 */
+html, body, .markdown-body {{
+    background-color: {bg_color} !important;
+}}
+"""
+        # 确保目录存在
+        CUSTOM_CSS_DIR.mkdir(parents=True, exist_ok=True)
+        
+        async with aiofiles.open(CUSTOM_CSS_PATH, "w", encoding="utf-8") as f:
+            await f.write(custom_css)
+            
+        logger.info(f"已生成自定义 Markdown 背景颜色 CSS，背景色: {bg_color}")
+    except Exception as e:
+        logger.error(f"生成自定义 CSS 失败: {e}")
 
 # 注册命令
 chat_matcher = on_command("chat", priority=5, block=True)
@@ -132,10 +169,17 @@ async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         reply_text, model_name, tokens = await call_chat_completion(messages)
 
         stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens}"
-        md_content = reply_text + f"\n\n---\n*{stat_text}*"
+        watermark = plugin_config.chat.watermark
+
+        if watermark:
+            watermark_html = watermark.replace('\n', '<br>')
+            md_content = reply_text + f"\n\n---\n*{stat_text}*\n\n<div align='right' style='color: gray; font-size: 0.9em; font-style: italic;'>{watermark_html}</div>"
+        else:
+            md_content = reply_text + f"\n\n---\n*{stat_text}*"
         
         try:
-            img_bytes = await md_to_pic(md=md_content, width=800)
+            css_path = str(CUSTOM_CSS_PATH.absolute()) if CUSTOM_CSS_PATH.exists() else ""
+            img_bytes = await md_to_pic(md=md_content, width=800, css_path=css_path)
             reply_msg = MessageSegment.image(img_bytes)
         except Exception as e:
             logger.error(f"渲染 Markdown 失败: {e}")
@@ -216,10 +260,17 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         reply_text, model_name, tokens = await call_chat_completion(messages)
 
         stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 联网: Tavily | Query数: {len(queries) if queries else 0}"
-        md_content = reply_text + f"\n\n---\n*{stat_text}*"
+        watermark = plugin_config.chat.watermark
+
+        if watermark:
+            watermark_html = watermark.replace('\n', '<br>')
+            md_content = reply_text + f"\n\n---\n*{stat_text}*\n\n<div align='right' style='color: gray; font-size: 0.9em; font-style: italic;'>{watermark_html}</div>"
+        else:
+            md_content = reply_text + f"\n\n---\n*{stat_text}*"
         
         try:
-            img_bytes = await md_to_pic(md=md_content, width=800)
+            css_path = str(CUSTOM_CSS_PATH.absolute()) if CUSTOM_CSS_PATH.exists() else ""
+            img_bytes = await md_to_pic(md=md_content, width=800, css_path=css_path)
             reply_msg = MessageSegment.image(img_bytes)
         except Exception as e:
             logger.error(f"渲染 Markdown 失败: {e}")

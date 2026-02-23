@@ -55,6 +55,9 @@ class ChatConfig(BaseModel):
         "你好！我是HakuBot的AI助手。请用活泼、亲切且自然的语气回答用户的问题。"
         "避免过于生硬的机器回复。如果回答包含长文本，请注意分段和排版。"
     )
+    watermark: str = ""
+    # 图片回复的背景颜色，默认为浅灰色（护眼白），例如也可用绿豆沙色 #C7EDCC 等
+    bg_color: str = "#f8f9fa"
 
 
 class ImageConfig(BaseModel):
