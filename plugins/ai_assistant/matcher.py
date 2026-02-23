@@ -6,6 +6,10 @@ from nonebot.params import CommandArg
 from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
+from nonebot import require
+
+require("nonebot_plugin_htmlrender")
+from nonebot_plugin_htmlrender import md_to_pic
 
 from .utils import *
 from .config import plugin_config, save_config
@@ -127,44 +131,18 @@ async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         await chat_matcher.send("正在思考中...")
         reply_text, model_name, tokens = await call_chat_completion(messages)
 
-        cleaned_text = remove_markdown(reply_text)
-        stat_text = f"\n\n—— 使用模型: {model_name} | Token消耗: {tokens}"
-        full_reply = cleaned_text + stat_text
+        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens}"
+        md_content = reply_text + f"\n\n---\n*{stat_text}*"
+        
+        try:
+            img_bytes = await md_to_pic(md=md_content, width=800)
+            reply_msg = MessageSegment.image(img_bytes)
+        except Exception as e:
+            logger.error(f"渲染 Markdown 失败: {e}")
+            cleaned_text = remove_markdown(reply_text)
+            reply_msg = Message(cleaned_text + f"\n\n{stat_text}")
 
-        if isinstance(event, GroupMessageEvent):
-            # 获取Bot信息用于构建节点
-            login_info = await bot.get_login_info()
-            bot_id = str(login_info.get("user_id", event.self_id))
-            bot_name = login_info.get("nickname", "AI Assistant")
-
-            # 提取用户纯文本用于展示
-            user_raw_text = extract_pure_text(content_list)
-            if not user_raw_text:
-                user_raw_text = "[图片/非文本内容]"
-            
-            # 简单的截断，防止摘要过长
-            if len(user_raw_text) > 200:
-                user_raw_text = user_raw_text[:200] + "..."
-
-            # 构建合并转发节点
-            nodes = [
-                MessageSegment.node_custom(
-                    user_id=event.user_id,
-                    nickname=event.sender.card or event.sender.nickname or "User",
-                    content=user_raw_text
-                ),
-                MessageSegment.node_custom(
-                    user_id=bot_id,
-                    nickname=bot_name,
-                    content=full_reply
-                )
-            ]
-            
-            await bot.send_group_forward_msg(group_id=event.group_id, messages=nodes)
-            await chat_matcher.finish()
-        else:
-            # 私聊直接发送
-            await chat_matcher.finish(full_reply)
+        await chat_matcher.finish(reply_msg, at_sender=True)
 
     except FinishedException:
         raise
@@ -237,38 +215,18 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         await chat_web_matcher.send("正在思考中...")
         reply_text, model_name, tokens = await call_chat_completion(messages)
 
-        cleaned_text = remove_markdown(reply_text)
-        stat_text = f"\n\n—— 使用模型: {model_name} | Token消耗: {tokens} | 联网: Tavily | Query数: {len(queries) if queries else 0}"
-        full_reply = cleaned_text + stat_text
+        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 联网: Tavily | Query数: {len(queries) if queries else 0}"
+        md_content = reply_text + f"\n\n---\n*{stat_text}*"
+        
+        try:
+            img_bytes = await md_to_pic(md=md_content, width=800)
+            reply_msg = MessageSegment.image(img_bytes)
+        except Exception as e:
+            logger.error(f"渲染 Markdown 失败: {e}")
+            cleaned_text = remove_markdown(reply_text)
+            reply_msg = Message(cleaned_text + f"\n\n{stat_text}")
 
-        if isinstance(event, GroupMessageEvent):
-            login_info = await bot.get_login_info()
-            bot_id = str(login_info.get("user_id", event.self_id))
-            bot_name = login_info.get("nickname", "AI Assistant")
-
-            user_raw_text = extract_pure_text(content_list)
-            if not user_raw_text:
-                user_raw_text = "[图片/非文本内容]"
-            if len(user_raw_text) > 200:
-                user_raw_text = user_raw_text[:200] + "..."
-
-            nodes = [
-                MessageSegment.node_custom(
-                    user_id=event.user_id,
-                    nickname=event.sender.card or event.sender.nickname or "User",
-                    content=user_raw_text
-                ),
-                MessageSegment.node_custom(
-                    user_id=bot_id,
-                    nickname=bot_name,
-                    content=full_reply
-                )
-            ]
-
-            await bot.send_group_forward_msg(group_id=event.group_id, messages=nodes)
-            await chat_web_matcher.finish()
-        else:
-            await chat_web_matcher.finish(full_reply)
+        await chat_web_matcher.finish(reply_msg, at_sender=True)
 
     except FinishedException:
         raise
