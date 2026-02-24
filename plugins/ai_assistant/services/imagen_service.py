@@ -1,5 +1,6 @@
 import httpx
 import json
+import re
 from typing import Tuple, Optional, List
 from nonebot.log import logger
 from ..config import plugin_config
@@ -94,6 +95,146 @@ async def _call_image_generation_google(
     if text_preview:
         raise Exception(f"Google 生图未返回图片 inlineData，仅返回文本：{text_preview[:200]}")
     raise Exception("Google 生图未返回图片 inlineData。")
+
+
+async def _call_image_generation_chat_compat(
+    content_list: List[dict],
+    *,
+    extra_context: Optional[str] = None,
+) -> Tuple[str, dict]:
+    """
+    通过 /v1/chat/completions 端点调用生图模型（适配仅提供 chat 协议的中转商）。
+    将生图 prompt 包装为 chat messages，解析模型返回中的图片数据。
+    """
+    used_model = plugin_config.image.model
+
+    # --- 构建 system prompt ---
+    system_text = (
+        "You are an AI specialized in generating 2D anime/manga style art.\n"
+        "The style MUST be 2D anime/manga. Do NOT generate realistic or photorealistic images.\n"
+        "You MUST generate an image in your response.\n"
+    )
+    if extra_context:
+        system_text += (
+            "\n\n[Web Search Context - Reference Only]\n"
+            "以下内容仅用于补充事实/外观设定。请提炼其中对画面有用的 3~8 条要点融入绘制，不要照抄整段。"
+            "若与用户描述冲突，以用户描述为准。\n\n"
+            + extra_context
+        )
+
+    # --- 构建 user message content（多模态：文本 + 图片）---
+    user_content: list = []
+    style_hint = "（画风要求：必须是二次元/动漫/manga 风格，禁止写实/照片风格）"
+    user_content.append({"type": "text", "text": style_hint})
+
+    for item in content_list:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "text":
+            text_val = (item.get("text") or "").strip()
+            if text_val:
+                user_content.append({"type": "text", "text": text_val})
+        elif item.get("type") == "image_url":
+            user_content.append(item)
+
+    messages = [
+        {"role": "system", "content": system_text},
+        {"role": "user", "content": user_content},
+    ]
+
+    payload = {
+        "model": used_model,
+        "messages": messages,
+    }
+
+    logger.debug(f"[chat_compat] 正在通过 /chat/completions 请求生图: model={used_model}")
+
+    async with httpx.AsyncClient(
+        base_url=plugin_config.base_url,
+        proxy=plugin_config.proxy,
+        timeout=plugin_config.timeout,
+    ) as client:
+        resp = await client.post("/chat/completions", json=payload, headers=HEADERS)
+
+        if resp.status_code != 200:
+            err_text = resp.text
+            logger.error(f"[chat_compat] 生图 API 非 200。status={resp.status_code} body={err_text}")
+            try:
+                err_obj = json.loads(err_text).get("error", {})
+                if err_obj:
+                    err_msg = err_obj.get("message") or err_obj.get("type") or err_text
+                    raise Exception(f"生图被拒绝/失败: {err_msg}")
+            except json.JSONDecodeError:
+                pass
+            raise Exception(f"生图 API Error {resp.status_code}")
+
+        data = resp.json()
+
+    # --- 解析响应，提取图片 ---
+    choices = data.get("choices") or []
+    if not choices:
+        raise Exception(f"[chat_compat] 生图返回无 choices: {json.dumps(data, ensure_ascii=False)[:500]}")
+
+    message = (choices[0].get("message") or {})
+    msg_content = message.get("content")
+
+    # 情况1: content 是 list（多模态响应，包含 image_url 类型的 part）
+    if isinstance(msg_content, list):
+        for part in msg_content:
+            if not isinstance(part, dict):
+                continue
+            p_type = part.get("type", "")
+
+            # 1a: type=image_url，内含 url 字段（可能是真实 URL 或 data URI）
+            if p_type == "image_url":
+                url = ((part.get("image_url") or {}).get("url") or "").strip()
+                if url.startswith("data:"):
+                    mime, b64 = parse_data_url(url)
+                    return f"base64://{b64}", {"mime_type": mime, "provider": "chat_compat", "model": used_model}
+                elif url:
+                    return url, {"provider": "chat_compat", "model": used_model}
+
+            # 1b: type=image，内含 base64/url（部分中转商的自定义格式）
+            if p_type == "image":
+                b64 = (part.get("data") or part.get("base64") or "").strip()
+                if b64:
+                    mime = (part.get("mime_type") or part.get("mimeType") or "image/png").strip()
+                    return f"base64://{b64}", {"mime_type": mime, "provider": "chat_compat", "model": used_model}
+                url = (part.get("url") or "").strip()
+                if url:
+                    return url, {"provider": "chat_compat", "model": used_model}
+
+        # 如果 list 中没找到图片，拼接文本做诊断
+        text_parts = [str(p.get("text", "")) for p in msg_content if isinstance(p, dict) and p.get("text")]
+        msg_content = "\n".join(text_parts).strip()
+
+    # 情况2: content 是 string
+    if isinstance(msg_content, str) and msg_content.strip():
+        text = msg_content.strip()
+
+        # 2a: 检查是否包含 data URI (data:image/...;base64,...)
+        data_uri_match = re.search(r'data:(image/[^;]+);base64,([A-Za-z0-9+/=\s]+)', text)
+        if data_uri_match:
+            mime = data_uri_match.group(1).strip()
+            b64 = data_uri_match.group(2).strip().replace("\n", "").replace(" ", "")
+            return f"base64://{b64}", {"mime_type": mime, "provider": "chat_compat", "model": used_model}
+
+        # 2b: 检查 Markdown 图片链接 ![...](url)
+        md_img_match = re.search(r'!\[.*?\]\((https?://\S+)\)', text)
+        if md_img_match:
+            url = md_img_match.group(1).strip()
+            return url, {"provider": "chat_compat", "model": used_model}
+
+        # 2c: 检查裸 URL
+        url_match = re.search(r'(https?://\S+\.(?:png|jpg|jpeg|gif|webp|bmp)(?:\?\S*)?)', text, re.IGNORECASE)
+        if url_match:
+            url = url_match.group(1).strip()
+            return url, {"provider": "chat_compat", "model": used_model}
+
+        # 没找到图片
+        raise Exception(f"[chat_compat] 生图模型未返回图片，仅返回文本：{text[:300]}")
+
+    raise Exception(f"[chat_compat] 生图模型返回内容为空或无法解析。raw={json.dumps(data, ensure_ascii=False)[:500]}")
 
 
 async def call_image_generation(content_list: List[dict], extra_context: Optional[str] = None) -> Tuple[str, dict]:
@@ -311,7 +452,12 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
 
     for attempt in range(max_retry + 1):
         try:
-            image_url = await _request_once(current_items)
+            if plugin_config.image.use_chat_endpoint:
+                image_url, _chat_meta = await _call_image_generation_chat_compat(
+                    current_items, extra_context=extra_context
+                )
+            else:
+                image_url = await _request_once(current_items)
             return image_url, meta
         except Exception as e:
             last_err = e

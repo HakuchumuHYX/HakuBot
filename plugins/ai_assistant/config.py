@@ -65,6 +65,11 @@ class ImageConfig(BaseModel):
     size: Optional[str] = None
     quality: Optional[str] = None # standard, hd, medium
     size_param: Optional[str] = None # 1K, 2K, 4K
+
+    # 当中转商的生图模型仅提供 /v1/chat/completions 端点时，设为 True
+    # False（默认）：走标准 /images/generations + /images/edits
+    # True：走 /chat/completions 兼容路径
+    use_chat_endpoint: bool = False
     
     # --- Image generation reliability / safety fallback ---
     # 当生图返回 content=None / 无 images 时，自动进行“安全改写”并重试，以提升成功率
