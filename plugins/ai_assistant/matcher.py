@@ -166,7 +166,12 @@ async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         ]
 
         await chat_matcher.send("正在思考中...")
-        reply_text, model_name, tokens = await call_chat_completion(messages)
+        reply_text, model_name, tokens = await call_chat_completion(
+            messages,
+            temperature=plugin_config.chat.temperature,
+            top_p=plugin_config.chat.top_p,
+            assistant_prefill=plugin_config.chat.assistant_prefill,
+        )
 
         stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens}"
         watermark = plugin_config.chat.watermark
@@ -257,7 +262,12 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         ]
 
         await chat_web_matcher.send("正在思考中...")
-        reply_text, model_name, tokens = await call_chat_completion(messages)
+        reply_text, model_name, tokens = await call_chat_completion(
+            messages,
+            temperature=plugin_config.chat.temperature,
+            top_p=plugin_config.chat.top_p,
+            assistant_prefill=plugin_config.chat.assistant_prefill,
+        )
 
         stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 联网: Tavily | Query数: {len(queries) if queries else 0}"
         watermark = plugin_config.chat.watermark

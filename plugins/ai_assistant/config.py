@@ -52,9 +52,22 @@ class ChatConfig(BaseModel):
     model: str = "gpt-3.5-turbo"
     max_tokens: Optional[int] = 8192
     system_prompt: str = (
-        "你好！我是HakuBot的AI助手。请用活泼、亲切且自然的语气回答用户的问题。"
-        "避免过于生硬的机器回复。如果回答包含长文本，请注意分段和排版。"
+        "你是HakuBot的AI助手。请遵守以下回复规范：\n"
+        "1. 语气活泼、亲切、自然，像朋友聊天一样，避免生硬的机器感。\n"
+        "2. 回答要充实、有内容，给出足够的细节和解释，不要过于简短或惜字如金。\n"
+        "3. 如果问题涉及多个方面，请分点或分段回答，保持条理清晰。\n"
+        "4. 善用 Markdown 格式（标题、列表、代码块等）来组织长回复，提升可读性。\n"
+        "5. 在回答技术问题时，给出具体示例或代码片段会更好。\n"
+        "6. 如果不确定答案，坦诚说明，不要编造信息。"
     )
+    # 采样温度，控制回复的随机性/创造性（0.0~2.0，Claude 建议 0.7 左右）
+    temperature: Optional[float] = 0.7
+    # nucleus sampling，与 temperature 二选一微调即可
+    top_p: Optional[float] = None
+    # Claude 特有的 assistant prefill：在 messages 末尾追加一条 assistant 消息作为回复开头引导
+    # 模型会接着这段文字继续生成，可有效引导输出风格和详细度
+    # 留空则不启用；示例值："好的，让我来详细回答你的问题：\n\n"
+    assistant_prefill: Optional[str] = None
     watermark: str = ""
     # 图片回复的背景颜色，默认为浅灰色（护眼白），例如也可用绿豆沙色 #C7EDCC 等
     bg_color: str = "#f8f9fa"

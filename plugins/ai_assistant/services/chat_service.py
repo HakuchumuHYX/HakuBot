@@ -91,6 +91,7 @@ async def call_chat_completion(
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     top_p: Optional[float] = None,
+    assistant_prefill: Optional[str] = None,
 ) -> Tuple[str, str, int]:
     """
     调用聊天接口
@@ -100,7 +101,14 @@ async def call_chat_completion(
       若为 None，则尝试从 config 中读取；如果配置中也为 0/None，则不限制最大输出。
     model:
       可选覆盖模型（默认使用 plugin_config.chat_model）。
+    assistant_prefill:
+      在 messages 末尾追加一条 assistant 消息作为回复开头引导（Claude 特性）。
+      模型会接着这段文字继续生成，可有效引导输出风格和详细度。
     """
+    # 注入 assistant prefill（如果有）
+    if assistant_prefill:
+        messages = messages + [{"role": "assistant", "content": assistant_prefill}]
+
     provider = get_llm_provider()
     if provider == "google_ai_studio":
         return await _call_chat_completion_google(
@@ -139,5 +147,9 @@ async def call_chat_completion(
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
         total_tokens = data.get("usage", {}).get("total_tokens", 0)
+
+        # 如果使用了 prefill，将 prefill 文本拼接到返回内容前面
+        if assistant_prefill:
+            content = assistant_prefill + content
 
         return content, (model or plugin_config.chat.model), total_tokens
