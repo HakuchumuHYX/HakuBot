@@ -68,6 +68,9 @@ class ChatConfig(BaseModel):
     # 模型会接着这段文字继续生成，可有效引导输出风格和详细度
     # 留空则不启用；示例值："好的，让我来详细回答你的问题：\n\n"
     assistant_prefill: Optional[str] = None
+    # 图片最大边长（像素），超过此值会等比缩放+JPEG压缩，以减少视觉API的token消耗
+    # 设为 0 或 None 则不压缩
+    image_max_size: int = 1536
     watermark: str = ""
     # 图片回复的背景颜色，默认为浅灰色（护眼白），例如也可用绿豆沙色 #C7EDCC 等
     bg_color: str = "#f8f9fa"

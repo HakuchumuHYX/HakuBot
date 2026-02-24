@@ -1,20 +1,49 @@
 import base64
+import io
 import httpx
 import re
-from typing import Tuple, List
+from typing import Optional, Tuple, List
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from PIL import Image
 from .config import plugin_config
 
 
-async def download_image_as_base64(url: str) -> str:
-    """下载图片并转换为base64字符串（data:...;base64,...），用于 OpenAI 多模态输入。"""
-    # 设置20秒超时，防止下载大图时阻塞过久
+async def download_image_as_base64(url: str, max_size: Optional[int] = None) -> str:
+    """下载图片并转换为base64字符串（data:...;base64,...），用于 OpenAI 多模态输入。
+
+    Args:
+        url: 图片 URL
+        max_size: 图片最大边长（像素）。超过则等比缩放并 JPEG 压缩。
+                  为 None 时从 config.chat.image_max_size 读取，为 0 则不压缩。
+    """
+    if max_size is None:
+        max_size = getattr(plugin_config.chat, "image_max_size", 1536)
+
     async with httpx.AsyncClient(proxy=plugin_config.proxy, timeout=20.0) as client:
         resp = await client.get(url)
         resp.raise_for_status()
-        b64 = base64.b64encode(resp.content).decode("utf-8")
-        mime = "image/jpeg"
-        return f"data:{mime};base64,{b64}"
+        raw = resp.content
+
+    # 如果配置了 max_size 且 > 0，使用 Pillow 缩放 + JPEG 压缩
+    if max_size and max_size > 0:
+        try:
+            img = Image.open(io.BytesIO(raw))
+            w, h = img.size
+            if max(w, h) > max_size:
+                ratio = max_size / max(w, h)
+                new_w, new_h = int(w * ratio), int(h * ratio)
+                img = img.resize((new_w, new_h), Image.LANCZOS)
+            # 统一转 RGB（去掉 alpha 通道）再压缩为 JPEG
+            if img.mode in ("RGBA", "P", "LA"):
+                img = img.convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            raw = buf.getvalue()
+        except Exception:
+            pass  # Pillow 处理失败时回退使用原始数据
+
+    b64 = base64.b64encode(raw).decode("utf-8")
+    return f"data:image/jpeg;base64,{b64}"
 
 
 async def download_image_as_onebot_base64(url: str) -> str:
