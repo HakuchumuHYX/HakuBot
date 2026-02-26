@@ -18,6 +18,7 @@ from ..models.cache import message_cache
 from ..models.request import delete_request_manager
 from ..services.image import invalidate_cache_for_file
 from ..services.text import HTMLRENDER_AVAILABLE
+from plugins.utils.image_utils import path_to_base64_image
 
 # --- 注册命令 ---
 apply_delete = on_command("申请删除", rule=to_me(), priority=5, block=True)
@@ -88,7 +89,7 @@ async def notify_superuser(bot: Bot, request_info: dict):
                         sent_msg_ids.append(text_receipt['message_id'])
                         
                         # 发送图片部分
-                        img_receipt = await bot.send_private_msg(user_id=int(superuser), message=Message(MessageSegment.image(f"file:///{image_path_or_error}")))
+                        img_receipt = await bot.send_private_msg(user_id=int(superuser), message=Message(path_to_base64_image(image_path_or_error)))
                         sent_msg_ids.append(img_receipt['message_id'])
                         
                         image_preview_sent = True

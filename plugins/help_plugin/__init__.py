@@ -5,6 +5,7 @@ from nonebot.matcher import Matcher
 
 from .manager import help_manager
 from ..plugin_manager.enable import is_plugin_enabled
+from ..utils.image_utils import path_to_base64_image
 
 driver = get_driver()
 
@@ -27,7 +28,7 @@ async def handle_help(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     try:
         img_path, links = await help_manager.get_help_data(force_update=False)
 
-        await matcher.send(MessageSegment.image(img_path))
+        await matcher.send(path_to_base64_image(img_path))
 
         if links:
             forward_nodes = []

@@ -6,7 +6,7 @@ from dataclasses import asdict
 from typing import Optional
 import pytz
 
-from nonebot_plugin_htmlrender import template_to_pic
+from ..utils.browser import template_to_pic
 
 from .config import plugin_config
 from .data_source import EventInfo, MatchInfo, ResultInfo, MatchStats

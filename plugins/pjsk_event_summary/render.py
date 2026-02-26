@@ -1,4 +1,4 @@
-from nonebot_plugin_htmlrender import html_to_pic
+from ..utils.browser import html_to_pic
 from jinja2 import Template
 from typing import List
 from .models import EventSimple, EventDetail

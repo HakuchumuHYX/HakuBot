@@ -5,7 +5,7 @@ import base64
 import aiohttp
 from aiohttp import ClientTimeout
 from nonebot.log import logger
-from nonebot_plugin_htmlrender import html_to_pic
+from ....utils.browser import html_to_pic
 from jinja2 import Environment, FileSystemLoader
 
 from ..config import plugin_config

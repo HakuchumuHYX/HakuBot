@@ -20,6 +20,7 @@ from ..utils import (
 from ..game_session import _run_game_session
 from ...plugin_manager.enable import is_plugin_enabled
 from ...utils.common import create_exact_command_rule
+from ...utils.image_utils import path_to_base64_image
 
 # --- 猜歌指令 ---
 start_guess_song_unified = on_command(
@@ -127,14 +128,14 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
         intro_messages = Message(intro_text)
         if options_img_path:
             img_path = Path(options_img_path)
-            intro_messages.append(MessageSegment.image(file=img_path.absolute().as_uri()))
+            intro_messages.append(path_to_base64_image(img_path))
 
         jacket_source = cache_service.get_resource_path_or_url(
             f"music_jacket/{correct_song['jacketAssetbundleName']}.png")
         answer_reveal_messages = Message(f"正确答案是: {game_data['correct_answer_num']}. {correct_song['title']}\n")
         if jacket_source:
             if isinstance(jacket_source, Path):
-                answer_reveal_messages.append(MessageSegment.image(file=jacket_source.absolute().as_uri()))
+                answer_reveal_messages.append(path_to_base64_image(jacket_source))
             else:
                 answer_reveal_messages.append(MessageSegment.image(file=jacket_source))
 
@@ -227,14 +228,14 @@ async def _(bot: Bot, event: MessageEvent):
         intro_messages = Message(intro_text)
         if options_img_path:
             img_path = Path(options_img_path)
-            intro_messages.append(MessageSegment.image(file=img_path.absolute().as_uri()))
+            intro_messages.append(path_to_base64_image(img_path))
 
         jacket_source = cache_service.get_resource_path_or_url(
             f"music_jacket/{correct_song['jacketAssetbundleName']}.png")
         answer_reveal_messages = Message(f"正确答案是: {game_data['correct_answer_num']}. {correct_song['title']}\n")
         if jacket_source:
             if isinstance(jacket_source, Path):
-                answer_reveal_messages.append(MessageSegment.image(file=jacket_source.absolute().as_uri()))
+                answer_reveal_messages.append(path_to_base64_image(jacket_source))
             else:
                 answer_reveal_messages.append(MessageSegment.image(file=jacket_source))
 
@@ -343,7 +344,7 @@ async def _(bot: Bot, event: MessageEvent):
         intro_messages = Message(intro_text)
         if jacket_source:
             if isinstance(jacket_source, Path):
-                intro_messages.append(MessageSegment.image(file=jacket_source.absolute().as_uri()))
+                intro_messages.append(path_to_base64_image(jacket_source))
             else:
                 intro_messages.append(MessageSegment.image(file=jacket_source))
 

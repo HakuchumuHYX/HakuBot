@@ -19,6 +19,7 @@ from ..utils import (
 )
 from ...plugin_manager.enable import *
 from ...utils.common import create_exact_command_rule
+from ...utils.image_utils import path_to_base64_image, path_to_base64_record
 
 
 async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent, mode: str,
@@ -77,14 +78,14 @@ async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent
         msg_chain = Message(f"歌曲:{song_to_play['id']}. {song_to_play['title']} {config['title_suffix']}\n")
         if jacket_source:
             if isinstance(jacket_source, Path):
-                msg_chain.append(MessageSegment.image(file=jacket_source.absolute().as_uri()))
+                msg_chain.append(path_to_base64_image(jacket_source))
             else:
                 msg_chain.append(MessageSegment.image(file=jacket_source))
 
         await matcher.send(msg_chain)
 
         if isinstance(mp3_source, Path):
-            await matcher.send(MessageSegment.record(file=mp3_source.absolute().as_uri()))
+            await matcher.send(path_to_base64_record(mp3_source))
         else:
             await matcher.send(MessageSegment.record(file=mp3_source))
 
@@ -226,14 +227,14 @@ async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = Com
         msg_chain = Message(f"歌曲:{song_to_play['id']}. {song_to_play['title']} {version_name}\n")
         if jacket_source:
             if isinstance(jacket_source, Path):
-                msg_chain.append(MessageSegment.image(file=jacket_source.absolute().as_uri()))
+                msg_chain.append(path_to_base64_image(jacket_source))
             else:
                 msg_chain.append(MessageSegment.image(file=jacket_source))
 
         await matcher.send(msg_chain)
 
         if isinstance(mp3_source, Path):
-            await matcher.send(MessageSegment.record(file=mp3_source.absolute().as_uri()))
+            await matcher.send(path_to_base64_record(mp3_source))
         else:
             await matcher.send(MessageSegment.record(file=mp3_source))
 
@@ -352,12 +353,12 @@ async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = Com
             f"歌曲:{song_to_play['id']}. {song_to_play['title']} (Another Vocal - {' + '.join(char_names)})\n")
         if jacket_source:
             if isinstance(jacket_source, Path):
-                msg_chain.append(MessageSegment.image(file=jacket_source.absolute().as_uri()))
+                msg_chain.append(path_to_base64_image(jacket_source))
             else:
                 msg_chain.append(MessageSegment.image(file=jacket_source))
 
         await matcher.send(msg_chain)
-        await matcher.send(MessageSegment.record(file=mp3_source.absolute().as_uri()))
+        await matcher.send(path_to_base64_record(mp3_source))
 
         user_id = get_user_id(event)
         await db_service.record_listen_song(user_id, get_user_name(event))

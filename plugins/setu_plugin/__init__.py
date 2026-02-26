@@ -25,6 +25,7 @@ from ..plugin_manager.enable import is_plugin_enabled
 from ..plugin_manager.cd_manager import check_cd, update_cd
 
 from .client import SetuClient
+from ..utils.image_utils import path_to_base64_image
 
 __plugin_name__ = "涩图（lzst）"
 __plugin_usage__ = """
@@ -269,7 +270,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
 
             # 构造“图片消息段”：优先本地文件，其次 URL（注意：遇到 404 我们会提前 refetch，不会走到这里）
             if cache_path and cache_path.exists():
-                img_seg = MessageSegment.image(f"file:///{cache_path.resolve().as_posix()}")
+                img_seg = path_to_base64_image(cache_path)
             elif result.display_url:
                 img_seg = MessageSegment.image(result.display_url)
 

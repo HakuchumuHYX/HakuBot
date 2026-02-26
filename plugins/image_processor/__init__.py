@@ -28,6 +28,7 @@ from .image_rotate import process_image_rotate
 
 from ..plugin_manager.enable import *
 from ..plugin_manager.cd_manager import *
+from ..utils.image_utils import path_to_base64_image
 
 
 # ========== rembg 模型启动预下载/校验 ==========
@@ -187,7 +188,7 @@ async def handle_gif_reverse(event: Event, cmd_arg: Message = CommandArg()):
             # 读取文件大小，避免发送空文件
             file_size = os.path.getsize(result_path)
             if file_size > 100:  # 确保文件不是空的
-                await gif_reverse_handler.finish(MessageSegment.image(f"file:///{result_path}"))
+                await gif_reverse_handler.finish(path_to_base64_image(result_path))
             else:
                 await gif_reverse_handler.finish("生成的GIF文件异常，处理失败")
         else:
@@ -241,7 +242,7 @@ async def handle_image_cutout(event: Event, cmd_arg: Message = CommandArg()):
         if result_path and os.path.exists(result_path):
             file_size = os.path.getsize(result_path)
             if file_size > 100:
-                await image_cutout_handler.finish(MessageSegment.image(f"file:///{result_path}"))
+                await image_cutout_handler.finish(path_to_base64_image(result_path))
             else:
                 await image_cutout_handler.finish("抠图处理失败，生成的文件异常")
         else:
@@ -323,7 +324,7 @@ async def handle_gif_speed(event: Event, cmd_arg: Message = CommandArg()):
         if result_path and os.path.exists(result_path):
             file_size = os.path.getsize(result_path)
             if file_size > 100:
-                await gif_speed_handler.finish(MessageSegment.image(f"file:///{result_path}"))
+                await gif_speed_handler.finish(path_to_base64_image(result_path))
             else:
                 await gif_speed_handler.finish("生成的GIF文件异常，处理失败")
         else:
@@ -446,7 +447,7 @@ async def handle_image_symmetry_common(event: Event, symmetry_type: str):
                     update_cd(PLUGIN_ID, group_id, user_id)
 
                 # 直接使用send方法发送图片，避免重复发送
-                await image_symmetry_handler.send(MessageSegment.image(f"file:///{result_path}"))
+                await image_symmetry_handler.send(path_to_base64_image(result_path))
                 # 不调用finish，让函数自然结束
             else:
                 await image_symmetry_handler.send(f"图片{symmetry_name}处理失败，生成的文件异常")
@@ -478,7 +479,7 @@ async def handle_image_help(event: Event, cmd_arg: Message = CommandArg()):
         if help_image_path and os.path.exists(help_image_path):
             file_size = os.path.getsize(help_image_path)
             if file_size > 100:
-                await image_help_handler.send(MessageSegment.image(f"file:///{help_image_path}"))
+                await image_help_handler.send(path_to_base64_image(help_image_path))
             else:
                 # 如果图片生成失败，回退到文本帮助
                 help_text = await get_help_text()
@@ -622,7 +623,7 @@ async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = Command
         if result_path and os.path.exists(result_path):
             file_size = os.path.getsize(result_path)
             if file_size > 100:
-                await video_to_gif_handler.finish(MessageSegment.image(f"file:///{result_path}"))
+                await video_to_gif_handler.finish(path_to_base64_image(result_path))
             else:
                 await video_to_gif_handler.finish("生成的GIF文件异常，处理失败")
         else:
@@ -707,7 +708,7 @@ async def handle_image_mirror_common(event: Event, direction: str):
                     PLUGIN_ID = "image_processor:mirror"
                     update_cd(PLUGIN_ID, group_id, user_id)
 
-                await image_mirror_handler.send(MessageSegment.image(f"file:///{result_path}"))
+                await image_mirror_handler.send(path_to_base64_image(result_path))
             else:
                 await image_mirror_handler.send(f"图片{action_name}处理失败，文件异常")
         else:
@@ -809,7 +810,7 @@ async def handle_rotate_common(event: Event, cmd_arg: Message, direction: str):
                     PLUGIN_ID = "image_processor:rotate"
                     update_cd(PLUGIN_ID, group_id, user_id)
 
-                await image_rotate_handler.send(MessageSegment.image(f"file:///{result_path}"))
+                await image_rotate_handler.send(path_to_base64_image(result_path))
             else:
                 await image_rotate_handler.send(f"{action_name}失败，生成文件异常")
         else:

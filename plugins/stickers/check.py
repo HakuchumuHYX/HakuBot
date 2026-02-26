@@ -425,23 +425,30 @@ def _render_duplicate_report_sync(folder_name: str, duplicates: List[Tuple[Path,
         img = Image.new('RGB', (img_width, img_height), color=(245, 247, 250))
         draw = ImageDraw.Draw(img)
 
-        # 加载字体
-        try:
-            title_font = ImageFont.truetype("msyh.ttc", 32)
-            subtitle_font = ImageFont.truetype("msyh.ttc", 24)
-            text_font = ImageFont.truetype("msyh.ttc", 18)
-            small_font = ImageFont.truetype("msyh.ttc", 14)
-        except:
+        # 加载字体（包含 Linux Noto CJK 路径）
+        _font_candidates = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "msyh.ttc",
+            "simhei.ttf",
+        ]
+        _font_loaded = False
+        for _fc in _font_candidates:
             try:
-                title_font = ImageFont.truetype("simhei.ttf", 32)
-                subtitle_font = ImageFont.truetype("simhei.ttf", 24)
-                text_font = ImageFont.truetype("simhei.ttf", 18)
-                small_font = ImageFont.truetype("simhei.ttf", 14)
+                title_font = ImageFont.truetype(_fc, 32)
+                subtitle_font = ImageFont.truetype(_fc, 24)
+                text_font = ImageFont.truetype(_fc, 18)
+                small_font = ImageFont.truetype(_fc, 14)
+                _font_loaded = True
+                break
             except:
-                title_font = ImageFont.load_default()
-                subtitle_font = title_font
-                text_font = title_font
-                small_font = title_font
+                continue
+        if not _font_loaded:
+            title_font = ImageFont.load_default()
+            subtitle_font = title_font
+            text_font = title_font
+            small_font = title_font
 
         # 标题
         title = f"图片重复检测 - {folder_name}"
@@ -537,11 +544,24 @@ def _preview_duplicates_before_cleanup_sync(all_duplicates: Dict[str, List[Tuple
         img = Image.new('RGB', (img_width, img_height), color=(245, 247, 250))
         draw = ImageDraw.Draw(img)
 
-        try:
-            title_font = ImageFont.truetype("msyh.ttc", 32)
-            text_font = ImageFont.truetype("msyh.ttc", 20)
-            small_font = ImageFont.truetype("msyh.ttc", 16)
-        except:
+        _font_candidates = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "msyh.ttc",
+            "simhei.ttf",
+        ]
+        _font_loaded = False
+        for _fc in _font_candidates:
+            try:
+                title_font = ImageFont.truetype(_fc, 32)
+                text_font = ImageFont.truetype(_fc, 20)
+                small_font = ImageFont.truetype(_fc, 16)
+                _font_loaded = True
+                break
+            except:
+                continue
+        if not _font_loaded:
             title_font = ImageFont.load_default()
             text_font = title_font
             small_font = title_font
@@ -594,11 +614,24 @@ def _render_cleanup_report_sync(removed_count: int, all_duplicates: Dict[str, Li
         img = Image.new('RGB', (img_width, img_height), color=(245, 247, 250))
         draw = ImageDraw.Draw(img)
 
-        try:
-            title_font = ImageFont.truetype("msyh.ttc", 32)
-            text_font = ImageFont.truetype("msyh.ttc", 20)
-            small_font = ImageFont.truetype("msyh.ttc", 16)
-        except:
+        _font_candidates = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "msyh.ttc",
+            "simhei.ttf",
+        ]
+        _font_loaded = False
+        for _fc in _font_candidates:
+            try:
+                title_font = ImageFont.truetype(_fc, 32)
+                text_font = ImageFont.truetype(_fc, 20)
+                small_font = ImageFont.truetype(_fc, 16)
+                _font_loaded = True
+                break
+            except:
+                continue
+        if not _font_loaded:
             title_font = ImageFont.load_default()
             text_font = title_font
             small_font = title_font

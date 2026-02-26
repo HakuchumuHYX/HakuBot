@@ -13,6 +13,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, Bot, Group
 from .. import db_service, image_service
 from ...plugin_manager.enable import is_plugin_enabled
 from ...utils.common import create_exact_command_rule
+from ...utils.image_utils import path_to_base64_image
 
 leaderboard_handler = on_command("群聊猜歌排行",
                                  aliases={"猜歌排行", "pjsk排行"},
@@ -53,7 +54,7 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
 
         if img_path:
             img_p = Path(img_path)
-            await matcher.send(MessageSegment.image(file=img_p.absolute().as_uri()))
+            await matcher.send(path_to_base64_image(img_p))
         else:
             # 绘图失败，回退到文本
             await matcher.send("...排行榜图片生成失败，即将发送文本版：\n" + \

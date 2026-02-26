@@ -6,6 +6,7 @@ plugins/buaa_msm
 plugins/pxchat
 .env.prod
 cache/
+output.log
 
 # Python 虚拟环境
 .venv/

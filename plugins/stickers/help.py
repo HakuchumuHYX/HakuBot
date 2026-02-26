@@ -5,14 +5,14 @@ from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent
 from nonebot.exception import FinishedException
 from ..plugin_manager.enable import is_plugin_enabled
 
-# 尝试导入 htmlrender 和 jinja2
+# 导入共享浏览器模块
 try:
-    from nonebot_plugin_htmlrender import html_to_pic
+    from ..utils.browser import html_to_pic
     from jinja2 import Template
 
     HTMLRENDER_AVAILABLE = True
 except ImportError:
-    logger.warning("stickers-help: 未安装 nonebot-plugin-htmlrender 或 jinja2，将使用 PIL 备用方案")
+    logger.warning("stickers-help: 未检测到浏览器模块或 jinja2，将使用 PIL 备用方案")
     HTMLRENDER_AVAILABLE = False
 
 # 注册帮助命令
@@ -295,13 +295,22 @@ async def fallback_text_to_image_engine(text: str) -> bytes:
         margin = 40
         max_width = 800
 
-        try:
-            font = ImageFont.truetype("msyh.ttc", font_size)
-        except:
+        font = None
+        _font_candidates = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "msyh.ttc",
+            "simhei.ttf",
+        ]
+        for _fc in _font_candidates:
             try:
-                font = ImageFont.truetype("simhei.ttf", font_size)
+                font = ImageFont.truetype(_fc, font_size)
+                break
             except:
-                font = ImageFont.load_default()
+                continue
+        if font is None:
+            font = ImageFont.load_default()
 
         # 简单分行
         lines = text.strip().split('\n')

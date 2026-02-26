@@ -159,23 +159,30 @@ def _render_stickers_preview_sync() -> bytes:
         img = Image.new('RGB', (img_width, img_height), color=(245, 247, 250))
         draw = ImageDraw.Draw(img)
 
-        # 保持字体不变
-        try:
-            title_font = ImageFont.truetype("msyh.ttc", 38)
-            name_font = ImageFont.truetype("msyhbd.ttc", 24)
-            count_font = ImageFont.truetype("msyh.ttc", 20)
-            alias_font = ImageFont.truetype("msyh.ttc", 16)
-        except:
+        # 加载中文字体（包含 Linux Noto CJK 路径）
+        _font_loaded = False
+        _font_candidates = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "msyh.ttc",
+            "simhei.ttf",
+        ]
+        for _fc in _font_candidates:
             try:
-                title_font = ImageFont.truetype("simhei.ttf", 38)
-                name_font = ImageFont.truetype("simhei.ttf", 24)
-                count_font = ImageFont.truetype("simhei.ttf", 20)
-                alias_font = ImageFont.truetype("simhei.ttf", 16)
+                title_font = ImageFont.truetype(_fc, 38)
+                name_font = ImageFont.truetype(_fc, 24)
+                count_font = ImageFont.truetype(_fc, 20)
+                alias_font = ImageFont.truetype(_fc, 16)
+                _font_loaded = True
+                break
             except:
-                title_font = ImageFont.load_default()
-                name_font = ImageFont.load_default()
-                count_font = ImageFont.load_default()
-                alias_font = ImageFont.load_default()
+                continue
+        if not _font_loaded:
+            title_font = ImageFont.load_default()
+            name_font = ImageFont.load_default()
+            count_font = ImageFont.load_default()
+            alias_font = ImageFont.load_default()
 
         # 绘制标题
         title = "贴图库预览"
@@ -276,9 +283,14 @@ def _render_stickers_preview_sync() -> bytes:
 
                     # 绘制文件夹图标
                     folder_text = "文件夹"
-                    try:
-                        icon_font = ImageFont.truetype("msyh.ttc", 14)
-                    except:
+                    icon_font = None
+                    for _fc in _font_candidates:
+                        try:
+                            icon_font = ImageFont.truetype(_fc, 14)
+                            break
+                        except:
+                            continue
+                    if icon_font is None:
                         icon_font = ImageFont.load_default()
 
                     text_bbox = draw.textbbox((0, 0), folder_text, font=icon_font)
@@ -302,9 +314,14 @@ def _render_stickers_preview_sync() -> bytes:
 
                 # 绘制文件夹图标
                 folder_text = "文件夹"
-                try:
-                    icon_font = ImageFont.truetype("msyh.ttc", 14)
-                except:
+                icon_font = None
+                for _fc in _font_candidates:
+                    try:
+                        icon_font = ImageFont.truetype(_fc, 14)
+                        break
+                    except:
+                        continue
+                if icon_font is None:
                     icon_font = ImageFont.load_default()
 
                 text_bbox = draw.textbbox((0, 0), folder_text, font=icon_font)

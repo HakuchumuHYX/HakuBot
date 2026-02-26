@@ -8,6 +8,7 @@ from nonebot.log import logger
 from nonebot.params import CommandArg
 
 from ..utils.common import *
+from ..utils.image_utils import path_to_base64_image
 from ..plugin_manager.enable import *
 from ..plugin_manager.cd_manager import check_cd, update_cd
 
@@ -249,14 +250,13 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                     # 创建包含多张图片的消息
                     message_segments = []
                     for sticker_file in sticker_files:
-                        message_segments.append(MessageSegment.image(sticker_file))
+                        message_segments.append(path_to_base64_image(sticker_file))
 
                     update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
 
                     await sticker_matcher.finish(Message(message_segments))
-                except Exception:
-                    # 如果发送失败，静默处理
-                    pass
+                except Exception as e:
+                    logger.error(f"发送多图随机贴图失败: {e}")
             return
 
         # 如果不是多图随机命令，处理单图随机命令
@@ -275,7 +275,6 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                 try:
                     update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
 
-                    await sticker_matcher.finish(MessageSegment.image(sticker_file))
-                except Exception:
-                    # 如果发送失败，静默处理
-                    pass
+                    await sticker_matcher.finish(path_to_base64_image(sticker_file))
+                except Exception as e:
+                    logger.error(f"发送随机贴图失败: {e}")

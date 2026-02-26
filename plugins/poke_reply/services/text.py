@@ -45,10 +45,10 @@ similarity_checker = SimilarityChecker()
 
 HTMLRENDER_AVAILABLE = False
 try:
-    from nonebot_plugin_htmlrender import md_to_pic
+    from ...utils.browser import md_to_pic
     HTMLRENDER_AVAILABLE = True
 except ImportError:
-    logger.warning("nonebot_plugin_htmlrender 未安装，将使用 PIL 进行简单文本转图片")
+    logger.warning("浏览器模块未就绪，将使用 PIL 进行简单文本转图片")
 
 async def convert_text_to_image(text: str, group_id: int) -> Tuple[bool, bytes]:
     """将文本转换为图片"""

@@ -11,6 +11,7 @@ from .core import search_image
 from .config import config
 from ..utils.tools import get_logger, send_forward_msg, TempFilePath
 from ..utils.network import download_image
+from ..utils.image_utils import path_to_base64_image
 from . import twitter  # noqa: F401
 
 try:
@@ -92,8 +93,7 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
                 res_img.save(tmp_path, format='PNG')
                 
                 # 构建合并转发消息列表
-                # 使用 file:/// 协议
-                forward_messages = [MessageSegment.image(f"file:///{tmp_path.resolve()}")]
+                forward_messages = [path_to_base64_image(tmp_path)]
 
                 # 发送文字结果详情
                 # 将每一条搜索结果拆分成独立消息（合并转发的独立 node），方便移动端逐条复制链接

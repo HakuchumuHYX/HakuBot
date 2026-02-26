@@ -1,8 +1,6 @@
-from nonebot import require
 from nonebot.log import logger
 
-require("nonebot_plugin_htmlrender")
-from nonebot_plugin_htmlrender import get_new_page
+from ..utils.browser import get_new_page
 
 try:
     from playwright_stealth import Stealth

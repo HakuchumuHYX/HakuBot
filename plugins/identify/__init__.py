@@ -14,6 +14,7 @@ from typing import Optional
 
 # 导入管理模块
 from ..plugin_manager.enable import is_plugin_enabled
+from ..utils.image_utils import path_to_base64_image
 from ..utils.common import create_exact_command_rule
 from .data_manager import daily_record_manager
 from nonebot.exception import FinishedException
@@ -79,7 +80,7 @@ async def create_identify_message(
                 "data": {
                     "name": bot_name,
                     "uin": str(bot.self_id),
-                    "content": Message(MessageSegment.image(f"file:///{image_path}"))
+                    "content": Message(path_to_base64_image(image_path))
                 }
             }
         ]

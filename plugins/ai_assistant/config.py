@@ -49,6 +49,13 @@ class MusicConfig(BaseModel):
 
 
 class ChatConfig(BaseModel):
+    # --- Per-module provider override (留空则回退到全局配置) ---
+    provider: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    google_api_key: Optional[str] = None
+    google_base_url: Optional[str] = None
+
     model: str = "gpt-3.5-turbo"
     max_tokens: Optional[int] = 8192
     system_prompt: str = (
@@ -77,6 +84,13 @@ class ChatConfig(BaseModel):
 
 
 class ImageConfig(BaseModel):
+    # --- Per-module provider override (留空则回退到全局配置) ---
+    provider: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    google_api_key: Optional[str] = None
+    google_base_url: Optional[str] = None
+
     model: str = "dall-e-3"
     size: Optional[str] = None
     quality: Optional[str] = None # standard, hd, medium
@@ -118,6 +132,19 @@ class SearchConfig(BaseModel):
     num_queries: int = 3
 
 
+class ResolvedProviderConfig:
+    """resolve() 返回的连接参数集合，供 service 层直接使用。"""
+    __slots__ = ("provider", "api_key", "base_url", "google_api_key", "google_base_url")
+
+    def __init__(self, provider: str, api_key: str, base_url: str,
+                 google_api_key: Optional[str], google_base_url: str):
+        self.provider = provider
+        self.api_key = api_key
+        self.base_url = base_url
+        self.google_api_key = google_api_key
+        self.google_base_url = google_base_url
+
+
 class PluginConfig(BaseModel):
     # --- Provider Switch ---
     # openai_compatible: 走 /chat/completions 的 OpenAI 兼容接口（保持现状）
@@ -141,6 +168,39 @@ class PluginConfig(BaseModel):
     image: ImageConfig = ImageConfig()
     search: SearchConfig = SearchConfig()
     music: MusicConfig = MusicConfig()
+
+    def resolve(self, module: str = "chat") -> ResolvedProviderConfig:
+        """
+        按 module 级别 → 全局 的优先级，合并出最终的连接参数。
+        module: "chat" | "image"
+        """
+        mod_cfg = getattr(self, module, None)
+
+        def _pick(field: str, default=None):
+            # 优先取 module 级别的值
+            if mod_cfg is not None:
+                val = getattr(mod_cfg, field, None)
+                if val is not None and (not isinstance(val, str) or val.strip()):
+                    return val.strip() if isinstance(val, str) else val
+            # 回退到全局
+            val = getattr(self, field, default)
+            if isinstance(val, str):
+                return val.strip()
+            return val
+
+        provider = (_pick("provider") or "openai_compatible").lower()
+        api_key = _pick("api_key") or ""
+        base_url = _pick("base_url") or "https://api.openai.com/v1"
+        google_api_key = _pick("google_api_key") or ""
+        google_base_url = _pick("google_base_url") or "https://generativelanguage.googleapis.com/v1beta"
+
+        return ResolvedProviderConfig(
+            provider=provider,
+            api_key=api_key,
+            base_url=base_url,
+            google_api_key=google_api_key,
+            google_base_url=google_base_url,
+        )
 
 
 CURRENT_PATH = Path(__file__).parent

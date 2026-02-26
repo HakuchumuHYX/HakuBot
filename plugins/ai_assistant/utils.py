@@ -138,18 +138,36 @@ def remove_markdown(text: str) -> str:
     return text.strip()
 
 
+# Legacy module-level HEADERS (uses global api_key). Prefer make_headers() in new code.
 HEADERS = {
     "Authorization": f"Bearer {plugin_config.api_key}",
     "Content-Type": "application/json",
 }
 
 
-def get_llm_provider() -> str:
+def make_headers(api_key: str) -> dict:
+    """根据指定的 api_key 构建请求头。"""
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+
+def get_llm_provider(resolved=None) -> str:
+    """返回 provider 字符串。优先使用 resolved (ResolvedProviderConfig)，否则回退全局。"""
+    if resolved is not None:
+        return (getattr(resolved, "provider", None) or "openai_compatible").strip().lower()
     return (getattr(plugin_config, "provider", None) or "openai_compatible").strip().lower()
 
 
-def get_google_api_key() -> str:
-    # Gemini Developer API uses API Key (usually via query param ?key=)
+def get_google_api_key(resolved=None) -> str:
+    """返回 Google API Key。优先使用 resolved，否则回退全局。"""
+    if resolved is not None:
+        key = (getattr(resolved, "google_api_key", None) or "").strip()
+        if key:
+            return key
+        return (getattr(resolved, "api_key", None) or "").strip()
+    # Legacy fallback
     key = (getattr(plugin_config, "google_api_key", None) or "").strip()
     if key:
         return key

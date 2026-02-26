@@ -11,6 +11,7 @@ from .. import image_service, cache_service
 from ..utils import _is_group_allowed
 from ...plugin_manager.enable import *
 from ...utils.common import create_exact_command_rule
+from ...utils.image_utils import path_to_base64_image
 
 # --- 帮助 ---
 show_guess_song_help = on_command("猜歌帮助",
@@ -33,7 +34,7 @@ async def _(bot: Bot, event: MessageEvent):
     img_path = await image_service.draw_help_image()
     if img_path:
         img_p = Path(img_path)
-        await show_guess_song_help.send(MessageSegment.image(file=img_p.absolute().as_uri()))
+        await show_guess_song_help.send(path_to_base64_image(img_p))
     else:
         await show_guess_song_help.send("生成帮助图片时出错。")
 
@@ -94,6 +95,6 @@ async def _(bot: Bot, event: MessageEvent):
 
     if img_path:
         img_p = Path(img_path)
-        await show_resource_version.finish(MessageSegment.image(file=img_p.absolute().as_uri()))
+        await show_resource_version.finish(path_to_base64_image(img_p))
     else:
         await show_resource_version.finish(f"生成图片失败，请检查日志。\nDataVersion: {external_version_info}")

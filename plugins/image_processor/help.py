@@ -4,14 +4,14 @@ from pathlib import Path
 from nonebot import get_driver
 from nonebot.log import logger
 
-# 尝试导入 htmlrender
+# 导入共享浏览器模块
 try:
-    from nonebot_plugin_htmlrender import html_to_pic
+    from ..utils.browser import html_to_pic
 
     HTMLRENDER_AVAILABLE = True
 except ImportError:
     HTMLRENDER_AVAILABLE = False
-    logger.warning("未检测到 nonebot_plugin_htmlrender，帮助图片生成将不可用")
+    logger.warning("未检测到浏览器模块，帮助图片生成将不可用")
 
 # ================= 配置常量 =================
 # 定义保存路径：当前工作目录/data/image_processor/help.png

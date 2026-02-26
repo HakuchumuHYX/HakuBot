@@ -11,9 +11,7 @@ import aiofiles
 import os
 from pathlib import Path
 
-require("nonebot_plugin_htmlrender")
-from nonebot_plugin_htmlrender import md_to_pic
-from nonebot_plugin_htmlrender.data_source import read_tpl
+from ..utils.browser import md_to_pic, read_tpl
 
 from .utils import *
 from .config import plugin_config, save_config

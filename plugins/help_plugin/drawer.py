@@ -1,5 +1,5 @@
 from pathlib import Path
-from nonebot_plugin_htmlrender import template_to_pic
+from ..utils.browser import template_to_pic
 from .config import HelpConfig
 
 # 模板目录路径

@@ -2,7 +2,7 @@ import httpx
 from typing import Tuple, Optional, List
 from nonebot.log import logger
 from ..config import plugin_config
-from ..utils import HEADERS, get_llm_provider, get_google_api_key, openai_messages_to_gemini
+from ..utils import make_headers, get_llm_provider, get_google_api_key, openai_messages_to_gemini
 
 async def _call_chat_completion_google(
     messages: list,
@@ -16,6 +16,8 @@ async def _call_chat_completion_google(
     Google AI Studio / Gemini Developer API: generateContent
     Keep return signature compatible with call_chat_completion.
     """
+    rc = plugin_config.resolve("chat")
+
     system_text, contents = openai_messages_to_gemini(messages)
     used_model = model or plugin_config.chat.model
 
@@ -37,13 +39,11 @@ async def _call_chat_completion_google(
     if system_text:
         payload["systemInstruction"] = {"parts": [{"text": system_text}]}
 
-    api_key = get_google_api_key()
+    api_key = get_google_api_key(rc)
     if not api_key:
         raise Exception("未配置 google_api_key（或 api_key 为空），无法调用 Google AI Studio。")
 
-    base_url = (getattr(plugin_config, "google_base_url", None) or "https://generativelanguage.googleapis.com/v1beta").rstrip(
-        "/"
-    )
+    base_url = (rc.google_base_url or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 
     async with httpx.AsyncClient(
         base_url=base_url,
@@ -109,7 +109,8 @@ async def call_chat_completion(
     if assistant_prefill:
         messages = messages + [{"role": "assistant", "content": assistant_prefill}]
 
-    provider = get_llm_provider()
+    rc = plugin_config.resolve("chat")
+    provider = get_llm_provider(rc)
     if provider == "google_ai_studio":
         return await _call_chat_completion_google(
             messages,
@@ -134,12 +135,13 @@ async def call_chat_completion(
     if top_p is not None:
         payload["top_p"] = top_p
 
+    headers = make_headers(rc.api_key)
     async with httpx.AsyncClient(
-            base_url=plugin_config.base_url,
+            base_url=rc.base_url,
             proxy=plugin_config.proxy,
             timeout=plugin_config.timeout
     ) as client:
-        resp = await client.post("/chat/completions", json=payload, headers=HEADERS)
+        resp = await client.post("/chat/completions", json=payload, headers=headers)
 
         if resp.status_code != 200:
             raise Exception(f"API Error {resp.status_code}: {resp.text}")

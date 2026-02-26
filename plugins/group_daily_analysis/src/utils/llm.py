@@ -1,6 +1,7 @@
 import asyncio
 import httpx
 import json
+from json_repair import repair_json
 from typing import Tuple
 from nonebot.log import logger
 
@@ -230,12 +231,13 @@ async def call_chat_completion(
 
 def fix_json(text: str) -> str:
     """
-    尝试从模型输出中“提取并修复”JSON字符串。
+    尝试从模型输出中"提取并修复"JSON字符串。
 
     目标：
-    - 允许模型输出解释性文字 + JSON（常见于 Gemini），我们尽量把 JSON 抠出来再交给 json.loads
+    - 允许模型输出解释性文字 + JSON（常见于 Gemini），我们尽量把 JSON 抠出来
     - 支持 ```json ... ``` / ``` ... ``` 代码块
     - 支持提取最外层 JSON 数组 `[...]` 或对象 `{...}`
+    - 使用 json_repair 修复常见 JSON 语法问题（尾逗号、缺引号、截断等）
 
     返回：
     - 若无法提取，返回 "[]"（避免上层 json.loads 直接报 Expecting value）
@@ -259,9 +261,9 @@ def fix_json(text: str) -> str:
     if not s:
         return "[]"
 
-    # 2) 如果已经是 JSON 开头，直接返回
+    # 2) 如果已经是 JSON 开头，用 json_repair 修复后返回
     if s[0] in ("[", "{"):
-        return s
+        return repair_json(s, return_objects=False)
 
     # 3) 尝试从混杂文本中提取 JSON 数组
     lbr = s.find("[")
@@ -269,7 +271,7 @@ def fix_json(text: str) -> str:
     if lbr != -1 and rbr != -1 and rbr > lbr:
         candidate = s[lbr : rbr + 1].strip()
         if candidate:
-            return candidate
+            return repair_json(candidate, return_objects=False)
 
     # 4) 尝试提取 JSON 对象
     lcb = s.find("{")
@@ -277,6 +279,14 @@ def fix_json(text: str) -> str:
     if lcb != -1 and rcb != -1 and rcb > lcb:
         candidate = s[lcb : rcb + 1].strip()
         if candidate:
-            return candidate
+            return repair_json(candidate, return_objects=False)
+
+    # 5) 最后兜底：让 json_repair 尝试修复整个文本
+    try:
+        repaired = repair_json(s, return_objects=False)
+        if repaired and repaired not in ('""', ''):
+            return repaired
+    except Exception:
+        pass
 
     return "[]"

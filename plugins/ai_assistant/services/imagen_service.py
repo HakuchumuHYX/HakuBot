@@ -4,7 +4,7 @@ import re
 from typing import Tuple, Optional, List
 from nonebot.log import logger
 from ..config import plugin_config
-from ..utils import HEADERS, get_llm_provider, get_google_api_key, parse_data_url, openai_content_to_gemini_parts
+from ..utils import make_headers, get_llm_provider, get_google_api_key, parse_data_url, openai_content_to_gemini_parts
 from .chat_service import call_chat_completion
 
 async def _call_image_generation_google(
@@ -16,14 +16,13 @@ async def _call_image_generation_google(
     Google AI Studio image generation (nano banana / Gemini image models)
     Returns OneBot-compatible base64:// payload.
     """
+    rc = plugin_config.resolve("image")
     used_model = plugin_config.image.model
-    api_key = get_google_api_key()
+    api_key = get_google_api_key(rc)
     if not api_key:
         raise Exception("未配置 google_api_key（或 api_key 为空），无法调用 Google AI Studio 生图。")
 
-    base_url = (getattr(plugin_config, "google_base_url", None) or "https://generativelanguage.googleapis.com/v1beta").rstrip(
-        "/"
-    )
+    base_url = (rc.google_base_url or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 
     system_instruction = (
         "You are an AI specialized in generating 2D anime/manga style art.\n"
@@ -147,14 +146,17 @@ async def _call_image_generation_chat_compat(
         "messages": messages,
     }
 
+    rc = plugin_config.resolve("image")
+    headers = make_headers(rc.api_key)
+
     logger.debug(f"[chat_compat] 正在通过 /chat/completions 请求生图: model={used_model}")
 
     async with httpx.AsyncClient(
-        base_url=plugin_config.base_url,
+        base_url=rc.base_url,
         proxy=plugin_config.proxy,
         timeout=plugin_config.timeout,
     ) as client:
-        resp = await client.post("/chat/completions", json=payload, headers=HEADERS)
+        resp = await client.post("/chat/completions", json=payload, headers=headers)
 
         if resp.status_code != 200:
             err_text = resp.text
@@ -252,7 +254,8 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
       meta.safe_rewrite_attempts: 改写重试次数
     """
 
-    provider = get_llm_provider()
+    rc = plugin_config.resolve("image")
+    provider = get_llm_provider(rc)
     if provider == "google_ai_studio":
         return await _call_image_generation_google(content_list, extra_context=extra_context)
 
@@ -340,9 +343,10 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
             
         model_name = plugin_config.image.model
         
+        rc = plugin_config.resolve("image")
         try:
             async with httpx.AsyncClient(
-                base_url=plugin_config.base_url,
+                base_url=rc.base_url,
                 proxy=plugin_config.proxy,
                 timeout=plugin_config.timeout,
             ) as client:
@@ -377,7 +381,7 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
                     if plugin_config.image.size_param:
                         data["imageSize"] = plugin_config.image.size_param
                         
-                    auth_headers = {"Authorization": f"Bearer {plugin_config.api_key}"}
+                    auth_headers = {"Authorization": f"Bearer {rc.api_key}"}
                     
                     resp = await client.post("/images/edits", headers=auth_headers, data=data, files=files)
                 else:
@@ -396,7 +400,8 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
                     if plugin_config.image.size_param:
                         payload["imageSize"] = plugin_config.image.size_param
                         
-                    resp = await client.post("/images/generations", headers=HEADERS, json=payload)
+                    gen_headers = make_headers(rc.api_key)
+                    resp = await client.post("/images/generations", headers=gen_headers, json=payload)
                     
                 resp_text = resp.text
 

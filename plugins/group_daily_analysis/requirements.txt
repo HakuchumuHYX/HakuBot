@@ -4,3 +4,4 @@ nonebot-plugin-apscheduler
 jinja2
 httpx
 pydantic
+json-repair

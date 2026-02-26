@@ -11,6 +11,7 @@ from nonebot.log import logger
 
 # === 引入模块 ===
 from ..plugin_manager.enable import is_plugin_enabled
+from ..utils.image_utils import path_to_base64_image
 from .config import load_config, DATA_DIR, CACHE_EXPIRE_SECONDS, FILE_CLEAN_SECONDS, AUTO_REFRESH_INTERVAL
 from .browser import manual_capture_page
 from .image import add_watermark
@@ -139,7 +140,7 @@ async def handle_screenshot(bot: Bot, event: Event, args: Message = CommandArg()
 
         msg_text = f"以下是预测结果（{time_str}）\n若发现数据过时或图片错误，可在命令后加上 reload 获取最新数据：\n"
 
-        await shot_cmd.finish(Message(msg_text) + MessageSegment.image(image_path))
+        await shot_cmd.finish(Message(msg_text) + path_to_base64_image(image_path))
 
     # 情况 B: 用户强制刷新，或者本地没有文件 (需要现场获取)
     if force_reload:
@@ -156,7 +157,7 @@ async def handle_screenshot(bot: Bot, event: Event, args: Message = CommandArg()
         # 获取失败，但有旧图（兜底）
         await shot_cmd.finish(
             Message(f"获取最新数据失败 ({err})，显示旧缓存：\n") +
-            MessageSegment.image(path)
+            path_to_base64_image(path)
         )
     else:
         await shot_cmd.finish(f"获取失败。\n错误信息: {err}")

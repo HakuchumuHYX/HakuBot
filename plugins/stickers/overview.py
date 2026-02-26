@@ -22,6 +22,7 @@ from .send import sticker_folders, resolve_folder_name, get_all_images_in_folder
 from .config import IMAGE_EXTENSIONS, OVERVIEW_BATCH_SIZE, MAX_CANVAS_PIXELS
 from . import send
 from ..plugin_manager.enable import is_plugin_enabled
+from ..utils.image_utils import path_to_base64_image
 
 # === 字体缓存 ===
 _font_cache: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
@@ -40,8 +41,18 @@ def get_cached_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
 
 def load_fonts(font_size: int) -> Tuple[ImageFont.FreeTypeFont, ImageFont.FreeTypeFont]:
     """加载标题和正文字体"""
-    # 尝试加载中文字体
-    for font_name in ["msyh.ttc", "simhei.ttf", "Arial Unicode.ttf"]:
+    # 尝试加载中文字体（包含 Linux 路径）
+    font_candidates = [
+        # Linux (Noto CJK)
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        # Windows
+        "msyh.ttc",
+        "simhei.ttf",
+        "Arial Unicode.ttf",
+    ]
+    for font_name in font_candidates:
         title_font = get_cached_font(font_name, 32)
         text_font = get_cached_font(font_name, font_size)
         if title_font and text_font:
@@ -170,7 +181,7 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
         if found_image_path:
             try:
                 # 累加图片消息段
-                msg += MessageSegment.image(found_image_path)
+                msg += path_to_base64_image(found_image_path)
                 has_valid_image = True
             except Exception as e:
                 logger.error(f"发送图片 {found_image_path} 失败: {e}")

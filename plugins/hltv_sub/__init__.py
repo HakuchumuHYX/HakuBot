@@ -6,7 +6,6 @@ from nonebot import get_driver, require
 from nonebot.plugin import PluginMetadata
 
 require("nonebot_plugin_localstore")
-require("nonebot_plugin_htmlrender")
 
 from .config import Config
 from .data_source import hltv_data
