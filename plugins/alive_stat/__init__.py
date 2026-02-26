@@ -61,6 +61,7 @@ MONITORED_PROCESSES = [
 
 DOCKER_PROCESSES = [
     ("NapCat", "napcat"),  # (显示名, 容器名)
+    ("CLIProxyAPI", "cli-proxy-api"),
 ]
 
 current_session_start = datetime.now()

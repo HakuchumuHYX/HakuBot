@@ -180,6 +180,33 @@ async def _call_image_generation_chat_compat(
     message = (choices[0].get("message") or {})
     msg_content = message.get("content")
 
+    # 情况0: message.images 中包含图片 (某些中转商的自定义格式)
+    msg_images = message.get("images")
+    if isinstance(msg_images, list) and msg_images:
+        for part in msg_images:
+            if not isinstance(part, dict):
+                continue
+            p_type = part.get("type", "")
+
+            # 0a: type=image_url
+            if p_type == "image_url":
+                url = ((part.get("image_url") or {}).get("url") or "").strip()
+                if url.startswith("data:"):
+                    mime, b64 = parse_data_url(url)
+                    return f"base64://{b64}", {"mime_type": mime, "provider": "chat_compat", "model": used_model}
+                elif url:
+                    return url, {"provider": "chat_compat", "model": used_model}
+
+            # 0b: type=image
+            if p_type == "image":
+                b64 = (part.get("data") or part.get("base64") or "").strip()
+                if b64:
+                    mime = (part.get("mime_type") or part.get("mimeType") or "image/png").strip()
+                    return f"base64://{b64}", {"mime_type": mime, "provider": "chat_compat", "model": used_model}
+                url = (part.get("url") or "").strip()
+                if url:
+                    return url, {"provider": "chat_compat", "model": used_model}
+
     # 情况1: content 是 list（多模态响应，包含 image_url 类型的 part）
     if isinstance(msg_content, list):
         for part in msg_content:
