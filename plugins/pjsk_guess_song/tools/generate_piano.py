@@ -34,7 +34,7 @@ ERROR_LOG_PATH = BASE_DIR / "error_log.json"
 MODEL_REPO_ID = "sweetcocoa/pop2piano"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# [重要修改] 模型推荐采样率为 44100Hz
+# 模型推荐采样率为 44100Hz
 TARGET_SR = 44100
 CHUNK_DURATION = 30
 
@@ -116,7 +116,7 @@ def process_single_song_chunked(processor, model, sound_font, song):
         log(f"  -> [Load] Reading audio (sr={TARGET_SR})...")
         y, sr = librosa.load(str(src_audio), sr=TARGET_SR)
 
-        # [修复] 强制归一化 (防止音量太小模型不识别)
+        # 强制归一化 (防止音量太小模型不识别)
         y = librosa.util.normalize(y)
 
         chunk_samples = int(CHUNK_DURATION * sr)
@@ -137,8 +137,6 @@ def process_single_song_chunked(processor, model, sound_font, song):
             input_features = inputs["input_features"].to(DEVICE)
 
             # B. 生成
-            # [关键修复] composer="composer1" (无下划线)
-            # [关键修复] max_new_tokens=2048 (防止截断)
             with torch.no_grad():
                 generated_tokens = model.generate(
                     input_features=input_features,

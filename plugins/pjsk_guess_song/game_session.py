@@ -96,11 +96,7 @@ async def _game_timeout_task(session_id: str, timeout: int):
         if game_data.get("type") == "listen":
             return
 
-        # --- [修改] ---
-        # 移除 "max_attempts" 和 "guess_count" 检查
-        # 游戏超时任务现在只负责 "时间到"
         reason_msg = "时间到！"
-        # --- [修改] 结束 ---
 
         logger.info(f"游戏 {session_id} 超时结束。")
         await _end_game_session(session_id, reason_msg)
@@ -137,10 +133,7 @@ async def _run_game_session(
         game_data['first_correct_answer_time'] = 0
         game_data['guessed_users'] = set()  # (这个字段似乎未被使用，但保留它)
 
-        # --- [修改] ---
-        # game_data['guess_attempts_count'] = 0 # (移除全局计数器)
-        game_data['user_guess_counts'] = {}  # (改为按用户计次的字典)
-        # --- [修改] 结束 ---
+        game_data['user_guess_counts'] = {}
 
         game_data['start_event'] = event  # 存储初始 event 用于后续发送消息
         game_data['bot_id'] = bot.self_id  # 存储 bot self_id
@@ -178,7 +171,6 @@ async def handle_game_answer(bot: Bot, event: MessageEvent, state: T_State, matc
     user_id = get_user_id(event)
     user_name = get_user_name(event)
 
-    # --- [核心修改] ---
     max_guess_attempts = _get_setting_for_group(event, "max_guess_attempts", 10)
 
     # 1. 获取该用户的个人猜测次数
@@ -192,8 +184,6 @@ async def handle_game_answer(bot: Bot, event: MessageEvent, state: T_State, matc
 
     # 3. 为该用户增加一次猜测次数
     game_data['user_guess_counts'][user_id] = user_count + 1
-    # (原有的全局计数器 `game_data['guess_attempts_count'] += 1` 已删除)
-    # --- [核心修改] 结束 ---
 
     is_correct = False
     try:
@@ -223,9 +213,3 @@ async def handle_game_answer(bot: Bot, event: MessageEvent, state: T_State, matc
 
                     bonus_task = asyncio.create_task(_bonus_time_end_task(session_id, bonus_time))
                     game_data['bonus_task'] = bonus_task
-
-    # --- [修改] ---
-    # 移除 "全局猜测次数达到上限时结束游戏" 的逻辑
-    # if max_guess_attempts > 0 and game_data['guess_attempts_count'] >= max_guess_attempts:
-    #     ... (逻辑已删除)
-    # --- [修改] 结束 ---

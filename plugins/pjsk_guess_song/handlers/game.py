@@ -53,8 +53,11 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
     if match_cmd and match_cmd.group(2):
         mode_key = match_cmd.group(2)
 
+    if not plugin_config.full_mode and mode_key != 'normal':
+        await start_guess_song_unified.finish("......当前为 Light 模式，仅支持普通猜歌。")
+        return
+
     if plugin_config.lightweight_mode and mode_key in ['1', '2']:
-        # [重构]
         original_mode_name = game_service.game_modes[mode_key]['name']
         await start_guess_song_unified.finish(f'......轻量模式已启用，模式"{original_mode_name}"已自动切换为普通模式。')
 
@@ -74,7 +77,6 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
         is_independent_limit = _get_setting_for_group(event, "independent_daily_limit", False)
         await db_service.consume_daily_play_attempt(initiator_id, initiator_name, session_id, is_independent_limit)
 
-        # [重构]
         mode_config = game_service.game_modes.get(mode_key)
         if not mode_config:
             if session_id in active_game_sessions: active_game_sessions.pop(session_id)
@@ -96,7 +98,6 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
             game_type_suffix = 'normal'
         game_kwargs['game_type'] = f"guess_song_{game_type_suffix}"
 
-        # [重构]
         game_data = await game_service.get_game_clip(**game_kwargs)
         if not game_data:
             if session_id in active_game_sessions: active_game_sessions.pop(session_id)
@@ -119,7 +120,6 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
 
         logger.info(f"[猜歌插件] 新游戏开始. 答案: {correct_song['title']} (选项 {game_data['correct_answer_num']})")
 
-        # [重构]
         options_img_path = await image_service.create_options_image(options)
 
         answer_timeout = _get_setting_for_group(event, "answer_timeout", 30)
@@ -165,6 +165,10 @@ async def _(bot: Bot, event: MessageEvent):
             await start_random_guess_song.finish()
             return
 
+    if not plugin_config.full_mode:
+        await start_random_guess_song.finish("......当前为 Light 模式，随机猜歌不可用。")
+        return
+
     session_id = get_session_id(event)
     lock = game_session_locks[session_id]
 
@@ -184,7 +188,6 @@ async def _(bot: Bot, event: MessageEvent):
         is_independent_limit = _get_setting_for_group(event, "independent_daily_limit", False)
         await db_service.consume_daily_play_attempt(initiator_id, initiator_name, session_id, is_independent_limit)
 
-        # [重构]
         combined_kwargs, total_score, effect_names_display, mode_name_str = game_service.get_random_mode_config()
         if not combined_kwargs:
             if session_id in active_game_sessions: active_game_sessions.pop(session_id)
@@ -197,7 +200,6 @@ async def _(bot: Bot, event: MessageEvent):
         combined_kwargs['score'] = total_score
         combined_kwargs['game_type'] = 'guess_song_random'
 
-        # [重构]
         game_data = await game_service.get_game_clip(**combined_kwargs)
         if not game_data:
             if session_id in active_game_sessions: active_game_sessions.pop(session_id)
@@ -220,7 +222,6 @@ async def _(bot: Bot, event: MessageEvent):
 
         logger.info(f"[猜歌插件] 新游戏开始. 答案: {correct_song['title']} (选项 {game_data['correct_answer_num']})")
 
-        # [重构]
         options_img_path = await image_service.create_options_image(options)
         timeout_seconds = _get_setting_for_group(event, "answer_timeout", 30)
         intro_text = f".......嗯\n这首歌是？请在{timeout_seconds}秒内发送编号回答。\n"
@@ -300,7 +301,6 @@ async def _(bot: Bot, event: MessageEvent):
 
         correct_vocal_version = random.choice(another_vocals)
 
-        # [重构]
         game_data = await game_service.get_game_clip(
             force_song_object=song,
             force_vocal_version=correct_vocal_version,

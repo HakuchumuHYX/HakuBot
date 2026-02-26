@@ -100,10 +100,7 @@ class GameService:
         ]
 
     async def get_game_clip(self, **kwargs) -> Optional[Dict]:
-        """
-        准备一轮新游戏。
-        [重构] 此函数现在调用 self.audio_processor 来执行实际的音频处理。
-        """
+        """准备一轮新游戏。"""
         if not self.cache_service.song_data:
             logger.error("无法开始游戏: 歌曲数据未加载。")
             return None
@@ -182,7 +179,6 @@ class GameService:
             if self.vocals_silence_detection and preprocessed_mode == 'vocals_only':
                 try:
                     target_duration_s = self.config.clip_duration_seconds
-                    # [重构] 调用 audio_processor
                     total_duration_ms = await loop.run_in_executor(self.executor,
                                                                    self.audio_processor.get_duration_ms_ffprobe_sync,
                                                                    audio_source)
@@ -196,7 +192,6 @@ class GameService:
                         random_start_s = (random.randint(start_range_min,
                                                          start_range_max) if start_range_min < start_range_max else start_range_min) / 1000.0
 
-                        # [重构] 调用 audio_processor
                         mean_dbfs = await self.audio_processor.get_segment_mean_dbfs_ffmpeg(audio_source,
                                                                                             random_start_s,
                                                                                             target_duration_s)
@@ -248,7 +243,6 @@ class GameService:
         # 路径 1: 人声模式的快速路径
         if preprocessed_mode == 'vocals_only' and not use_slow_path and forced_start_ms is not None:
             logger.debug("人声模式无复杂效果，使用ffmpeg快速路径进行裁剪。")
-            # [重构] 调用 audio_processor
             success = await self.audio_processor.clip_audio_ffmpeg_fast(audio_source, clip_path_obj, forced_start_ms,
                                                                         clip_duration)
             if success:
@@ -304,7 +298,6 @@ class GameService:
                 "force_start_ms": forced_start_ms
             }
 
-            # [重构] 调用 audio_processor
             clip = await loop.run_in_executor(self.executor, self.audio_processor.process_audio_with_pydub, audio_data,
                                               "mp3", pydub_kwargs)
             if clip is None: raise RuntimeError("pydub audio processing failed.")

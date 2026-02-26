@@ -35,6 +35,9 @@ class PluginConfig(BaseModel, extra=Extra.ignore):
     independent_daily_limit: bool = False
     random_mode_decay_factor: float = 0.75
     custom_footer_text: str = ""
+    full_mode: bool = False
+    asset_url_base: str = ""
+    asset_server: str = "jp"
 
     class Config:
         validate_assignment = True

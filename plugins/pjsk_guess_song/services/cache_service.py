@@ -59,7 +59,9 @@ class CacheService:
 
         self._load_song_aliases()
 
-        if self.use_local_resources:
+        if not self.config.full_mode:
+            logger.info("当前为 Light 模式，跳过预处理音轨 manifest 加载。仅支持普通猜歌/听歌。")
+        elif self.use_local_resources:
             self._load_local_manifest()
         else:
             await self._load_remote_manifest()
@@ -252,16 +254,50 @@ class CacheService:
         except Exception as e:
             logger.error(f"清理 output 目录时出错: {e}")
 
+    def _build_asset_url(self, relative_path: str) -> Optional[str]:
+        """根据 asset 站 URL 格式，将插件内部的相对路径映射为 asset 站的实际 URL。"""
+        asset_base = self.config.asset_url_base.strip('/')
+        server = self.config.asset_server
+        if not asset_base:
+            logger.error("asset_url_base 未配置，无法构建 asset URL。")
+            return None
+
+        parts = Path(relative_path).parts
+        # songs/{bundle}/{bundle}.mp3 → {base}/{server}-assets/ondemand/music/long/{bundle}/{bundle}.mp3
+        if len(parts) >= 3 and parts[0] == "songs" and parts[-1].endswith(".mp3"):
+            bundle = parts[1]
+            filename = parts[-1]
+            return f"{asset_base}/{server}-assets/ondemand/music/long/{bundle}/{filename}"
+
+        # music_jacket/{name}.png → {base}/{server}-assets/startapp/music/jacket/{stem}/{name}
+        if len(parts) >= 1 and parts[0] == "music_jacket" and parts[-1].endswith(".png"):
+            stem = Path(parts[-1]).stem  # e.g. jacket_s_001
+            filename = parts[-1]
+            return f"{asset_base}/{server}-assets/startapp/music/jacket/{stem}/{filename}"
+
+        # 其他路径无法映射到 asset 站，回退到 remote_resource_url_base
+        if self.remote_resource_url_base:
+            return f"{self.remote_resource_url_base}/{'/'.join(parts)}"
+
+        logger.warning(f"无法将路径 '{relative_path}' 映射到 asset 站 URL。")
+        return None
+
     def get_resource_path_or_url(self, relative_path: str) -> Optional[Union[Path, str]]:
         """根据配置返回资源的本地Path对象或远程URL字符串。"""
         if self.use_local_resources:
             path = self.resources_dir / relative_path
             return path if path.exists() else None
-        else:
-            if not self.remote_resource_url_base:
-                logger.error("配置为使用远程资源，但 remote_resource_url_base (in config.json) 未设置。")
-                return None
+
+        # 优先使用 asset 站
+        if self.config.asset_url_base:
+            return self._build_asset_url(relative_path)
+
+        # 回退到原有的 remote_resource_url_base
+        if self.remote_resource_url_base:
             return f"{self.remote_resource_url_base}/{'/'.join(Path(relative_path).parts)}"
+
+        logger.error("未配置任何远程资源地址 (asset_url_base 或 remote_resource_url_base)。")
+        return None
 
     async def open_image(self, relative_path: str) -> Optional[Image.Image]:
         """打开一个资源图片，无论是本地路径还是远程URL。"""
@@ -341,8 +377,6 @@ class CacheService:
             return next((s for s in target_pool if s['id'] == target_id), None)
 
         return None
-
-    # --- [修改] 结束 ---
 
     async def terminate(self):
         """关闭缓存服务，目前无需特殊操作"""

@@ -9,7 +9,6 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, Bot, GroupMessageEvent
 
-# [重构] 导入 db_service 和 image_service
 from .. import db_service, image_service
 from ...plugin_manager.enable import is_plugin_enabled
 from ...utils.common import create_exact_command_rule
@@ -49,7 +48,6 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
         except Exception:
             group_name = f"群 {group_id}"
 
-        # 2. [重构] 调用 image_service 绘制图片
         img_path = await image_service.draw_leaderboard_image(group_name, leaderboard_data)
 
         if img_path:

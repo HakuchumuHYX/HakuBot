@@ -11,7 +11,7 @@ from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment, Bot
 
-from .. import db_service, cache_service, game_service
+from .. import db_service, cache_service, game_service, plugin_config
 from ..game_data import game_session_locks, active_game_sessions, last_game_end_time
 from ..utils import (
     get_session_id, get_user_id, get_user_name,
@@ -30,6 +30,10 @@ async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent
         if not is_feature_enabled("pjsk_guess_song", "listen", str(event.group_id), user_id):
             await matcher.finish("听歌功能在此群无法使用！")
             return
+
+    if not plugin_config.full_mode:
+        await matcher.finish("......当前为 Light 模式，预处理音轨听歌不可用。")
+        return
     """
     (重构) 统一处理所有"听歌"类指令的通用逻辑。
     """
@@ -53,7 +57,6 @@ async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent
         if not can_listen:
             await matcher.finish(f"......你今天听歌的次数已达上限（{listen_limit}次），请明天再来吧......")
 
-        # [重构]
         config = game_service.listen_modes[mode]
         if not getattr(cache_service, config['list_attr']):
             await matcher.finish(config['not_found_msg'])
@@ -63,7 +66,6 @@ async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent
     await matcher.send("正在加载数据……")
 
     try:
-        # [重构]
         config = game_service.listen_modes[mode]
         song_to_play, mp3_source = await game_service.get_listen_song_and_path(mode, search_term)
 
@@ -121,7 +123,6 @@ for cmd, mode in listen_commands.items():
 
     on_command(cmd, priority=10, block=True, rule=create_exact_command_rule(cmd)).handle()(create_handler(mode))
 
-# --- [修改] 听普通 (独立处理器) ---
 listen_normal = on_command("听",
                            priority=10,
                            block=True,
@@ -143,12 +144,10 @@ async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = Com
     session_id = get_session_id(event)
     lock = game_session_locks[session_id]
 
-    # --- [修改] 提前检查参数 ---
     content = args.extract_plain_text().strip()
     if not content:
         await matcher.finish("......请指定要听的歌曲名称或ID。例如：听 <歌名> [sekai/vs]")
         return
-    # --- [修改] 结束 ---
 
     async with lock:
         cooldown = _get_setting_for_group(event, "game_cooldown_seconds", 30)
@@ -198,7 +197,6 @@ async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = Com
                 # 将整体视为歌名
                 song_query = content
 
-        # [重构] 调用新的 service 方法
         song_to_play, mp3_source, vocal_info = await game_service.get_normal_song_and_path(song_query, version_type)
 
         if not song_to_play:
@@ -248,9 +246,6 @@ async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = Com
         if session_id in active_game_sessions:
             active_game_sessions.pop(session_id)
         last_game_end_time[session_id] = time.time()
-
-
-# --- [修改] 结束 ---
 
 
 # --- 听anvo 指令 ---
@@ -303,7 +298,6 @@ async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = Com
     try:
         content = args.extract_plain_text().strip()
 
-        # [重构]
         song_to_play, vocal_info = await game_service.get_anvo_song_and_vocal(content)
 
         if not song_to_play:
@@ -336,7 +330,6 @@ async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = Com
             await matcher.finish(reply)
             return
 
-        # [重构]
         mp3_source_path = await game_service.audio_processor.process_anvo_audio(song_to_play, vocal_info)
 
         if not mp3_source_path:
