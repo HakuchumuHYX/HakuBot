@@ -342,11 +342,14 @@ async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         send_time = t4 - t3
 
         note = ""
-        if isinstance(meta, dict) and meta.get("used_safe_rewrite"):
-            # “触发安全重写”不准确：实际是发生了合规化改写并重试
-            note = "（已进行合规化改写并重试）"
+        used_model = plugin_config.image.model
+        if isinstance(meta, dict):
+            used_model = meta.get("model", plugin_config.image.model)
+            if meta.get("used_safe_rewrite"):
+                # “触发安全重写”不准确：实际是发生了合规化改写并重试
+                note = "（已进行合规化改写并重试）"
 
-        await draw_matcher.finish(f"生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s{note}")
+        await draw_matcher.finish(f"使用模型：{used_model}\n生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s{note}")
 
     except FinishedException:
         raise
@@ -409,10 +412,13 @@ async def handle_draw_web(bot: Bot, event: MessageEvent, args: Message = Command
         send_time = t4 - t3
 
         note = ""
-        if isinstance(meta, dict) and meta.get("used_safe_rewrite"):
-            note = "（已进行合规化改写并重试）"
+        used_model = plugin_config.image.model
+        if isinstance(meta, dict):
+            used_model = meta.get("model", plugin_config.image.model)
+            if meta.get("used_safe_rewrite"):
+                note = "（已进行合规化改写并重试）"
 
-        await draw_web_matcher.finish(f"生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s（联网: Tavily）{note}")
+        await draw_web_matcher.finish(f"使用模型：{used_model}\n生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s（联网: Tavily）{note}")
 
     except FinishedException:
         raise
