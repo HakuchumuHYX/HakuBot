@@ -19,7 +19,8 @@ from ..utils.draw.plot import (
 )
 
 if TYPE_CHECKING:
-    from . import BotRuntime, ServerStatus, ProcessInfo, NetworkResult
+    from .runtime import BotRuntime
+    from .collector import ServerStatus, ProcessInfo, NetworkResult
 
 # ================= 资源配置 =================
 PLUGIN_DIR = Path(__file__).parent
