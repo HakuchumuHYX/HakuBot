@@ -328,7 +328,7 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
                 + extra_context
             )
 
-        content, _, _ = await call_chat_completion(
+        content, _ = await call_chat_completion(
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=max_tokens,
             model=model,

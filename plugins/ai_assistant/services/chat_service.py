@@ -1,8 +1,10 @@
+import time
 import httpx
 from typing import Tuple, Optional, List
 from nonebot.log import logger
 from ..config import plugin_config
 from ..utils import make_headers, get_llm_provider, get_google_api_key, openai_messages_to_gemini
+
 
 async def _call_chat_completion_google(
     messages: list,
@@ -11,10 +13,10 @@ async def _call_chat_completion_google(
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     top_p: Optional[float] = None,
-) -> Tuple[str, str, int]:
+) -> Tuple[str, dict]:
     """
     Google AI Studio / Gemini Developer API: generateContent
-    Keep return signature compatible with call_chat_completion.
+    Return shape aligned with image service style: (content, meta).
     """
     rc = plugin_config.resolve("chat")
 
@@ -32,7 +34,7 @@ async def _call_chat_completion_google(
         generation_config["temperature"] = float(temperature)
     if top_p is not None:
         generation_config["topP"] = float(top_p)
-        
+
     if generation_config:
         payload["generationConfig"] = generation_config
 
@@ -45,6 +47,7 @@ async def _call_chat_completion_google(
 
     base_url = (rc.google_base_url or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 
+    t1 = time.time()
     async with httpx.AsyncClient(
         base_url=base_url,
         proxy=plugin_config.proxy,
@@ -60,6 +63,7 @@ async def _call_chat_completion_google(
             raise Exception(f"Google API Error {resp.status_code}: {resp.text}")
 
         data = resp.json()
+    t2 = time.time()
 
     # Parse text parts
     text_parts: List[str] = []
@@ -81,7 +85,14 @@ async def _call_chat_completion_google(
         or 0
     )
 
-    return out_text, used_model, total_tokens
+    meta = {
+        "provider": "google_ai_studio",
+        "model": used_model,
+        "total_tokens": total_tokens,
+        "elapsed": max(0.0, t2 - t1),
+    }
+
+    return out_text, meta
 
 
 async def call_chat_completion(
@@ -92,18 +103,18 @@ async def call_chat_completion(
     temperature: Optional[float] = None,
     top_p: Optional[float] = None,
     assistant_prefill: Optional[str] = None,
-) -> Tuple[str, str, int]:
+) -> Tuple[str, dict]:
     """
     调用聊天接口
 
-    max_tokens:
-      用于控制不同用途的 token 消耗（例如：检索 query 重写通常只需要很少 token）。
-      若为 None，则尝试从 config 中读取；如果配置中也为 0/None，则不限制最大输出。
-    model:
-      可选覆盖模型（默认使用 plugin_config.chat_model）。
-    assistant_prefill:
-      在 messages 末尾追加一条 assistant 消息作为回复开头引导（Claude 特性）。
-      模型会接着这段文字继续生成，可有效引导输出风格和详细度。
+    返回：
+      (content, meta)
+
+    meta 字段：
+      - model: 实际模型名
+      - total_tokens: token 消耗
+      - elapsed: 请求耗时（秒）
+      - provider: 提供商标识（google_ai_studio / openai_compat）
     """
     # 注入 assistant prefill（如果有）
     if assistant_prefill:
@@ -120,10 +131,11 @@ async def call_chat_completion(
             top_p=top_p,
         )
 
+    used_model = model or plugin_config.chat.model
     used_max_tokens = max_tokens if max_tokens is not None else plugin_config.chat.max_tokens
 
     payload = {
-        "model": model or plugin_config.chat.model,
+        "model": used_model,
         "messages": messages,
     }
 
@@ -136,6 +148,7 @@ async def call_chat_completion(
         payload["top_p"] = top_p
 
     headers = make_headers(rc.api_key)
+    t1 = time.time()
     async with httpx.AsyncClient(
             base_url=rc.base_url,
             proxy=plugin_config.proxy,
@@ -147,11 +160,20 @@ async def call_chat_completion(
             raise Exception(f"API Error {resp.status_code}: {resp.text}")
 
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
-        total_tokens = data.get("usage", {}).get("total_tokens", 0)
+    t2 = time.time()
 
-        # 如果使用了 prefill，将 prefill 文本拼接到返回内容前面
-        if assistant_prefill:
-            content = assistant_prefill + content
+    content = data["choices"][0]["message"]["content"]
+    total_tokens = data.get("usage", {}).get("total_tokens", 0)
 
-        return content, (model or plugin_config.chat.model), total_tokens
+    # 如果使用了 prefill，将 prefill 文本拼接到返回内容前面
+    if assistant_prefill:
+        content = assistant_prefill + content
+
+    meta = {
+        "provider": "openai_compat",
+        "model": used_model,
+        "total_tokens": total_tokens,
+        "elapsed": max(0.0, t2 - t1),
+    }
+
+    return content, meta

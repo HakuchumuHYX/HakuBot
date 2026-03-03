@@ -150,12 +150,14 @@ class FastPathMixin:
             },
         )
 
-        content, model_name, total_tokens = await call_chat_completion(
+        content, meta = await call_chat_completion(
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=150,
             temperature=0.1,
             top_p=0.9,
         )
+        model_name = meta.get("model", "")
+        total_tokens = int(meta.get("total_tokens", 0) or 0)
 
         self._log(
             "music.fast_gate.response",

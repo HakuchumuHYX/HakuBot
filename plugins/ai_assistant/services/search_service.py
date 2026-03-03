@@ -233,7 +233,7 @@ async def rewrite_search_queries_with_llm(raw_text: str, *, mode: str = "chat") 
     user = f"mode={mode}\nraw={_cleanup_search_text(raw_text)}"
 
     try:
-        content, _, _ = await call_chat_completion(
+        content, _ = await call_chat_completion(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

@@ -164,14 +164,17 @@ async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         ]
 
         await chat_matcher.send("正在思考中...")
-        reply_text, model_name, tokens = await call_chat_completion(
+        reply_text, meta = await call_chat_completion(
             messages,
             temperature=plugin_config.chat.temperature,
             top_p=plugin_config.chat.top_p,
             assistant_prefill=plugin_config.chat.assistant_prefill,
         )
+        model_name = meta.get("model", plugin_config.chat.model)
+        tokens = int(meta.get("total_tokens", 0) or 0)
+        elapsed = float(meta.get("elapsed", 0.0) or 0.0)
 
-        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens}"
+        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 耗时: {elapsed:.2f}s"
         watermark = plugin_config.chat.watermark
 
         if watermark:
@@ -260,14 +263,17 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         ]
 
         await chat_web_matcher.send("正在思考中...")
-        reply_text, model_name, tokens = await call_chat_completion(
+        reply_text, meta = await call_chat_completion(
             messages,
             temperature=plugin_config.chat.temperature,
             top_p=plugin_config.chat.top_p,
             assistant_prefill=plugin_config.chat.assistant_prefill,
         )
+        model_name = meta.get("model", plugin_config.chat.model)
+        tokens = int(meta.get("total_tokens", 0) or 0)
+        elapsed = float(meta.get("elapsed", 0.0) or 0.0)
 
-        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 联网: Tavily | Query数: {len(queries) if queries else 0}"
+        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 耗时: {elapsed:.2f}s | 联网: Tavily | Query数: {len(queries) if queries else 0}"
         watermark = plugin_config.chat.watermark
 
         if watermark:
@@ -447,15 +453,16 @@ async def handle_change_model(bot: Bot, event: MessageEvent, args: Message = Com
         messages = [{"role": "user", "content": "Hello! This is a connection test."}]
         
         # 发起测试请求
-        reply_text, used_model, _ = await call_chat_completion(messages)
-        
+        reply_text, meta = await call_chat_completion(messages)
+        used_model = meta.get("model", new_model)
+
         # 如果代码执行到这里，说明测试成功
         save_config(plugin_config)
-        
+
         # 截取简短的响应预览
         preview = reply_text[:50] + "..." if len(reply_text) > 50 else reply_text
         preview = preview.replace('\n', ' ')
-        
+
         await model_cmd.finish(
             f"✅ 模型切换成功！\n"
             f"旧模型: {old_model}\n"

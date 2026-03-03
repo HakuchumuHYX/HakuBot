@@ -389,12 +389,14 @@ class LLMPlanMixin:
             },
         )
 
-        content, model_name, total_tokens = await call_chat_completion(
+        content, meta = await call_chat_completion(
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=4096,  # 增加token限制以容纳新字段
             temperature=self.cfg.llm_temperature,
             top_p=self.cfg.llm_top_p,
         )
+        model_name = meta.get("model", "")
+        total_tokens = int(meta.get("total_tokens", 0) or 0)
 
         self._log(
             "llm_plan.response",
@@ -582,12 +584,14 @@ class LLMPlanMixin:
             },
         )
 
-        content, model_name, total_tokens = await call_chat_completion(
+        content, meta = await call_chat_completion(
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=180,
             temperature=self.cfg.llm_temperature,
             top_p=self.cfg.llm_top_p,
         )
+        model_name = meta.get("model", "")
+        total_tokens = int(meta.get("total_tokens", 0) or 0)
 
         self._log(
             "llm_expand_web_queries.response",
@@ -677,12 +681,14 @@ class LLMPlanMixin:
             },
         )
 
-        content, model_name, total_tokens = await call_chat_completion(
+        content, meta = await call_chat_completion(
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=150,
             temperature=0.1,
             top_p=0.9,
         )
+        model_name = meta.get("model", "")
+        total_tokens = int(meta.get("total_tokens", 0) or 0)
 
         self._log(
             "llm_verify_relevance.response",
