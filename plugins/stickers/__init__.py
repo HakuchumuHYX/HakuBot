@@ -6,6 +6,7 @@ from nonebot import on_message, on_command, get_bot  # 确保 get_bot 被导入�
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment, Bot  # 导入 Bot
 from nonebot.log import logger
 from nonebot.params import CommandArg
+from nonebot.exception import FinishedException
 
 from ..utils.common import *
 from ..utils.image_utils import path_to_base64_image
@@ -255,6 +256,8 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                     update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
 
                     await sticker_matcher.finish(Message(message_segments))
+                except FinishedException:
+                    raise
                 except Exception as e:
                     logger.error(f"发送多图随机贴图失败: {e}")
             return
@@ -276,5 +279,7 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                     update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
 
                     await sticker_matcher.finish(path_to_base64_image(sticker_file))
+                except FinishedException:
+                    raise
                 except Exception as e:
                     logger.error(f"发送随机贴图失败: {e}")
