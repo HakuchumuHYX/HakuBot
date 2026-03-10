@@ -72,9 +72,8 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
         await event_subscribe.finish("请提供赛事ID，例如：event订阅 7148")
         return
 
-    # 全局单订阅模式：检查是否所有启用群都已同步订阅了该赛事
-    all_subscribed_ids = data_manager.get_all_subscribed_event_ids()
-    if event_id in all_subscribed_ids and data_manager.is_subscribed(group_id, event_id):
+    # 全局同步多订阅：若该赛事已在全局订阅中，直接提示
+    if data_manager.is_subscribed(group_id, event_id):
         await event_subscribe.finish(f"已经订阅了赛事 #{event_id}")
         return
 
@@ -92,8 +91,7 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
             event_info = await hltv_data.get_event_info(event_id)
 
         if event_info:
-            # 单订阅模式：订阅新赛事时覆盖旧订阅（内部会清空旧赛事的推送去重状态）
-            data_manager.subscribe_event(
+            created = data_manager.subscribe_event(
                 group_id=group_id,
                 subscription=EventSubscription(
                     event_id=event_id,
@@ -102,19 +100,23 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
                     end_date=event_info.end_date,
                 ),
             )
+            if not created:
+                await event_subscribe.finish(f"已经订阅了赛事 #{event_id}")
+                return
 
-            # 只有进行中赛事才恢复定时任务；并先标记现有 results，避免订阅后立刻推历史结果
             from ..scheduler import hltv_scheduler
 
+            # 进行中赛事先标记已有结果，避免订阅后立刻推历史结果
             if event_info.is_ongoing:
                 await hltv_scheduler.initialize_event_results_as_notified(event_id)
-            hltv_scheduler.ensure_job_state()
+
+            hltv_scheduler.ensure_event_job_state(event_id)
             hltv_scheduler.refresh_wakeup_jobs()
 
             await event_subscribe.finish(f"✅ 成功订阅赛事：{event_info.title}")
         else:
-            # 未获取到详细信息：仍允许订阅，但不自动恢复定时任务
-            data_manager.subscribe_event(
+            # 未获取到详细信息：仍允许订阅，元信息后续由每日维护自动补全
+            created = data_manager.subscribe_event(
                 group_id=group_id,
                 subscription=EventSubscription(
                     event_id=event_id,
@@ -123,10 +125,13 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
                     end_date="",
                 ),
             )
+            if not created:
+                await event_subscribe.finish(f"已经订阅了赛事 #{event_id}")
+                return
 
             from ..scheduler import hltv_scheduler
 
-            hltv_scheduler.ensure_job_state()
+            hltv_scheduler.ensure_event_job_state(event_id)
             hltv_scheduler.refresh_wakeup_jobs()
 
             await event_subscribe.finish(f"✅ 成功订阅赛事 #{event_id}")
@@ -159,7 +164,7 @@ async def handle_event_unsubscribe(bot: Bot, event: GroupMessageEvent, args: Mes
         await event_unsubscribe.finish("请提供赛事ID，例如：event取消订阅 7148")
         return
 
-    if data_manager.unsubscribe_event(group_id, event_id):
+    if data_manager.unsubscribe_event_global(event_id):
         from ..scheduler import hltv_scheduler
 
         hltv_scheduler.ensure_job_state()

@@ -147,8 +147,9 @@ def parse_event_matches(soup: BeautifulSoup, tz) -> list[MatchInfo]:
             logger.debug(f"[HLTV] 解析单个 match-wrapper 失败: {e}")
             continue
 
-    # 方法2: 如果没找到 match-wrapper，回退到链接解析（保持原逻辑）
-    if not matches:
+    # 方法2: 仅当页面结构中完全不存在 match-wrapper 时，才回退到链接解析
+    # 注意：若 match-wrapper 存在但都因 TBD 被过滤，应该返回空，避免误抓页面中其他赛事链接
+    if not matches and not match_wrappers:
         logger.debug("[HLTV] 未找到 match-wrapper，尝试链接解析")
         match_links = soup.find_all("a", href=re.compile(r"/matches/\d+/"))
         seen_ids = set()

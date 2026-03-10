@@ -35,10 +35,11 @@ async def handle_results_list(bot: Bot, event: GroupMessageEvent):
     try:
         results_by_event = {}
 
-        for sub in subscriptions:
+        for sub in sorted(subscriptions, key=lambda x: int(x.event_id) if x.event_id.isdigit() else x.event_id):
             results = await hltv_data.get_event_results(sub.event_id)
             if results:
-                results_by_event[sub.event_title] = results
+                event_key = f"#{sub.event_id} {sub.event_title}"
+                results_by_event[event_key] = results
 
         if not results_by_event:
             await results_list.finish("暂无比赛结果")

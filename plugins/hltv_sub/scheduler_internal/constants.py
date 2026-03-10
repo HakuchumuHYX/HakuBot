@@ -6,8 +6,13 @@ from __future__ import annotations
 
 from typing import Literal
 
-JOB_ID = "hltv_check"
 DEFAULT_INTERVAL_MINUTES = 3
+
+# per-event interval job id 前缀
+EVENT_JOB_PREFIX = "hltv_check_"
+
+# 每日维护任务（自动退订 + 去重状态清理）
+DAILY_MAINTENANCE_JOB_ID = "hltv_daily_maintenance"
 
 # start_date 前多少小时进入 UPCOMING（仅在这个窗口内才恢复轮询）
 UPCOMING_WINDOW_HOURS = 24
@@ -32,6 +37,6 @@ OVERDUE_THRESHOLD_MINUTES = 30
 
 EVENT_STATE = Literal["ONGOING", "UPCOMING", "NOT_ONGOING", "ENDED", "UNKNOWN"]
 
-# 开赛提醒窗口（分钟）
-REMINDER_WINDOW_MIN = 3   # 最晚：开赛前 3 分钟
-REMINDER_WINDOW_MAX = 8   # 最早：开赛前 8 分钟
+
+def event_job_id(event_id: str) -> str:
+    return f"{EVENT_JOB_PREFIX}{event_id}"
