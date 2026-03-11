@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Optional
 
 import pytz
@@ -16,7 +17,7 @@ from bs4 import BeautifulSoup
 from nonebot.log import logger
 
 from .config import plugin_config
-from .http_client import HLTVHttpClient
+from .http_client import FetchResult, HLTVHttpClient
 from .models import (
     EventInfo,
     MatchInfo,
@@ -28,6 +29,17 @@ from .parsers.events import parse_big_events, parse_event_info
 from .parsers.matches import parse_event_matches_with_hints
 from .parsers.results import parse_event_results
 from .parsers.stats import parse_match_stats
+
+
+@dataclass
+class EventMatchesMeta:
+    status_code: Optional[int] = None
+    final_url: str = ""
+    page_title: str = ""
+    match_wrapper_count: int = 0
+    match_link_count: int = 0
+    is_unavailable: bool = False
+    unavailable_reason: str = ""
 
 
 class HLTVDataSource:
@@ -65,6 +77,81 @@ class HLTVDataSource:
 
         return parse_event_info(html, event_id=event_id, event_title=event_title, tz=self._tz)
 
+    def _analyze_matches_meta(
+        self, event_id: str, fetch_result: FetchResult, soup: Optional[BeautifulSoup]
+    ) -> EventMatchesMeta:
+        status = fetch_result.status_code
+        final_url = fetch_result.final_url or ""
+        title = soup.title.get_text(strip=True) if soup and soup.title else ""
+
+        wrappers = soup.find_all("div", class_="match-wrapper") if soup else []
+        links = soup.find_all("a", href=lambda x: bool(x and "/matches/" in x)) if soup else []
+        text = soup.get_text(" ", strip=True).lower() if soup else ""
+
+        meta = EventMatchesMeta(
+            status_code=status,
+            final_url=final_url,
+            page_title=title,
+            match_wrapper_count=len(wrappers),
+            match_link_count=len(links),
+        )
+
+        if status is None:
+            return meta
+
+        if status != 200:
+            meta.is_unavailable = True
+            meta.unavailable_reason = f"http_{status}"
+            return meta
+
+        expected_path = f"/events/{event_id}/matches"
+        if final_url and expected_path not in final_url:
+            meta.is_unavailable = True
+            meta.unavailable_reason = "unexpected_final_url"
+            return meta
+
+        # 真实抓取证据：finished 赛事会返回通用 matches 页（标题固定 + 无 wrapper + no matches yet）
+        is_generic_matches_title = "counter-strike matches & livescore" in title.lower()
+        has_no_matches_marker = ("no matches yet" in text) or ("no matches" in text)
+
+        if is_generic_matches_title and len(wrappers) == 0 and has_no_matches_marker:
+            meta.is_unavailable = True
+            meta.unavailable_reason = "generic_matches_page_no_event_matches"
+
+        return meta
+
+    async def get_event_matches_with_hints_and_meta(
+        self, event_id: str, days: int = 7
+    ) -> tuple[list[MatchInfo], list[MatchTimeHint], EventMatchesMeta]:
+        """获取赛事比赛列表 + 时间提示 + 页面元信息"""
+        url = f"{self.BASE_URL}/events/{event_id}/matches"
+        fetch_result = await self._client.fetch_with_meta(url)
+        if not fetch_result.text:
+            meta = self._analyze_matches_meta(event_id, fetch_result, None)
+            if not meta.unavailable_reason:
+                meta.is_unavailable = False
+                meta.unavailable_reason = "empty_response"
+            return [], [], meta
+
+        soup = BeautifulSoup(fetch_result.text, "lxml")
+        meta = self._analyze_matches_meta(event_id, fetch_result, soup)
+
+        # 页面不可用时，明确返回空，避免 parser fallback 误抓全站 /matches 链接
+        if meta.is_unavailable:
+            logger.warning(
+                f"[HLTV] 赛事 matches 页面不可用: event={event_id}, "
+                f"status={meta.status_code}, final_url={meta.final_url}, "
+                f"title={meta.page_title}, reason={meta.unavailable_reason}"
+            )
+            return [], [], meta
+
+        matches, hints = parse_event_matches_with_hints(soup, self._tz)
+        logger.info(
+            f"[HLTV] 获取到 {len(matches)} 场比赛 (filtered) / {len(hints)} 条时间提示 (raw), "
+            f"event={event_id}, wrappers={meta.match_wrapper_count}"
+        )
+        return matches, hints, meta
+
     async def get_event_matches_with_hints(
         self, event_id: str, days: int = 7
     ) -> tuple[list[MatchInfo], list[MatchTimeHint]]:
@@ -73,18 +160,13 @@ class HLTVDataSource:
         - matches：过滤 TBD（用于渲染/提醒）
         - hints：不过滤 TBD（用于 scheduler 自适应轮询）
         """
-        url = f"{self.BASE_URL}/events/{event_id}/matches"
-        html = await self._client.fetch(url)
-        if not html:
-            return [], []
-
-        soup = BeautifulSoup(html, "lxml")
-        matches, hints = parse_event_matches_with_hints(soup, self._tz)
-
-        logger.info(
-            f"[HLTV] 获取到 {len(matches)} 场比赛 (filtered) / {len(hints)} 条时间提示 (raw)"
-        )
+        matches, hints, _ = await self.get_event_matches_with_hints_and_meta(event_id, days=days)
         return matches, hints
+
+    async def get_event_matches_health(self, event_id: str) -> EventMatchesMeta:
+        """仅获取赛事 matches 页可用性信息（供 daily maintenance 判定）"""
+        _, _, meta = await self.get_event_matches_with_hints_and_meta(event_id)
+        return meta
 
     async def get_event_matches(self, event_id: str, days: int = 7) -> list[MatchInfo]:
         """获取赛事的比赛列表（过滤 TBD）"""

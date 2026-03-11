@@ -5,10 +5,19 @@ HLTV HTTP 客户端（负责请求、重试、代理、会话管理）
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Optional
 
 from curl_cffi.requests import AsyncSession
 from nonebot.log import logger
+
+
+@dataclass
+class FetchResult:
+    text: Optional[str]
+    status_code: Optional[int] = None
+    final_url: str = ""
+    error: str = ""
 
 
 class HLTVHttpClient:
@@ -41,10 +50,14 @@ class HLTVHttpClient:
             return self._proxy_list[0]
         return None
 
-    async def fetch(self, url: str, max_retries: int = 5) -> Optional[str]:
-        """发送请求获取 HTML"""
+    async def fetch_with_meta(self, url: str, max_retries: int = 5) -> FetchResult:
+        """发送请求获取 HTML + 响应元信息"""
         session = await self._get_session()
         proxy = self._get_proxy()
+
+        last_status: Optional[int] = None
+        last_final_url = ""
+        last_error = ""
 
         for attempt in range(max_retries):
             try:
@@ -69,17 +82,35 @@ class HLTVHttpClient:
                     },
                 )
 
+                last_status = response.status_code
+                last_final_url = str(response.url)
+
                 if response.status_code == 200:
                     logger.debug(f"[HLTV] 请求成功: {url}")
-                    return response.text
+                    return FetchResult(
+                        text=response.text,
+                        status_code=response.status_code,
+                        final_url=last_final_url,
+                    )
                 if response.status_code == 403:
                     logger.warning(f"[HLTV] 403 Forbidden: {url}")
                     continue
 
                 logger.warning(f"[HLTV] HTTP {response.status_code}: {url}")
             except Exception as e:
+                last_error = repr(e)
                 logger.error(f"[HLTV] 请求失败: {e}")
                 continue
 
         logger.error(f"[HLTV] 请求失败，已达最大重试次数: {url}")
-        return None
+        return FetchResult(
+            text=None,
+            status_code=last_status,
+            final_url=last_final_url,
+            error=last_error,
+        )
+
+    async def fetch(self, url: str, max_retries: int = 5) -> Optional[str]:
+        """发送请求获取 HTML（兼容旧接口）"""
+        result = await self.fetch_with_meta(url, max_retries=max_retries)
+        return result.text

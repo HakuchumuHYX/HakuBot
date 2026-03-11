@@ -174,6 +174,15 @@ class HLTVScheduler:
         elapsed = (now - poll_state.last_live_seen_at).total_seconds() / 60
         return elapsed <= POST_LIVE_GRACE_MINUTES
 
+    def _is_deterministic_matches_unavailable(self, reason: str) -> bool:
+        """是否属于可直接自动退订的 matches 不可用原因（避免临时网络问题误退订）"""
+        return reason in {
+            "generic_matches_page_no_event_matches",
+            "unexpected_final_url",
+            "http_404",
+            "http_410",
+        }
+
     def _apply_adaptive_schedule(self, event_id: str, poll_state: EventPollState) -> None:
         state = get_event_state(self._tz, self._end_grace_days, event_id)
         if state not in ("ONGOING", "UPCOMING"):
@@ -300,14 +309,25 @@ class HLTVScheduler:
         event_title = sub.event_title if sub else f"Event #{event_id}"
 
         try:
-            pair = await self._fetch_with_retry(
-                lambda eid=event_id: hltv_data.get_event_matches_with_hints(eid),
+            triplet = await self._fetch_with_retry(
+                lambda eid=event_id: hltv_data.get_event_matches_with_hints_and_meta(eid),
                 event_id=event_id,
             )
-            if not pair:
+            if not triplet:
                 return upcoming
 
-            matches, hints = pair
+            matches, hints, meta = triplet
+
+            if meta.is_unavailable and self._is_deterministic_matches_unavailable(
+                meta.unavailable_reason
+            ):
+                if data_manager.unsubscribe_event_global(event_id):
+                    self._remove_event_job(event_id)
+                    logger.warning(
+                        f"[HLTV Scheduler] 自动退订赛事 {event_id}: matches 页面不可用"
+                        f"(reason={meta.unavailable_reason})"
+                    )
+                return upcoming
 
             if any(m.is_live for m in matches) or any(h.is_live for h in hints):
                 poll_state.has_live_match = True
@@ -623,7 +643,6 @@ class HLTVScheduler:
         removed_events: list[str] = []
         failed_events: list[str] = []
         checked_events = sorted(data_manager.get_all_subscribed_event_ids())
-        auto_unsub_delay_days = max(0, plugin_config.hltv_auto_unsub_delay_days)
 
         for event_id in checked_events:
             state = get_event_state(self._tz, self._end_grace_days, event_id)
@@ -633,21 +652,34 @@ class HLTVScheduler:
                 await self._try_refresh_subscription_meta(event_id)
                 state = get_event_state(self._tz, self._end_grace_days, event_id)
 
+            # 1) finished / ENDED：直接自动退订（用户要求）
             if state == "ENDED":
-                sub = data_manager.get_any_subscription_by_event(event_id)
-                if not sub:
-                    continue
-                end_dt = parse_mmdd(self._tz, sub.end_date, end_of_day=True)
-                if not end_dt:
-                    failed_events.append(event_id)
-                    continue
-
-                if datetime.now(self._tz) <= end_dt + timedelta(days=auto_unsub_delay_days):
-                    continue
-
                 if data_manager.unsubscribe_event_global(event_id):
                     removed_events.append(event_id)
                     self._remove_event_job(event_id)
+                continue
+
+            # 2) matches 页面不可用（基于真实响应元信息）也直接退订
+            health = await self._fetch_with_retry(
+                lambda eid=event_id: hltv_data.get_event_matches_health(eid),
+                event_id=event_id,
+            )
+            if not health:
+                failed_events.append(event_id)
+                continue
+
+            if health.is_unavailable:
+                if self._is_deterministic_matches_unavailable(health.unavailable_reason):
+                    if data_manager.unsubscribe_event_global(event_id):
+                        removed_events.append(event_id)
+                        self._remove_event_job(event_id)
+                        logger.warning(
+                            f"[HLTV Scheduler] 每日维护自动退订赛事 {event_id}: "
+                            f"matches 页面不可用(reason={health.unavailable_reason})"
+                        )
+                else:
+                    # 非确定性问题（如 403/临时网络失败）不自动退订
+                    failed_events.append(event_id)
 
         removed_starts, removed_results = data_manager.cleanup_notified_state(
             plugin_config.hltv_notified_ttl_days
