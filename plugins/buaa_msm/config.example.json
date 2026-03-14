@@ -1,0 +1,25 @@
+{
+    "master_data_dir": "/abs/path/to/haruki-sekai-master/master",
+    "asset": {
+        "url_base": "https://sekai-assets.example.net/",
+        "server": "jp"
+    },
+    "mysekai_icon": {
+        "enabled": true,
+        "url_base": "https://sekai-assets.example.net/",
+        "server": "jp",
+        "download_timeout": 5.0,
+        "prefetch_concurrency": 8,
+        "download_retries": 2,
+        "retry_backoff_seconds": 0.3
+    },
+    "jacket": {
+        "download_timeout": 5.0,
+        "download_retries": 2,
+        "download_concurrency": 8,
+        "retry_backoff_seconds": 0.25
+    },
+    "upload": {
+        "wait_timeout_seconds": 600
+    }
+}

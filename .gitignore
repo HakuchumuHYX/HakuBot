@@ -1,12 +1,12 @@
 # NoneBot 插件数据和缓存
 data/
 *.json
+!plugins/buaa_msm/config.example.json
 plugins/identify/data/
-plugins/buaa_msm
-plugins/pxchat
 .env.prod
 cache/
 output.log
+repos_for_study
 
 # Python 虚拟环境
 .venv/
