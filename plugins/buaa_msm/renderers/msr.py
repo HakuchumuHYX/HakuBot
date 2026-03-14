@@ -16,9 +16,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
-from ... import analysis
-from ...config import MAP_ORDER, SCENE_KEY_TO_NAME, plugin_config
-from ...resources.catalog import (
+from .. import analysis
+from ..config import MAP_ORDER, SCENE_KEY_TO_NAME, plugin_config
+from ..resources.catalog import (
     ITEM_TEXTURES,
     RARE_ITEM,
     SCENES,
@@ -27,8 +27,8 @@ from ...resources.catalog import (
     get_icon,
     resource_dir,
 )
-from ...services.masterdata_lite import masterdata_lite
-from ...services.rip_asset_lite import rip_asset_lite
+from ..services.masterdata_lite import masterdata_lite
+from ..services.rip_asset_lite import rip_asset_lite
 
 ColorRGB = Tuple[int, int, int]
 ColorRGBA = Tuple[int, int, int, int]

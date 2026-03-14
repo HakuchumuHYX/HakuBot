@@ -47,7 +47,7 @@ def make_filename_safe(filename: str) -> str:
 def generate_target_filename(original_filename: str, user_id: str, *, timestamp: datetime | None = None) -> str:
     """
     生成目标文件名（不执行落盘重命名）。
-    - 若用户已绑定：{user_id}_{bind_content}_{YYYYmmdd_HHMMSS}{ext}
+    - 若用户已绑定：{user_id}_{bind_content}_{YYYYmmdd_HHMMSS}.bin（固定 .bin）
     - 若未绑定：保持原文件名（安全化）
     """
     safe_original = make_filename_safe(original_filename)
@@ -57,7 +57,8 @@ def generate_target_filename(original_filename: str, user_id: str, *, timestamp:
         logger.info(f"用户 {user_id} 未绑定内容，文件保持原名")
         return safe_original
 
-    file_ext = Path(safe_original).suffix or ".bin"
+    # 上传落盘命名统一固定为 .bin，内容有效性由后续预解密/解析阶段判定
+    file_ext = ".bin"
     dt = timestamp or datetime.now()
     current_time = dt.strftime("%Y%m%d_%H%M%S")
     safe_bind_content = make_filename_safe(bind_content)
