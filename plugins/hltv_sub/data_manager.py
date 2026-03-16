@@ -67,6 +67,13 @@ class DataManager:
         self._notified_starts: dict[str, str] = {}
         self._notified_results: dict[str, str] = {}
 
+        # 去重状态写盘节流（降低高频轮询下磁盘写放大）
+        self._notified_dirty: bool = False
+        self._notified_pending_ops: int = 0
+        self._last_notified_save_at: Optional[datetime] = None
+        self._notified_save_interval_seconds: int = 30
+        self._notified_save_max_ops: int = 20
+
         self._load()
 
     @staticmethod
@@ -161,8 +168,32 @@ class DataManager:
             }
             with open(self._data_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+
+            # 任意全量保存后，清空去重状态节流计数
+            self._notified_dirty = False
+            self._notified_pending_ops = 0
+            self._last_notified_save_at = datetime.now()
         except Exception as e:
             logger.exception(f"[HLTV Sub] 保存数据失败: {e}")
+
+    def _save_notified_state_debounced(self, force: bool = False) -> None:
+        """去重状态写盘节流：在高频 add_notified_* 下按时间/次数批量落盘"""
+        self._notified_dirty = True
+        self._notified_pending_ops += 1
+
+        now = datetime.now()
+        if self._last_notified_save_at is None:
+            self._last_notified_save_at = now
+
+        elapsed = (now - self._last_notified_save_at).total_seconds()
+        should_flush = (
+            force
+            or self._notified_pending_ops >= self._notified_save_max_ops
+            or elapsed >= self._notified_save_interval_seconds
+        )
+
+        if should_flush:
+            self._save()
 
     def _sync_legacy_group_subscriptions(self) -> None:
         """把 canonical 同步回每个群，保持文件结构兼容且便于人工查看"""
@@ -298,7 +329,7 @@ class DataManager:
     def add_notified_start(self, match_id: str) -> None:
         """添加已发送开始提醒的比赛ID"""
         self._notified_starts[match_id] = self._now_iso()
-        self._save()
+        self._save_notified_state_debounced()
 
     def get_notified_results(self) -> set[str]:
         """获取已发送结果的比赛ID集合"""
@@ -307,7 +338,7 @@ class DataManager:
     def add_notified_result(self, match_id: str) -> None:
         """添加已发送结果的比赛ID"""
         self._notified_results[match_id] = self._now_iso()
-        self._save()
+        self._save_notified_state_debounced()
 
     def is_start_notified(self, match_id: str) -> bool:
         """检查比赛开始提醒是否已发送"""
@@ -339,7 +370,7 @@ class DataManager:
         removed_results = _cleanup(self._notified_results)
 
         if removed_starts or removed_results:
-            self._save()
+            self._save_notified_state_debounced(force=True)
 
         return removed_starts, removed_results
 

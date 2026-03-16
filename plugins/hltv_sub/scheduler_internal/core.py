@@ -321,10 +321,21 @@ class HLTVScheduler:
             if meta.is_unavailable and self._is_deterministic_matches_unavailable(
                 meta.unavailable_reason
             ):
-                if data_manager.unsubscribe_event_global(event_id):
-                    self._remove_event_job(event_id)
+                can_unsubscribe = await self._probe_and_drain_pending_results_before_unsubscribe(
+                    event_id=event_id,
+                    event_title=event_title,
+                )
+                if can_unsubscribe:
+                    if data_manager.unsubscribe_event_global(event_id):
+                        self._remove_event_job(event_id)
+                        logger.warning(
+                            f"[HLTV Scheduler] 自动退订赛事 {event_id}: matches 页面不可用"
+                            f"(reason={meta.unavailable_reason})"
+                        )
+                else:
                     logger.warning(
-                        f"[HLTV Scheduler] 自动退订赛事 {event_id}: matches 页面不可用"
+                        f"[HLTV Scheduler] 延迟自动退订赛事 {event_id}: "
+                        f"matches 页面不可用但仍存在待确认结果"
                         f"(reason={meta.unavailable_reason})"
                     )
                 return upcoming
@@ -416,7 +427,8 @@ class HLTVScheduler:
         new_results: list[tuple[str, str, ResultInfo]] = []
 
         state = get_event_state(self._tz, self._end_grace_days, event_id)
-        if state != "ONGOING":
+        # 边界补抓：UPCOMING 窗口内也允许拉取结果，避免状态切换边缘漏推
+        if state not in ("ONGOING", "UPCOMING"):
             return new_results
 
         sub = data_manager.get_any_subscription_by_event(event_id)
@@ -638,6 +650,96 @@ class HLTVScheduler:
             logger.warning(f"[HLTV Scheduler] 补全赛事元信息失败(event={event_id}): {e}")
             return False
 
+    async def _probe_and_drain_pending_results_before_unsubscribe(
+        self,
+        event_id: str,
+        event_title: str,
+        *,
+        max_rounds: int = 3,
+        stable_empty_rounds: int = 2,
+        round_delay_seconds: int = 10,
+        max_results: int = 10,
+    ) -> bool:
+        """退订前多轮探测：尽量推送最后结果，避免 finished 竞态漏推"""
+        rounds = max(1, int(max_rounds))
+        required_empty_rounds = max(1, min(int(stable_empty_rounds), rounds))
+        delay_seconds = max(0, int(round_delay_seconds))
+
+        logger.info(
+            f"[HLTV Scheduler] final_probe_start event={event_id}, rounds={rounds}, "
+            f"required_empty_rounds={required_empty_rounds}, delay={delay_seconds}s"
+        )
+
+        consecutive_empty_rounds = 0
+        for idx in range(1, rounds + 1):
+            results = await self._fetch_with_retry(
+                lambda eid=event_id: hltv_data.get_event_results(eid, max_results=max_results),
+                event_id=event_id,
+            )
+            if results is None:
+                logger.warning(
+                    f"[HLTV Scheduler] final_probe_defer_unsubscribe event={event_id}, "
+                    f"reason=fetch_failed, round={idx}/{rounds}"
+                )
+                return False
+
+            pending = [r for r in results if not data_manager.is_result_notified(r.id)]
+            logger.info(
+                f"[HLTV Scheduler] final_probe_round event={event_id}, "
+                f"round={idx}/{rounds}, pending={len(pending)}"
+            )
+
+            if not pending:
+                consecutive_empty_rounds += 1
+                if consecutive_empty_rounds >= required_empty_rounds:
+                    logger.info(
+                        f"[HLTV Scheduler] final_probe_allow_unsubscribe event={event_id}, "
+                        f"reason=stable_empty_rounds"
+                    )
+                    return True
+            else:
+                consecutive_empty_rounds = 0
+
+                groups = data_manager.get_groups_by_event(event_id)
+                if not groups:
+                    # 没有可推送群时，直接记为已处理，避免卡住退订
+                    for r in pending:
+                        data_manager.add_notified_result(r.id)
+                    logger.info(
+                        f"[HLTV Scheduler] final_probe_no_groups event={event_id}, "
+                        f"marked_notified={len(pending)}"
+                    )
+                else:
+                    try:
+                        bot = get_bot()
+                    except Exception:
+                        logger.warning(
+                            f"[HLTV Scheduler] final_probe_defer_unsubscribe event={event_id}, "
+                            f"reason=no_bot, round={idx}/{rounds}"
+                        )
+                        return False
+
+                    for r in pending:
+                        await self.send_match_result(bot, event_id, event_title, r)
+
+                    unsent = [
+                        r.id for r in pending if not data_manager.is_result_notified(r.id)
+                    ]
+                    if unsent:
+                        logger.warning(
+                            f"[HLTV Scheduler] final_probe_pending_after_send event={event_id}, "
+                            f"round={idx}/{rounds}, unsent={unsent}"
+                        )
+
+            if idx < rounds and delay_seconds > 0:
+                await asyncio.sleep(delay_seconds)
+
+        logger.warning(
+            f"[HLTV Scheduler] final_probe_defer_unsubscribe event={event_id}, "
+            f"reason=max_rounds_exhausted"
+        )
+        return False
+
     async def daily_maintenance(self) -> dict:
         """每日维护：自动取消已结束订阅 + 清理去重状态"""
         removed_events: list[str] = []
@@ -652,14 +754,23 @@ class HLTVScheduler:
                 await self._try_refresh_subscription_meta(event_id)
                 state = get_event_state(self._tz, self._end_grace_days, event_id)
 
-            # 1) finished / ENDED：直接自动退订（用户要求）
+            sub = data_manager.get_any_subscription_by_event(event_id)
+            event_title = sub.event_title if sub else f"Event #{event_id}"
+
+            # 1) finished / ENDED：退订前先做多轮最终结果探测
             if state == "ENDED":
-                if data_manager.unsubscribe_event_global(event_id):
+                can_unsubscribe = await self._probe_and_drain_pending_results_before_unsubscribe(
+                    event_id=event_id,
+                    event_title=event_title,
+                )
+                if can_unsubscribe and data_manager.unsubscribe_event_global(event_id):
                     removed_events.append(event_id)
                     self._remove_event_job(event_id)
+                elif not can_unsubscribe:
+                    failed_events.append(event_id)
                 continue
 
-            # 2) matches 页面不可用（基于真实响应元信息）也直接退订
+            # 2) matches 页面不可用（基于真实响应元信息）也要先做最终结果探测
             health = await self._fetch_with_retry(
                 lambda eid=event_id: hltv_data.get_event_matches_health(eid),
                 event_id=event_id,
@@ -670,13 +781,19 @@ class HLTVScheduler:
 
             if health.is_unavailable:
                 if self._is_deterministic_matches_unavailable(health.unavailable_reason):
-                    if data_manager.unsubscribe_event_global(event_id):
+                    can_unsubscribe = await self._probe_and_drain_pending_results_before_unsubscribe(
+                        event_id=event_id,
+                        event_title=event_title,
+                    )
+                    if can_unsubscribe and data_manager.unsubscribe_event_global(event_id):
                         removed_events.append(event_id)
                         self._remove_event_job(event_id)
                         logger.warning(
                             f"[HLTV Scheduler] 每日维护自动退订赛事 {event_id}: "
                             f"matches 页面不可用(reason={health.unavailable_reason})"
                         )
+                    elif not can_unsubscribe:
+                        failed_events.append(event_id)
                 else:
                     # 非确定性问题（如 403/临时网络失败）不自动退订
                     failed_events.append(event_id)

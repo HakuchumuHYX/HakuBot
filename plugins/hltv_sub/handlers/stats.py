@@ -58,27 +58,32 @@ async def handle_stats(bot: Bot, event: GroupMessageEvent, args: Message = Comma
         await stats_cmd.send(f"正在获取比赛 #{match_id} 的数据...")
 
         try:
-            team1 = ""
-            team2 = ""
-            event_title = ""
+            # 优先直接按 match_id 拉取，避免先遍历所有订阅赛事 results 带来的额外请求开销
+            stats = await hltv_data.get_match_stats(match_id=match_id)
 
-            for sub in subscriptions:
-                results = await hltv_data.get_event_results(sub.event_id)
-                for r in results:
-                    if r.id == match_id:
-                        team1 = r.team1
-                        team2 = r.team2
-                        event_title = sub.event_title
+            # 直连失败时，再尝试通过订阅赛事补全 slug 信息后重试（兼容少量边缘路由）
+            if not stats and subscriptions:
+                team1 = ""
+                team2 = ""
+                event_title = ""
+
+                for sub in subscriptions:
+                    results = await hltv_data.get_event_results(sub.event_id, max_results=10)
+                    for r in results:
+                        if r.id == match_id:
+                            team1 = r.team1
+                            team2 = r.team2
+                            event_title = sub.event_title
+                            break
+                    if team1:
                         break
-                if team1:
-                    break
 
-            stats = await hltv_data.get_match_stats(
-                match_id=match_id,
-                team1=team1,
-                team2=team2,
-                event_title=event_title,
-            )
+                stats = await hltv_data.get_match_stats(
+                    match_id=match_id,
+                    team1=team1,
+                    team2=team2,
+                    event_title=event_title,
+                )
 
             if stats:
                 img = await render_stats(stats)

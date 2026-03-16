@@ -14,7 +14,7 @@ from .data_source import EventInfo, MatchInfo, ResultInfo, MatchStats
 # 导入 UpcomingMatch 类型（用于类型提示）
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .scheduler import UpcomingMatch
+    from .scheduler_internal.types import UpcomingMatch
 
 
 # 模板目录

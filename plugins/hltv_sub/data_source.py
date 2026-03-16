@@ -180,8 +180,14 @@ class HLTVDataSource:
         url = f"{self.BASE_URL}/results?event={event_id}"
         html = await self._client.fetch(url)
         if not html:
+            logger.warning(f"[HLTV][RESULTS] fetch_empty event={event_id} url={url}")
             return []
-        return parse_event_results(html, max_results=max_results)
+
+        results = parse_event_results(html, max_results=max_results)
+        logger.info(
+            f"[HLTV][RESULTS] parsed event={event_id} count={len(results)} max_results={max_results}"
+        )
+        return results
 
     async def get_match_stats(
         self, match_id: str, team1: str = "", team2: str = "", event_title: str = ""
@@ -193,13 +199,14 @@ class HLTVDataSource:
         event_slug = event_title.lower().replace(" ", "-") if event_title else "event"
 
         url = f"{self.BASE_URL}/matches/{match_id}/{t1_slug}-vs-{t2_slug}-{event_slug}"
-        logger.info(f"[HLTV] 获取比赛数据: {url}")
+        logger.info(f"[HLTV][STATS] fetch_start match_id={match_id} url={url}")
 
         html = await self._client.fetch(url)
         if not html:
+            logger.warning(f"[HLTV][STATS] fetch_empty match_id={match_id} url={url}")
             return None
 
-        return parse_match_stats(
+        parsed = parse_match_stats(
             html,
             match_id=match_id,
             team1=team1,
@@ -207,17 +214,29 @@ class HLTVDataSource:
             event_title=event_title,
         )
 
+        if not parsed:
+            logger.warning(f"[HLTV][STATS] parse_failed match_id={match_id} url={url}")
+            return None
+
+        logger.info(
+            f"[HLTV][STATS] parse_ok match_id={match_id} maps={len(parsed.maps)} players={len(parsed.players)}"
+        )
+        return parsed
+
     async def get_latest_result_with_stats(
         self, event_id: str, event_title: str = ""
     ) -> Optional[MatchStats]:
         """获取最近一场比赛的详细数据"""
         results = await self.get_event_results(event_id, max_results=1)
         if not results:
-            logger.warning(f"[HLTV] 没有找到赛事 {event_id} 的比赛结果")
+            logger.warning(f"[HLTV][LATEST_STATS] no_results event={event_id}")
             return None
 
         result = results[0]
-        logger.info(f"[HLTV] 获取最近比赛: {result.team1} vs {result.team2}")
+        logger.info(
+            f"[HLTV][LATEST_STATS] picked_latest event={event_id} match_id={result.id} "
+            f"teams={result.team1} vs {result.team2}"
+        )
 
         return await self.get_match_stats(
             result.id,
