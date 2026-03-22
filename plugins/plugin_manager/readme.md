@@ -49,4 +49,3 @@ AI 点歌：ai_assistant:music
 存活统计：alive_stat
 PJSK国服活动预测：cnsk_predict
 PJSK剧情：pjsk_event_summary
-PJSK个人信息(SnowyBot版)：pjskprofile_snowybot
