@@ -1,6 +1,5 @@
 import time
 import asyncio
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -12,9 +11,8 @@ from nonebot.log import logger
 # === 引入模块 ===
 from ..plugin_manager.enable import is_plugin_enabled
 from ..utils.image_utils import path_to_base64_image
-from .config import load_config, DATA_DIR, CACHE_EXPIRE_SECONDS, FILE_CLEAN_SECONDS, AUTO_REFRESH_INTERVAL
+from .config import load_config, DATA_DIR, FILE_CLEAN_SECONDS, AUTO_REFRESH_INTERVAL
 from .browser import manual_capture_page
-from .image import add_watermark
 
 # === 引入定时任务 ===
 require("nonebot_plugin_apscheduler")
@@ -27,36 +25,19 @@ RENDER_SEMAPHORE = asyncio.Semaphore(3)
 shot_cmd = on_command("cnsk预测", priority=5, block=True)
 
 
-def get_is_dark_mode(mode_override: str = None) -> bool:
-    """辅助函数：判断当前是否应该使用夜间模式"""
-    if mode_override == "night":
-        return True
-    elif mode_override == "day":
-        return False
-    else:
-        # 自动判定：晚上19点到次日早上6点为夜间
-        current_hour = datetime.now().hour
-        return current_hour >= 19 or current_hour < 6
-
-
-async def generate_screenshot_task(mode_override: str = None) -> Tuple[Optional[bytes], Path, str]:
+async def generate_screenshot_task() -> Tuple[Optional[bytes], Path, str]:
     """
     核心任务：执行一次截图、处理并保存。
     返回: (图片bytes, 图片路径Path, 错误信息str)
     """
-    is_dark_mode = get_is_dark_mode(mode_override)
-    suffix = "_dark" if is_dark_mode else ""
-
     # 获取 Event Loop 读取配置
     loop = asyncio.get_running_loop()
     config = await loop.run_in_executor(None, load_config)
 
     # 确定 URL 和 路径
-    target_url = config.get("url_home", "https://sekaibangdan.exmeaning.com/simple")
-    cache_filename = f"home{suffix}.jpg"
+    target_url = config.get("url_home", "https://snowyviewer.exmeaning.com/prediction/")
+    cache_filename = "home.jpg"
     log_name = "主页预测"
-
-    log_name += " [夜间]" if is_dark_mode else " [日间]"
     image_path = DATA_DIR / cache_filename
 
     error_msg = ""
@@ -69,20 +50,11 @@ async def generate_screenshot_task(mode_override: str = None) -> Tuple[Optional[
             # 1. 浏览器截图
             raw_img = await manual_capture_page(
                 url=target_url,
-                dark_mode=is_dark_mode,
                 timeout=30000,
             )
 
             if raw_img:
-                # 2. 图像处理 (CPU 密集型 -> 线程池)
-                final_img_bytes = await loop.run_in_executor(
-                    None,
-                    add_watermark,
-                    raw_img,
-                    config
-                )
-
-                # 3. 写入文件 (IO 密集型 -> 线程池)
+                final_img_bytes = raw_img
                 await loop.run_in_executor(None, image_path.write_bytes, final_img_bytes)
                 logger.info(f"成功保存: {image_path.name}")
             else:
@@ -108,21 +80,12 @@ async def handle_screenshot(bot: Bot, event: Event, args: Message = CommandArg()
     arg_parts = raw_text.split()
 
     force_reload = False
-    mode_override = None
-
     for part in arg_parts:
         if part == "reload":
             force_reload = True
-        elif part == "day":
-            mode_override = "day"
-        elif part == "night":
-            mode_override = "night"
 
     # === 2. 路径预判 ===
-    is_dark = get_is_dark_mode(mode_override)
-    suffix = "_dark" if is_dark else ""
-    filename = f"home{suffix}.jpg"
-    image_path = DATA_DIR / filename
+    image_path = DATA_DIR / "home.jpg"
 
     # === 3. 逻辑分流 ===
 
@@ -148,7 +111,7 @@ async def handle_screenshot(bot: Bot, event: Event, args: Message = CommandArg()
     else:
         await shot_cmd.send("本地暂无缓存，正在获取数据...")
 
-    img_bytes, path, err = await generate_screenshot_task(mode_override)
+    img_bytes, path, err = await generate_screenshot_task()
 
     if img_bytes:
         # 现场获取成功，直接发图
@@ -176,7 +139,7 @@ async def auto_refresh_job():
     success = False
 
     for i in range(retry_count + 1):
-        img_bytes, path, err = await generate_screenshot_task(mode_override=None)
+        img_bytes, path, err = await generate_screenshot_task()
 
         if img_bytes:
             success = True
