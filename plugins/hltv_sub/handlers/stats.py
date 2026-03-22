@@ -16,7 +16,7 @@ from ..permissions import is_group_enabled
 from ..render import render_stats
 
 
-stats_cmd = on_command("stats", aliases={"比赛数据", "数据"}, priority=5, block=True)
+stats_cmd = on_command("stats", priority=5, block=True)
 
 
 @stats_cmd.handle()
