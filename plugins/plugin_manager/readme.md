@@ -47,5 +47,5 @@ AI 点歌：ai_assistant:music
 金句锐评：group_daily_analysis:golden_quotes
 来张涩图：setu_plugin
 存活统计：alive_stat
-PJSK国服活动预测：cnsk_predict
+PJSK活动预测：sk_predict
 PJSK剧情：pjsk_event_summary
