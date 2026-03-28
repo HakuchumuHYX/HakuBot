@@ -9,6 +9,7 @@ from nonebot.log import logger
 from ..config import plugin_config
 
 _CATEGORY_MASTERDATA_FILE: Dict[str, str] = {
+    "material": "materials.json",
     "mysekai_material": "mysekaiMaterials.json",
     "mysekai_item": "mysekaiItems.json",
     "mysekai_fixture": "mysekaiFixtures.json",

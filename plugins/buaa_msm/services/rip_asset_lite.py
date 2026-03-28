@@ -14,6 +14,7 @@ from ..exceptions import AssetDownloadError
 from .masterdata_lite import masterdata_lite
 
 _DYNAMIC_ICON_CATEGORIES: Set[str] = {
+    "material",
     "mysekai_material",
     "mysekai_item",
     "mysekai_fixture",
@@ -89,6 +90,12 @@ class RipAssetLite:
 
     def _build_candidates(self, category: str, item_id: int) -> List[str]:
         item_id = int(item_id)
+
+        # 普通 material 走 startapp/thumbnail/material/material{id}.png
+        # 不依赖 masterdata 中的 iconAssetbundleName 字段
+        if category == "material":
+            return [f"thumbnail/material/material{item_id}.png"]
+
         asset_name = masterdata_lite.get_icon_asset_name(category, item_id)
         if not asset_name:
             return []
@@ -111,7 +118,13 @@ class RipAssetLite:
         server = plugin_config.mysekai_icon_server
         return f"{base}/{server}-assets/{stage}/{relative_path}"
 
-    def _build_url_candidates(self, relative_path: str) -> List[str]:
+    def _build_url_candidates(self, relative_path: str, category: str) -> List[str]:
+        if category == "material":
+            return [
+                self._build_url(relative_path, "startapp"),
+                self._build_url(relative_path, "ondemand"),
+            ]
+
         # 当前资产规则中 mysekai 前缀属于 ondemand
         # 这里保留 startapp 作为兜底，便于未来资源迁移时自动适配
         return [
@@ -144,6 +157,8 @@ class RipAssetLite:
         self,
         session: aiohttp.ClientSession,
         candidates: List[str],
+        *,
+        category: str,
         timeout: float,
     ) -> Tuple[Optional[bytes], List[str]]:
         errors: List[str] = []
@@ -152,7 +167,7 @@ class RipAssetLite:
         max_attempts = retries + 1
 
         for rel in candidates:
-            for url in self._build_url_candidates(rel):
+            for url in self._build_url_candidates(rel, category):
                 for attempt in range(1, max_attempts + 1):
                     try:
                         async with session.get(
@@ -220,6 +235,7 @@ class RipAssetLite:
             data, errors = await self._download_first_success(
                 session,
                 candidates,
+                category=category,
                 timeout=plugin_config.mysekai_icon_download_timeout,
             )
             if data is None:
