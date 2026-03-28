@@ -28,12 +28,9 @@ from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type
 
-require("nonebot_plugin_localstore")
-import nonebot_plugin_localstore as store  # noqa: E402
-
-from .. import decrypt
 from ..config import plugin_config
 from ..data_rename import generate_target_filename
+from ..infra.decryptor import decrypt_and_save
 from ..infra.cache import cache_manager
 from ..infra.storage import remove_old_user_files, update_user_latest_file
 from ..infra.visit_history import record_character_visit
@@ -149,15 +146,16 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent):
         user_output_dir.mkdir(parents=True, exist_ok=True)
         json_output_file = user_output_dir / f"{saved_file_path.stem}_decrypted.json"
 
-        decrypted_data = decrypt.decrypt_and_save(bin_file_path=saved_file_path, json_output_path=json_output_file)
+        decrypted_data = decrypt_and_save(bin_file_path=saved_file_path, json_output_path=json_output_file)
 
         if decrypted_data:
             # 记录来访角色
             _record_visiting_characters(user_id, decrypted_data)
 
             try:
+                import nonebot_plugin_localstore as store
                 display_path = saved_file_path.relative_to(store.get_plugin_data_dir())
-            except ValueError:
+            except (ValueError, Exception):
                 display_path = saved_file_path
 
             await file_handler.send(f"文件预解密成功！\n保存位置：{display_path}\n正在自动生成分析结果...")
@@ -284,4 +282,3 @@ async def copy_local_file(source_path: str, destination_path: Path):
     shutil.copy2(source_file, destination_path)
 
 
-logger.success("文件上传 handlers 已加载成功！")

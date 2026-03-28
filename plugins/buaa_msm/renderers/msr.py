@@ -17,7 +17,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 from .. import analysis
-from ..config import MAP_ORDER, SCENE_KEY_TO_NAME, plugin_config
+from ..config import plugin_config
+from ..domain.constants import FIXTURE_COLORS, MAP_ORDER, SCENE_KEY_TO_NAME
 from ..resources.catalog import (
     ITEM_TEXTURES,
     RARE_ITEM,
@@ -270,55 +271,9 @@ SUPER_RARE_STROKE: ColorRGBA = (255, 90, 90, 235)
 
 # ============== map-point markers (for summary thumbnails) ==============
 
-# legacy 中的点位颜色映射（按 fixtureId）
-# 这里复制一份，避免从 legacy renderer import 导致潜在循环依赖
-_FIXTURE_COLORS = {
-    112: "#f9f9f9",
-    1001: "#da6d42",
-    1002: "#da6d42",
-    1003: "#da6d42",
-    1004: "#da6d42",
-    2001: "#878685",
-    2002: "#d5750a",
-    2003: "#d5d5d5",
-    2004: "#a7c7cb",
-    2005: "#9933cc",
-    3001: "#c95a49",
-    4001: "#f8729a",
-    4002: "#f8729a",
-    4003: "#f8729a",
-    4004: "#f8729a",
-    4005: "#f8729a",
-    4006: "#f8729a",
-    4007: "#f8729a",
-    4008: "#f8729a",
-    4009: "#f8729a",
-    4010: "#f8729a",
-    4011: "#f8729a",
-    4012: "#f8729a",
-    4013: "#f8729a",
-    4014: "#f8729a",
-    4015: "#f8729a",
-    4016: "#f8729a",
-    4017: "#f8729a",
-    4018: "#f8729a",
-    4019: "#f8729a",
-    4020: "#f8729a",
-    5001: "#f6f5f2",
-    5002: "#f6f5f2",
-    5003: "#f6f5f2",
-    5004: "#f6f5f2",
-    5101: "#f6f5f2",
-    5102: "#f6f5f2",
-    5103: "#f6f5f2",
-    5104: "#f6f5f2",
-    6001: "#6f4e37",
-    7001: "#a5d5ff",
-}
-
 
 def _fixture_color_rgb(fixture_id: int) -> Tuple[int, int, int]:
-    c = _FIXTURE_COLORS.get(fixture_id, "#000000")
+    c = FIXTURE_COLORS.get(fixture_id, "#000000")
     try:
         return ImageColor.getrgb(c)
     except Exception:
@@ -889,7 +844,7 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
                     all_drops.append((category, item_id, _safe_int(qty, 0)))
 
             # 位置图过滤：普通木头/石头不绘制
-            # translations.json: mysekai_material -> 1.木头 / 6.石头
+            # domain/constants.py: mysekai_material -> 1.木头 / 6.石头
             # 注意：是“按 item 过滤”，同一个点位里如果还有其他掉落，会继续绘制其他掉落
             drops: List[Tuple[str, int, int]] = [
                 (category, item_id, qty)

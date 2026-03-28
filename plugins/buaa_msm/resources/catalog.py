@@ -22,11 +22,11 @@ from typing import Dict, Tuple
 from PIL import Image, ImageFont
 from nonebot.log import logger
 
-from ..config import plugin_config, SCENE_KEY_TO_NAME
+from ..config import plugin_config
+from ..domain.constants import SCENE_KEY_TO_NAME
 
 # 从配置获取路径
 resource_dir: Path = plugin_config.resource_dir
-output_dir: Path = plugin_config.output_dir
 
 # ============== 场景参数（地图底图 + 坐标换算） ==============
 

@@ -103,4 +103,3 @@ async def handle_group_help(bot: Bot, event: GroupMessageEvent):
     await group_help_cmd.finish()
 
 
-logger.success("帮助 handlers 已加载成功！")

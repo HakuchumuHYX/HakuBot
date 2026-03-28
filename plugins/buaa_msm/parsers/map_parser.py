@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 import msgspec
 from nonebot.log import logger
 
-from ..config import SITE_ID_MAP
+from ..domain.constants import SITE_ID_MAP
 
 
 # ============== msgspec 数据结构（与原 paint.py 保持一致） ==============

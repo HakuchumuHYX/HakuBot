@@ -1,12 +1,16 @@
 # plugins/buaa_msm/config.py
 """
-BUAA MSM 插件统一配置文件
+BUAA MSM 插件统一配置文件（纯运行配置）。
+
+注意：游戏领域常量（角色名、站点ID、地图等）位于 domain/constants.py。
 """
+
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
-from urllib.parse import urlsplit
+from typing import Any, Dict, Sequence
 
 from pydantic import BaseModel
 from nonebot import require
@@ -27,25 +31,23 @@ class CleanupConfig(BaseModel):
 
 class TimeConfig(BaseModel):
     """时间段配置"""
-    morning_start: int = 5   # 上午场开始时间
-    afternoon_start: int = 17  # 下午场开始时间
+    morning_start: int = 5
+    afternoon_start: int = 17
 
 
 class PluginConfig:
-    """插件配置类"""
+    """插件配置类（纯运行参数，不包含游戏领域常量）"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # 路径配置
         self.plugin_dir: Path = Path(__file__).parent
         self.data_dir: Path = store.get_plugin_data_dir()
         self.file_storage_dir: Path = self.data_dir / "msmdata"
-        self.output_dir: Path = self.data_dir / "output"
         self.resource_dir: Path = self.plugin_dir / "resources"
         self.visit_history_file: Path = self.data_dir / "visit_history.json"
         self.bind_data_file: Path = self.plugin_dir / "bind.json"
         self.user_latest_files_index_file: Path = self.data_dir / "user_latest_files.json"
         self.local_config_file: Path = self.plugin_dir / "config.json"
-        self.local_config_example_file: Path = self.plugin_dir / "config.example.json"
 
         # 本地 JSON 配置（若缺失则回退默认值）
         local_cfg = self._load_local_json_config()
@@ -69,7 +71,6 @@ class PluginConfig:
             )
 
         # Asset 站配置（用于获取唱片封面等远程资源）
-        # 代码里默认用的是haruki源，如果要用其他源可能需要自行更改url拼接方式
         default_asset_url_base = "https://example.invalid/"
         default_asset_server = "jp"
         self.asset_url_base: str = self._as_str(
@@ -155,17 +156,14 @@ class PluginConfig:
             f"master_data_dir={self._mask_path(self.master_data_dir)}"
         )
 
-    def _load_local_json_config(self) -> Dict[str, Any]:
+    def _load_local_json_config(self) -> dict[str, Any]:
         """加载 plugins/buaa_msm/config.json（可选）"""
         if not self.local_config_file.exists():
-            logger.info(
-                "BUAA_MSM 未发现本地 config.json，使用默认值/环境变量。"
-            )
+            logger.info("BUAA_MSM 未发现本地 config.json，使用默认值/环境变量。")
             return {}
 
         try:
-            with self.local_config_file.open("r", encoding="utf-8") as f:
-                data = json.load(f)
+            data = json.loads(self.local_config_file.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 logger.warning("BUAA_MSM config.json 顶层不是对象，已忽略并回退默认值。")
                 return {}
@@ -176,7 +174,7 @@ class PluginConfig:
             return {}
 
     @staticmethod
-    def _deep_get(data: Dict[str, Any], keys: Sequence[str], default: Any = None) -> Any:
+    def _deep_get(data: dict[str, Any], keys: Sequence[str], default: Any = None) -> Any:
         cur: Any = data
         for key in keys:
             if not isinstance(cur, dict):
@@ -225,6 +223,7 @@ class PluginConfig:
 
     @staticmethod
     def _mask_url_origin(url: str) -> str:
+        from urllib.parse import urlsplit
         try:
             parsed = urlsplit(str(url))
             if parsed.scheme and parsed.netloc:
@@ -240,55 +239,14 @@ class PluginConfig:
             return str(path)
         return str(Path(parts[0]) / "..." / parts[-1])
 
-    def _ensure_directories(self):
+    def _ensure_directories(self) -> None:
         """确保所有必要的目录存在"""
         self.file_storage_dir.mkdir(parents=True, exist_ok=True)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.resource_dir.mkdir(parents=True, exist_ok=True)
         self.mysekai_icon_cache_dir.mkdir(parents=True, exist_ok=True)
         (self.resource_dir / "img").mkdir(parents=True, exist_ok=True)
         (self.resource_dir / "icon" / "Texture2D").mkdir(parents=True, exist_ok=True)
 
-
-# 角色名称映射（从characterId到名称）
-CHARACTER_NAMES: Dict[int, str] = {
-    1: "星乃 一歌", 2: "天馬 咲希", 3: "望月 穂波", 4: "日野森 志歩",
-    5: "花里 みのり", 6: "桐谷 遥", 7: "桃井 愛莉", 8: "日野森 雫",
-    9: "小豆沢 こはね", 10: "白石 杏", 11: "東雲 彰人", 12: "青柳 冬弥",
-    13: "天馬 司", 14: "鳳 えむ", 15: "草薙 寧々", 16: "神代 類",
-    17: "宵崎 奏", 18: "朝比奈 まふゆ", 19: "東雲 絵名", 20: "暁山 瑞希",
-    21: "初音 ミク", 22: "鏡音 リン", 23: "鏡音 レン", 24: "巡音 ルカ",
-    25: "MEIKO", 26: "KAITO"
-}
-
-# 站点ID映射
-SITE_ID_MAP: Dict[int, str] = {
-    1: "マイホーム",
-    2: "1F",
-    3: "2F",
-    4: "3F",
-    5: "さいしょの原っぱ",
-    6: "願いの砂浜",
-    7: "彩りの花畑",
-    8: "忘れ去られた場所",
-}
-
-# 场景名称映射
-SCENE_NAME_TO_KEY: Dict[str, str] = {
-    "さいしょの原っぱ": "scene1",
-    "彩りの花畑": "scene2",
-    "願いの砂浜": "scene3",
-    "忘れ去られた場所": "scene4",
-}
-SCENE_KEY_TO_NAME: Dict[str, str] = {v: k for k, v in SCENE_NAME_TO_KEY.items()}
-
-# 地图显示顺序
-MAP_ORDER: List[str] = [
-    "さいしょの原っぱ",
-    "彩りの花畑",
-    "願いの砂浜",
-    "忘れ去られた場所"
-]
 
 # 全局配置实例
 plugin_config = PluginConfig()

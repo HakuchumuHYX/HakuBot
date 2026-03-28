@@ -128,4 +128,3 @@ async def handle_list_files_command(bot: Bot, event: PrivateMessageEvent):
         await list_files_cmd.finish("列出文件失败。")
 
 
-logger.success("管理员/维护 handlers 已加载成功！")

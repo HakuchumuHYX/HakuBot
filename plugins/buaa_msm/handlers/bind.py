@@ -223,4 +223,4 @@ async def handle_group_view_all(bot: Bot, event: GroupMessageEvent):
     await group_view_all_cmd.finish("该指令仅在私聊中可用")
 
 
-logger.success("绑定 handlers 已加载成功！")
+
