@@ -115,6 +115,12 @@ async def change_gif_speed(image_url: str, speed_factor: float) -> str:
                         rgb_frames.append(frame)
                 frames = rgb_frames
 
+            # --- FIX PIL PALETTE BUG ---
+            from .utils import fix_frame_for_gif
+            frames = [fix_frame_for_gif(f) for f in frames]
+            first_frame = frames[0]
+            # ---------------------------
+
             # 保存GIF
             save_kwargs = {
                 'save_all': True,

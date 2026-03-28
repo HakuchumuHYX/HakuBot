@@ -91,6 +91,11 @@ async def reverse_gif(image_url: str) -> str:
             # 反转帧序列和持续时间
             reversed_frames = frames[::-1]
             reversed_durations = durations[::-1]
+            
+            # --- FIX PIL PALETTE BUG ---
+            from .utils import fix_frame_for_gif
+            reversed_frames = [fix_frame_for_gif(f) for f in reversed_frames]
+            # ---------------------------
 
             # 创建输出目录
             output_dir = Path(tempfile.gettempdir()) / "nonebot_gif_reverse"

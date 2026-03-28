@@ -132,6 +132,11 @@ async def process_gif_mirror(image_path: str, direction: str) -> str:
         output_dir.mkdir(exist_ok=True)
         output_path = output_dir / f"mirror_{direction}_{os.urandom(4).hex()}.gif"
 
+        # --- FIX PIL PALETTE BUG ---
+        from .utils import fix_frame_for_gif
+        unified_frames = [fix_frame_for_gif(f) for f in unified_frames]
+        # ---------------------------
+
         save_kwargs = {
             'save_all': True,
             'append_images': unified_frames[1:],

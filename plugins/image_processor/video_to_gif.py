@@ -409,6 +409,10 @@ async def convert_video_to_gif_opencv(video_path: str, output_path: str, fps: in
         duration = int(1000 / fps)
 
         # 保存为GIF
+        # --- FIX PIL PALETTE BUG ---
+        from .utils import fix_frame_for_gif
+        frames = [fix_frame_for_gif(f) for f in frames]
+        # ---------------------------
         frames[0].save(
             output_path,
             save_all=True,

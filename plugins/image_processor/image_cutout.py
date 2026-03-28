@@ -646,6 +646,11 @@ async def remove_background_gif(image_path: str) -> str:
         output_dir.mkdir(exist_ok=True)
         output_path = output_dir / f"cutout_gif_{os.urandom(4).hex()}.gif"
 
+        # --- FIX PIL PALETTE BUG ---
+        from .utils import fix_frame_for_gif
+        frames = [fix_frame_for_gif(f) for f in frames]
+        # ---------------------------
+
         frames[0].save(
             str(output_path),
             save_all=True,

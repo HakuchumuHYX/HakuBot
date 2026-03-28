@@ -301,6 +301,11 @@ async def process_gif_symmetry(image_path: str, symmetry_type: str) -> str:
             else:
                 unified_frames.append(frame)
 
+        # --- FIX PIL PALETTE BUG ---
+        from .utils import fix_frame_for_gif
+        unified_frames = [fix_frame_for_gif(f) for f in unified_frames]
+        # ---------------------------
+
         # 保存为新的GIF
         output_dir = Path(tempfile.gettempdir()) / "nonebot_image_symmetry"
         output_dir.mkdir(exist_ok=True)

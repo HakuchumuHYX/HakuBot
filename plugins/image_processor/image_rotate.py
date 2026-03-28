@@ -159,6 +159,12 @@ async def process_rotate(image_path: str, direction: str, speed: float) -> str:
 
         # 优化：如果原图是 RGBA，这里已经是 RGBA。
         # 设置 disposal=2 对透明旋转 GIF 很重要
+        
+        # --- FIX PIL PALETTE BUG ---
+        from .utils import fix_frame_for_gif
+        output_frames = [fix_frame_for_gif(f) for f in output_frames]
+        # ---------------------------
+
         output_frames[0].save(
             str(output_path),
             save_all=True,
