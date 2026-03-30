@@ -22,6 +22,7 @@ from ..models import ResultInfo
 from ..render import render_reminder, render_stats
 from .constants import (
     ADAPTIVE_INTERVAL_TABLE,
+    AUTO_UNSUB_UNAVAILABLE_STREAK,
     DEFAULT_INTERVAL_MINUTES,
     OVERDUE_THRESHOLD_MINUTES,
     POST_LIVE_GRACE_MINUTES,
@@ -40,6 +41,8 @@ class EventPollState:
     has_live_match: bool = False
     last_live_seen_at: Optional[datetime] = None
     has_fetch_error: bool = False
+    deterministic_unavailable_streak: int = 0
+    last_unavailable_reason: str = ""
 
 
 class HLTVScheduler:
@@ -50,7 +53,7 @@ class HLTVScheduler:
         self._initialized = False
 
         # 赛事结束判定缓冲（避免时区/页面延迟导致漏推最后结果）
-        self._end_grace_days: int = 1
+        self._end_grace_days: int = max(0, int(plugin_config.hltv_auto_unsub_delay_days))
 
         # 每个 event 的轮询状态
         self._event_states: dict[str, EventPollState] = {}
@@ -178,10 +181,41 @@ class HLTVScheduler:
         """是否属于可直接自动退订的 matches 不可用原因（避免临时网络问题误退订）"""
         return reason in {
             "generic_matches_page_no_event_matches",
-            "unexpected_final_url",
             "http_404",
             "http_410",
         }
+
+    def _update_unavailable_streak(
+        self,
+        event_id: str,
+        *,
+        is_unavailable: bool,
+        reason: str,
+    ) -> bool:
+        poll_state = self._get_event_poll_state(event_id)
+
+        if is_unavailable and self._is_deterministic_matches_unavailable(reason):
+            if poll_state.last_unavailable_reason == reason:
+                poll_state.deterministic_unavailable_streak += 1
+            else:
+                poll_state.deterministic_unavailable_streak = 1
+                poll_state.last_unavailable_reason = reason
+
+            logger.warning(
+                f"[HLTV Scheduler] matches 不可用计数(event={event_id}): "
+                f"reason={reason}, streak={poll_state.deterministic_unavailable_streak}/"
+                f"{AUTO_UNSUB_UNAVAILABLE_STREAK}"
+            )
+            return poll_state.deterministic_unavailable_streak >= AUTO_UNSUB_UNAVAILABLE_STREAK
+
+        if poll_state.deterministic_unavailable_streak > 0:
+            logger.info(
+                f"[HLTV Scheduler] matches 不可用计数已重置(event={event_id}): "
+                f"last_reason={poll_state.last_unavailable_reason}, streak={poll_state.deterministic_unavailable_streak}"
+            )
+        poll_state.deterministic_unavailable_streak = 0
+        poll_state.last_unavailable_reason = ""
+        return False
 
     def _apply_adaptive_schedule(self, event_id: str, poll_state: EventPollState) -> None:
         state = get_event_state(self._tz, self._end_grace_days, event_id)
@@ -318,26 +352,21 @@ class HLTVScheduler:
 
             matches, hints, meta = triplet
 
+            self._update_unavailable_streak(
+                event_id,
+                is_unavailable=meta.is_unavailable,
+                reason=meta.unavailable_reason,
+            )
             if meta.is_unavailable and self._is_deterministic_matches_unavailable(
                 meta.unavailable_reason
             ):
-                can_unsubscribe = await self._probe_and_drain_pending_results_before_unsubscribe(
-                    event_id=event_id,
-                    event_title=event_title,
+                logger.warning(
+                    f"[HLTV Scheduler] 延迟自动退订赛事 {event_id}: "
+                    f"state={state} 时 matches 页面不可用(reason={meta.unavailable_reason})"
                 )
-                if can_unsubscribe:
-                    if data_manager.unsubscribe_event_global(event_id):
-                        self._remove_event_job(event_id)
-                        logger.warning(
-                            f"[HLTV Scheduler] 自动退订赛事 {event_id}: matches 页面不可用"
-                            f"(reason={meta.unavailable_reason})"
-                        )
-                else:
-                    logger.warning(
-                        f"[HLTV Scheduler] 延迟自动退订赛事 {event_id}: "
-                        f"matches 页面不可用但仍存在待确认结果"
-                        f"(reason={meta.unavailable_reason})"
-                    )
+                return upcoming
+
+            if meta.is_unavailable:
                 return upcoming
 
             if any(m.is_live for m in matches) or any(h.is_live for h in hints):
@@ -770,6 +799,14 @@ class HLTVScheduler:
                     failed_events.append(event_id)
                 continue
 
+            if state == "NOT_ONGOING":
+                self._update_unavailable_streak(
+                    event_id,
+                    is_unavailable=False,
+                    reason="",
+                )
+                continue
+
             # 2) matches 页面不可用（基于真实响应元信息）也要先做最终结果探测
             health = await self._fetch_with_retry(
                 lambda eid=event_id: hltv_data.get_event_matches_health(eid),
@@ -779,8 +816,23 @@ class HLTVScheduler:
                 failed_events.append(event_id)
                 continue
 
+            should_auto_unsub = self._update_unavailable_streak(
+                event_id,
+                is_unavailable=health.is_unavailable,
+                reason=health.unavailable_reason,
+            )
             if health.is_unavailable:
                 if self._is_deterministic_matches_unavailable(health.unavailable_reason):
+                    if state in ("ONGOING", "UPCOMING"):
+                        failed_events.append(event_id)
+                        logger.warning(
+                            f"[HLTV Scheduler] 跳过自动退订赛事 {event_id}: "
+                            f"state={state}, reason={health.unavailable_reason}"
+                        )
+                        continue
+                    if not should_auto_unsub:
+                        failed_events.append(event_id)
+                        continue
                     can_unsubscribe = await self._probe_and_drain_pending_results_before_unsubscribe(
                         event_id=event_id,
                         event_title=event_title,

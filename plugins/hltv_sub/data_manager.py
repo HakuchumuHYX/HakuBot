@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -58,6 +60,7 @@ class DataManager:
     def __init__(self):
         self._data_dir: Path = get_plugin_data_dir()
         self._data_file: Path = self._data_dir / "subscriptions.json"
+        self._backup_file: Path = self._data_dir / "subscriptions.json.bak"
         self._groups: dict[int, GroupData] = {}
 
         # 全局 canonical 订阅集合（全局同步语义）
@@ -101,10 +104,23 @@ class DataManager:
         if not self._data_file.exists():
             return
 
+        data: dict
         try:
             with open(self._data_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+        except Exception as e:
+            logger.exception(f"[HLTV Sub] 加载主数据失败: {e}")
+            if not self._backup_file.exists():
+                return
+            try:
+                with open(self._backup_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                logger.warning("[HLTV Sub] 已从备份文件恢复订阅数据")
+            except Exception as backup_error:
+                logger.exception(f"[HLTV Sub] 加载备份数据失败: {backup_error}")
+                return
 
+        try:
             dirty = False
 
             # 1) groups
@@ -152,7 +168,7 @@ class DataManager:
                 self._save()
 
         except Exception as e:
-            logger.exception(f"[HLTV Sub] 加载数据失败: {e}")
+            logger.exception(f"[HLTV Sub] 解析数据失败: {e}")
 
     def _save(self) -> None:
         """保存数据"""
@@ -166,8 +182,14 @@ class DataManager:
                     "notified_results": self._notified_results,
                 },
             }
-            with open(self._data_file, "w", encoding="utf-8") as f:
+            tmp_file = self._data_dir / f"{self._data_file.name}.tmp"
+            with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            if self._data_file.exists():
+                shutil.copyfile(self._data_file, self._backup_file)
+            tmp_file.replace(self._data_file)
 
             # 任意全量保存后，清空去重状态节流计数
             self._notified_dirty = False
