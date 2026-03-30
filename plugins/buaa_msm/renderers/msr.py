@@ -861,14 +861,13 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
             small = [(c, item_id, qty) for (c, item_id, qty) in drops if small_flags.get((c, item_id), False)]
 
             large_sz = 34
-            small_sz = 26
+            small_sz = 24
+            large_gap = 3
+            small_gap = 2
 
-            total_w = len(large) * large_sz + max(0, len(large) - 1) * 4
+            total_w = len(large) * large_sz + max(0, len(large) - 1) * large_gap
             start_x = int(px_x - total_w / 2)
             base_y = int(px_y - (large_sz + 16))
-
-            small_x = int(px_x + large_sz // 2 + 6)
-            small_y = base_y
 
             def add_call(cx: int, cy: int, category: str, item_id: int, qty: int, *, small_icon: bool):
                 tex = _get_texture_path(category, item_id)
@@ -908,15 +907,45 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
                     )
                 )
 
-            cur_x = start_x
-            for category, item_id, qty in sorted(large, key=lambda t: (-_rarity_level(t[0], t[1]), -t[2], t[1])):
-                add_call(cur_x, base_y, category, item_id, qty, small_icon=False)
-                cur_x += large_sz + 4
+            large_sorted = sorted(large, key=lambda t: (-_rarity_level(t[0], t[1]), -t[2], t[1]))
+            small_sorted = sorted(small, key=lambda t: (-_rarity_level(t[0], t[1]), -t[2], t[1]))
 
-            cur_y = small_y
-            for category, item_id, qty in sorted(small, key=lambda t: (-_rarity_level(t[0], t[1]), -t[2], t[1])):
-                add_call(small_x, cur_y, category, item_id, qty, small_icon=True)
-                cur_y += small_sz + 4
+            large_positions: List[Tuple[int, int]] = []
+            cur_x = start_x
+            for category, item_id, qty in large_sorted:
+                add_call(cur_x, base_y, category, item_id, qty, small_icon=False)
+                large_positions.append((cur_x, base_y))
+                cur_x += large_sz + large_gap
+
+            if small_sorted:
+                if large_positions:
+                    anchor_x, anchor_y = min(
+                        large_positions,
+                        key=lambda pos: abs((pos[0] + large_sz / 2) - px_x),
+                    )
+                else:
+                    anchor_x, anchor_y = start_x, base_y
+
+                right_top = (
+                    int(anchor_x + large_sz - small_sz * 0.62),
+                    int(anchor_y - small_sz * 0.32),
+                )
+                right_bottom = (
+                    int(anchor_x + large_sz - small_sz * 0.62),
+                    int(anchor_y + large_sz - small_sz * 0.68),
+                )
+                extra_x = int(anchor_x + large_sz - small_sz * 0.16)
+                extra_start_y = int(right_bottom[1] + small_sz + small_gap)
+
+                for idx, (category, item_id, qty) in enumerate(small_sorted):
+                    if idx == 0:
+                        sx, sy = right_top
+                    elif idx == 1:
+                        sx, sy = right_bottom
+                    else:
+                        sx = extra_x
+                        sy = extra_start_y + (idx - 2) * (small_sz + small_gap)
+                    add_call(sx, sy, category, item_id, qty, small_icon=True)
 
         calls.sort(key=lambda c: c.order)
         for c in calls:
