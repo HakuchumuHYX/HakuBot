@@ -49,3 +49,4 @@ AI 点歌：ai_assistant:music
 存活统计：alive_stat
 PJSK活动预测：sk_predict
 PJSK剧情：pjsk_event_summary
+PJSK猜卡面：pjsk_guess_card
