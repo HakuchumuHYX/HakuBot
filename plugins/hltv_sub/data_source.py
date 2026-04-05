@@ -53,6 +53,8 @@ class HLTVDataSource:
             timeout=plugin_config.hltv_timeout,
             min_delay=plugin_config.hltv_min_delay,
             proxy_list=plugin_config.hltv_proxy_list,
+            impersonate=plugin_config.hltv_impersonate,
+            flaresolverr_url=plugin_config.hltv_flaresolverr_url,
         )
 
     async def close(self):
