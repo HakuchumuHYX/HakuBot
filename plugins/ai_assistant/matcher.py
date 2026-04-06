@@ -18,7 +18,6 @@ from .config import plugin_config, save_config
 from .services.chat_service import call_chat_completion
 from .services.imagen_service import call_image_generation
 from .services.search_service import format_search_results, web_search_with_rewrite
-from .services.music_service import get_music_service
 
 try:
     from ..plugin_manager.enable import is_plugin_enabled, is_feature_enabled
@@ -71,62 +70,7 @@ chat_web_matcher = on_command("chat联网", aliases={"chat_web", "chatweb", "cha
 draw_matcher = on_command("生图", priority=5, block=True)
 draw_web_matcher = on_command("生图联网", aliases={"生图web", "生图搜索"}, priority=5, block=True)
 
-# AI 点歌（自然语言）
-music_matcher = on_command("点歌", priority=4, block=True)
-
 model_cmd = on_command("切换模型", aliases={"更改模型", "change_model"}, permission=SUPERUSER, priority=1, block=True)
-
-
-@music_matcher.handle()
-async def handle_music(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    """
-    AI 点歌：自然语言 -> LLM(可选联网) -> 播放
-    用法：
-      点歌 <自然语言描述>
-      也支持回复一条消息后直接“点歌”
-    """
-    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
-        group_id = str(event.group_id)
-        user_id = str(event.user_id)
-
-        # 1) 插件总开关
-        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
-            await music_matcher.finish()
-
-        # 2) 功能分开关 (feature: music)
-        if not is_feature_enabled(PLUGIN_NAME, "music", group_id, user_id):
-            await music_matcher.finish()
-
-        # 3) 功能 CD (key: ai_assistant:music)
-        cd_key = f"{PLUGIN_NAME}:music"
-        cd_remain = check_cd(cd_key, group_id, user_id)
-        if cd_remain > 0:
-            await music_matcher.finish(f"点歌功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
-
-        # 4) 更新 CD（命令成功触发即进入CD，避免刷）
-        update_cd(cd_key, group_id, user_id)
-
-    try:
-        content_list = await parse_message_content(event, args)
-        raw_text = extract_pure_text(content_list).strip()
-
-        if not raw_text:
-            await music_matcher.finish("请在命令后描述你想听的歌，例如：点歌 给我随便放一首陶喆的歌")
-
-        svc = get_music_service()
-        result = await svc.play_by_natural_language(bot, event, raw_text)
-
-        # Now Playing 已在 service 内部提前 send 过，若 result 为空则不再额外输出
-        if result:
-            await music_matcher.finish(result)
-        else:
-            await music_matcher.finish()
-
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.exception("AI Music Error")
-        await music_matcher.finish(f"点歌失败: {str(e)}")
 
 
 @chat_matcher.handle()
@@ -252,9 +196,9 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
                     "1) 事实性结论（数据/时间/版本/政策/新闻等）必须来自【联网搜索结果】并附引用编号，例如：[1] 或 [1][2]。\n"
                     "2) 允许补充少量通用解释（不属于最新事实），但不得杜撰搜索结果中不存在的来源/链接。\n"
                     "3) 禁止编造来源：不要生成搜索结果里不存在的 URL/标题/编号。\n"
-                    "4) 如果搜索结果没有覆盖问题关键点：请明确说明“搜索结果未包含X”，并给出建议的补充检索关键词。\n"
+                    "4) 如果搜索结果没有覆盖问题关键点：请明确说明"搜索结果未包含X"，并给出建议的补充检索关键词。\n"
                     "5) 如果不同来源有冲突：请指出冲突，并说明你倾向哪一条（可依据更新时间/权威性）。\n"
-                    "6) 输出结构：先给结论与解释（带引用编号），最后单独列出“来源：”并逐条贴出对应 URL。\n"
+                    "6) 输出结构：先给结论与解释（带引用编号），最后单独列出"来源："并逐条贴出对应 URL。\n"
                     "\n【本次检索 query】\n" + queries_hint +
                     "\n\n【联网搜索结果】\n" + context_text
                 ),
@@ -352,7 +296,7 @@ async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         if isinstance(meta, dict):
             used_model = meta.get("model", plugin_config.image.model)
             if meta.get("used_safe_rewrite"):
-                # “触发安全重写”不准确：实际是发生了合规化改写并重试
+                # "触发安全重写"不准确：实际是发生了合规化改写并重试
                 note = "（已进行合规化改写并重试）"
 
         await draw_matcher.finish(f"使用模型：{used_model}\n生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s{note}")

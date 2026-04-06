@@ -4,50 +4,6 @@ from typing import Optional, List
 from pydantic import BaseModel
 
 
-class MusicConfig(BaseModel):
-    # === 原 music_plugin 配置（已迁移到 ai_assistant 下）===
-    default_player_name: str = "网易云音乐"
-    nodejs_base_url: str = "https://163api.qijieya.cn"
-
-    song_limit: int = 5
-    select_mode: str = "text"
-    send_modes: list[str] = ["card", "record", "file", "text"]
-
-    enable_comments: bool = True
-    enable_lyrics: bool = False
-
-    proxy: Optional[str] = None
-    timeout: int = 30
-    timeout_recall: bool = True
-    clear_cache: bool = True
-    playlist_limit: int = 100
-
-    # 网易云热评参数（来源：原 astrbot_plugin_music 默认值）
-    enc_sec_key: str = ""
-    enc_params: str = ""
-
-    # === AI 点歌行为配置 ===
-    allow_web_search: bool = True
-    candidate_limit: int = 5
-    pick_default: str = "random"  # random/first/best_match
-    fast_path_hint: str = "好哦，正在为你寻找……"
-    slow_path_hint: str = "别急，再等等哦，我去查查相关资料～"
-
-    # 解析意图时给 LLM 的参数（尽量低随机，快且稳定）
-    llm_temperature: Optional[float] = 0.2
-    llm_top_p: Optional[float] = None
-
-    # 慢路径 Tavily 搜索质量不佳时，允许重试次数（默认 1：最多再搜一次）
-    web_search_retry_times: int = 1
-    # 启用“站点倾向/白名单”
-    web_search_domain_bias_enabled: bool = True
-
-    # === debug 日志 ===
-    debug_log: bool = False
-    debug_log_max_chars: int = 1200
-    debug_log_include_web_content: bool = False
-
-
 class ChatConfig(BaseModel):
     # --- Per-module provider override (留空则回退到全局配置) ---
     provider: Optional[str] = None
@@ -167,7 +123,6 @@ class PluginConfig(BaseModel):
     chat: ChatConfig = ChatConfig()
     image: ImageConfig = ImageConfig()
     search: SearchConfig = SearchConfig()
-    music: MusicConfig = MusicConfig()
 
     def resolve(self, module: str = "chat") -> ResolvedProviderConfig:
         """
@@ -249,7 +204,6 @@ def load_config() -> PluginConfig:
                 "query_max_len": data.get("web_search_query_max_len", 120),
                 "num_queries": data.get("web_search_num_queries", 3)
             },
-            "music": data.get("music", {})
         }
         data = migrated
         # Auto-save migrated config
