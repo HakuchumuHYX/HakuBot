@@ -4,8 +4,9 @@ from pathlib import Path
 from typing import Optional, Dict, List
 from nonebot.log import logger
 
-PLUGIN_DIR = Path(__file__).parent
-NICKNAMES_FILE = PLUGIN_DIR / "data" / "nicknames.json"
+from .config import data_dir
+
+NICKNAMES_FILE = data_dir / "nicknames.json"
 
 # 昵称 -> 角色ID 映射
 _nickname_to_cid: Dict[str, int] = {}

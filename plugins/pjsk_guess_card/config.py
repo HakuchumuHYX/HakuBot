@@ -16,9 +16,10 @@ class PluginConfig(BaseModel, extra=Extra.ignore):
 
 
 PLUGIN_NAME = "pjsk_guess_card"
+PLUGIN_DIR = Path(__file__).parent
 data_dir = localstore.get_data_dir(PLUGIN_NAME)
 data_dir.mkdir(parents=True, exist_ok=True)
-CONFIG_FILE_PATH = data_dir / "config.json"
+CONFIG_FILE_PATH = PLUGIN_DIR / "config.json"
 
 # 卡面图片本地缓存目录
 CARD_IMAGES_DIR = data_dir / "card_images"
