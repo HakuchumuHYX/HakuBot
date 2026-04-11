@@ -24,6 +24,9 @@ class ResourceUsage:
     mem_used: int
     mem_total: int
     mem_percent: float
+    swap_used: int
+    swap_total: int
+    swap_percent: float
     disk_used: int
     disk_total: int
     disk_percent: float
@@ -101,12 +104,16 @@ def get_system_uptime() -> str:
 def get_resources() -> ResourceUsage:
     cpu_percent = psutil.cpu_percent(interval=0.5)
     mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
     disk = psutil.disk_usage("/")
     return ResourceUsage(
         cpu_percent=cpu_percent,
         mem_used=mem.used,
         mem_total=mem.total,
         mem_percent=mem.percent,
+        swap_used=swap.used,
+        swap_total=swap.total,
+        swap_percent=swap.percent,
         disk_used=disk.used,
         disk_total=disk.total,
         disk_percent=disk.percent,

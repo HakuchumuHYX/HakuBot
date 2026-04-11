@@ -320,6 +320,11 @@ def _build_resources_section(
         "Mem", res.mem_percent, mem_detail,
         theme, font, content_w,
     )
+    swap_detail = f"{_format_bytes(res.swap_used)}/{_format_bytes(res.swap_total)}" if res.swap_total > 0 else "N/A"
+    swap_row = _build_resource_row(
+        "Swap", res.swap_percent if res.swap_total > 0 else 0, swap_detail,
+        theme, font, content_w,
+    )
     disk_detail = f"{_format_bytes(res.disk_used)}/{_format_bytes(res.disk_total)}"
     disk_row = _build_resource_row(
         "Disk", res.disk_percent, disk_detail,
@@ -333,6 +338,8 @@ def _build_resources_section(
             cpu_row,
             Spacer(1, 10),
             mem_row,
+            Spacer(1, 10),
+            swap_row,
             Spacer(1, 10),
             disk_row,
         ], sep=0, item_size_mode="fixed", item_align="l")
