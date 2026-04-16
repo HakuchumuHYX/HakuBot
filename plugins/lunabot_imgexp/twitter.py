@@ -26,7 +26,7 @@ from ..utils.image_utils import path_to_base64_image
 logger = get_logger('Twitter')
 
 try:
-    from ..plugin_manager.enable import is_plugin_enabled, is_feature_enabled
+    from ..plugin_manager.enable import is_feature_enabled
     from ..plugin_manager.cd_manager import check_cd, update_cd
     MANAGER_AVAILABLE = True
 except ImportError:
@@ -137,9 +137,7 @@ async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message 
     if MANAGER_AVAILABLE:
         group_id = str(event.group_id)
         user_id = str(event.user_id)
-        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
-            await ximg.finish()
-        
+
         # 检查功能开关
         if not is_feature_enabled(PLUGIN_NAME, "ximg", group_id, user_id):
             await ximg.finish()

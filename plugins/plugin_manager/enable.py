@@ -3,8 +3,7 @@ from nonebot import on_command, get_loaded_plugins, get_driver
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent, MessageSegment
 from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
-from nonebot.plugin import Plugin
-from typing import Dict
+from typing import Optional
 
 from ..utils.tools import get_logger
 
@@ -22,6 +21,48 @@ from .render import PluginStatusGroup, PluginStatusRow, render_plugin_status_ima
 
 
 # --- 插件/功能开关的核心API函数 ---
+
+def get_status_override(status_key: str, group_id: str) -> Optional[bool]:
+    """获取某个状态键在指定群的显式配置；未配置时返回 None。"""
+    group_status = plugin_status.get(status_key)
+    if not isinstance(group_status, dict):
+        return None
+    return group_status.get(group_id)
+
+
+def get_plugin_feature_keys(plugin_name: str) -> list[str]:
+    """从 readme 中查找主插件对应的所有子功能键。"""
+    prefix = f"{plugin_name}:"
+    return [
+        plugin_id
+        for plugin_id in load_readme_plugins().keys()
+        if plugin_id.startswith(prefix)
+    ]
+
+
+def clear_feature_overrides(plugin_name: str, group_id: str):
+    """
+    清理指定群里某个主插件的全部子功能覆盖项。
+
+    主插件启用后，子功能按设计全部视为启用，因此不再保留单独覆盖。
+    """
+    changed = False
+
+    for feature_key in get_plugin_feature_keys(plugin_name):
+        feature_status = plugin_status.get(feature_key)
+        if not isinstance(feature_status, dict):
+            continue
+
+        if group_id in feature_status:
+            feature_status.pop(group_id, None)
+            changed = True
+
+        if not feature_status:
+            plugin_status.pop(feature_key, None)
+            changed = True
+
+    if changed:
+        save_plugin_status(plugin_status)
 
 def is_plugin_enabled(plugin_name: str, group_id: str, user_id: str) -> bool:
     """检查插件在指定群是否启用"""
@@ -46,6 +87,10 @@ def set_plugin_status(plugin_name: str, group_id: str, enabled: bool):
     if plugin_name not in plugin_status:
         plugin_status[plugin_name] = {}
     plugin_status[plugin_name][group_id] = enabled
+
+    if enabled:
+        clear_feature_overrides(plugin_name, group_id)
+
     save_plugin_status(plugin_status)  # 使用导入的保存函数
 
 
@@ -59,17 +104,14 @@ def is_feature_enabled(plugin_name: str, feature_name: str, group_id: str, user_
     except:
         pass
 
-    # 先检查整个插件是否启用 (传递 user_id)
-    if not is_plugin_enabled(plugin_name, group_id, user_id):
-        return False
+    # 主插件启用时，所有子功能都视为启用。
+    if is_plugin_enabled(plugin_name, group_id, user_id):
+        return True
 
-    # 检查特定功能状态
+    # 主插件未启用时，只有显式启用的子功能可以单独生效。
     feature_key = f"{plugin_name}:{feature_name}"
-    if feature_key not in plugin_status:
-        return True  # 默认启用
-    if group_id not in plugin_status[feature_key]:
-        return True  # 默认启用
-    return plugin_status[feature_key][group_id]
+    feature_override = get_status_override(feature_key, group_id)
+    return feature_override is True
 
 
 def set_feature_status(plugin_name: str, feature_name: str, group_id: str, enabled: bool):
@@ -112,6 +154,13 @@ async def handle_enable(bot: Bot, event: MessageEvent):
             await enable_plugin.finish(f"未找到插件: {plugin_name}")
             return
 
+    if ":" in plugin_name:
+        parent_name, feature_name = plugin_name.split(":", 1)
+        if is_plugin_enabled(parent_name, str(event.group_id), str(event.user_id)):
+            await enable_plugin.finish(
+                f"插件 {parent_name} 当前已启用主功能，{feature_name} 会随主功能一起启用，无需单独设置。"
+            )
+
     set_plugin_status(plugin_name, str(event.group_id), True)  # 调用此文件中的 set_plugin_status
     await enable_plugin.finish(f"已启用插件: {plugin_name}")
 
@@ -137,6 +186,14 @@ async def handle_disable(bot: Bot, event: MessageEvent):
             await disable_plugin.finish(f"未找到插件: {plugin_name}")
             return
 
+    if ":" in plugin_name:
+        parent_name, feature_name = plugin_name.split(":", 1)
+        if is_plugin_enabled(parent_name, str(event.group_id), str(event.user_id)):
+            await disable_plugin.finish(
+                f"插件 {parent_name} 当前为主功能启用状态，{feature_name} 会随主功能一起启用。"
+                "如需关闭单个子功能，请先禁用主插件。"
+            )
+
     set_plugin_status(plugin_name, str(event.group_id), False)  # 调用此文件中的 set_plugin_status
     await disable_plugin.finish(f"已禁用插件: {plugin_name}")
 
@@ -156,13 +213,11 @@ async def handle_list(bot: Bot, event: MessageEvent):
     # 兜底文本（渲染失败时发送）
     plugin_list_text = []
     for plugin_id, plugin_name in readme_plugins.items():
-        is_enabled = is_plugin_enabled(plugin_id, group_id, "0")
-
-        # 如果是子功能（带冒号），且主插件被禁用，则显示为禁用
         if ":" in plugin_id:
-            parent_id = plugin_id.split(":", 1)[0]
-            if not is_plugin_enabled(parent_id, group_id, "0"):
-                is_enabled = False
+            parent_id, feature_name = plugin_id.split(":", 1)
+            is_enabled = is_feature_enabled(parent_id, feature_name, group_id, "0")
+        else:
+            is_enabled = is_plugin_enabled(plugin_id, group_id, "0")
 
         status = "✅ 启用" if is_enabled else "❌ 禁用"
         plugin_list_text.append(f"{plugin_name} ({plugin_id}) - {status}")
@@ -199,9 +254,8 @@ async def handle_list(bot: Bot, event: MessageEvent):
 
         c_rows: list[PluginStatusRow] = []
         for cid, cname in children.get(pid, []):
-            c_enabled = is_plugin_enabled(cid, group_id, "0")
-            if not p_enabled:
-                c_enabled = False  # 主插件禁用时，子功能强制禁用显示
+            _, feature_name = cid.split(":", 1)
+            c_enabled = is_feature_enabled(pid, feature_name, group_id, "0")
             c_rows.append(
                 PluginStatusRow(
                     name=cname,
@@ -250,11 +304,12 @@ async def handle_enable_all(bot: Bot, event: MessageEvent):
         await enable_all.finish("未找到插件列表配置，请检查 readme.md 文件")
 
     enabled_count = 0
-    for plugin_id in readme_plugins.keys():
+    parent_plugins = [plugin_id for plugin_id in readme_plugins.keys() if ":" not in plugin_id]
+    for plugin_id in parent_plugins:
         set_plugin_status(plugin_id, group_id, True)
         enabled_count += 1
 
-    await enable_all.finish(f"已启用 {enabled_count} 个插件")
+    await enable_all.finish(f"已启用 {enabled_count} 个主插件，子功能将随主插件一起启用")
 
 
 @disable_all.handle()
@@ -292,8 +347,22 @@ async def handle_enable_feature(bot: Bot, event: MessageEvent):
         return
 
     plugin_name, feature_name = parts
+    feature_key = f"{plugin_name}:{feature_name}"
+    readme_plugins = load_readme_plugins()
 
-    set_feature_status(plugin_name, feature_name, str(event.group_id), True)  # 本地的
+    if feature_key not in readme_plugins:
+        await enable_feature.finish(f"未找到功能: {feature_key}")
+        return
+
+    group_id = str(event.group_id)
+    user_id = str(event.user_id)
+
+    if is_plugin_enabled(plugin_name, group_id, user_id):
+        await enable_feature.finish(
+            f"插件 {plugin_name} 当前已启用主功能，{feature_name} 会随主功能一起启用，无需单独设置。"
+        )
+
+    set_feature_status(plugin_name, feature_name, group_id, True)  # 本地的
     await enable_feature.finish(f"已启用插件 {plugin_name} 的 {feature_name} 功能")
 
 
@@ -312,6 +381,21 @@ async def handle_disable_feature(bot: Bot, event: MessageEvent):
         return
 
     plugin_name, feature_name = parts
+    feature_key = f"{plugin_name}:{feature_name}"
+    readme_plugins = load_readme_plugins()
 
-    set_feature_status(plugin_name, feature_name, str(event.group_id), False)  # 本地的
+    if feature_key not in readme_plugins:
+        await disable_feature.finish(f"未找到功能: {feature_key}")
+        return
+
+    group_id = str(event.group_id)
+    user_id = str(event.user_id)
+
+    if is_plugin_enabled(plugin_name, group_id, user_id):
+        await disable_feature.finish(
+            f"插件 {plugin_name} 当前为主功能启用状态，子功能会随主功能一起启用。"
+            "如需关闭单个子功能，请先禁用主插件。"
+        )
+
+    set_feature_status(plugin_name, feature_name, group_id, False)  # 本地的
     await disable_feature.finish(f"已禁用插件 {plugin_name} 的 {feature_name} 功能")

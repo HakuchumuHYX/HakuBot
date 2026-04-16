@@ -15,7 +15,7 @@ from ..utils.image_utils import path_to_base64_image
 from . import twitter  # noqa: F401
 
 try:
-    from ..plugin_manager.enable import is_plugin_enabled, is_feature_enabled
+    from ..plugin_manager.enable import is_feature_enabled
     from ..plugin_manager.cd_manager import check_cd, update_cd
     MANAGER_AVAILABLE = True
 except ImportError:
@@ -34,21 +34,17 @@ async def _(bot: Bot, event: MessageEvent, state: T_State, matcher: Matcher, arg
         group_id = str(event.group_id)
         user_id = str(event.user_id)
 
-        # 1. 检查插件总开关
-        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
-            await imgexp.finish()
-
-        # 2. 检查功能开关
+        # 1. 检查功能开关
         if not is_feature_enabled(PLUGIN_NAME, "search", group_id, user_id):
             await imgexp.finish()
 
-        # 3. 检查功能 CD (key: lunabot_imgexp:search)
+        # 2. 检查功能 CD (key: lunabot_imgexp:search)
         cd_key = f"{PLUGIN_NAME}:search"
         cd_remain = check_cd(cd_key, group_id, user_id)
         if cd_remain > 0:
             await imgexp.finish(f"搜图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
-        # 4. 更新 CD
+        # 3. 更新 CD
         update_cd(cd_key, group_id, user_id)
 
     # 尝试从参数中提取图片

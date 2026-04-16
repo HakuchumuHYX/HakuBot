@@ -20,7 +20,7 @@ from .services.imagen_service import call_image_generation
 from .services.search_service import format_search_results, web_search_with_rewrite
 
 try:
-    from ..plugin_manager.enable import is_plugin_enabled, is_feature_enabled
+    from ..plugin_manager.enable import is_feature_enabled
     from ..plugin_manager.cd_manager import check_cd, update_cd
 
     MANAGER_AVAILABLE = True
@@ -79,21 +79,17 @@ async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         group_id = str(event.group_id)
         user_id = str(event.user_id)
 
-        # 1. 检查插件总开关
-        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
-            await chat_matcher.finish()  # 禁用时静默失败
-
-        # 2. 检查功能分开关 (feature: chat)
+        # 1. 检查功能分开关 (feature: chat)
         if not is_feature_enabled(PLUGIN_NAME, "chat", group_id, user_id):
             await chat_matcher.finish()
 
-        # 3. 检查功能 CD (key: ai_assistant:chat)
+        # 2. 检查功能 CD (key: ai_assistant:chat)
         cd_key = f"{PLUGIN_NAME}:chat"
         cd_remain = check_cd(cd_key, group_id, user_id)
         if cd_remain > 0:
             await chat_matcher.finish(f"Chat功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
-        # 4. 更新 CD (命令成功触发即进入CD)
+        # 3. 更新 CD (命令成功触发即进入CD)
         update_cd(cd_key, group_id, user_id)
 
     try:
@@ -155,21 +151,17 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         group_id = str(event.group_id)
         user_id = str(event.user_id)
 
-        # 1. 检查插件总开关
-        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
-            await chat_web_matcher.finish()
-
-        # 2. 检查功能分开关 (feature: chat)
+        # 1. 检查功能分开关 (feature: chat)
         if not is_feature_enabled(PLUGIN_NAME, "chat", group_id, user_id):
             await chat_web_matcher.finish()
 
-        # 3. 检查功能 CD (key: ai_assistant:chat)
+        # 2. 检查功能 CD (key: ai_assistant:chat)
         cd_key = f"{PLUGIN_NAME}:chat"
         cd_remain = check_cd(cd_key, group_id, user_id)
         if cd_remain > 0:
             await chat_web_matcher.finish(f"Chat功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
-        # 4. 更新 CD
+        # 3. 更新 CD
         update_cd(cd_key, group_id, user_id)
 
     try:
@@ -250,21 +242,17 @@ async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         group_id = str(event.group_id)
         user_id = str(event.user_id)
 
-        # 1. 检查插件总开关
-        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
-            await draw_matcher.finish()
-
-        # 2. 检查功能分开关 (feature: imagen)
+        # 1. 检查功能分开关 (feature: imagen)
         if not is_feature_enabled(PLUGIN_NAME, "imagen", group_id, user_id):
             await draw_matcher.finish()
 
-        # 3. 检查功能 CD (key: ai_assistant:imagen)
+        # 2. 检查功能 CD (key: ai_assistant:imagen)
         cd_key = f"{PLUGIN_NAME}:imagen"
         cd_remain = check_cd(cd_key, group_id, user_id)
         if cd_remain > 0:
             await draw_matcher.finish(f"生图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
-        # 4. 更新 CD
+        # 3. 更新 CD
         update_cd(cd_key, group_id, user_id)
 
     try:
@@ -317,9 +305,6 @@ async def handle_draw_web(bot: Bot, event: MessageEvent, args: Message = Command
     if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
         group_id = str(event.group_id)
         user_id = str(event.user_id)
-
-        if not is_plugin_enabled(PLUGIN_NAME, group_id, user_id):
-            await draw_web_matcher.finish()
 
         if not is_feature_enabled(PLUGIN_NAME, "imagen", group_id, user_id):
             await draw_web_matcher.finish()

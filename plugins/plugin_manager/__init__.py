@@ -2,7 +2,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 from ..utils.tools import get_logger
 
@@ -146,8 +146,59 @@ def save_watermark_config(data: Dict[str, Any]):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def normalize_plugin_status(data: Dict[str, Dict[str, bool]]) -> Tuple[Dict[str, Dict[str, bool]], bool]:
+    """
+    归一化插件状态数据。
+
+    在新的语义下，只要主插件处于启用态（显式 True 或未配置，默认启用），
+    子功能都视为启用，因此这类场景下遗留的 `feature=false` 已无意义，启动时清理。
+    """
+    changed = False
+
+    for status_key in list(data.keys()):
+        group_status = data.get(status_key)
+        if not isinstance(group_status, dict):
+            data.pop(status_key, None)
+            changed = True
+            continue
+
+        for group_id, enabled in list(group_status.items()):
+            if not isinstance(enabled, bool):
+                group_status[group_id] = bool(enabled)
+                changed = True
+
+    for status_key in list(data.keys()):
+        if ":" not in status_key:
+            continue
+
+        parent_key = status_key.split(":", 1)[0]
+        feature_status = data.get(status_key)
+        parent_status = data.get(parent_key, {})
+
+        if not isinstance(feature_status, dict):
+            continue
+        if not isinstance(parent_status, dict):
+            parent_status = {}
+
+        for group_id, enabled in list(feature_status.items()):
+            parent_enabled = parent_status.get(group_id, True)
+            if parent_enabled and enabled is False:
+                feature_status.pop(group_id, None)
+                changed = True
+
+        if not feature_status:
+            data.pop(status_key, None)
+            changed = True
+
+    return data, changed
+
+
 # --- 全局数据缓存 ---
 plugin_status = load_plugin_status()
+plugin_status, plugin_status_changed = normalize_plugin_status(plugin_status)
+if plugin_status_changed:
+    save_plugin_status(plugin_status)
+
 cd_config = load_cd_config()
 cd_runtime = load_cd_runtime()
 watermark_config = load_watermark_config()

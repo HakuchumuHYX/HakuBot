@@ -137,13 +137,8 @@ async def handle_gif_reverse(event: Event, cmd_arg: Message = CommandArg()):
     """处理GIF倒放"""
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
-            await gif_reverse_handler.finish()
-            return
-
-    if isinstance(event, GroupMessageEvent):
         if not is_feature_enabled("image_processor", "reverse", str(event.group_id), user_id):
-            await image_cutout_handler.finish("gif倒放功能在本群无法使用！")
+            await gif_reverse_handler.finish("gif倒放功能在本群无法使用！")
             return
 
     # 检查是否为回复消息
@@ -205,11 +200,6 @@ async def handle_image_cutout(event: Event, cmd_arg: Message = CommandArg()):
     """处理图片抠图"""
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
-            await image_cutout_handler.finish()
-            return
-
-    if isinstance(event, GroupMessageEvent):
         if not is_feature_enabled("image_processor", "cutout", str(event.group_id), user_id):
             await image_cutout_handler.finish("抠图功能在本群无法使用！")
             return
@@ -258,11 +248,6 @@ async def handle_image_cutout(event: Event, cmd_arg: Message = CommandArg()):
 async def handle_gif_speed(event: Event, cmd_arg: Message = CommandArg()):
     """处理GIF倍速播放"""
     user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
-            await gif_speed_handler.finish()
-            return
-
     if isinstance(event, GroupMessageEvent):
         if not is_feature_enabled("image_processor", "speed", str(event.group_id), user_id):
             await gif_speed_handler.finish("gif加速功能在本群无法使用！")
@@ -372,11 +357,6 @@ async def handle_image_symmetry_bottom(event: Event, cmd_arg: Message = CommandA
 async def handle_image_symmetry_common(event: Event, symmetry_type: str):
     """通用的对称处理函数"""
     user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
-            await image_symmetry_handler.finish()
-            return
-
     if isinstance(event, GroupMessageEvent):
         if not is_feature_enabled("image_processor", "symmetry", str(event.group_id), user_id):
             await image_symmetry_handler.finish("对称功能在本群无法使用！")
@@ -499,11 +479,6 @@ async def handle_image_help(event: Event, cmd_arg: Message = CommandArg()):
 async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = CommandArg()):  # 移除默认值，使用依赖注入
     """处理视频转GIF"""
     user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", str(event.group_id), user_id):
-            await video_to_gif_handler.finish()
-            return
-
     if isinstance(event, GroupMessageEvent):
         if not is_feature_enabled("image_processor", "video_to_gif", str(event.group_id), user_id):
             await video_to_gif_handler.finish("视频转GIF功能在本群无法使用！")
@@ -656,10 +631,6 @@ async def handle_image_mirror_common(event: Event, direction: str):
 
     # 插件开关与权限检查
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", group_id, user_id):
-            await image_mirror_handler.finish()
-            return
-
         # 使用 mirror 作为功能标识符
         if not is_feature_enabled("image_processor", "mirror", group_id, user_id):
             await image_mirror_handler.finish("镜像功能在本群无法使用！")
@@ -745,10 +716,6 @@ async def handle_rotate_common(event: Event, cmd_arg: Message, direction: str):
 
     # 1. 插件与功能开关检查
     if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("image_processor", group_id, user_id):
-            await image_rotate_handler.finish()
-            return
-
         # 使用 rotate 作为功能标识符
         if not is_feature_enabled("image_processor", "rotate", group_id, user_id):
             await image_rotate_handler.finish("旋转功能在本群无法使用！")
