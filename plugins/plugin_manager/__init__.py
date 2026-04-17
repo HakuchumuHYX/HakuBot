@@ -150,8 +150,11 @@ def normalize_plugin_status(data: Dict[str, Dict[str, bool]]) -> Tuple[Dict[str,
     """
     归一化插件状态数据。
 
-    在新的语义下，只要主插件处于启用态（显式 True 或未配置，默认启用），
-    子功能都视为启用，因此这类场景下遗留的 `feature=false` 已无意义，启动时清理。
+    在新的语义下：
+    - 主插件启用时，子功能默认启用，但允许显式关闭；
+    - 主插件禁用时，子功能一律视为禁用，不允许显式启用。
+
+    因此仅清理“主插件显式禁用但子功能仍显式启用”的无效状态。
     """
     changed = False
 
@@ -182,8 +185,8 @@ def normalize_plugin_status(data: Dict[str, Dict[str, bool]]) -> Tuple[Dict[str,
 
         for group_id, enabled in list(feature_status.items()):
             parent_enabled = parent_status.get(group_id, True)
-            if parent_enabled and enabled is False:
-                feature_status.pop(group_id, None)
+            if parent_enabled is False and enabled is True:
+                feature_status[group_id] = False
                 changed = True
 
         if not feature_status:

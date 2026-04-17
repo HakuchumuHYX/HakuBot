@@ -30,7 +30,6 @@ gif 加速：image_processor:speed
 视频转 GIF：image_processor:video_to_gif  
 图片镜像：image_processor:mirror  
 图片旋转：image_processor:rotate  
-何意味？：hyw  
 AI 助手：ai_assistant  
 AI 对话：ai_assistant:chat  
 AI 生图：ai_assistant:imagen  

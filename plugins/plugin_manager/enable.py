@@ -40,29 +40,12 @@ def get_plugin_feature_keys(plugin_name: str) -> list[str]:
     ]
 
 
-def clear_feature_overrides(plugin_name: str, group_id: str):
-    """
-    清理指定群里某个主插件的全部子功能覆盖项。
-
-    主插件启用后，子功能按设计全部视为启用，因此不再保留单独覆盖。
-    """
-    changed = False
-
+def sync_feature_statuses(plugin_name: str, group_id: str, enabled: bool):
+    """同步指定主插件下所有子功能在当前群的状态。"""
     for feature_key in get_plugin_feature_keys(plugin_name):
-        feature_status = plugin_status.get(feature_key)
-        if not isinstance(feature_status, dict):
-            continue
-
-        if group_id in feature_status:
-            feature_status.pop(group_id, None)
-            changed = True
-
-        if not feature_status:
-            plugin_status.pop(feature_key, None)
-            changed = True
-
-    if changed:
-        save_plugin_status(plugin_status)
+        if feature_key not in plugin_status:
+            plugin_status[feature_key] = {}
+        plugin_status[feature_key][group_id] = enabled
 
 def is_plugin_enabled(plugin_name: str, group_id: str, user_id: str) -> bool:
     """检查插件在指定群是否启用"""
@@ -88,8 +71,8 @@ def set_plugin_status(plugin_name: str, group_id: str, enabled: bool):
         plugin_status[plugin_name] = {}
     plugin_status[plugin_name][group_id] = enabled
 
-    if enabled:
-        clear_feature_overrides(plugin_name, group_id)
+    if ":" not in plugin_name:
+        sync_feature_statuses(plugin_name, group_id, enabled)
 
     save_plugin_status(plugin_status)  # 使用导入的保存函数
 
@@ -104,14 +87,17 @@ def is_feature_enabled(plugin_name: str, feature_name: str, group_id: str, user_
     except:
         pass
 
-    # 主插件启用时，所有子功能都视为启用。
-    if is_plugin_enabled(plugin_name, group_id, user_id):
-        return True
-
-    # 主插件未启用时，只有显式启用的子功能可以单独生效。
     feature_key = f"{plugin_name}:{feature_name}"
     feature_override = get_status_override(feature_key, group_id)
-    return feature_override is True
+
+    # 主插件禁用时，子功能一律禁用，不允许单独启用。
+    if not is_plugin_enabled(plugin_name, group_id, user_id):
+        return False
+
+    # 主插件启用时，子功能默认启用，但允许显式关闭。
+    if feature_override is False:
+        return False
+    return True
 
 
 def set_feature_status(plugin_name: str, feature_name: str, group_id: str, enabled: bool):
@@ -154,14 +140,20 @@ async def handle_enable(bot: Bot, event: MessageEvent):
             await enable_plugin.finish(f"未找到插件: {plugin_name}")
             return
 
+    group_id = str(event.group_id)
+    user_id = str(event.user_id)
+
     if ":" in plugin_name:
         parent_name, feature_name = plugin_name.split(":", 1)
-        if is_plugin_enabled(parent_name, str(event.group_id), str(event.user_id)):
+        if not is_plugin_enabled(parent_name, group_id, user_id):
             await enable_plugin.finish(
-                f"插件 {parent_name} 当前已启用主功能，{feature_name} 会随主功能一起启用，无需单独设置。"
+                f"插件 {parent_name} 当前为禁用状态，不能单独启用子功能 {feature_name}。"
+                "请先启用主插件。"
             )
+        set_feature_status(parent_name, feature_name, group_id, True)
+        await enable_plugin.finish(f"已启用插件: {plugin_name}")
 
-    set_plugin_status(plugin_name, str(event.group_id), True)  # 调用此文件中的 set_plugin_status
+    set_plugin_status(plugin_name, group_id, True)  # 调用此文件中的 set_plugin_status
     await enable_plugin.finish(f"已启用插件: {plugin_name}")
 
 
@@ -186,15 +178,14 @@ async def handle_disable(bot: Bot, event: MessageEvent):
             await disable_plugin.finish(f"未找到插件: {plugin_name}")
             return
 
+    group_id = str(event.group_id)
+
     if ":" in plugin_name:
         parent_name, feature_name = plugin_name.split(":", 1)
-        if is_plugin_enabled(parent_name, str(event.group_id), str(event.user_id)):
-            await disable_plugin.finish(
-                f"插件 {parent_name} 当前为主功能启用状态，{feature_name} 会随主功能一起启用。"
-                "如需关闭单个子功能，请先禁用主插件。"
-            )
+        set_feature_status(parent_name, feature_name, group_id, False)
+        await disable_plugin.finish(f"已禁用插件: {plugin_name}")
 
-    set_plugin_status(plugin_name, str(event.group_id), False)  # 调用此文件中的 set_plugin_status
+    set_plugin_status(plugin_name, group_id, False)  # 调用此文件中的 set_plugin_status
     await disable_plugin.finish(f"已禁用插件: {plugin_name}")
 
 
@@ -309,7 +300,7 @@ async def handle_enable_all(bot: Bot, event: MessageEvent):
         set_plugin_status(plugin_id, group_id, True)
         enabled_count += 1
 
-    await enable_all.finish(f"已启用 {enabled_count} 个主插件，子功能将随主插件一起启用")
+    await enable_all.finish(f"已启用 {enabled_count} 个主插件，子功能已同步启用")
 
 
 @disable_all.handle()
@@ -325,11 +316,12 @@ async def handle_disable_all(bot: Bot, event: MessageEvent):
         await disable_all.finish("未找到插件列表配置，请检查 readme.md 文件")
 
     disabled_count = 0
-    for plugin_id in readme_plugins.keys():
+    parent_plugins = [plugin_id for plugin_id in readme_plugins.keys() if ":" not in plugin_id]
+    for plugin_id in parent_plugins:
         set_plugin_status(plugin_id, group_id, False)
         disabled_count += 1
 
-    await disable_all.finish(f"已禁用 {disabled_count} 个插件")
+    await disable_all.finish(f"已禁用 {disabled_count} 个主插件，子功能已同步禁用")
 
 
 @enable_feature.handle()
@@ -357,9 +349,10 @@ async def handle_enable_feature(bot: Bot, event: MessageEvent):
     group_id = str(event.group_id)
     user_id = str(event.user_id)
 
-    if is_plugin_enabled(plugin_name, group_id, user_id):
+    if not is_plugin_enabled(plugin_name, group_id, user_id):
         await enable_feature.finish(
-            f"插件 {plugin_name} 当前已启用主功能，{feature_name} 会随主功能一起启用，无需单独设置。"
+            f"插件 {plugin_name} 当前为禁用状态，不能单独启用子功能 {feature_name}。"
+            "请先启用主插件。"
         )
 
     set_feature_status(plugin_name, feature_name, group_id, True)  # 本地的
@@ -389,13 +382,6 @@ async def handle_disable_feature(bot: Bot, event: MessageEvent):
         return
 
     group_id = str(event.group_id)
-    user_id = str(event.user_id)
-
-    if is_plugin_enabled(plugin_name, group_id, user_id):
-        await disable_feature.finish(
-            f"插件 {plugin_name} 当前为主功能启用状态，子功能会随主功能一起启用。"
-            "如需关闭单个子功能，请先禁用主插件。"
-        )
 
     set_feature_status(plugin_name, feature_name, group_id, False)  # 本地的
     await disable_feature.finish(f"已禁用插件 {plugin_name} 的 {feature_name} 功能")
