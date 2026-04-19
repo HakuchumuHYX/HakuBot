@@ -47,4 +47,5 @@ AI 生图：ai_assistant:imagen
 存活统计：alive_stat
 PJSK活动预测：sk_predict
 PJSK剧情：pjsk_event_summary
+PJSK漫画：pjsk_mangas
 PJSK猜卡面：pjsk_guess_card

@@ -1,25 +1,20 @@
-import httpx
+import json
 from typing import List, Union
+
+from ..utils.moesekai_hub import ensure_event_detail_path, ensure_event_index_ready, load_event_index
+from ..utils.tools import get_exc_desc, get_logger
 from .models import EventSimple, EventDetail
 
-API_BASE = "https://sekaistoryadmin.exmeaning.com/api/v1/events"
+logger = get_logger("pjsk_event_summary.api")
 
 
 async def fetch_event_list(limit: int = 20) -> List[EventSimple]:
     """
     获取活动列表
     """
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(API_BASE)
-        resp.raise_for_status()
-
-        data_json = resp.json()
-        # 解析数据
-        events_all = [EventSimple(**item) for item in data_json]
-        # 按ID倒序排列
-        events_all.sort(key=lambda x: x.event_id, reverse=True)
-        # 返回前 limit 条
-        return events_all[:limit]
+    await ensure_event_index_ready()
+    data_json = load_event_index()
+    return [EventSimple(**item) for item in data_json[:limit]]
 
 
 async def fetch_event_detail(event_id: str) -> Union[EventDetail, str]:
@@ -27,20 +22,15 @@ async def fetch_event_detail(event_id: str) -> Union[EventDetail, str]:
     获取活动详情
     返回 EventDetail 对象，如果出错或找不到则返回错误信息字符串
     """
-    target_url = f"{API_BASE}/{event_id}"
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(target_url)
+        event_id_int = int(event_id)
+        local_path = await ensure_event_detail_path(event_id_int)
+        if local_path is None:
+            return f"未收录活动 {event_id} 的剧情总结"
 
-            # API 即使 200 也可能返回 {"error": "..."}
-            data_json = resp.json()
-            if "error" in data_json:
-                return f"查询失败: {data_json['error']}"
-
-            resp.raise_for_status()
-
-            return EventDetail(**data_json)
-    except httpx.HTTPStatusError as e:
-        return f"网络请求错误: HTTP {e.response.status_code}"
+        with local_path.open("r", encoding="utf-8") as f:
+            data_json = json.load(f)
+        return EventDetail(**data_json)
     except Exception as e:
-        return f"发生未知错误: {str(e)}"
+        logger.exception(f"读取活动 {event_id} 详情失败: {e}")
+        return f"读取本地剧情数据失败: {get_exc_desc(e)}"
