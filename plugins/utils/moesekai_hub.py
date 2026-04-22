@@ -77,6 +77,14 @@ async def _rev_parse(ref: str) -> str:
     return await _run_git("-C", str(REPO_DIR), "rev-parse", ref)
 
 
+async def _ensure_repo_clean_for_reset() -> None:
+    status = await _run_git("-C", str(REPO_DIR), "status", "--porcelain")
+    if status:
+        raise RuntimeError(
+            "MoeSekai-Hub 工作区存在未提交改动，已停止自动同步以避免 reset 覆盖本地修改"
+        )
+
+
 async def _ensure_repo_initialized() -> None:
     if (REPO_DIR / ".git").exists():
         await _run_git("-C", str(REPO_DIR), "sparse-checkout", "set", *SPARSE_PATHS)
@@ -250,7 +258,12 @@ async def sync_repo_and_rebuild_index(*, force_rebuild: bool = False, reason: st
             updated = before_commit != remote_commit
 
             if updated:
-                await _run_git("-C", str(REPO_DIR), "pull", "--ff-only", "origin", BRANCH)
+                # For this shallow sparse clone, `pull --ff-only` can fail once
+                # both local HEAD and origin/main become disconnected shallow tips.
+                # Resetting to the fetched remote commit keeps the checkout current
+                # without requiring a full history.
+                await _ensure_repo_clean_for_reset()
+                await _run_git("-C", str(REPO_DIR), "reset", "--hard", remote_commit)
 
             await _run_git("-C", str(REPO_DIR), "sparse-checkout", "reapply")
 
