@@ -1,99 +1,29 @@
-import httpx
+import base64
 import json
 import re
 from typing import Tuple, Optional, List
 from nonebot.log import logger
+from plugins.utils.llm import (
+    LLMClientConfig,
+    chat_completion as sdk_chat_completion,
+    image_edit as sdk_image_edit,
+    image_generation as sdk_image_generation,
+)
 from ..config import plugin_config
-from ..utils import make_headers, get_llm_provider, get_google_api_key, parse_data_url, openai_content_to_gemini_parts
+from ..utils import parse_data_url
 from .chat_service import call_chat_completion
 
-async def _call_image_generation_google(
-    content_list: List[dict],
-    *,
-    extra_context: Optional[str] = None,
-) -> Tuple[str, dict]:
-    """
-    Google AI Studio image generation (nano banana / Gemini image models)
-    Returns OneBot-compatible base64:// payload.
-    """
+
+def _image_llm_config() -> LLMClientConfig:
     rc = plugin_config.resolve("image")
-    used_model = plugin_config.image.model
-    api_key = get_google_api_key(rc)
-    if not api_key:
-        raise Exception("未配置 google_api_key（或 api_key 为空），无法调用 Google AI Studio 生图。")
-
-    base_url = (rc.google_base_url or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
-
-    system_instruction = (
-        "You are an AI specialized in generating 2D anime/manga style art.\n"
-        "The style MUST be 2D anime/manga. Do NOT generate realistic or photorealistic images.\n"
-        "If you also output text, keep it minimal.\n"
-    )
-    if extra_context:
-        system_instruction += (
-            "\n\n[Web Search Context - Reference Only]\n"
-            "以下内容仅用于补充事实/外观设定。请提炼其中对画面有用的 3~8 条要点融入绘制，不要照抄整段。"
-            "若与用户描述冲突，以用户描述为准。\n\n"
-            + extra_context
-        )
-
-    parts = openai_content_to_gemini_parts(content_list)
-    # 将画风约束直接注入 user 消息，提高模型对画风的遵从度
-    style_hint = {"text": "（画风要求：必须是二次元/动漫/manga 风格，禁止写实/照片风格）"}
-    parts.insert(0, style_hint)
-    payload: dict = {
-        "contents": [{"role": "user", "parts": parts}],
-        "systemInstruction": {"parts": [{"text": system_instruction}]},
-        "generationConfig": {
-            # Request image output. Some models may also output TEXT; we handle both.
-            "responseModalities": ["IMAGE", "TEXT"],
-        },
-    }
-
-    async with httpx.AsyncClient(
-        base_url=base_url,
-        proxy=plugin_config.proxy,
+    return LLMClientConfig(
+        provider=rc.provider,
+        api_key=rc.api_key,
+        base_url=rc.base_url,
+        model=plugin_config.image.model,
         timeout=plugin_config.timeout,
-    ) as client:
-        resp = await client.post(
-            f"/models/{used_model}:generateContent",
-            params={"key": api_key},
-            json=payload,
-        )
-
-        if resp.status_code != 200:
-            raise Exception(f"Google Image API Error {resp.status_code}: {resp.text}")
-
-        data = resp.json()
-
-    # Find inlineData for image
-    candidates = data.get("candidates") or []
-    if not candidates:
-        raise Exception(f"Google Image API 返回无 candidates: {json.dumps(data, ensure_ascii=False)[:500]}")
-
-    c0 = candidates[0] or {}
-    content = (c0.get("content") or {})
-    parts = content.get("parts") or []
-
-    for p in parts:
-        if not isinstance(p, dict):
-            continue
-        inline = p.get("inlineData") or p.get("inline_data")
-        if inline and isinstance(inline, dict):
-            b64 = (inline.get("data") or "").strip()
-            mime = (inline.get("mimeType") or inline.get("mime_type") or "image/png").strip()
-            if b64:
-                return f"base64://{b64}", {"mime_type": mime, "provider": "google_ai_studio", "model": used_model}
-
-    # If no image found, provide text for diagnostics
-    text_preview = ""
-    for p in parts:
-        if isinstance(p, dict) and p.get("text"):
-            text_preview += str(p.get("text"))
-    text_preview = text_preview.strip()
-    if text_preview:
-        raise Exception(f"Google 生图未返回图片 inlineData，仅返回文本：{text_preview[:200]}")
-    raise Exception("Google 生图未返回图片 inlineData。")
+        proxy=plugin_config.proxy,
+    )
 
 
 async def _call_image_generation_chat_compat(
@@ -141,36 +71,18 @@ async def _call_image_generation_chat_compat(
         {"role": "user", "content": user_content},
     ]
 
-    payload = {
-        "model": used_model,
-        "messages": messages,
-    }
-
-    rc = plugin_config.resolve("image")
-    headers = make_headers(rc.api_key)
-
     logger.debug(f"[chat_compat] 正在通过 /chat/completions 请求生图: model={used_model}")
 
-    async with httpx.AsyncClient(
-        base_url=rc.base_url,
-        proxy=plugin_config.proxy,
-        timeout=plugin_config.timeout,
-    ) as client:
-        resp = await client.post("/chat/completions", json=payload, headers=headers)
-
-        if resp.status_code != 200:
-            err_text = resp.text
-            logger.error(f"[chat_compat] 生图 API 非 200。status={resp.status_code} body={err_text}")
-            try:
-                err_obj = json.loads(err_text).get("error", {})
-                if err_obj:
-                    err_msg = err_obj.get("message") or err_obj.get("type") or err_text
-                    raise Exception(f"生图被拒绝/失败: {err_msg}")
-            except json.JSONDecodeError:
-                pass
-            raise Exception(f"生图 API Error {resp.status_code}")
-
-        data = resp.json()
+    result = await sdk_chat_completion(
+        _image_llm_config(),
+        messages,
+        model=used_model,
+    )
+    raw = result.raw
+    if hasattr(raw, "model_dump"):
+        data = raw.model_dump(mode="json")
+    else:
+        data = raw
 
     # --- 解析响应，提取图片 ---
     choices = data.get("choices") or []
@@ -280,12 +192,6 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
       meta.used_safe_rewrite: 是否进行过“合规化改写后重试”
       meta.safe_rewrite_attempts: 改写重试次数
     """
-
-    rc = plugin_config.resolve("image")
-    provider = get_llm_provider(rc)
-    if provider == "google_ai_studio":
-        return await _call_image_generation_google(content_list, extra_context=extra_context)
-
     def _normalize_content_list_for_retry(original: List[dict], new_text: str) -> List[dict]:
         """保留图片输入，仅替换/合并文本输入为一段。"""
         out: List[dict] = []
@@ -368,107 +274,37 @@ async def call_image_generation(content_list: List[dict], extra_context: Optiona
                 + extra_context
             )
             
-        model_name = plugin_config.image.model
-        
-        rc = plugin_config.resolve("image")
-        try:
-            async with httpx.AsyncClient(
-                base_url=rc.base_url,
-                proxy=plugin_config.proxy,
-                timeout=plugin_config.timeout,
-            ) as client:
-                if image_parts:
-                    # 图生图请求 /v1/images/edits
-                    logger.debug(f"正在请求图生图 (images/edits): {plugin_config.base_url}")
-                    files = {}
-                    for i, (mime, img_bytes) in enumerate(image_parts):
-                        ext = mime.split("/")[-1] if "/" in mime else "png"
-                        if ext == "jpeg":
-                            ext = "jpg"
-                        files[f"image{i+1}"] = (f"ref{i+1}.{ext}", img_bytes, mime)
-                        
-                    # 为兼容 OpenAI 标准，如果仅有一张图，也可同时放入 image 字段
-                    if len(image_parts) == 1:
-                        mime, img_bytes = image_parts[0]
-                        ext = mime.split("/")[-1] if "/" in mime else "png"
-                        if ext == "jpeg":
-                            ext = "jpg"
-                        files["image"] = (f"ref_main.{ext}", img_bytes, mime)
-                        
-                    data = {
-                        "prompt": final_prompt,
-                        "model": model_name,
-                        "n": 1,
-                        "response_format": "b64_json"
-                    }
-                    if plugin_config.image.size:
-                        data["size"] = plugin_config.image.size
-                    if plugin_config.image.quality:
-                        data["quality"] = plugin_config.image.quality
-                    if plugin_config.image.size_param:
-                        data["imageSize"] = plugin_config.image.size_param
-                        
-                    auth_headers = {"Authorization": f"Bearer {rc.api_key}"}
-                    
-                    resp = await client.post("/images/edits", headers=auth_headers, data=data, files=files)
-                else:
-                    # 文生图请求 /v1/images/generations
-                    logger.debug(f"正在请求文生图 (images/generations): {plugin_config.base_url}")
-                    payload = {
-                        "prompt": final_prompt,
-                        "model": model_name,
-                        "n": 1,
-                        "response_format": "b64_json"
-                    }
-                    if plugin_config.image.size:
-                        payload["size"] = plugin_config.image.size
-                    if plugin_config.image.quality:
-                        payload["quality"] = plugin_config.image.quality
-                    if plugin_config.image.size_param:
-                        payload["imageSize"] = plugin_config.image.size_param
-                        
-                    gen_headers = make_headers(rc.api_key)
-                    resp = await client.post("/images/generations", headers=gen_headers, json=payload)
-                    
-                resp_text = resp.text
+        if image_parts:
+            logger.debug("正在请求图生图 (images/edits)")
+            images: list[tuple[str, bytes, str]] = []
+            for i, (mime, img_bytes) in enumerate(image_parts):
+                ext = mime.split("/")[-1] if "/" in mime else "png"
+                if ext == "jpeg":
+                    ext = "jpg"
+                images.append((f"ref{i+1}.{ext}", img_bytes, mime))
 
-                if resp.status_code != 200:
-                    logger.error(f"生图 API 非 200。status={resp.status_code} body={resp_text}")
-                    # 尝试解析错误信息
-                    try:
-                        err_obj = json.loads(resp_text).get("error", {})
-                        if err_obj:
-                            err_msg = err_obj.get("message") or err_obj.get("type") or resp_text
-                            raise Exception(f"生图被拒绝/失败: {err_msg}")
-                    except json.JSONDecodeError:
-                        pass
-                    raise Exception(f"生图 API Error {resp.status_code}")
+            result = await sdk_image_edit(
+                _image_llm_config(),
+                prompt=final_prompt,
+                images=images,
+                model=plugin_config.image.model,
+                size=plugin_config.image.size,
+                quality=plugin_config.image.quality,
+                size_param=plugin_config.image.size_param,
+            )
+        else:
+            logger.debug("正在请求文生图 (images/generations)")
+            result = await sdk_image_generation(
+                _image_llm_config(),
+                prompt=final_prompt,
+                model=plugin_config.image.model,
+                size=plugin_config.image.size,
+                quality=plugin_config.image.quality,
+                size_param=plugin_config.image.size_param,
+            )
 
-                data = resp.json()
-                
-        except httpx.TimeoutException:
-            raise Exception(f"生图请求超时，已等待 {plugin_config.timeout} 秒。")
-
-        try:
-            # 解析 response_format="b64_json" 或 "url" 的返回结果
-            resp_data = data.get("data", [])
-            if not resp_data:
-                raise Exception(f"生图 API 返回成功但无数据。完整数据: {json.dumps(data, ensure_ascii=False)}")
-                
-            img_item = resp_data[0]
-            if "b64_json" in img_item:
-                logger.info("成功提取生图结果 (b64_json)")
-                return f"base64://{img_item['b64_json']}"
-            elif "url" in img_item:
-                logger.info("成功提取生图结果 (url)")
-                return img_item["url"].strip()
-            else:
-                raise Exception(f"生图 API 返回了未知的数据格式: {json.dumps(img_item, ensure_ascii=False)}")
-
-        except Exception as e:
-            if not isinstance(e, Exception) or "生图被拒绝/失败" not in str(e):
-                logger.error(f"解析生图结果失败: {e}")
-            raise
+        logger.info("成功提取生图结果")
+        return result.image_url
 
     meta = {
         "used_safe_rewrite": False,

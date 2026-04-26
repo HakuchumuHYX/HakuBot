@@ -1,19 +1,26 @@
-import json
 from pathlib import Path
-from typing import Optional, List
-from pydantic import BaseModel
+from typing import Optional
+import json
+
+from pydantic import BaseModel, Field
 
 
-class ChatConfig(BaseModel):
+class StrictBaseModel(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class ChatConfig(StrictBaseModel):
     # --- Per-module provider override (留空则回退到全局配置) ---
     provider: Optional[str] = None
     api_key: Optional[str] = None
     base_url: Optional[str] = None
-    google_api_key: Optional[str] = None
-    google_base_url: Optional[str] = None
 
     model: str = "gpt-3.5-turbo"
     max_tokens: Optional[int] = 8192
+    thinking_enabled: bool = False
+    reasoning_effort: Optional[str] = None
+    extra_body: dict = Field(default_factory=dict)
     system_prompt: str = (
         "你是HakuBot的AI助手。请遵守以下回复规范：\n"
         "1. 语气活泼、亲切、自然，像朋友聊天一样，避免生硬的机器感。\n"
@@ -39,13 +46,11 @@ class ChatConfig(BaseModel):
     bg_color: str = "#f8f9fa"
 
 
-class ImageConfig(BaseModel):
+class ImageConfig(StrictBaseModel):
     # --- Per-module provider override (留空则回退到全局配置) ---
     provider: Optional[str] = None
     api_key: Optional[str] = None
     base_url: Optional[str] = None
-    google_api_key: Optional[str] = None
-    google_base_url: Optional[str] = None
 
     model: str = "dall-e-3"
     size: Optional[str] = None
@@ -68,7 +73,7 @@ class ImageConfig(BaseModel):
     safe_rewrite_max_tokens: int = 256
 
 
-class SearchConfig(BaseModel):
+class SearchConfig(StrictBaseModel):
     # --- Web Search (manual command only) ---
     # Tavily: https://tavily.com/
     tavily_api_key: Optional[str] = None
@@ -90,31 +95,22 @@ class SearchConfig(BaseModel):
 
 class ResolvedProviderConfig:
     """resolve() 返回的连接参数集合，供 service 层直接使用。"""
-    __slots__ = ("provider", "api_key", "base_url", "google_api_key", "google_base_url")
+    __slots__ = ("provider", "api_key", "base_url")
 
-    def __init__(self, provider: str, api_key: str, base_url: str,
-                 google_api_key: Optional[str], google_base_url: str):
+    def __init__(self, provider: str, api_key: str, base_url: str):
         self.provider = provider
         self.api_key = api_key
         self.base_url = base_url
-        self.google_api_key = google_api_key
-        self.google_base_url = google_base_url
 
 
-class PluginConfig(BaseModel):
+class PluginConfig(StrictBaseModel):
     # --- Provider Switch ---
     # openai_compatible: 走 /chat/completions 的 OpenAI 兼容接口（保持现状）
-    # google_ai_studio: 走 Google AI Studio / Gemini Developer API 官方接口（generateContent）
     provider: str = "openai_compatible"
 
     # OpenAI compatible config (legacy / default)
     api_key: str
     base_url: str = "https://api.openai.com/v1"
-
-    # Google AI Studio config (optional)
-    # 为空时会回退使用 api_key
-    google_api_key: Optional[str] = None
-    google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
 
     proxy: Optional[str] = None
     timeout: float = 60.0
@@ -144,17 +140,15 @@ class PluginConfig(BaseModel):
             return val
 
         provider = (_pick("provider") or "openai_compatible").lower()
+        if provider != "openai_compatible":
+            raise ValueError(f"Unsupported LLM provider: {provider}")
         api_key = _pick("api_key") or ""
         base_url = _pick("base_url") or "https://api.openai.com/v1"
-        google_api_key = _pick("google_api_key") or ""
-        google_base_url = _pick("google_base_url") or "https://generativelanguage.googleapis.com/v1beta"
 
         return ResolvedProviderConfig(
             provider=provider,
             api_key=api_key,
             base_url=base_url,
-            google_api_key=google_api_key,
-            google_base_url=google_base_url,
         )
 
 
@@ -168,47 +162,6 @@ def load_config() -> PluginConfig:
 
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
-
-    # Migrate old flat config to nested config structure if needed
-    if "chat_model" in data or "image_model" in data:
-        migrated = {
-            "provider": data.get("provider", "openai_compatible"),
-            "api_key": data.get("api_key", ""),
-            "base_url": data.get("base_url", "https://api.openai.com/v1"),
-            "google_api_key": data.get("google_api_key"),
-            "google_base_url": data.get("google_base_url", "https://generativelanguage.googleapis.com/v1beta"),
-            "proxy": data.get("proxy"),
-            "timeout": data.get("timeout", 60.0),
-            "chat": {
-                "model": data.get("chat_model", "gpt-3.5-turbo"),
-                "max_tokens": data.get("chat_max_tokens", 8192),
-                "system_prompt": data.get("system_prompt", "")
-            },
-            "image": {
-                "model": data.get("image_model", "dall-e-3"),
-                "size": data.get("image_size"),
-                "quality": data.get("image_quality"),
-                "size_param": data.get("image_size_param"),
-                "retry_on_empty": data.get("image_retry_on_empty", True),
-                "retry_max_times": data.get("image_retry_max_times", 1),
-                "safe_rewrite_model": data.get("image_safe_rewrite_model"),
-                "safe_rewrite_max_tokens": data.get("image_safe_rewrite_max_tokens", 256)
-            },
-            "search": {
-                "tavily_api_key": data.get("tavily_api_key"),
-                "max_results": data.get("web_search_max_results", 5),
-                "depth": data.get("web_search_depth", "basic"),
-                "query_rewrite": data.get("web_search_query_rewrite", True),
-                "query_rewrite_use_llm": data.get("web_search_query_rewrite_use_llm", True),
-                "query_rewrite_llm_trigger_len": data.get("web_search_query_rewrite_llm_trigger_len", 200),
-                "query_max_len": data.get("web_search_query_max_len", 120),
-                "num_queries": data.get("web_search_num_queries", 3)
-            },
-        }
-        data = migrated
-        # Auto-save migrated config
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
 
     return PluginConfig(**data)
 

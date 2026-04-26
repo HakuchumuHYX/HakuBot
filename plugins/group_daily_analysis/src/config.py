@@ -1,28 +1,33 @@
 import json
 from pathlib import Path
-from typing import Optional, List, Any
+from typing import Optional, List
 from pydantic import BaseModel, Field
 from nonebot.log import logger
 
-class LLMConfig(BaseModel):
+
+class StrictBaseModel(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class LLMConfig(StrictBaseModel):
     # openai_compatible: /chat/completions (OpenAI 兼容接口，保持现状)
-    # google_ai_studio: Gemini Developer API (AI Studio 官方接口 generateContent)
     provider: str = "openai_compatible"
 
     # OpenAI compatible config
     api_key: str
     base_url: str = "https://api.openai.com/v1"
 
-    # Google AI Studio config (optional)
-    # 为空时回退使用 api_key
-    google_api_key: Optional[str] = None
-    google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-
     model: str = "gpt-3.5-turbo"
+    max_tokens: int = 8192
+    thinking_enabled: bool = False
+    reasoning_effort: Optional[str] = None
+    extra_body: dict = Field(default_factory=dict)
     timeout: float = 60.0
     proxy: Optional[str] = None
 
-class PluginConfig(BaseModel):
+
+class PluginConfig(StrictBaseModel):
     llm: LLMConfig
     max_concurrent_tasks: int = 3
     max_messages: int = 0  # 设为 0 表示不限制最大消息数，依靠 LLM 长窗口和自适应算法处理
@@ -123,16 +128,21 @@ def load_config() -> PluginConfig:
                     ai_data = json.load(f)
                     data["llm"]["api_key"] = ai_data.get("api_key", "")
                     data["llm"]["base_url"] = ai_data.get("base_url", data["llm"]["base_url"])
-                    data["llm"]["model"] = ai_data.get("chat_model", data["llm"]["model"])
+                    chat_data = ai_data.get("chat") or {}
+                    data["llm"]["model"] = chat_data.get("model", data["llm"]["model"])
+                    data["llm"]["max_tokens"] = chat_data.get("max_tokens", data["llm"].get("max_tokens", 8192))
+                    data["llm"]["thinking_enabled"] = chat_data.get(
+                        "thinking_enabled", data["llm"].get("thinking_enabled", False)
+                    )
+                    data["llm"]["reasoning_effort"] = chat_data.get(
+                        "reasoning_effort", data["llm"].get("reasoning_effort")
+                    )
+                    data["llm"]["extra_body"] = chat_data.get("extra_body", data["llm"].get("extra_body", {}))
                     data["llm"]["proxy"] = ai_data.get("proxy", data["llm"]["proxy"])
+                    data["llm"]["timeout"] = ai_data.get("timeout", data["llm"].get("timeout", 60.0))
 
-                    # Sync provider switch + google fields (optional)
                     if "provider" in ai_data:
                         data["llm"]["provider"] = ai_data.get("provider", data["llm"].get("provider", "openai_compatible"))
-                    if "google_api_key" in ai_data:
-                        data["llm"]["google_api_key"] = ai_data.get("google_api_key", data["llm"].get("google_api_key"))
-                    if "google_base_url" in ai_data:
-                        data["llm"]["google_base_url"] = ai_data.get("google_base_url", data["llm"].get("google_base_url"))
 
                     logger.info("已从 ai_assistant 插件加载 LLM 配置")
             else:
@@ -140,7 +150,10 @@ def load_config() -> PluginConfig:
         except Exception as e:
             logger.warning(f"加载 ai_assistant 配置失败: {e}，请手动配置 LLM API")
 
-    return PluginConfig(**data)
+    config = PluginConfig(**data)
+    if config.llm.provider != "openai_compatible":
+        raise ValueError(f"Unsupported LLM provider: {config.llm.provider}")
+    return config
 
 def save_config(config: PluginConfig):
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
