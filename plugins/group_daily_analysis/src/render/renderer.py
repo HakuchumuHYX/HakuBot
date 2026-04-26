@@ -78,7 +78,6 @@ class ReportRenderer:
                 {
                     "name": t.name,
                     "title": t.title,
-                    "mbti": t.mbti,
                     "reason": t.reason,
                     "avatar_data": avatar_data,
                 }

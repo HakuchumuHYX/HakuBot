@@ -511,7 +511,6 @@ class MessageAnalyzer:
                     name=name,
                     qq=qq or None,
                     title=item.get("title", ""),
-                    mbti=item.get("mbti", ""),
                     reason=item.get("reason", ""),
                 )
             )
@@ -818,14 +817,12 @@ class MessageAnalyzer:
                     "name": "开发者",
                     "qq": 10001,
                     "title": "Debug 大师",
-                    "mbti": "INTJ",
                     "reason": "写了 100 行代码没有 Bug"
                 },
                 {
                     "name": "吃货A",
                     "qq": 10002,
                     "title": "干饭王",
-                    "mbti": "ESFP",
                     "reason": "三句话不离吃饭"
                 }
             ],

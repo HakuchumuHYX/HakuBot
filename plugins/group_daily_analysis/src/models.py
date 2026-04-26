@@ -10,7 +10,6 @@ class UserTitle(BaseModel):
     name: str
     qq: Optional[int]
     title: str
-    mbti: str
     reason: str
 
 class GoldenQuote(BaseModel):
