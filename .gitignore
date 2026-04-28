@@ -26,3 +26,4 @@ plugins_todo_&_backup/
 .idea/
 rename_script.py
 plan.txt
+tests/
