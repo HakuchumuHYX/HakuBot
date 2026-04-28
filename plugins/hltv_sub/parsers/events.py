@@ -90,8 +90,8 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
                     continue
 
         # 即将举行的大型赛事
-        big_events_section = soup.find("div", class_="big-events")
-        if big_events_section:
+        big_events_sections = soup.find_all("div", class_="big-events")[:2]
+        for big_events_section in big_events_sections:
             for event_elem in big_events_section.find_all("a", class_="big-event"):
                 try:
                     href = event_elem.get("href", "") or ""
