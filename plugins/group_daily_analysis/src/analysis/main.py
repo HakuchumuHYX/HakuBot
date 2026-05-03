@@ -10,12 +10,19 @@ from plugins.plugin_manager.enable import is_feature_enabled
 
 from ..config import plugin_config
 from ..models import (
-    AnalysisResult, GroupStatistics, SummaryTopic, 
+    AnalysisResult, GroupStatistics, SummaryTopic,
     UserTitle, GoldenQuote, TokenUsage, EmojiStatistics
 )
 from ..visualization.charts import ActivityVisualizer
-from ..utils.llm import call_chat_completion, fix_json, _is_retryable_error
-from .user_analyzer import UserAnalyzer
+from ..utils.llm import call_chat_completion, _is_retryable_error
+from .context import TranscriptContext, build_transcript_context
+from .fallbacks import (
+    build_golden_quote_fallback,
+    build_topic_fallback,
+    build_user_title_fallback,
+)
+from .schemas import TopicsPayload, UserTitlesPayload, GoldenQuotesPayload
+from .analyzers.common import parse_payload_items
 
 T = TypeVar('T')
 
@@ -36,7 +43,6 @@ def safe_prompt_format(prompt: str, **kwargs) -> str:
 class MessageAnalyzer:
     def __init__(self):
         self.activity_visualizer = ActivityVisualizer()
-        self.user_analyzer = UserAnalyzer()
 
     async def _run_subtask_with_retry(
         self,
@@ -109,7 +115,14 @@ class MessageAnalyzer:
             )
 
         # 2. 准备 Prompt 上下文
-        text_messages = self._extract_text_messages(messages)
+        transcript_context = build_transcript_context(
+            messages,
+            bot_ids=[str(i) for i in plugin_config.bot_qq_ids],
+        )
+        text_messages = [
+            {"time": msg.time, "sender": msg.sender, "content": msg.content}
+            for msg in transcript_context.text_messages
+        ]
         if not text_messages:
             logger.warning("没有有效的文本消息用于分析")
             return AnalysisResult(
@@ -156,7 +169,7 @@ class MessageAnalyzer:
         if plugin_config.user_title_analysis_enabled and is_feature_enabled("group_daily_analysis", "user_titles", group_id, "0"):
             subtasks.append(self._run_subtask_with_retry(
                 "用户称号",
-                lambda: self._analyze_user_titles_safe(messages, text_messages, dynamic_titles),
+                lambda: self._analyze_user_titles_safe(transcript_context, dynamic_titles),
             ))
             subtask_names.append("user_titles")
         else:
@@ -206,11 +219,41 @@ class MessageAnalyzer:
         elif isinstance(results[1], Exception):
             logger.error(f"用户称号子任务异常: {results[1]}")
 
+        if (
+            not user_titles
+            and plugin_config.user_title_analysis_enabled
+            and is_feature_enabled("group_daily_analysis", "user_titles", group_id, "0")
+        ):
+            fallback_titles = build_user_title_fallback(transcript_context, dynamic_titles)
+            user_titles = [UserTitle(**item) for item in fallback_titles]
+            if user_titles:
+                logger.warning(f"用户称号分析为空，已使用本地统计兜底生成 {len(user_titles)} 个称号")
+
         # 2: Golden Quotes
         if isinstance(results[2], tuple):
             golden_quotes, golden_quote_usage = results[2]
         elif isinstance(results[2], Exception):
             logger.error(f"金句分析子任务异常: {results[2]}")
+
+        if (
+            not topics
+            and plugin_config.topic_analysis_enabled
+            and is_feature_enabled("group_daily_analysis", "topics", group_id, "0")
+        ):
+            fallback_topics = build_topic_fallback(transcript_context, dynamic_topics)
+            topics = [SummaryTopic(**item) for item in fallback_topics]
+            if topics:
+                logger.warning(f"话题分析为空，已使用本地统计兜底生成 {len(topics)} 个话题")
+
+        if (
+            not golden_quotes
+            and plugin_config.golden_quote_analysis_enabled
+            and is_feature_enabled("group_daily_analysis", "golden_quotes", group_id, "0")
+        ):
+            fallback_quotes = build_golden_quote_fallback(transcript_context, dynamic_quotes)
+            golden_quotes = [GoldenQuote(**item) for item in fallback_quotes]
+            if golden_quotes:
+                logger.warning(f"金句分析为空，已使用本地候选兜底生成 {len(golden_quotes)} 条金句")
 
         # 完整性检查：打印哪些已开启的分析项仍为空
         missing_parts = []
@@ -397,126 +440,156 @@ class MessageAnalyzer:
             [f"[{msg['time']}] {msg['sender']}: {msg['content']}" for msg in messages]
         )
 
+    def _build_ds_cached_messages(self, messages_text: str, task_prompt: str) -> list[dict[str, str]]:
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "你是群聊日报分析助手。请严格基于用户提供的群聊记录分析，"
+                    "不要编造群友、发言或不存在的结论。输出必须是 JSON。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"以下是今日群聊记录：\n\n{messages_text}",
+            },
+            {
+                "role": "user",
+                "content": task_prompt,
+            },
+        ]
+
+    def _json_object_tail(self, schema_example: str) -> str:
+        return (
+            "\n\n---\n\n"
+            "## 最高优先级输出格式要求\n"
+            "由于本次调用启用了 DeepSeek JSON Output，最终回复必须是一个 JSON object。"
+            "这条要求覆盖上方模板里任何“返回 JSON 数组”的旧示例。\n"
+            "不要输出 markdown，不要输出解释，不要输出顶层数组。\n"
+            f"唯一允许的顶层格式示例：{schema_example}\n"
+            "其中 items 必须是数组。"
+        )
+
     # --- Single Analyzers (Map) ---
 
     async def _analyze_topics_single(self, messages_text: str, max_topics: int) -> tuple[list[SummaryTopic], TokenUsage]:
         prompt = safe_prompt_format(
             plugin_config.topic_analysis_prompt,
             max_topics=max_topics,
-            messages_text=messages_text,
+            messages_text="聊天记录已在本次 API 请求的前一条 user message 中提供，请基于该消息中的完整记录分析。",
+        )
+        prompt += self._json_object_tail(
+            "{\"items\":[{\"topic\":\"话题名称\",\"contributors\":[\"用户1\"],\"detail\":\"描述\"}]}"
         )
         # 不再 catch 异常 - 由上层 _run_subtask_with_retry / _run_chunk_with_retry 负责重试
         content, tokens = await call_chat_completion(
-            [{"role": "user", "content": prompt}], 
-            temperature=0.1
+            self._build_ds_cached_messages(messages_text, prompt),
+            temperature=0.1,
+            response_format={"type": "json_object"},
         )
-        json_str = fix_json(content)
-        data = json.loads(json_str)
-        return [SummaryTopic(**item) for item in data], tokens
+        data = parse_payload_items(content, TopicsPayload, module_name="话题分析")
+        return [SummaryTopic(**item.model_dump()) for item in data[:max_topics]], tokens
 
     async def _analyze_golden_quotes_single(self, messages_text: str, max_golden_quotes: int) -> tuple[list[GoldenQuote], TokenUsage]:
         prompt = safe_prompt_format(
             plugin_config.golden_quote_analysis_prompt,
             max_golden_quotes=max_golden_quotes,
-            messages_text=messages_text,
+            messages_text="聊天记录已在本次 API 请求的前一条 user message 中提供，请基于该消息中的完整记录筛选。",
+        )
+        prompt += self._json_object_tail(
+            "{\"items\":[{\"content\":\"金句原文\",\"sender\":\"发言人\",\"reason\":\"辣评\"}]}"
         )
         # 不再 catch 异常 - 由上层 _run_subtask_with_retry / _run_chunk_with_retry 负责重试
         content, tokens = await call_chat_completion(
-            [{"role": "user", "content": prompt}],
-            temperature=1.1
+            self._build_ds_cached_messages(messages_text, prompt),
+            temperature=1.1,
+            response_format={"type": "json_object"},
         )
-        json_str = fix_json(content)
-        data = json.loads(json_str)
-        return [GoldenQuote(**item) for item in data], tokens
+        data = parse_payload_items(content, GoldenQuotesPayload, module_name="金句分析")
+        return [GoldenQuote(**item.model_dump()) for item in data[:max_golden_quotes]], tokens
 
-    async def _analyze_user_titles_safe(self, raw_messages: list, text_messages: list, max_titles: int) -> tuple[list[UserTitle], TokenUsage]:
+    async def _analyze_user_titles_safe(self, ctx: TranscriptContext, max_titles: int) -> tuple[list[UserTitle], TokenUsage]:
         """
-        用户称号分析（安全版）
+        用户称号分析（结构化特征版）
 
-        raw_messages: 原始 OneBot 消息结构，用于 user_id/活跃度统计
-        text_messages: 已提取的文本消息，用于拼 prompt（time/sender/content）
+        不再把全天聊天原文塞进称号 prompt，而是使用本地统计出的用户特征和少量代表发言。
+        这能显著降低 token，也避免称号模块因长输出/空 JSON 导致整块缺失。
         """
-        # 优化2：集成用户活跃度分析
-        # 1) 用 raw_messages 统计活跃用户（这里才能拿到 user_id）
-        user_analysis = self.user_analyzer.analyze_users(raw_messages)
-        top_users = self.user_analyzer.get_top_users(
-            user_analysis, limit=max_titles
-        )
+        top_users = sorted(
+            ctx.user_features.values(),
+            key=lambda item: (item.message_count, item.character_count, item.emoji_count),
+            reverse=True,
+        )[:max_titles]
 
         if not top_users:
             logger.warning("没有活跃用户，跳过称号分析")
             return [], TokenUsage()
 
-        # 2) 使用 text_messages 拼 prompt 文本（避免把CQ码/段结构塞进模型）
-        limit = int(plugin_config.max_input_length * 1.5)
-
-        selected_msgs = []
-        current_len = 0
-        for msg in reversed(text_messages):
-            if current_len + len(msg["content"]) > limit:
-                break
-            selected_msgs.append(msg)
-            current_len += len(msg["content"])
-
-        selected_msgs.reverse()
-        text = self._msgs_to_text(selected_msgs)
-
-        # 3) 构建包含 user_id 的活跃用户信息（提升 LLM 命中率）
-        def _display_name(u: dict) -> str:
-            return (u.get("card") or u.get("nickname") or "").strip() or "群友"
-
-        top_users_info = "\n".join(
+        users_text = "\n".join(
             [
-                f"- {_display_name(u)} (qq: {u.get('user_id')}, 消息数: {u.get('message_count')})"
+                (
+                    f"- {u.name} (qq: {u.user_id}, 消息数: {u.message_count}, "
+                    f"总字数: {u.character_count}, 平均长度: {u.average_length:.1f}, "
+                    f"表情数: {u.emoji_count}, @次数: {u.at_count}, "
+                    f"深夜发言: {u.night_message_count}, 代表发言: "
+                    f"{' / '.join(u.samples[:3])})"
+                )
                 for u in top_users
             ]
         )
 
         base_prompt = safe_prompt_format(
-            plugin_config.user_title_analysis_prompt, 
-            users_text=text,
+            plugin_config.user_title_analysis_prompt,
+            users_text=users_text,
             max_user_titles=max_titles
         )
 
-        prompt = f"""以下是群聊中最活跃的用户（按消息数量排序）。请**优先**为这些用户生成称号，并尽量在输出中包含 qq（若模板要求输出 qq 字段）：
-
-{top_users_info}
-
-{base_prompt}
-"""
+        prompt = (
+            "以下是群聊中最活跃的用户结构化特征。请只基于这些候选用户生成称号，"
+            "不要编造不存在的用户。\n\n"
+            f"{base_prompt}\n\n"
+            + self._json_object_tail(
+                '{"items":[{"name":"用户名","qq":123456,"title":"称号","reason":"理由"}]}'
+            )
+        )
 
         # 不再 catch 异常 - 由上层 _run_subtask_with_retry 负责重试
         content, tokens = await call_chat_completion(
             [{"role": "user", "content": prompt}],
             temperature=0.1,
+            response_format={"type": "json_object"},
+            max_tokens=min(plugin_config.llm.max_tokens, 4096),
         )
-        json_str = fix_json(content)
-        data = json.loads(json_str)
+        data = parse_payload_items(content, UserTitlesPayload, module_name="用户称号")
 
-        # 4) 尝试补齐 qq（如果 LLM 没给）
+        features_by_name = {}
+        for u in top_users:
+            features_by_name[u.name] = u
+            features_by_name[u.user_id] = u
+
+        # 尝试补齐 qq（如果 LLM 没给）
         user_titles: list[UserTitle] = []
         for item in data:
-            name = item.get("name", "")
-            qq = item.get("qq", 0)
+            item_dict = item.model_dump()
+            name = item_dict.get("name", "")
+            qq = item_dict.get("qq", 0)
 
             if not qq:
-                for u in top_users:
-                    if name and name in {_display_name(u), u.get("nickname", ""), u.get("card", "")}:
-                        uid = u.get("user_id", "")
-                        qq = int(uid) if str(uid).isdigit() else 0
-                        break
+                u = features_by_name.get(name)
+                if u and str(u.user_id).isdigit():
+                    qq = int(u.user_id)
 
             user_titles.append(
                 UserTitle(
                     name=name,
                     qq=qq or None,
-                    title=item.get("title", ""),
-                    reason=item.get("reason", ""),
+                    title=item_dict.get("title", ""),
+                    reason=item_dict.get("reason", ""),
                 )
             )
 
         logger.info(f"用户称号分析完成，生成了 {len(user_titles)} 个称号")
-        return user_titles, tokens
+        return user_titles[:max_titles], tokens
 
     def _norm_key(self, s: str) -> str:
         return re.sub(r"\s+", " ", (s or "").strip()).lower()
@@ -644,11 +717,9 @@ class MessageAnalyzer:
         )
 
         strict_tail = (
-            "\n\n---\n\n"
-            "## 重要：只允许输出纯 JSON 数组\n"
-            "1. 不要输出任何解释性文字\n"
-            "2. 不要输出 markdown 代码块（```）\n"
-            "3. 必须返回一个 JSON 数组，每个元素字段为：topic / contributors / detail\n"
+            self._json_object_tail(
+                '{"items":[{"topic":"话题名称","contributors":["用户1"],"detail":"具体描述"}]}'
+            )
         )
 
         total_usage = TokenUsage()
@@ -660,16 +731,14 @@ class MessageAnalyzer:
                 content, usage = await call_chat_completion(
                     [{"role": "user", "content": _prompt}],
                     temperature=0.1 if attempt == 0 else 0.0,
+                    response_format={"type": "json_object"},
                 )
                 total_usage.prompt_tokens += usage.prompt_tokens
                 total_usage.completion_tokens += usage.completion_tokens
                 total_usage.total_tokens += usage.total_tokens
 
-                json_str = fix_json(content)
-                data = json.loads(json_str)
-                if not isinstance(data, list):
-                    raise ValueError("Reduce 返回 JSON 不是数组")
-                merged = [SummaryTopic(**item) for item in data]
+                data = parse_payload_items(content, TopicsPayload, module_name="话题合并")
+                merged = [SummaryTopic(**item.model_dump()) for item in data]
                 return merged[: max_topics], total_usage
             except Exception as e:
                 last_exc = e
@@ -697,11 +766,9 @@ class MessageAnalyzer:
         )
 
         strict_tail = (
-            "\n\n---\n\n"
-            "## 重要：只允许输出纯 JSON 数组\n"
-            "1. 不要输出任何解释性文字\n"
-            "2. 不要输出 markdown 代码块（```）\n"
-            "3. 必须返回一个 JSON 数组，每个元素字段为：content / sender / reason\n"
+            self._json_object_tail(
+                '{"items":[{"content":"金句原文","sender":"发言人","reason":"辣评"}]}'
+            )
         )
 
         total_usage = TokenUsage()
@@ -713,16 +780,14 @@ class MessageAnalyzer:
                 content, usage = await call_chat_completion(
                     [{"role": "user", "content": _prompt}],
                     temperature=0.1 if attempt == 0 else 0.0,
+                    response_format={"type": "json_object"},
                 )
                 total_usage.prompt_tokens += usage.prompt_tokens
                 total_usage.completion_tokens += usage.completion_tokens
                 total_usage.total_tokens += usage.total_tokens
 
-                json_str = fix_json(content)
-                data = json.loads(json_str)
-                if not isinstance(data, list):
-                    raise ValueError("Reduce 返回 JSON 不是数组")
-                merged = [GoldenQuote(**item) for item in data]
+                data = parse_payload_items(content, GoldenQuotesPayload, module_name="金句合并")
+                merged = [GoldenQuote(**item.model_dump()) for item in data]
                 return merged[: max_golden_quotes], total_usage
             except Exception as e:
                 last_exc = e

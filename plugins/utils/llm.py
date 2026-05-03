@@ -116,7 +116,7 @@ def _message_content_from_response(resp: Any) -> str:
     return str(content or "")
 
 
-async def chat_completion(
+def _build_chat_completion_kwargs(
     config: LLMClientConfig,
     messages: list,
     *,
@@ -127,7 +127,8 @@ async def chat_completion(
     reasoning_effort: Optional[str] = None,
     thinking_enabled: Optional[bool] = None,
     extra_body: Optional[dict[str, Any]] = None,
-) -> ChatResult:
+    response_format: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     used_model = model or config.model
     used_max_tokens = max_tokens if max_tokens is not None else config.max_tokens
     use_thinking = config.thinking_enabled if thinking_enabled is None else thinking_enabled
@@ -151,12 +152,43 @@ async def chat_completion(
         kwargs["reasoning_effort"] = used_reasoning_effort
     if request_extra_body:
         kwargs["extra_body"] = request_extra_body
+    if response_format:
+        kwargs["response_format"] = response_format
 
     if not use_thinking:
         if temperature is not None:
             kwargs["temperature"] = temperature
         if top_p is not None:
             kwargs["top_p"] = top_p
+
+    return kwargs
+
+
+async def chat_completion(
+    config: LLMClientConfig,
+    messages: list,
+    *,
+    model: Optional[str] = None,
+    max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None,
+    top_p: Optional[float] = None,
+    reasoning_effort: Optional[str] = None,
+    thinking_enabled: Optional[bool] = None,
+    extra_body: Optional[dict[str, Any]] = None,
+    response_format: Optional[dict[str, Any]] = None,
+) -> ChatResult:
+    kwargs = _build_chat_completion_kwargs(
+        config,
+        messages,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        reasoning_effort=reasoning_effort,
+        thinking_enabled=thinking_enabled,
+        extra_body=extra_body,
+        response_format=response_format,
+    )
 
     client = _make_client(config)
     t1 = time.time()
@@ -168,7 +200,7 @@ async def chat_completion(
 
     return ChatResult(
         content=_message_content_from_response(resp),
-        model=used_model,
+        model=str(kwargs["model"]),
         provider=config.provider,
         usage=_usage_from_response(resp),
         elapsed=elapsed,

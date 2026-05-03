@@ -20,6 +20,8 @@ async def call_chat_completion(
     temperature: float = 0.5,
     max_retries: int = 3,
     base_delay: float = 2.0,
+    response_format: dict | None = None,
+    max_tokens: int | None = None,
 ) -> Tuple[str, TokenUsage]:
     """
     调用统一聊天后端（带重试机制），返回 (content, token_usage)。
@@ -45,6 +47,8 @@ async def call_chat_completion(
                     llm_config,
                     messages,
                     temperature=temperature,
+                    max_tokens=max_tokens,
+                    response_format=response_format,
                 )
 
             token_usage = TokenUsage(
