@@ -21,7 +21,7 @@ from .fallbacks import (
     build_topic_fallback,
     build_user_title_fallback,
 )
-from .schemas import TopicsPayload, UserTitlesPayload, GoldenQuotesPayload
+from .schemas import TopicsPayload, UserTitlesPayload, GoldenQuotesPayload, TopicsAndQuotesPayload
 from .analyzers.common import parse_payload_items
 
 T = TypeVar('T')
@@ -139,79 +139,48 @@ class MessageAnalyzer:
         
         logger.info(f"自适应数量计算：话题 {dynamic_topics}，称号 {dynamic_titles}，金句 {dynamic_quotes} (有效消息数: {msg_count})")
 
-        # 3. LLM 分析 — 每个子任务独立重试，三者并发执行
+        # 3. LLM 分析 — 话题+金句合并为单一子任务（节省约50% Map阶段API调用），与用户称号并发执行
+        topics_enabled = plugin_config.topic_analysis_enabled and is_feature_enabled("group_daily_analysis", "topics", group_id, "0")
+        quotes_enabled = plugin_config.golden_quote_analysis_enabled and is_feature_enabled("group_daily_analysis", "golden_quotes", group_id, "0")
+        titles_enabled = plugin_config.user_title_analysis_enabled and is_feature_enabled("group_daily_analysis", "user_titles", group_id, "0")
+
         subtasks = []
-        subtask_names: list[str | None] = []  # 用于最后的完整性检查
-        
-        # 话题分析
-        if plugin_config.topic_analysis_enabled and is_feature_enabled("group_daily_analysis", "topics", group_id, "0"):
-            async def topics_single(text):
-                return await self._analyze_topics_single(text, dynamic_topics)
-            async def topics_merge(items):
-                return await self._merge_topics(items, dynamic_topics)
-                
+
+        # 联合子任务：话题+金句一次请求同时提取，避免同一 chunk 发出两个共享前缀的并发请求
+        if topics_enabled or quotes_enabled:
             subtasks.append(self._run_subtask_with_retry(
-                "话题分析",
-                lambda: self._analyze_with_strategy(
-                    text_messages, 
-                    topics_single, 
-                    topics_merge
+                "话题+金句联合分析",
+                lambda: self._analyze_combined_with_strategy(
+                    text_messages, dynamic_topics, dynamic_quotes
                 ),
             ))
-            subtask_names.append("topics")
         else:
-            subtasks.append(asyncio.sleep(0, result=([], TokenUsage())))
-            subtask_names.append(None)
+            subtasks.append(asyncio.sleep(0, result=(([], []), TokenUsage())))
 
-        # 用户称号
-        # 注意：用户称号分析需要原始消息(raw messages)来做 user_id 统计；
-        # text_messages 仅用于拼接 prompt 文本。
-        if plugin_config.user_title_analysis_enabled and is_feature_enabled("group_daily_analysis", "user_titles", group_id, "0"):
+        # 用户称号（独立子任务，不共享 chat log 前缀，保持并发）
+        if titles_enabled:
             subtasks.append(self._run_subtask_with_retry(
                 "用户称号",
                 lambda: self._analyze_user_titles_safe(transcript_context, dynamic_titles),
             ))
-            subtask_names.append("user_titles")
         else:
             subtasks.append(asyncio.sleep(0, result=([], TokenUsage())))
-            subtask_names.append(None)
-
-        # 金句分析
-        if plugin_config.golden_quote_analysis_enabled and is_feature_enabled("group_daily_analysis", "golden_quotes", group_id, "0"):
-            async def quotes_single(text):
-                return await self._analyze_golden_quotes_single(text, dynamic_quotes)
-            async def quotes_merge(items):
-                return await self._merge_golden_quotes(items, dynamic_quotes)
-                
-            subtasks.append(self._run_subtask_with_retry(
-                "金句分析",
-                lambda: self._analyze_with_strategy(
-                    text_messages,
-                    quotes_single,
-                    quotes_merge
-                ),
-            ))
-            subtask_names.append("golden_quotes")
-        else:
-            subtasks.append(asyncio.sleep(0, result=([], TokenUsage())))
-            subtask_names.append(None)
 
         results = await asyncio.gather(*subtasks, return_exceptions=True)
 
         # 解包结果
-        topics = []
-        user_titles = []
-        golden_quotes = []
+        topics: list = []
+        user_titles: list = []
+        golden_quotes: list = []
 
-        topic_usage = TokenUsage()
+        combined_usage = TokenUsage()
         user_title_usage = TokenUsage()
-        golden_quote_usage = TokenUsage()
 
-        # 0: Topics
+        # 0: 联合分析结果 → (topics_list, quotes_list)
         if isinstance(results[0], tuple):
-            topics, topic_usage = results[0]
+            (topics, golden_quotes), combined_usage = results[0]
         elif isinstance(results[0], Exception):
-            logger.error(f"话题分析子任务异常: {results[0]}")
+            logger.error(f"话题+金句联合分析子任务异常: {results[0]}")
 
         # 1: User Titles
         if isinstance(results[1], tuple):
@@ -219,64 +188,51 @@ class MessageAnalyzer:
         elif isinstance(results[1], Exception):
             logger.error(f"用户称号子任务异常: {results[1]}")
 
-        if (
-            not user_titles
-            and plugin_config.user_title_analysis_enabled
-            and is_feature_enabled("group_daily_analysis", "user_titles", group_id, "0")
-        ):
+        if not user_titles and titles_enabled:
             fallback_titles = build_user_title_fallback(transcript_context, dynamic_titles)
             user_titles = [UserTitle(**item) for item in fallback_titles]
             if user_titles:
                 logger.warning(f"用户称号分析为空，已使用本地统计兜底生成 {len(user_titles)} 个称号")
 
-        # 2: Golden Quotes
-        if isinstance(results[2], tuple):
-            golden_quotes, golden_quote_usage = results[2]
-        elif isinstance(results[2], Exception):
-            logger.error(f"金句分析子任务异常: {results[2]}")
+        # 剥离出独立 topic/quote 用于后续降级检查
+        topic_usage = combined_usage
+        golden_quote_usage = TokenUsage()
 
-        if (
-            not topics
-            and plugin_config.topic_analysis_enabled
-            and is_feature_enabled("group_daily_analysis", "topics", group_id, "0")
-        ):
+        if not topics and topics_enabled:
             fallback_topics = build_topic_fallback(transcript_context, dynamic_topics)
             topics = [SummaryTopic(**item) for item in fallback_topics]
             if topics:
                 logger.warning(f"话题分析为空，已使用本地统计兜底生成 {len(topics)} 个话题")
 
-        if (
-            not golden_quotes
-            and plugin_config.golden_quote_analysis_enabled
-            and is_feature_enabled("group_daily_analysis", "golden_quotes", group_id, "0")
-        ):
+        if not golden_quotes and quotes_enabled:
             fallback_quotes = build_golden_quote_fallback(transcript_context, dynamic_quotes)
             golden_quotes = [GoldenQuote(**item) for item in fallback_quotes]
             if golden_quotes:
                 logger.warning(f"金句分析为空，已使用本地候选兜底生成 {len(golden_quotes)} 条金句")
 
-        # 完整性检查：打印哪些已开启的分析项仍为空
+        # 完整性检查
         missing_parts = []
-        items_map = {"topics": topics, "user_titles": user_titles, "golden_quotes": golden_quotes}
-        for sname in subtask_names:
-            if sname and not items_map.get(sname):
-                missing_parts.append(sname)
+        if topics_enabled and not topics:
+            missing_parts.append("topics")
+        if titles_enabled and not user_titles:
+            missing_parts.append("user_titles")
+        if quotes_enabled and not golden_quotes:
+            missing_parts.append("golden_quotes")
         if missing_parts:
             logger.warning(f"以下分析项在重试后仍为空: {missing_parts}")
 
         # 汇总 TokenUsage
         stats.token_usage = TokenUsage(
-            prompt_tokens=topic_usage.prompt_tokens + user_title_usage.prompt_tokens + golden_quote_usage.prompt_tokens,
-            completion_tokens=topic_usage.completion_tokens + user_title_usage.completion_tokens + golden_quote_usage.completion_tokens,
-            total_tokens=topic_usage.total_tokens + user_title_usage.total_tokens + golden_quote_usage.total_tokens,
+            prompt_tokens=combined_usage.prompt_tokens + user_title_usage.prompt_tokens,
+            completion_tokens=combined_usage.completion_tokens + user_title_usage.completion_tokens,
+            total_tokens=combined_usage.total_tokens + user_title_usage.total_tokens,
         )
 
         # 记录详细的 Token 使用情况
         logger.info(
             "Token 使用统计 - "
-            f"话题: {topic_usage.total_tokens} (P:{topic_usage.prompt_tokens}/C:{topic_usage.completion_tokens}), "
+            f"联合分析(话题+金句): {combined_usage.total_tokens} (P:{combined_usage.prompt_tokens}/C:{combined_usage.completion_tokens}), "
             f"称号: {user_title_usage.total_tokens} (P:{user_title_usage.prompt_tokens}/C:{user_title_usage.completion_tokens}), "
-            f"金句: {golden_quote_usage.total_tokens} (P:{golden_quote_usage.prompt_tokens}/C:{golden_quote_usage.completion_tokens}), "
             f"总计: {stats.token_usage.total_tokens} (P:{stats.token_usage.prompt_tokens}/C:{stats.token_usage.completion_tokens})"
         )
         
@@ -376,6 +332,98 @@ class MessageAnalyzer:
 
         return flattened, total_usage
 
+    async def _analyze_combined_with_strategy(
+        self,
+        messages: list,
+        max_topics: int,
+        max_golden_quotes: int,
+        chunk_retry_count: int = 2,
+    ) -> tuple[tuple[list, list], TokenUsage]:
+        """
+        话题+金句联合分析策略，每个 chunk 只发一次请求。
+
+        Returns:
+            ((topics_list, quotes_list), TokenUsage)
+        """
+        total_len = sum(len(m["content"]) for m in messages)
+
+        # Direct Mode
+        if total_len <= plugin_config.max_input_length:
+            text = self._msgs_to_text(messages)
+            result, usage = await self._run_chunk_with_retry(
+                lambda t: self._analyze_topics_and_quotes_single(t, max_topics, max_golden_quotes),
+                text,
+                chunk_index=0,
+                max_retries=chunk_retry_count,
+            )
+            topics, quotes = result if result else ([], [])
+            return (topics, quotes), usage
+
+        # Map-Reduce Mode
+        logger.info(f"消息长度 ({total_len}) 超过阈值，启用 Map-Reduce 联合分段分析...")
+        chunks = self._split_messages(messages, plugin_config.max_input_length)
+
+        map_tasks = [
+            self._run_chunk_with_retry(
+                lambda t, i=i: self._analyze_topics_and_quotes_single(t, max_topics, max_golden_quotes),
+                self._msgs_to_text(chunk),
+                chunk_index=i,
+                max_retries=chunk_retry_count,
+            )
+            for i, chunk in enumerate(chunks)
+        ]
+        results = await asyncio.gather(*map_tasks, return_exceptions=True)
+
+        all_topics: list = []
+        all_quotes: list = []
+        total_usage = TokenUsage()
+        success_count = 0
+
+        for i, res in enumerate(results):
+            if isinstance(res, tuple):
+                (chunk_topics, chunk_quotes), usage = res
+                if chunk_topics or chunk_quotes:
+                    all_topics.extend(chunk_topics or [])
+                    all_quotes.extend(chunk_quotes or [])
+                    success_count += 1
+                if isinstance(usage, TokenUsage):
+                    total_usage.prompt_tokens += usage.prompt_tokens
+                    total_usage.completion_tokens += usage.completion_tokens
+                    total_usage.total_tokens += usage.total_tokens
+            elif isinstance(res, Exception):
+                logger.warning(f"联合分析 Map 分片 {i} 最终失败: {res}")
+
+        logger.info(f"联合 Map 阶段完成: {success_count}/{len(chunks)} 分片成功, 收集话题 {len(all_topics)} 条, 金句 {len(all_quotes)} 条")
+
+        if not all_topics and not all_quotes:
+            return ([], []), total_usage
+
+        # Reduce Phase（话题和金句分别 merge）
+        final_topics = all_topics
+        final_quotes = all_quotes
+
+        if all_topics:
+            try:
+                merged_topics, merge_usage = await self._merge_topics(all_topics, max_topics)
+                final_topics = merged_topics
+                total_usage.prompt_tokens += merge_usage.prompt_tokens
+                total_usage.completion_tokens += merge_usage.completion_tokens
+                total_usage.total_tokens += merge_usage.total_tokens
+            except Exception as e:
+                logger.warning(f"话题 Reduce 失败，使用未合并结果: {e}")
+
+        if all_quotes:
+            try:
+                merged_quotes, merge_usage = await self._merge_golden_quotes(all_quotes, max_golden_quotes)
+                final_quotes = merged_quotes
+                total_usage.prompt_tokens += merge_usage.prompt_tokens
+                total_usage.completion_tokens += merge_usage.completion_tokens
+                total_usage.total_tokens += merge_usage.total_tokens
+            except Exception as e:
+                logger.warning(f"金句 Reduce 失败，使用未合并结果: {e}")
+
+        return (final_topics, final_quotes), total_usage
+
     async def _run_chunk_with_retry(
         self, 
         func: Callable[[str], Any], 
@@ -471,6 +519,35 @@ class MessageAnalyzer:
         )
 
     # --- Single Analyzers (Map) ---
+
+    async def _analyze_topics_and_quotes_single(
+        self, messages_text: str, max_topics: int, max_golden_quotes: int
+    ) -> tuple[tuple[list[SummaryTopic], list[GoldenQuote]], TokenUsage]:
+        """话题+金句联合提取，一次请求返回两个列表，节省约50% Map阶段 API 调用。"""
+        prompt = safe_prompt_format(
+            plugin_config.combined_analysis_prompt,
+            max_topics=max_topics,
+            max_golden_quotes=max_golden_quotes,
+            messages_text="聊天记录已在本次 API 请求的前一条 user message 中提供，请基于该消息中的完整记录分析。",
+        )
+        prompt += (
+            "\n\n---\n\n"
+            "## 最高优先级输出格式要求\n"
+            "由于本次调用启用了 DeepSeek JSON Output，最终回复必须是一个 JSON object，包含 topics 和 quotes 两个数组。\n"
+            "不要输出 markdown，不要输出解释。\n"
+            "唯一允许的顶层格式示例："
+            "{\"topics\":[{\"topic\":\"话题名称\",\"contributors\":[\"用户1\"],\"detail\":\"描述\"}],"
+            "\"quotes\":[{\"content\":\"金句\",\"sender\":\"发言人\",\"reason\":\"辣评\"}]}"
+        )
+        content, tokens = await call_chat_completion(
+            self._build_ds_cached_messages(messages_text, prompt),
+            temperature=0.5,
+            response_format={"type": "json_object"},
+        )
+        payload = TopicsAndQuotesPayload.model_validate_json(content)
+        topics = [SummaryTopic(**item.model_dump()) for item in payload.topics[:max_topics]]
+        quotes = [GoldenQuote(**item.model_dump()) for item in payload.quotes[:max_golden_quotes]]
+        return (topics, quotes), tokens
 
     async def _analyze_topics_single(self, messages_text: str, max_topics: int) -> tuple[list[SummaryTopic], TokenUsage]:
         prompt = safe_prompt_format(
@@ -585,6 +662,7 @@ class MessageAnalyzer:
                     qq=qq or None,
                     title=item_dict.get("title", ""),
                     reason=item_dict.get("reason", ""),
+                    personality=item_dict.get("personality", ""),
                 )
             )
 
@@ -882,13 +960,15 @@ class MessageAnalyzer:
                     "name": "开发者",
                     "qq": 10001,
                     "title": "Debug 大师",
-                    "reason": "写了 100 行代码没有 Bug"
+                    "reason": "写了 100 行代码没有 Bug",
+                    "personality": "群里的代码洁癖患者，不管聊什么话题都能绕回技术，发言简短但信息密度极高。遇到 Bug 的第一反应是打开 IDE，遇到聚餐的第一反应是问有没有包厢带电源。"
                 },
                 {
                     "name": "吃货A",
                     "qq": 10002,
                     "title": "干饭王",
-                    "reason": "三句话不离吃饭"
+                    "reason": "三句话不离吃饭",
+                    "personality": "群里的美食雷达，每天上午10点准时开始讨论午饭，下午3点开始纠结晚饭。发言风格热情奔放，对食物的描述有一种让人血糖飙升的感染力。"
                 }
             ],
             "golden_quotes": [

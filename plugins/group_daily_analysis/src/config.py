@@ -54,6 +54,7 @@ class PluginConfig(StrictBaseModel):
     max_input_length: int = 30000  # 字符数阈值，超过则分块 (建议调大以发挥现代长窗口模型优势)
     
     # Prompts
+    combined_analysis_prompt: str  # 话题+金句联合分析（替代分别调用，节省约50% Map阶段API调用）
     topic_analysis_prompt: str
     topic_merge_prompt: str = (
         "你是群聊总结助手。以下是分段分析得到的群聊话题列表，请将它们**合并、去重**，并输出全天最重要的 "

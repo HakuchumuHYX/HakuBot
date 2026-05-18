@@ -18,6 +18,9 @@
                 </div>
             </div>
             <div class="user-reason">{{ title.reason }}</div>
+            {% if title.personality %}
+            <div class="user-personality">{{ title.personality }}</div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>

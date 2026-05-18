@@ -32,6 +32,9 @@
             <div class="u-reason">
                 {{ title.reason }}
             </div>
+            {% if title.personality %}
+            <div class="u-personality">{{ title.personality }}</div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>

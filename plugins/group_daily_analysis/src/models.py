@@ -11,6 +11,7 @@ class UserTitle(BaseModel):
     qq: Optional[int]
     title: str
     reason: str
+    personality: str = ""
 
 class GoldenQuote(BaseModel):
     content: str
