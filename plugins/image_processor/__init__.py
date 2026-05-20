@@ -29,6 +29,23 @@ from .image_rotate import process_image_rotate
 from ..plugin_manager.enable import *
 from ..plugin_manager.cd_manager import *
 from ..utils.image_utils import path_to_base64_image
+from ..utils.tools import run_in_pool
+from .utils import safe_delete_file
+
+
+async def _send_generated_image(handler, result_path: str, abnormal_message: str, failure_message: str) -> bool:
+    try:
+        if result_path and os.path.exists(result_path):
+            file_size = os.path.getsize(result_path)
+            if file_size > 100:
+                await handler.send(path_to_base64_image(result_path))
+                return True
+            await handler.send(abnormal_message)
+            return False
+        await handler.send(failure_message)
+        return False
+    finally:
+        await safe_delete_file(result_path)
 
 
 # ========== rembg 模型启动预下载/校验 ==========
@@ -177,17 +194,15 @@ async def handle_gif_reverse(event: Event, cmd_arg: Message = CommandArg()):
         # 如果主方法失败，尝试备选方案
         if not result_path or not os.path.exists(result_path):
             await gif_reverse_handler.send("主方法失败，尝试备选方案...")
-            result_path = reverse_gif_alternative(gif_url)
+            result_path = await run_in_pool(reverse_gif_alternative, gif_url)
 
-        if result_path and os.path.exists(result_path):
-            # 读取文件大小，避免发送空文件
-            file_size = os.path.getsize(result_path)
-            if file_size > 100:  # 确保文件不是空的
-                await gif_reverse_handler.finish(path_to_base64_image(result_path))
-            else:
-                await gif_reverse_handler.finish("生成的GIF文件异常，处理失败")
-        else:
-            await gif_reverse_handler.finish("GIF倒放处理失败，请确保图片是有效的GIF格式")
+        await _send_generated_image(
+            gif_reverse_handler,
+            result_path,
+            "生成的GIF文件异常，处理失败",
+            "GIF倒放处理失败，请确保图片是有效的GIF格式",
+        )
+        return
     except FinishedException:
         # 忽略 FinishedException，这是正常的结束流程
         raise
@@ -200,8 +215,13 @@ async def handle_image_cutout(event: Event, cmd_arg: Message = CommandArg()):
     """处理图片抠图"""
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled("image_processor", "cutout", str(event.group_id), user_id):
+        group_id = str(event.group_id)
+        if not is_feature_enabled("image_processor", "cutout", group_id, user_id):
             await image_cutout_handler.finish("抠图功能在本群无法使用！")
+            return
+        remaining_cd = check_cd("image_processor:cutout", group_id, user_id)
+        if remaining_cd > 0:
+            await image_cutout_handler.finish(f"抠图功能还在冷却中，请等待 {remaining_cd} 秒")
             return
 
     if not hasattr(event, 'reply'):
@@ -229,14 +249,15 @@ async def handle_image_cutout(event: Event, cmd_arg: Message = CommandArg()):
     try:
         await image_cutout_handler.send("正在处理图片抠图，请稍候...")
         result_path = await remove_background(image_url)
-        if result_path and os.path.exists(result_path):
-            file_size = os.path.getsize(result_path)
-            if file_size > 100:
-                await image_cutout_handler.finish(path_to_base64_image(result_path))
-            else:
-                await image_cutout_handler.finish("抠图处理失败，生成的文件异常")
-        else:
-            await image_cutout_handler.finish("图片抠图处理失败")
+        sent = await _send_generated_image(
+            image_cutout_handler,
+            result_path,
+            "抠图处理失败，生成的文件异常",
+            "图片抠图处理失败",
+        )
+        if sent and isinstance(event, GroupMessageEvent):
+            update_cd("image_processor:cutout", str(event.group_id), user_id)
+        return
     except FinishedException:
         # 忽略 FinishedException，这是正常的结束流程
         raise
@@ -304,16 +325,15 @@ async def handle_gif_speed(event: Event, cmd_arg: Message = CommandArg()):
         # 如果主方法失败，尝试备选方案
         if not result_path or not os.path.exists(result_path):
             await gif_speed_handler.send("主方法失败，尝试备选方案...")
-            result_path = change_gif_speed_alternative(gif_url, speed_factor)
+            result_path = await run_in_pool(change_gif_speed_alternative, gif_url, speed_factor)
 
-        if result_path and os.path.exists(result_path):
-            file_size = os.path.getsize(result_path)
-            if file_size > 100:
-                await gif_speed_handler.finish(path_to_base64_image(result_path))
-            else:
-                await gif_speed_handler.finish("生成的GIF文件异常，处理失败")
-        else:
-            await gif_speed_handler.finish("GIF倍速处理失败，请确保图片是有效的GIF格式")
+        await _send_generated_image(
+            gif_speed_handler,
+            result_path,
+            "生成的GIF文件异常，处理失败",
+            "GIF倍速处理失败，请确保图片是有效的GIF格式",
+        )
+        return
     except FinishedException:
         raise
     except Exception as e:
@@ -416,23 +436,17 @@ async def handle_image_symmetry_common(event: Event, symmetry_type: str):
         # 直接异步调用对称处理函数
         result_path = await process_image_symmetry(image_url, symmetry_type)
 
-        if result_path and os.path.exists(result_path):
-            file_size = os.path.getsize(result_path)
-            if file_size > 100:
-
-                if isinstance(event, GroupMessageEvent):
-                    PLUGIN_ID = "image_processor:symmetry"  # 确保ID一致
-                    group_id = str(event.group_id)
-                    user_id = str(event.user_id)
-                    update_cd(PLUGIN_ID, group_id, user_id)
-
-                # 直接使用send方法发送图片，避免重复发送
-                await image_symmetry_handler.send(path_to_base64_image(result_path))
-                # 不调用finish，让函数自然结束
-            else:
-                await image_symmetry_handler.send(f"图片{symmetry_name}处理失败，生成的文件异常")
-        else:
-            await image_symmetry_handler.send(f"图片{symmetry_name}处理失败")
+        sent = await _send_generated_image(
+            image_symmetry_handler,
+            result_path,
+            f"图片{symmetry_name}处理失败，生成的文件异常",
+            f"图片{symmetry_name}处理失败",
+        )
+        if sent and isinstance(event, GroupMessageEvent):
+            PLUGIN_ID = "image_processor:symmetry"
+            group_id = str(event.group_id)
+            user_id = str(event.user_id)
+            update_cd(PLUGIN_ID, group_id, user_id)
     except FinishedException:
         raise
     except asyncio.TimeoutError:
@@ -595,14 +609,13 @@ async def handle_video_to_gif(event: Event, bot: Bot, cmd_arg: Message = Command
 
         result_path = await convert_video_to_gif(video_url, video_file_name, expected_file_size, access_token)
 
-        if result_path and os.path.exists(result_path):
-            file_size = os.path.getsize(result_path)
-            if file_size > 100:
-                await video_to_gif_handler.finish(path_to_base64_image(result_path))
-            else:
-                await video_to_gif_handler.finish("生成的GIF文件异常，处理失败")
-        else:
-            await video_to_gif_handler.finish("视频转GIF处理失败")
+        await _send_generated_image(
+            video_to_gif_handler,
+            result_path,
+            "生成的GIF文件异常，处理失败",
+            "视频转GIF处理失败",
+        )
+        return
 
     except FinishedException:
         raise
@@ -672,18 +685,15 @@ async def handle_image_mirror_common(event: Event, direction: str):
 
         result_path = await process_image_mirror(image_url, direction)
 
-        if result_path and os.path.exists(result_path):
-            file_size = os.path.getsize(result_path)
-            if file_size > 100:
-                if isinstance(event, GroupMessageEvent):
-                    PLUGIN_ID = "image_processor:mirror"
-                    update_cd(PLUGIN_ID, group_id, user_id)
-
-                await image_mirror_handler.send(path_to_base64_image(result_path))
-            else:
-                await image_mirror_handler.send(f"图片{action_name}处理失败，文件异常")
-        else:
-            await image_mirror_handler.send(f"图片{action_name}处理失败")
+        sent = await _send_generated_image(
+            image_mirror_handler,
+            result_path,
+            f"图片{action_name}处理失败，文件异常",
+            f"图片{action_name}处理失败",
+        )
+        if sent and isinstance(event, GroupMessageEvent):
+            PLUGIN_ID = "image_processor:mirror"
+            update_cd(PLUGIN_ID, group_id, user_id)
 
     except FinishedException:
         raise
@@ -769,19 +779,15 @@ async def handle_rotate_common(event: Event, cmd_arg: Message, direction: str):
 
         result_path = await process_image_rotate(image_url, direction, speed)
 
-        if result_path and os.path.exists(result_path):
-            file_size = os.path.getsize(result_path)
-            if file_size > 100:
-                # 更新 CD
-                if isinstance(event, GroupMessageEvent):
-                    PLUGIN_ID = "image_processor:rotate"
-                    update_cd(PLUGIN_ID, group_id, user_id)
-
-                await image_rotate_handler.send(path_to_base64_image(result_path))
-            else:
-                await image_rotate_handler.send(f"{action_name}失败，生成文件异常")
-        else:
-            await image_rotate_handler.send(f"{action_name}处理失败")
+        sent = await _send_generated_image(
+            image_rotate_handler,
+            result_path,
+            f"{action_name}失败，生成文件异常",
+            f"{action_name}处理失败",
+        )
+        if sent and isinstance(event, GroupMessageEvent):
+            PLUGIN_ID = "image_processor:rotate"
+            update_cd(PLUGIN_ID, group_id, user_id)
 
     except FinishedException:
         raise

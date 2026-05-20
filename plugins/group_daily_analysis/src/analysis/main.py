@@ -146,11 +146,11 @@ class MessageAnalyzer:
 
         subtasks = []
 
-        # 联合子任务：话题+金句一次请求同时提取，避免同一 chunk 发出两个共享前缀的并发请求
+        # 质量优先：话题和金句独立分析，但在同一子任务中顺序执行以保留 DeepSeek 前缀缓存机会
         if topics_enabled or quotes_enabled:
             subtasks.append(self._run_subtask_with_retry(
-                "话题+金句联合分析",
-                lambda: self._analyze_combined_with_strategy(
+                "话题+金句质量分析",
+                lambda: self._analyze_topics_and_quotes_quality_with_strategy(
                     text_messages, dynamic_topics, dynamic_quotes
                 ),
             ))
@@ -231,7 +231,7 @@ class MessageAnalyzer:
         # 记录详细的 Token 使用情况
         logger.info(
             "Token 使用统计 - "
-            f"联合分析(话题+金句): {combined_usage.total_tokens} (P:{combined_usage.prompt_tokens}/C:{combined_usage.completion_tokens}), "
+            f"质量分析(话题+金句): {combined_usage.total_tokens} (P:{combined_usage.prompt_tokens}/C:{combined_usage.completion_tokens}), "
             f"称号: {user_title_usage.total_tokens} (P:{user_title_usage.prompt_tokens}/C:{user_title_usage.completion_tokens}), "
             f"总计: {stats.token_usage.total_tokens} (P:{stats.token_usage.prompt_tokens}/C:{stats.token_usage.completion_tokens})"
         )
@@ -331,6 +331,34 @@ class MessageAnalyzer:
                 return flattened, total_usage
 
         return flattened, total_usage
+
+    async def _analyze_topics_and_quotes_quality_with_strategy(
+        self,
+        messages: list,
+        max_topics: int,
+        max_golden_quotes: int,
+    ) -> tuple[tuple[list, list], TokenUsage]:
+        async def topics_single(text):
+            return await self._analyze_topics_single(text, max_topics)
+
+        async def topics_merge(items):
+            return await self._merge_topics(items, max_topics)
+
+        async def quotes_single(text):
+            return await self._analyze_golden_quotes_single(text, max_golden_quotes)
+
+        async def quotes_merge(items):
+            return await self._merge_golden_quotes(items, max_golden_quotes)
+
+        topics, topic_usage = await self._analyze_with_strategy(messages, topics_single, topics_merge)
+        quotes, quote_usage = await self._analyze_with_strategy(messages, quotes_single, quotes_merge)
+
+        total_usage = TokenUsage(
+            prompt_tokens=topic_usage.prompt_tokens + quote_usage.prompt_tokens,
+            completion_tokens=topic_usage.completion_tokens + quote_usage.completion_tokens,
+            total_tokens=topic_usage.total_tokens + quote_usage.total_tokens,
+        )
+        return (topics, quotes), total_usage
 
     async def _analyze_combined_with_strategy(
         self,
@@ -561,7 +589,7 @@ class MessageAnalyzer:
         # 不再 catch 异常 - 由上层 _run_subtask_with_retry / _run_chunk_with_retry 负责重试
         content, tokens = await call_chat_completion(
             self._build_ds_cached_messages(messages_text, prompt),
-            temperature=0.1,
+            temperature=0.3,
             response_format={"type": "json_object"},
         )
         data = parse_payload_items(content, TopicsPayload, module_name="话题分析")
@@ -626,14 +654,14 @@ class MessageAnalyzer:
             "不要编造不存在的用户。\n\n"
             f"{base_prompt}\n\n"
             + self._json_object_tail(
-                '{"items":[{"name":"用户名","qq":123456,"title":"称号","reason":"理由"}]}'
+                '{"items":[{"name":"用户名","qq":123456,"title":"称号","reason":"理由","personality":"人物画像"}]}'
             )
         )
 
         # 不再 catch 异常 - 由上层 _run_subtask_with_retry 负责重试
         content, tokens = await call_chat_completion(
             [{"role": "user", "content": prompt}],
-            temperature=0.1,
+            temperature=0.7,
             response_format={"type": "json_object"},
             max_tokens=min(plugin_config.llm.max_tokens, 4096),
         )
@@ -808,7 +836,7 @@ class MessageAnalyzer:
                 _prompt = prompt if attempt == 0 else (prompt + strict_tail)
                 content, usage = await call_chat_completion(
                     [{"role": "user", "content": _prompt}],
-                    temperature=0.1 if attempt == 0 else 0.0,
+                    temperature=0.25 if attempt == 0 else 0.1,
                     response_format={"type": "json_object"},
                 )
                 total_usage.prompt_tokens += usage.prompt_tokens
@@ -857,7 +885,7 @@ class MessageAnalyzer:
                 _prompt = prompt if attempt == 0 else (prompt + strict_tail)
                 content, usage = await call_chat_completion(
                     [{"role": "user", "content": _prompt}],
-                    temperature=0.1 if attempt == 0 else 0.0,
+                    temperature=0.8 if attempt == 0 else 0.3,
                     response_format={"type": "json_object"},
                 )
                 total_usage.prompt_tokens += usage.prompt_tokens

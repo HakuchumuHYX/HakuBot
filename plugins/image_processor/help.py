@@ -215,7 +215,7 @@ async def _render_help_image() -> bool:
                                 <span class="desc">将 GIF 倒序播放，生成倒放效果</span>
                             </div>
                             <div class="cmd-item">
-                                <span class="cmd">img x[倍数]</span>
+                                <span class="cmd">imgx [倍数]</span>
                                 <span class="desc">调整 GIF 播放速度 (0.1 - 5.0倍)</span>
                             </div>
                             <div class="cmd-item">

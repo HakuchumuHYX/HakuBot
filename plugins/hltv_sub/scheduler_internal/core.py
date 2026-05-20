@@ -546,8 +546,8 @@ class HLTVScheduler:
             if stats:
                 expected_maps = 0
                 try:
-                    if str(stats.score1).isdigit() and str(stats.score2).isdigit():
-                        expected_maps = int(stats.score1) + int(stats.score2)
+                    if str(result.score1).isdigit() and str(result.score2).isdigit():
+                        expected_maps = int(result.score1) + int(result.score2)
                 except Exception:
                     expected_maps = 0
 
@@ -563,17 +563,18 @@ class HLTVScheduler:
                         )
                         return
 
-                    missing_details = [
-                        m.map_name
-                        for m in played_maps
-                        if m.map_name not in (stats.map_stats_details or {})
-                    ]
-                    if missing_details:
-                        logger.info(
-                            f"[HLTV Scheduler] match {result.id} 单图数据未更新完整："
-                            f"missing_map_details={missing_details}，跳过本次推送等待下次轮询"
-                        )
-                        return
+                    if expected_maps > 1:
+                        missing_details = [
+                            m.map_name
+                            for m in played_maps
+                            if m.map_name not in (stats.map_stats_details or {})
+                        ]
+                        if missing_details:
+                            logger.info(
+                                f"[HLTV Scheduler] match {result.id} 单图数据未更新完整："
+                                f"missing_map_details={missing_details}，跳过本次推送等待下次轮询"
+                            )
+                            return
 
                 img = await render_stats(stats)
                 msg = MessageSegment.text("🏁 比赛已结束\n\n") + MessageSegment.image(img)

@@ -79,6 +79,7 @@ class ReportRenderer:
                     "name": t.name,
                     "title": t.title,
                     "reason": t.reason,
+                    "personality": getattr(t, "personality", ""),
                     "avatar_data": avatar_data,
                 }
             )

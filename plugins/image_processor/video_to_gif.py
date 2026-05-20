@@ -11,6 +11,10 @@ import numpy as np
 import urllib.parse
 import random
 from nonebot.log import logger
+
+from ..utils.tools import run_in_pool
+from .utils import IMAGE_PROCESSOR_MAX_VIDEO_BYTES, safe_delete_file, save_gif
+
 # 全局变量，用于缓存ffmpeg可用性检查结果
 _ffmpeg_available = None
 
@@ -62,6 +66,9 @@ async def download_video(url: str, file_name: str = None, expected_size: int = 0
         logger.info("检测到非QQ群文件URL且Access Token存在，添加Authorization header")
         headers['Authorization'] = f'Bearer {access_token}'
 
+    if expected_size > IMAGE_PROCESSOR_MAX_VIDEO_BYTES:
+        raise Exception(f"视频文件过大：{expected_size} bytes > {IMAGE_PROCESSOR_MAX_VIDEO_BYTES} bytes")
+
     async with aiohttp.ClientSession(headers=headers) as session:
         try:
             logger.info(f"开始下载视频: {url[:200]}...")
@@ -83,6 +90,8 @@ async def download_video(url: str, file_name: str = None, expected_size: int = 0
             async with session.get(url) as response:
                 if response.status in [200, 206]:
                     total_size = int(response.headers.get('content-length', 0))
+                    if total_size > IMAGE_PROCESSOR_MAX_VIDEO_BYTES:
+                        raise Exception(f"视频文件过大：{total_size} bytes > {IMAGE_PROCESSOR_MAX_VIDEO_BYTES} bytes")
                     downloaded_size = 0
 
                     with open(temp_path, 'wb') as f:
@@ -90,6 +99,12 @@ async def download_video(url: str, file_name: str = None, expected_size: int = 0
                             if chunk:
                                 f.write(chunk)
                                 downloaded_size += len(chunk)
+                                if downloaded_size > IMAGE_PROCESSOR_MAX_VIDEO_BYTES:
+                                    try:
+                                        await safe_delete_file(temp_path)
+                                    except Exception:
+                                        pass
+                                    raise Exception(f"视频文件过大：已下载 {downloaded_size} bytes > {IMAGE_PROCESSOR_MAX_VIDEO_BYTES} bytes")
 
                                 # 显示下载进度
                                 if total_size > 0:
@@ -281,21 +296,6 @@ async def get_video_info(video_path: str) -> dict:
         raise Exception(f"无法获取视频信息: {str(e)}")
 
 
-async def safe_delete_file(file_path: str, max_retries: int = 3):
-    """安全删除文件"""
-    for i in range(max_retries):
-        try:
-            if os.path.exists(file_path):
-                os.unlink(file_path)
-                return True
-        except PermissionError:
-            if i < max_retries - 1:
-                await asyncio.sleep(0.1)
-            else:
-                return False
-    return False
-
-
 async def convert_video_to_gif_ffmpeg(video_path: str, output_path: str, fps: int, width: int, height: int):
     """使用ffmpeg转换视频为GIF（高质量）"""
     try:
@@ -408,20 +408,7 @@ async def convert_video_to_gif_opencv(video_path: str, output_path: str, fps: in
         # 计算持续时间（毫秒）
         duration = int(1000 / fps)
 
-        # 保存为GIF
-        # --- FIX PIL PALETTE BUG ---
-        from .utils import fix_frame_for_gif
-        frames = [fix_frame_for_gif(f) for f in frames]
-        # ---------------------------
-        frames[0].save(
-            output_path,
-            save_all=True,
-            append_images=frames[1:],
-            duration=duration,
-            loop=0,
-            optimize=True
-        )
-
+        save_gif(frames, output_path, durations=duration, loop=0, optimize_rgb=True)
         return True
 
     except Exception as e:
@@ -523,7 +510,7 @@ async def convert_video_to_gif(video_url: str, file_name: str = None, expected_s
             logger.info(f"预期文件大小: {expected_size} bytes")
 
         # 检查ffmpeg可用性
-        ffmpeg_available = check_ffmpeg_available()
+        ffmpeg_available = await run_in_pool(check_ffmpeg_available)
 
         # 下载视频，传递文件名、预期大小和access_token
         video_path = await download_video(video_url, file_name, expected_size, access_token)
@@ -597,7 +584,3 @@ async def convert_video_to_gif(video_url: str, file_name: str = None, expected_s
 def get_supported_video_formats() -> list:
     """获取支持的视频格式"""
     return ['.mp4', '.avi', '.mov', '.webm', '.mkv', '.flv', '.wmv']
-
-
-# 模块导入时同步检查ffmpeg
-_ = check_ffmpeg_available()
