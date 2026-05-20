@@ -35,7 +35,7 @@
 - **[help_plugin](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/help_plugin)**: 返回图片形式的帮助文档。
 - **[image_processor](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/image_processor)**: 图像处理工具箱（GIF 倒放/倍速/视频转 GIF、抠图、镜像、旋转、对称）。
 - **[lunabot_imgexp](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/lunabot_imgexp)**: 多来源搜图以及 [X](https://x.com/) 图片获取。从 [lunabot](https://github.com/NeuraXmy/lunabot) 中解耦修改而来。
-- **[recall](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/recall)**: 撤回相关功能。支持 Bot 主动撤回消息，或监听群聊撤回消息。
+- **[recall](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/recall)**: 撤回相关功能。支持 Bot 主动撤回消息。
 - **[send_and_reply](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/send_and_reply)**: 让群友快速私戳 Bot 主的功能。
 - **[sticker_saver](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/sticker_saver)**: 表情包保存。移植自 [nonebot-plugin-sticker-saver](https://github.com/colasama/nonebot-plugin-sticker-saver)。
 - **[stickers](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/stickers)**: 随机表情包获取，支持定向查看、群友投稿、SU 管理等。
