@@ -443,6 +443,8 @@ class HLTVScheduler:
                         start_time=now,
                         minutes_until=0,
                         maps=match.maps,
+                        is_grand_final=match.is_grand_final,
+                        is_third_place=match.is_third_place,
                     )
                 )
 
@@ -496,16 +498,20 @@ class HLTVScheduler:
                 minutes_until=match.minutes_until,
                 start_time_str=start_time_str,
                 maps=match.maps,
+                is_grand_final=match.is_grand_final,
+                is_third_place=match.is_third_place,
             )
             msg = MessageSegment.image(img)
         except Exception as e:
             logger.warning(f"[HLTV Scheduler] 渲染提醒图片失败，使用文本消息: {e}")
             start_time_str = "LIVE" if match.minutes_until <= 0 else match.start_time.strftime("%H:%M")
             bo_text = f"BO{match.maps}" if match.maps else ""
+            stage_text = "GRAND FINAL" if match.is_grand_final else "3RD PLACE" if match.is_third_place else ""
             msg = (
                 f"""🔴 比赛已开始
 
 🏆 {match.event_title}
+{stage_text}
 
 ⏰ {start_time_str}
 🎮 {match.team1} vs {match.team2}
@@ -909,6 +915,8 @@ class HLTVScheduler:
                                 start_time=match_time,
                                 minutes_until=int(math.ceil(seconds_until / 60)),
                                 maps=match.maps,
+                                is_grand_final=match.is_grand_final,
+                                is_third_place=match.is_third_place,
                             )
                         )
             except Exception as e:

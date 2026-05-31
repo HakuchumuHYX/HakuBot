@@ -173,7 +173,9 @@ async def render_reminder(
     event_title: str,
     minutes_until: int,
     start_time_str: str = "",
-    maps: str = ""
+    maps: str = "",
+    is_grand_final: bool = False,
+    is_third_place: bool = False,
 ) -> bytes:
     """渲染比赛开始提醒图片
     
@@ -184,6 +186,8 @@ async def render_reminder(
         minutes_until: 距离开始的分钟数
         start_time_str: 开始时间字符串
         maps: 比赛格式（如 "3" 表示 BO3）
+        is_grand_final: 是否为总决赛
+        is_third_place: 是否为季军赛
     
     Returns:
         渲染后的图片字节
@@ -198,6 +202,8 @@ async def render_reminder(
             "minutes_until": minutes_until,
             "start_time_str": start_time_str,
             "maps": maps,
+            "is_grand_final": is_grand_final,
+            "is_third_place": is_third_place,
             "timestamp": get_timestamp(),
             "watermark_text": plugin_config.hltv_watermark_text
         },

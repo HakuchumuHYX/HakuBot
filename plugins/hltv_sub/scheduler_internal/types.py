@@ -20,3 +20,5 @@ class UpcomingMatch:
     start_time: datetime
     minutes_until: int
     maps: str = ""
+    is_grand_final: bool = False
+    is_third_place: bool = False

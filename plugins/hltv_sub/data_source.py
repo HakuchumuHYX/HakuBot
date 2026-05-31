@@ -123,7 +123,11 @@ class HLTVDataSource:
         return meta
 
     async def get_event_matches_with_hints_and_meta(
-        self, event_id: str, days: int = 7
+        self,
+        event_id: str,
+        days: int = 7,
+        *,
+        include_partial_tbd: bool = False,
     ) -> tuple[list[MatchInfo], list[MatchTimeHint], EventMatchesMeta]:
         """获取赛事比赛列表 + 时间提示 + 页面元信息"""
         url = f"{self.BASE_URL}/events/{event_id}/matches"
@@ -147,7 +151,11 @@ class HLTVDataSource:
             )
             return [], [], meta
 
-        matches, hints = parse_event_matches_with_hints(soup, self._tz)
+        matches, hints = parse_event_matches_with_hints(
+            soup,
+            self._tz,
+            include_partial_tbd=include_partial_tbd,
+        )
         logger.info(
             f"[HLTV] 获取到 {len(matches)} 场比赛 (filtered) / {len(hints)} 条时间提示 (raw), "
             f"event={event_id}, wrappers={meta.match_wrapper_count}"
@@ -173,6 +181,15 @@ class HLTVDataSource:
     async def get_event_matches(self, event_id: str, days: int = 7) -> list[MatchInfo]:
         """获取赛事的比赛列表（过滤 TBD）"""
         matches, _ = await self.get_event_matches_with_hints(event_id, days=days)
+        return matches
+
+    async def get_event_matches_for_display(self, event_id: str, days: int = 7) -> list[MatchInfo]:
+        """获取赛事的比赛列表（允许单边 TBD 用于展示）"""
+        matches, _, _ = await self.get_event_matches_with_hints_and_meta(
+            event_id,
+            days=days,
+            include_partial_tbd=True,
+        )
         return matches
 
     async def get_event_results(

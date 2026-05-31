@@ -27,3 +27,7 @@ plugins_todo_&_backup/
 rename_script.py
 plan.txt
 tests/
+CLAUDE.md
+.claude/
+.agents/
+.codex/

@@ -1,7 +1,7 @@
 """
 HLTV matches 页面解析
 
-- parse_event_matches：过滤 TBD（用于渲染/提醒）
+- parse_event_matches：默认过滤 TBD，展示模式允许单边 TBD
 - parse_match_time_hints：不过滤 TBD（用于 scheduler 自适应轮询）
 """
 
@@ -61,8 +61,13 @@ def parse_match_time_hints(soup: BeautifulSoup, tz) -> list[MatchTimeHint]:
     return hints
 
 
-def parse_event_matches(soup: BeautifulSoup, tz) -> list[MatchInfo]:
-    """解析 matches 页面的比赛列表（过滤 TBD）"""
+def parse_event_matches(
+    soup: BeautifulSoup,
+    tz,
+    *,
+    include_partial_tbd: bool = False,
+) -> list[MatchInfo]:
+    """解析 matches 页面的比赛列表（默认过滤 TBD）"""
     matches: list[MatchInfo] = []
 
     # 方法1: 使用 match-wrapper 结构（最精确）
@@ -79,19 +84,20 @@ def parse_event_matches(soup: BeautifulSoup, tz) -> list[MatchInfo]:
             if not match_id:
                 continue
 
-            # 过滤 TBD（保持原行为）
-            if not team1_id or not team2_id:
+            has_team1_id = bool(team1_id)
+            has_team2_id = bool(team2_id)
+            if include_partial_tbd:
+                if not (has_team1_id or has_team2_id):
+                    continue
+            elif not (has_team1_id and has_team2_id):
                 continue
 
-            team1 = ""
-            team2 = ""
-
-            team_elems = wrapper.find_all("div", class_="match-teamname")
-            if len(team_elems) >= 2:
-                team1 = team_elems[0].get_text(strip=True)
-                team2 = team_elems[1].get_text(strip=True)
+            team1, team2 = _extract_team_names_from_wrapper(wrapper)
 
             if not team1 or not team2:
+                if include_partial_tbd and not (has_team1_id and has_team2_id):
+                    continue
+
                 link = wrapper.find("a", href=re.compile(r"/matches/\d+/"))
                 if link:
                     href = link.get("href", "")
@@ -102,6 +108,11 @@ def parse_event_matches(soup: BeautifulSoup, tz) -> list[MatchInfo]:
 
             if not team1 or not team2:
                 continue
+
+            if include_partial_tbd and not (has_team1_id and has_team2_id):
+                placeholder_name = team1 if not has_team1_id else team2
+                if not _is_winner_placeholder(placeholder_name):
+                    continue
 
             match_time = ""
             match_date = ""
@@ -140,6 +151,8 @@ def parse_event_matches(soup: BeautifulSoup, tz) -> list[MatchInfo]:
                     maps=maps_format,
                     rating=rating,
                     is_live=is_live,
+                    is_grand_final=_is_grand_final_match(wrapper),
+                    is_third_place=_is_third_place_match(wrapper),
                 )
             )
 
@@ -189,6 +202,8 @@ def parse_event_matches(soup: BeautifulSoup, tz) -> list[MatchInfo]:
                         maps="",
                         rating=0,
                         is_live=is_live,
+                        is_grand_final="grand final" in text.lower(),
+                        is_third_place=_contains_third_place_marker(text),
                     )
                 )
 
@@ -199,11 +214,83 @@ def parse_event_matches(soup: BeautifulSoup, tz) -> list[MatchInfo]:
     return matches
 
 
-def parse_event_matches_with_hints(soup: BeautifulSoup, tz) -> tuple[list[MatchInfo], list[MatchTimeHint]]:
+def parse_event_matches_with_hints(
+    soup: BeautifulSoup,
+    tz,
+    *,
+    include_partial_tbd: bool = False,
+) -> tuple[list[MatchInfo], list[MatchTimeHint]]:
     """单次解析得到 filtered matches + raw hints"""
-    matches = parse_event_matches(soup, tz)
+    matches = parse_event_matches(soup, tz, include_partial_tbd=include_partial_tbd)
     hints = parse_match_time_hints(soup, tz)
     return matches, hints
+
+
+def _is_winner_placeholder(name: str) -> bool:
+    normalized = " ".join((name or "").lower().split())
+    return normalized not in {"", "tbd", "tba"} and "winner" in normalized
+
+
+def _is_grand_final_match(wrapper) -> bool:
+    stage_elem = wrapper.select_one("div.match-stage")
+    if stage_elem:
+        stage_text = stage_elem.get_text(" ", strip=True).lower()
+        stage_classes = stage_elem.get("class", [])
+        if "match-grand-final" in stage_classes or "grand final" in stage_text:
+            return True
+
+    no_info = wrapper.select_one("a.match-no-info")
+    if no_info and "grand final" in no_info.get_text(" ", strip=True).lower():
+        return True
+
+    return False
+
+
+def _contains_third_place_marker(text: str) -> bool:
+    normalized = " ".join((text or "").lower().split())
+    return any(
+        marker in normalized
+        for marker in (
+            "3rd place decider",
+            "third place decider",
+            "3rd place match",
+            "third place match",
+        )
+    )
+
+
+def _is_third_place_match(wrapper) -> bool:
+    no_info = wrapper.select_one("a.match-no-info")
+    return _contains_third_place_marker(no_info.get_text(" ", strip=True) if no_info else "")
+
+
+def _extract_team_names_from_wrapper(wrapper) -> Tuple[str, str]:
+    team1 = ""
+    team2 = ""
+
+    team_blocks = wrapper.find_all("div", class_="match-team")
+    for index, block in enumerate(team_blocks):
+        name_elem = block.find("div", class_="match-teamname") or block.find("div", class_="team")
+        name = name_elem.get_text(strip=True) if name_elem else ""
+        classes = block.get("class", [])
+        if "team1" in classes:
+            team1 = name
+        elif "team2" in classes:
+            team2 = name
+        elif index == 0:
+            team1 = name
+        elif index == 1:
+            team2 = name
+
+    if team1 and team2:
+        return team1, team2
+
+    team_elems = wrapper.find_all("div", class_="match-teamname")
+    if len(team_elems) >= 2:
+        team1 = team1 or team_elems[0].get_text(strip=True)
+        team2 = team2 or team_elems[1].get_text(strip=True)
+
+    return team1, team2
 
 
 def _extract_id_from_url(url: str) -> str:

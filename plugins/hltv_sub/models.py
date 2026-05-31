@@ -35,6 +35,8 @@ class MatchInfo:
     rating: int = 0
     event: str = ""
     is_live: bool = False
+    is_grand_final: bool = False
+    is_third_place: bool = False
 
 
 @dataclass

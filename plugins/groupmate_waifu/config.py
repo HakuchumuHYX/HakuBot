@@ -3,7 +3,7 @@ groupmate_waifu/config.py
 插件配置类定义
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Config(BaseModel):
@@ -36,5 +36,4 @@ class Config(BaseModel):
     # 群成员最后发言时间过滤器（秒），默认 7 天
     waifu_last_sent_time_filter: int = 604800
     
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")

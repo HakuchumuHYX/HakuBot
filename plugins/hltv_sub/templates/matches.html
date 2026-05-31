@@ -23,6 +23,44 @@
     background: rgba(231, 76, 60, 0.1);
 }
 
+.match-item.grand-final {
+    position: relative;
+    border-left-color: #ffc752;
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 199, 82, 0.85),
+        0 0 14px rgba(255, 183, 45, 0.18);
+}
+
+.match-item.grand-final::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 3px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #ffd56a, #ff9f1c);
+}
+
+.match-item.third-place {
+    position: relative;
+    border-left-color: #cd7f32;
+    box-shadow:
+        inset 0 0 0 1px rgba(205, 127, 50, 0.75),
+        0 0 12px rgba(205, 127, 50, 0.16);
+}
+
+.match-item.third-place::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 3px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #d99a5b, #a85d24);
+}
+
 .match-time {
     min-width: 80px;
     text-align: center;
@@ -91,6 +129,29 @@
     font-size: 11px;
     color: #555;
     margin-top: 2px;
+}
+
+.match-stage-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    margin-bottom: 4px;
+}
+
+.match-stage-badge.grand-final {
+    color: #2b1a00;
+    background: linear-gradient(135deg, #ffd56a, #ffcf5a, #ff9f1c);
+    box-shadow: 0 0 10px rgba(255, 180, 40, 0.35);
+}
+
+.match-stage-badge.third-place {
+    color: #2b1400;
+    background: linear-gradient(135deg, #d99a5b, #cd7f32, #a85d24);
+    box-shadow: 0 0 10px rgba(205, 127, 50, 0.28);
 }
 
 .event-group {
@@ -169,7 +230,7 @@
     <div class="event-group-title">{{ event_name }}</div>
     <div class="match-list">
         {% for match in matches %}
-        <div class="match-item {% if match.is_live %}live{% endif %}">
+        <div class="match-item {% if match.is_live %}live{% endif %} {% if match.is_grand_final %}grand-final{% elif match.is_third_place %}third-place{% endif %}">
             <div class="match-time">
                 {% if match.is_live %}
                 <span class="badge badge-live">LIVE</span>
@@ -188,6 +249,11 @@
                 </div>
             </div>
             <div class="match-info">
+                {% if match.is_grand_final %}
+                <div class="match-stage-badge grand-final">GRAND FINAL</div>
+                {% elif match.is_third_place %}
+                <div class="match-stage-badge third-place">3RD PLACE</div>
+                {% endif %}
                 <div class="match-format">BO{{ match.maps }}</div>
                 <div class="match-id">#{{ match.id }}</div>
             </div>

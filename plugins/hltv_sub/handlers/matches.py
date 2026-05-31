@@ -38,7 +38,7 @@ async def handle_matches_list(bot: Bot, event: GroupMessageEvent):
         upcoming_count = 0
 
         for sub in sorted(subscriptions, key=lambda x: int(x.event_id) if x.event_id.isdigit() else x.event_id):
-            matches = await hltv_data.get_event_matches(sub.event_id)
+            matches = await hltv_data.get_event_matches_for_display(sub.event_id)
 
             if matches:
                 event_key = f"#{sub.event_id} {sub.event_title}"

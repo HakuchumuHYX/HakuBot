@@ -159,6 +159,28 @@
     font-weight: 500;
     color: #ff9800;
 }
+
+.stage-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    margin-top: 10px;
+}
+
+.stage-badge.grand-final {
+    color: #2b1a00;
+    background: linear-gradient(135deg, #ffd56a, #ffcf5a, #ff9f1c);
+    box-shadow: 0 0 12px rgba(255, 180, 40, 0.35);
+}
+
+.stage-badge.third-place {
+    color: #2b1400;
+    background: linear-gradient(135deg, #d99a5b, #cd7f32, #a85d24);
+    box-shadow: 0 0 12px rgba(205, 127, 50, 0.3);
+}
 {% endblock %}
 
 {% block content %}
@@ -178,6 +200,11 @@
 
     <div class="event-banner">
         <div class="event-name">🏆 {{ event_title }}</div>
+        {% if is_grand_final %}
+        <div class="stage-badge grand-final">GRAND FINAL</div>
+        {% elif is_third_place %}
+        <div class="stage-badge third-place">3RD PLACE</div>
+        {% endif %}
     </div>
 
     <div class="match-versus">

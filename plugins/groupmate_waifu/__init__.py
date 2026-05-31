@@ -49,17 +49,20 @@ __plugin_meta__ = PluginMetadata(
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-from .data_manager import reset_all_records, waifu_reset
+from .service import reset_records
 
 # 注册定时任务
-scheduler.add_job(reset_all_records, "cron", hour=0, misfire_grace_time=120)
+scheduler.add_job(reset_records, "cron", hour=0, misfire_grace_time=120)
 
 # 注册手动重置命令
 reset_command = on_command("重置记录", permission=SUPERUSER, priority=10, block=True)
-reset_command.append_handler(reset_all_records)
 
 
-# --- 导入子模块，触发 Matcher 注册 ---
+@reset_command.handle()
+async def handle_reset_command():
+    reset_records()
+    await reset_command.finish("娶群友记录已重置。")
 
-from . import marry
-from . import yinpa
+
+# Importing handlers registers all NoneBot matchers via module side effects.
+from . import handlers
