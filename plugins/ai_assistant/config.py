@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 import json
 
 from pydantic import BaseModel, Field
@@ -91,6 +91,21 @@ class SearchConfig(StrictBaseModel):
     query_max_len: int = 120
     # 一次问题最多生成多少条 query（多角度检索）
     num_queries: int = 3
+
+    # --- Image Web Search ---
+    image_max_results: int = 5
+    image_depth: str = "advanced"
+    image_chunks_per_source: int = 1
+    image_include_answer: Any = "basic"
+    image_include_raw_content: Any = "text"
+    image_include_images: bool = True
+    image_include_image_descriptions: bool = True
+    image_auto_parameters: bool = False
+    image_visual_brief_model: Optional[str] = None
+    image_visual_brief_max_tokens: int = 800
+    image_raw_content_max_chars: int = 1200
+    image_content_max_chars: int = 500
+    image_max_reference_images: int = 6
 
 
 class ResolvedProviderConfig:

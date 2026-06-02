@@ -17,7 +17,13 @@ from .utils import *
 from .config import plugin_config, save_config
 from .services.chat_service import call_chat_completion
 from .services.imagen_service import call_image_generation
-from .services.search_service import format_search_results, web_search_with_rewrite
+from .services.search_service import (
+    build_visual_brief_from_search,
+    compile_image_prompt_from_visual_brief,
+    format_search_results,
+    web_image_search_with_rewrite,
+    web_search_with_rewrite,
+)
 
 try:
     from ..plugin_manager.enable import is_feature_enabled
@@ -325,9 +331,12 @@ async def handle_draw_web(bot: Bot, event: MessageEvent, args: Message = Command
         if not raw_text:
             await draw_web_matcher.finish("未检测到可用于搜索的文本内容。")
 
-        await draw_web_matcher.send("正在联网搜索设定/资料中...")
-        queries, results = await web_search_with_rewrite(raw_text, mode="image")
-        context_text = format_search_results(results, max_chars=1200)
+        await draw_web_matcher.send("正在联网搜索视觉设定中...")
+        queries, search_payloads = await web_image_search_with_rewrite(raw_text)
+
+        await draw_web_matcher.send("正在提炼视觉设定...")
+        visual_brief = await build_visual_brief_from_search(raw_text, queries, search_payloads)
+        context_text = compile_image_prompt_from_visual_brief(raw_text, visual_brief)
 
         await draw_web_matcher.send("正在绘制中，请稍候...")
 
@@ -353,7 +362,7 @@ async def handle_draw_web(bot: Bot, event: MessageEvent, args: Message = Command
             if meta.get("used_safe_rewrite"):
                 note = "（已进行合规化改写并重试）"
 
-        await draw_web_matcher.finish(f"使用模型：{used_model}\n生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s（联网: Tavily）{note}")
+        await draw_web_matcher.finish(f"使用模型：{used_model}\n生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s（联网: Tavily，已提炼视觉设定）{note}")
 
     except FinishedException:
         raise
