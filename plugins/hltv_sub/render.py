@@ -111,11 +111,16 @@ async def render_results(
 
 async def render_stats(stats: Optional[MatchStats]) -> bytes:
     """渲染比赛数据图片"""
-    
+
     stats_dict = None
     if stats:
         stats_dict = asdict(stats)
-    
+        played_maps = [m for m in stats.maps if m.score_team1 != "-" and m.score_team2 != "-"]
+        has_single_map_details = (
+            len(played_maps) == 1 and played_maps[0].map_name in stats.map_stats_details
+        )
+        stats_dict["show_total_overview"] = not has_single_map_details
+
     return await template_to_pic(
         template_path=str(TEMPLATE_DIR),
         template_name="stats.html",

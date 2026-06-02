@@ -551,9 +551,17 @@ class HLTVScheduler:
 
             if stats:
                 expected_maps = 0
+                expected_maps_reason = ""
                 try:
                     if str(result.score1).isdigit() and str(result.score2).isdigit():
-                        expected_maps = int(result.score1) + int(result.score2)
+                        score1 = int(result.score1)
+                        score2 = int(result.score2)
+                        if max(score1, score2) > 5:
+                            expected_maps = 1
+                            expected_maps_reason = "round_score_like_result"
+                        else:
+                            expected_maps = score1 + score2
+                            expected_maps_reason = "map_score_result"
                 except Exception:
                     expected_maps = 0
 
@@ -565,7 +573,8 @@ class HLTVScheduler:
                     if len(played_maps) < expected_maps:
                         logger.info(
                             f"[HLTV Scheduler] match {result.id} stats 未更新完整："
-                            f"expected_maps={expected_maps}, played_maps={len(played_maps)}，跳过本次推送等待下次轮询"
+                            f"expected_maps={expected_maps}, played_maps={len(played_maps)}, "
+                            f"reason={expected_maps_reason}，跳过本次推送等待下次轮询"
                         )
                         return
 

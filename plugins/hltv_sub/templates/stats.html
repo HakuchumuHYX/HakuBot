@@ -392,10 +392,12 @@
 </div>
 {% endif %}
 
-{% if stats.players %}
+{% if stats.players or stats.map_stats_details %}
     {# 渲染总数据 #}
-    {{ render_players_grid(stats.players, '(总览)') }}
-    
+    {% if stats.players and stats.show_total_overview %}
+        {{ render_players_grid(stats.players, '(总览)') }}
+    {% endif %}
+
     {# 渲染单图数据 #}
     {% if stats.map_stats_details %}
         {% for map in stats.maps %}
