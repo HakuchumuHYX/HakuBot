@@ -446,6 +446,106 @@ async def web_search_with_rewrite(raw_text: str, *, mode: str = "chat") -> Tuple
     return queries, merged_results
 
 
+async def web_chat_search_with_rewrite(raw_text: str) -> Tuple[List[str], List[dict]]:
+    queries = await _resolve_search_queries(raw_text, mode="chat")
+
+    total_max = int(getattr(plugin_config.search, "chat_max_results", 5) or 5)
+    if total_max < 1:
+        total_max = 5
+    per_query = max(1, int(math.ceil(total_max / max(1, len(queries)))))
+
+    payloads: List[dict] = []
+    seen_urls = set()
+    collected_results = 0
+
+    for q in queries:
+        depth = getattr(plugin_config.search, "chat_depth", "basic") or "basic"
+        try:
+            data = await tavily_search_full(
+                q,
+                max_results=per_query,
+                search_depth=depth,
+                include_answer=getattr(plugin_config.search, "chat_include_answer", "basic"),
+                include_raw_content=getattr(plugin_config.search, "chat_include_raw_content", False),
+                include_images=False,
+                include_image_descriptions=False,
+                chunks_per_source=int(getattr(plugin_config.search, "chat_chunks_per_source", 1) or 1),
+                auto_parameters=bool(getattr(plugin_config.search, "chat_auto_parameters", False)),
+                topic="general",
+            )
+        except Exception as e:
+            logger.warning(f"Tavily Chat 搜索失败: query={q} err={e}")
+            continue
+
+        deduped_results: List[dict] = []
+        for item in data.get("results", []):
+            url = (item.get("url") or "").strip()
+            key = url or (item.get("title") or "") + (item.get("content") or "")
+            if key in seen_urls:
+                continue
+            seen_urls.add(key)
+            deduped_results.append(item)
+            collected_results += 1
+            if collected_results >= total_max:
+                break
+
+        data["results"] = deduped_results
+        payloads.append(data)
+        if collected_results >= total_max:
+            break
+
+    return queries, payloads
+
+
+def format_chat_evidence_pack(search_payloads: List[dict], *, max_chars: Optional[int] = None) -> str:
+    if not search_payloads:
+        return "（联网搜索未返回结果）"
+
+    if max_chars is None:
+        max_chars = int(getattr(plugin_config.search, "chat_context_max_chars", 5000) or 5000)
+    content_limit = int(getattr(plugin_config.search, "chat_content_max_chars", 700) or 700)
+    raw_limit = int(getattr(plugin_config.search, "chat_raw_content_max_chars", 1200) or 1200)
+
+    lines: List[str] = []
+    answer_seen = set()
+    for payload in search_payloads:
+        answer = _truncate_text(payload.get("answer") or "", 900)
+        if not answer or answer in answer_seen:
+            continue
+        answer_seen.add(answer)
+        query = payload.get("query") or ""
+        lines.append(f"【Tavily 摘要：{query}】\n{answer}")
+
+    source_idx = 1
+    for payload in search_payloads:
+        for result in payload.get("results", []) or []:
+            title = result.get("title") or ""
+            url = result.get("url") or ""
+            score = result.get("score")
+            content = _truncate_text(result.get("content") or "", content_limit)
+            raw_content = _truncate_text(result.get("raw_content") or "", raw_limit)
+
+            header = f"[{source_idx}] {title}".strip()
+            if score is not None:
+                header += f" score={score}"
+            lines.append(header)
+            if url:
+                lines.append(url)
+            if content:
+                lines.append(f"摘要：{content}")
+            if raw_content:
+                lines.append(f"正文片段：{raw_content}")
+            source_idx += 1
+
+    if source_idx == 1 and not lines:
+        return "（联网搜索未返回结果）"
+
+    text = "\n\n".join(lines)
+    if len(text) > max_chars:
+        text = text[:max_chars].rstrip() + "\n\n（证据包过长，已截断）"
+    return text
+
+
 async def web_image_search_with_rewrite(raw_text: str) -> Tuple[List[str], List[dict]]:
     queries = await _resolve_search_queries(raw_text, mode="image")
 

@@ -20,9 +20,9 @@ from .services.imagen_service import call_image_generation
 from .services.search_service import (
     build_visual_brief_from_search,
     compile_image_prompt_from_visual_brief,
-    format_search_results,
+    format_chat_evidence_pack,
+    web_chat_search_with_rewrite,
     web_image_search_with_rewrite,
-    web_search_with_rewrite,
 )
 
 try:
@@ -180,8 +180,8 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
             await chat_web_matcher.finish("未检测到可用于搜索的文本内容。")
 
         await chat_web_matcher.send("正在联网搜索中...")
-        queries, results = await web_search_with_rewrite(raw_text, mode="chat")
-        context_text = format_search_results(results)
+        queries, search_payloads = await web_chat_search_with_rewrite(raw_text)
+        context_text = format_chat_evidence_pack(search_payloads)
 
         queries_hint = " / ".join(queries) if queries else "（无）"
 
@@ -190,15 +190,15 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
             {
                 "role": "system",
                 "content": (
-                    "你将收到一段【联网搜索结果】（含编号与链接）以及【本次检索 query】。请严格遵守以下规则：\n"
-                    "1) 事实性结论（数据/时间/版本/政策/新闻等）必须来自【联网搜索结果】并附引用编号，例如：[1] 或 [1][2]。\n"
-                    "2) 允许补充少量通用解释（不属于最新事实），但不得杜撰搜索结果中不存在的来源/链接。\n"
-                    "3) 禁止编造来源：不要生成搜索结果里不存在的 URL/标题/编号。\n"
-                    "4) 如果搜索结果没有覆盖问题关键点：请明确说明\"搜索结果未包含X\"，并给出建议的补充检索关键词。\n"
-                    "5) 如果不同来源有冲突：请指出冲突，并说明你倾向哪一条（可依据更新时间/权威性）。\n"
-                    "6) 输出结构：先给结论与解释（带引用编号），最后单独列出\"来源：\"并逐条贴出对应 URL。\n"
+                    "你将收到一段【联网证据包】（含编号来源、链接、摘要，可能包含 Tavily 摘要和正文片段）以及【本次检索 query】。请严格遵守以下规则：\n"
+                    "1) 最新事实、数据、版本、政策、新闻、报价等必须来自【联网证据包】里的编号来源，并附引用编号，例如：[1] 或 [1][2]。\n"
+                    "2) 【Tavily 摘要】只能作为阅读线索；关键事实应优先落到具体编号来源，不能只引用 Tavily 摘要。\n"
+                    "3) 允许补充少量通用解释，但不得杜撰证据包中不存在的来源、链接、标题、编号或事实。\n"
+                    "4) 如果证据包没有覆盖问题关键点：请明确说明\"搜索结果未包含X\"，并给出建议的补充检索关键词。\n"
+                    "5) 如果不同来源有冲突：请指出冲突，并说明依据哪些编号来源判断。\n"
+                    "6) 输出结构：先给结论与解释（带引用编号），最后单独列出\"来源：\"并逐条贴出实际使用过的 URL。\n"
                     "\n【本次检索 query】\n" + queries_hint +
-                    "\n\n【联网搜索结果】\n" + context_text
+                    "\n\n【联网证据包】\n" + context_text
                 ),
             },
             {"role": "user", "content": content_list},

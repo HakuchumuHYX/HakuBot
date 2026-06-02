@@ -92,6 +92,17 @@ class SearchConfig(StrictBaseModel):
     # 一次问题最多生成多少条 query（多角度检索）
     num_queries: int = 3
 
+    # --- Chat Web Search ---
+    chat_max_results: int = 5
+    chat_depth: str = "basic"
+    chat_chunks_per_source: int = 1
+    chat_include_answer: Any = "basic"
+    chat_include_raw_content: Any = False
+    chat_auto_parameters: bool = False
+    chat_content_max_chars: int = 700
+    chat_raw_content_max_chars: int = 1200
+    chat_context_max_chars: int = 5000
+
     # --- Image Web Search ---
     image_max_results: int = 5
     image_depth: str = "advanced"
