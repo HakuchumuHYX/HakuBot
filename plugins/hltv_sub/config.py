@@ -25,7 +25,7 @@ class Config(BaseModel):
     hltv_proxy_list: list[str] = []  # 代理列表
 
     # 浏览器指纹模拟（curl_cffi impersonate）
-    hltv_impersonate: str = "chrome136"  # 模拟的浏览器版本
+    hltv_impersonate: str = "chrome124"  # 当前对 HLTV 更稳定的 Chrome 指纹
 
     # FlareSolverr 配置（可选，用于 Cloudflare 挑战回退）
     hltv_flaresolverr_url: str = ""  # FlareSolverr 地址，例如 http://localhost:8191/v1

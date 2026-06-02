@@ -28,15 +28,27 @@ class FetchResult:
     error: str = ""
 
 
-def _build_headers() -> dict[str, str]:
+def _chrome_hint_version(impersonate: str) -> str:
+    if impersonate == "chrome":
+        return "142"
+    if impersonate.startswith("chrome"):
+        suffix = impersonate.removeprefix("chrome")
+        version = "".join(ch for ch in suffix if ch.isdigit())
+        if version:
+            return version
+    return "142"
+
+
+def _build_headers(impersonate: str) -> dict[str, str]:
     """构建完整的现代 Chrome 浏览器请求头"""
+    chrome_version = _chrome_hint_version(impersonate)
     return {
+        "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version}.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br, zstd",
         "Cache-Control": "max-age=0",
-        "Connection": "keep-alive",
-        "Sec-Ch-Ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+        "Sec-Ch-Ua": f'"Chromium";v="{chrome_version}", "Google Chrome";v="{chrome_version}", "Not.A/Brand";v="99"',
         "Sec-Ch-Ua-Mobile": "?0",
         "Sec-Ch-Ua-Platform": '"Windows"',
         "Sec-Fetch-Dest": "document",
@@ -165,7 +177,7 @@ class HLTVHttpClient:
     async def fetch_with_meta(self, url: str, max_retries: int = 5) -> FetchResult:
         """发送请求获取 HTML + 响应元信息"""
         session = await self._get_session()
-        headers = _build_headers()
+        headers = _build_headers(self._impersonate)
 
         last_status: Optional[int] = None
         last_final_url = ""
