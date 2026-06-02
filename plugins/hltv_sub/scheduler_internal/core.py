@@ -57,6 +57,7 @@ class HLTVScheduler:
 
         # 每个 event 的轮询状态
         self._event_states: dict[str, EventPollState] = {}
+        self._event_run_locks: dict[str, asyncio.Lock] = {}
 
         # 抓取并发限制（避免多个赛事同时请求风暴）
         self._fetch_semaphore = asyncio.Semaphore(max(1, plugin_config.hltv_scheduler_max_parallel))
@@ -116,6 +117,7 @@ class HLTVScheduler:
         stale = [eid for eid in self._event_states.keys() if eid not in subscribed]
         for eid in stale:
             self._event_states.pop(eid, None)
+            self._event_run_locks.pop(eid, None)
             self._remove_event_job(eid)
 
     # -------------------- Wakeup 触发器（date job） --------------------
@@ -265,7 +267,7 @@ class HLTVScheduler:
                 if results:
                     for r in results:
                         if not data_manager.is_result_notified(r.id):
-                            data_manager.add_notified_result(r.id)
+                            data_manager.add_notified_result(r.id, force=True)
                             count += 1
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 初始化赛事 {event_id} 结果失败: {e}")
@@ -290,7 +292,7 @@ class HLTVScheduler:
             count = 0
             for r in results:
                 if not data_manager.is_result_notified(r.id):
-                    data_manager.add_notified_result(r.id)
+                    data_manager.add_notified_result(r.id, force=True)
                     count += 1
             logger.info(
                 f"[HLTV Scheduler] 订阅初始化：已标记 {count} 条现有结果为已推送 (event {event_id})"
@@ -518,16 +520,23 @@ class HLTVScheduler:
 {f'📋 {bo_text}' if bo_text else ''}""".strip()
             )
 
+        any_success = False
         for group_id in groups:
             try:
                 await bot.send_group_msg(group_id=group_id, message=msg)
+                any_success = True
                 logger.info(
                     f"[HLTV Scheduler] 已发送比赛提醒到群 {group_id}: {match.team1} vs {match.team2}"
                 )
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 发送比赛提醒到群 {group_id} 失败: {e}")
 
-        data_manager.add_notified_start(match.match_id)
+        if any_success:
+            data_manager.add_notified_start(match.match_id, force=True)
+        else:
+            logger.warning(
+                f"[HLTV Scheduler] 比赛提醒 {match.match_id} 所有群发送失败，不标记为已推送，下轮将重试"
+            )
 
     async def send_match_result(
         self, bot: Bot, event_id: str, event_title: str, result: ResultInfo
@@ -614,13 +623,18 @@ class HLTVScheduler:
             logger.error(f"[HLTV Scheduler] 处理比赛结果 {result.id} 失败: {e}")
 
         if any_success:
-            data_manager.add_notified_result(result.id)
+            data_manager.add_notified_result(result.id, force=True)
         else:
             logger.warning(
                 f"[HLTV Scheduler] 比赛结果 {result.id} 所有群发送失败，不标记为已推送，下轮将重试"
             )
 
     async def run_check_for_event(self, event_id: str) -> dict:
+        lock = self._event_run_locks.setdefault(event_id, asyncio.Lock())
+        async with lock:
+            return await self._run_check_for_event_unlocked(event_id)
+
+    async def _run_check_for_event_unlocked(self, event_id: str) -> dict:
         """执行某个赛事的一轮检查"""
         result: dict = {"event_id": event_id, "upcoming_matches": [], "new_results": [], "errors": []}
         poll_state = self._get_event_poll_state(event_id)
@@ -749,7 +763,7 @@ class HLTVScheduler:
                 if not groups:
                     # 没有可推送群时，直接记为已处理，避免卡住退订
                     for r in pending:
-                        data_manager.add_notified_result(r.id)
+                        data_manager.add_notified_result(r.id, force=True)
                     logger.info(
                         f"[HLTV Scheduler] final_probe_no_groups event={event_id}, "
                         f"marked_notified={len(pending)}"

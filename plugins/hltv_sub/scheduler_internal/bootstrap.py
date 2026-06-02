@@ -50,6 +50,8 @@ def _ensure_event_job(event_id: str) -> None:
             args=[event_id],
             id=job_id,
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
         logger.info(f"[HLTV Scheduler] 已创建赛事定时任务: {job_id}")
     except Exception as e:

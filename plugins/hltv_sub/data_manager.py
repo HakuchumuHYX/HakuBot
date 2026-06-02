@@ -348,19 +348,19 @@ class DataManager:
         """获取已发送开始提醒的比赛ID集合"""
         return set(self._notified_starts.keys())
 
-    def add_notified_start(self, match_id: str) -> None:
+    def add_notified_start(self, match_id: str, *, force: bool = False) -> None:
         """添加已发送开始提醒的比赛ID"""
         self._notified_starts[match_id] = self._now_iso()
-        self._save_notified_state_debounced()
+        self._save_notified_state_debounced(force=force)
 
     def get_notified_results(self) -> set[str]:
         """获取已发送结果的比赛ID集合"""
         return set(self._notified_results.keys())
 
-    def add_notified_result(self, match_id: str) -> None:
+    def add_notified_result(self, match_id: str, *, force: bool = False) -> None:
         """添加已发送结果的比赛ID"""
         self._notified_results[match_id] = self._now_iso()
-        self._save_notified_state_debounced()
+        self._save_notified_state_debounced(force=force)
 
     def is_start_notified(self, match_id: str) -> bool:
         """检查比赛开始提醒是否已发送"""
