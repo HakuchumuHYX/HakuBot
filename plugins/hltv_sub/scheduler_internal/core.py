@@ -34,6 +34,19 @@ from .wakeup import refresh_wakeup_jobs as _refresh_wakeup_jobs
 T = TypeVar("T")
 
 
+def _is_final_round_score(score1: int, score2: int) -> bool:
+    winner = max(score1, score2)
+    loser = min(score1, score2)
+
+    if winner == 13:
+        return loser <= 11
+
+    if winner >= 16 and (winner - 16) % 3 == 0:
+        return winner - loser >= 2
+
+    return False
+
+
 @dataclass
 class EventPollState:
     current_interval_minutes: int = DEFAULT_INTERVAL_MINUTES
@@ -566,6 +579,12 @@ class HLTVScheduler:
                         score1 = int(result.score1)
                         score2 = int(result.score2)
                         if max(score1, score2) > 5:
+                            if not _is_final_round_score(score1, score2):
+                                logger.info(
+                                    f"[HLTV Scheduler] match {result.id} BO1 回合比分未达到终局："
+                                    f"score={score1}-{score2}，跳过本次推送等待下次轮询"
+                                )
+                                return
                             expected_maps = 1
                             expected_maps_reason = "round_score_like_result"
                         else:
