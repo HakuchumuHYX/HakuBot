@@ -28,6 +28,7 @@ rename_script.py
 plan.txt
 tests/
 CLAUDE.md
+AGENTS.md
 .claude/
 .agents/
 .codex/

@@ -27,24 +27,12 @@ from .constants import (
     OVERDUE_THRESHOLD_MINUTES,
     POST_LIVE_GRACE_MINUTES,
 )
+from .result_readiness import get_result_stats_push_block_reason
 from .state import get_event_state, parse_mmdd
 from .types import UpcomingMatch
 from .wakeup import refresh_wakeup_jobs as _refresh_wakeup_jobs
 
 T = TypeVar("T")
-
-
-def _is_final_round_score(score1: int, score2: int) -> bool:
-    winner = max(score1, score2)
-    loser = min(score1, score2)
-
-    if winner == 13:
-        return loser <= 11
-
-    if winner >= 16 and (winner - 16) % 3 == 0:
-        return winner - loser >= 2
-
-    return False
 
 
 @dataclass
@@ -571,62 +559,16 @@ class HLTVScheduler:
                 event_id=event_id,
             )
 
-            if stats:
-                expected_maps = 0
-                expected_maps_reason = ""
-                try:
-                    if str(result.score1).isdigit() and str(result.score2).isdigit():
-                        score1 = int(result.score1)
-                        score2 = int(result.score2)
-                        if max(score1, score2) > 5:
-                            if not _is_final_round_score(score1, score2):
-                                logger.info(
-                                    f"[HLTV Scheduler] match {result.id} BO1 回合比分未达到终局："
-                                    f"score={score1}-{score2}，跳过本次推送等待下次轮询"
-                                )
-                                return
-                            expected_maps = 1
-                            expected_maps_reason = "round_score_like_result"
-                        else:
-                            expected_maps = score1 + score2
-                            expected_maps_reason = "map_score_result"
-                except Exception:
-                    expected_maps = 0
+            block_reason = get_result_stats_push_block_reason(result, stats)
+            if block_reason:
+                logger.info(
+                    f"[HLTV Scheduler] match {result.id} stats 未准备好："
+                    f"{block_reason}，跳过本次推送等待下次轮询"
+                )
+                return
 
-                played_maps = [
-                    m for m in (stats.maps or []) if m.score_team1 != "-" and m.score_team2 != "-"
-                ]
-
-                if expected_maps > 0:
-                    if len(played_maps) < expected_maps:
-                        logger.info(
-                            f"[HLTV Scheduler] match {result.id} stats 未更新完整："
-                            f"expected_maps={expected_maps}, played_maps={len(played_maps)}, "
-                            f"reason={expected_maps_reason}，跳过本次推送等待下次轮询"
-                        )
-                        return
-
-                    if expected_maps > 1:
-                        missing_details = [
-                            m.map_name
-                            for m in played_maps
-                            if m.map_name not in (stats.map_stats_details or {})
-                        ]
-                        if missing_details:
-                            logger.info(
-                                f"[HLTV Scheduler] match {result.id} 单图数据未更新完整："
-                                f"missing_map_details={missing_details}，跳过本次推送等待下次轮询"
-                            )
-                            return
-
-                img = await render_stats(stats)
-                msg = MessageSegment.text("🏁 比赛已结束\n\n") + MessageSegment.image(img)
-            else:
-                msg = f"""🏁 比赛已结束
-
-🏆 {event_title}
-
-{result.team1} {result.score1} - {result.score2} {result.team2}"""
+            img = await render_stats(stats)
+            msg = MessageSegment.text("🏁 比赛已结束\n\n") + MessageSegment.image(img)
 
             for group_id in groups:
                 try:
