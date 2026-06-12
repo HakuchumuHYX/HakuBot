@@ -27,9 +27,10 @@ from .constants import (
     OVERDUE_THRESHOLD_MINUTES,
     POST_LIVE_GRACE_MINUTES,
 )
+from .map_result_readiness import build_completed_map_results
 from .result_readiness import get_result_stats_push_block_reason
 from .state import get_event_state, parse_mmdd
-from .types import UpcomingMatch
+from .types import CompletedMapResult, UpcomingMatch
 from .wakeup import refresh_wakeup_jobs as _refresh_wakeup_jobs
 
 T = TypeVar("T")
@@ -487,6 +488,69 @@ class HLTVScheduler:
 
         return new_results
 
+    async def check_completed_map_results_for_event(
+        self, event_id: str
+    ) -> list[CompletedMapResult]:
+        completed_maps: list[CompletedMapResult] = []
+
+        state = get_event_state(self._tz, self._end_grace_days, event_id)
+        if state not in ("ONGOING", "UPCOMING"):
+            return completed_maps
+
+        sub = data_manager.get_any_subscription_by_event(event_id)
+        event_title = sub.event_title if sub else f"Event #{event_id}"
+        poll_state = self._get_event_poll_state(event_id)
+
+        try:
+            triplet = await self._fetch_with_retry(
+                lambda eid=event_id: hltv_data.get_event_matches_with_hints_and_meta(eid),
+                event_id=event_id,
+            )
+            if not triplet:
+                return completed_maps
+
+            matches, hints, meta = triplet
+            if meta.is_unavailable:
+                return completed_maps
+
+            if any(m.is_live for m in matches) or any(h.is_live for h in hints):
+                poll_state.has_live_match = True
+                poll_state.last_live_seen_at = datetime.now(self._tz)
+
+            for match in matches:
+                if not match.is_live:
+                    continue
+                if match.maps not in {"3", "5"}:
+                    continue
+
+                bo_maps = int(match.maps)
+                stats = await self._fetch_with_retry(
+                    lambda m=match: hltv_data.get_match_stats(
+                        match_id=m.id,
+                        team1=m.team1,
+                        team2=m.team2,
+                        event_title=event_title,
+                    ),
+                    event_id=event_id,
+                )
+                for candidate in build_completed_map_results(
+                    event_id=event_id,
+                    event_title=event_title,
+                    match_id=match.id,
+                    team1=match.team1,
+                    team2=match.team2,
+                    bo_maps=bo_maps,
+                    stats=stats,
+                ):
+                    if not data_manager.is_map_result_notified(candidate.notification_id):
+                        completed_maps.append(candidate)
+
+        except Exception as e:
+            logger.error(f"[HLTV Scheduler] 检查赛事 {event_id} 单图结果失败: {e}")
+            poll_state.has_fetch_error = True
+
+        return completed_maps
+
     async def send_match_reminder(self, bot: Bot, match: UpcomingMatch) -> None:
         groups = data_manager.get_groups_by_event(match.event_id)
         if not groups:
@@ -590,6 +654,53 @@ class HLTVScheduler:
                 f"[HLTV Scheduler] 比赛结果 {result.id} 所有群发送失败，不标记为已推送，下轮将重试"
             )
 
+    async def send_completed_map_result(
+        self, bot: Bot, completed_map: CompletedMapResult
+    ) -> None:
+        groups = data_manager.get_groups_by_event(completed_map.event_id)
+        if not groups:
+            return
+
+        if data_manager.is_map_result_notified(completed_map.notification_id):
+            return
+
+        any_success = False
+
+        try:
+            img = await render_stats(completed_map.single_map_stats)
+            msg = (
+                MessageSegment.text(
+                    f"🗺️ 地图已结束 · BO{completed_map.bo_maps} 图{completed_map.map_index}\n\n"
+                )
+                + MessageSegment.image(img)
+            )
+
+            for group_id in groups:
+                try:
+                    await bot.send_group_msg(group_id=group_id, message=msg)
+                    any_success = True
+                    logger.info(
+                        f"[HLTV Scheduler] 已发送单图结果到群 {group_id}: "
+                        f"{completed_map.team1} vs {completed_map.team2} "
+                        f"{completed_map.map_name} "
+                        f"({completed_map.score1_after_map}-{completed_map.score2_after_map})"
+                    )
+                except Exception as e:
+                    logger.error(f"[HLTV Scheduler] 发送单图结果到群 {group_id} 失败: {e}")
+
+        except Exception as e:
+            logger.error(
+                f"[HLTV Scheduler] 处理单图结果 {completed_map.notification_id} 失败: {e}"
+            )
+
+        if any_success:
+            data_manager.add_notified_map_result(completed_map.notification_id, force=True)
+        else:
+            logger.warning(
+                f"[HLTV Scheduler] 单图结果 {completed_map.notification_id} "
+                f"所有群发送失败，不标记为已推送，下轮将重试"
+            )
+
     async def run_check_for_event(self, event_id: str) -> dict:
         lock = self._event_run_locks.setdefault(event_id, asyncio.Lock())
         async with lock:
@@ -597,7 +708,13 @@ class HLTVScheduler:
 
     async def _run_check_for_event_unlocked(self, event_id: str) -> dict:
         """执行某个赛事的一轮检查"""
-        result: dict = {"event_id": event_id, "upcoming_matches": [], "new_results": [], "errors": []}
+        result: dict = {
+            "event_id": event_id,
+            "upcoming_matches": [],
+            "completed_map_results": [],
+            "new_results": [],
+            "errors": [],
+        }
         poll_state = self._get_event_poll_state(event_id)
         poll_state.has_fetch_error = False
 
@@ -621,6 +738,13 @@ class HLTVScheduler:
             for match in upcoming:
                 await self.send_match_reminder(bot, match)
 
+            completed_maps = await self.check_completed_map_results_for_event(event_id)
+            result["completed_map_results"] = [
+                m.notification_id for m in completed_maps
+            ]
+            for completed_map in completed_maps:
+                await self.send_completed_map_result(bot, completed_map)
+
             new_results = await self.check_match_results_for_event(event_id)
             result["new_results"] = [(eid, title, r.id) for eid, title, r in new_results]
             for eid, title, r in new_results:
@@ -629,7 +753,8 @@ class HLTVScheduler:
             self._apply_adaptive_schedule(event_id, poll_state)
 
             logger.info(
-                f"[HLTV Scheduler] 检查完成(event={event_id}): {len(upcoming)} 场即将开始, {len(new_results)} 场新结果"
+                f"[HLTV Scheduler] 检查完成(event={event_id}): {len(upcoming)} 场即将开始, "
+                f"{len(completed_maps)} 张单图结果, {len(new_results)} 场新结果"
             )
         except Exception as e:
             logger.error(f"[HLTV Scheduler] 检查失败(event={event_id}): {e}")
@@ -639,12 +764,13 @@ class HLTVScheduler:
 
     async def run_check(self) -> dict:
         """手动执行全量检查（调试命令/兼容旧接口）"""
-        result: dict = {"upcoming_matches": [], "new_results": [], "errors": []}
+        result: dict = {"upcoming_matches": [], "completed_map_results": [], "new_results": [], "errors": []}
         event_ids = sorted(data_manager.get_all_subscribed_event_ids())
 
         for event_id in event_ids:
             r = await self.run_check_for_event(event_id)
             result["upcoming_matches"].extend(r.get("upcoming_matches", []))
+            result["completed_map_results"].extend(r.get("completed_map_results", []))
             result["new_results"].extend(r.get("new_results", []))
             result["errors"].extend(r.get("errors", []))
 

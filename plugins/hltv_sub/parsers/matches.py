@@ -61,6 +61,21 @@ def parse_match_time_hints(soup: BeautifulSoup, tz) -> list[MatchTimeHint]:
     return hints
 
 
+def _extract_maps_format(wrapper) -> str:
+    meta_texts = [
+        elem.get_text(" ", strip=True)
+        for elem in wrapper.find_all("div", class_="match-meta")
+    ]
+    search_space = " ".join(meta_texts)
+    if not search_space:
+        search_space = wrapper.get_text(" ", strip=True)
+
+    bo_match = re.search(r"\bbo(\d)\b", search_space, re.IGNORECASE)
+    if not bo_match:
+        return ""
+    return bo_match.group(1)
+
+
 def parse_event_matches(
     soup: BeautifulSoup,
     tz,
@@ -125,13 +140,7 @@ def parse_event_matches(
                 else:
                     match_time = time_elem.get_text(strip=True)
 
-            maps_format = ""
-            meta_elem = wrapper.find("div", class_="match-meta")
-            if meta_elem:
-                meta_text = meta_elem.get_text(strip=True).lower()
-                bo_match = re.search(r"bo(\d)", meta_text)
-                if bo_match:
-                    maps_format = bo_match.group(1)
+            maps_format = _extract_maps_format(wrapper)
 
             rating = 0
             try:

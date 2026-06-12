@@ -49,6 +49,20 @@ def _score_pair(score1: str, score2: str) -> Optional[tuple[int, int]]:
     return int(score1), int(score2)
 
 
+def is_final_round_score(score1: int, score2: int) -> bool:
+    return _is_final_round_score(score1, score2)
+
+
+def score_pair(score1: str, score2: str) -> Optional[tuple[int, int]]:
+    return _score_pair(score1, score2)
+
+
+def has_complete_map_details(stats: MatchStats, map_info: MapStats) -> bool:
+    players = (stats.map_stats_details or {}).get(map_info.map_name) or []
+    teams = {getattr(player, "team", "") for player in players}
+    return bool(players) and {"team1", "team2"}.issubset(teams)
+
+
 def _score_pairs_match(
     score1: str,
     score2: str,
@@ -75,16 +89,11 @@ def _missing_or_incomplete_played_map_details(
     stats: MatchStats,
     played_maps: list[MapStats],
 ) -> list[str]:
-    details = stats.map_stats_details or {}
-    incomplete_maps: list[str] = []
-
-    for map_info in played_maps:
-        players = details.get(map_info.map_name) or []
-        teams = {getattr(player, "team", "") for player in players}
-        if not players or not {"team1", "team2"}.issubset(teams):
-            incomplete_maps.append(map_info.map_name)
-
-    return incomplete_maps
+    return [
+        map_info.map_name
+        for map_info in played_maps
+        if not has_complete_map_details(stats, map_info)
+    ]
 
 
 def get_result_stats_push_block_reason(

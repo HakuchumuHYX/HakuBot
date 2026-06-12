@@ -69,6 +69,7 @@ class DataManager:
         # 定时推送状态（带时间戳，支持 TTL 清理）
         self._notified_starts: dict[str, str] = {}
         self._notified_results: dict[str, str] = {}
+        self._notified_map_results: dict[str, str] = {}
 
         # 去重状态写盘节流（降低高频轮询下磁盘写放大）
         self._notified_dirty: bool = False
@@ -156,6 +157,9 @@ class DataManager:
             self._notified_results = self._normalize_notified(
                 scheduler_state.get("notified_results", {})
             )
+            self._notified_map_results = self._normalize_notified(
+                scheduler_state.get("notified_map_results", {})
+            )
 
             # 4) legacy group.subscribed_events 与 canonical 对齐（便于排查）
             canonical = [asdict(e) for e in self._global_subscriptions]
@@ -180,6 +184,7 @@ class DataManager:
                 "scheduler_state": {
                     "notified_starts": self._notified_starts,
                     "notified_results": self._notified_results,
+                    "notified_map_results": self._notified_map_results,
                 },
             }
             tmp_file = self._data_dir / f"{self._data_file.name}.tmp"
@@ -362,6 +367,15 @@ class DataManager:
         self._notified_results[match_id] = self._now_iso()
         self._save_notified_state_debounced(force=force)
 
+    def get_notified_map_results(self) -> set[str]:
+        """获取已发送单图结果的去重键集合"""
+        return set(self._notified_map_results.keys())
+
+    def add_notified_map_result(self, notification_id: str, *, force: bool = False) -> None:
+        """添加已发送单图结果的去重键"""
+        self._notified_map_results[notification_id] = self._now_iso()
+        self._save_notified_state_debounced(force=force)
+
     def is_start_notified(self, match_id: str) -> bool:
         """检查比赛开始提醒是否已发送"""
         return match_id in self._notified_starts
@@ -369,6 +383,10 @@ class DataManager:
     def is_result_notified(self, match_id: str) -> bool:
         """检查比赛结果是否已推送"""
         return match_id in self._notified_results
+
+    def is_map_result_notified(self, notification_id: str) -> bool:
+        """检查单图结果是否已推送"""
+        return notification_id in self._notified_map_results
 
     def cleanup_notified_state(self, ttl_days: int = 30) -> tuple[int, int]:
         """清理过期去重状态，返回 (清理 starts 数, 清理 results 数)"""
@@ -390,8 +408,9 @@ class DataManager:
 
         removed_starts = _cleanup(self._notified_starts)
         removed_results = _cleanup(self._notified_results)
+        removed_map_results = _cleanup(self._notified_map_results)
 
-        if removed_starts or removed_results:
+        if removed_starts or removed_results or removed_map_results:
             self._save_notified_state_debounced(force=True)
 
         return removed_starts, removed_results

@@ -253,6 +253,7 @@
 {% if stats %}
 {% set score1 = stats.score1|int %}
 {% set score2 = stats.score2|int %}
+{% set has_match_winner = score1 != score2 %}
 {% set team1_won = score1 > score2 %}
 
 {# 定义渲染选手表格的宏 #}
@@ -338,15 +339,15 @@
 
 <div class="match-header">
     <div class="match-team">
-        <div class="match-team-name {% if team1_won %}winner{% endif %}">{{ stats.team1 }}</div>
+        <div class="match-team-name {% if has_match_winner and team1_won %}winner{% endif %}">{{ stats.team1 }}</div>
     </div>
     <div class="match-score">
-        <span class="match-score-value {% if team1_won %}winner{% else %}loser{% endif %}">{{ stats.score1 }}</span>
+        <span class="match-score-value {% if has_match_winner and team1_won %}winner{% elif has_match_winner %}loser{% endif %}">{{ stats.score1 }}</span>
         <span class="match-score-separator">:</span>
-        <span class="match-score-value {% if not team1_won %}winner{% else %}loser{% endif %}">{{ stats.score2 }}</span>
+        <span class="match-score-value {% if has_match_winner and not team1_won %}winner{% elif has_match_winner %}loser{% endif %}">{{ stats.score2 }}</span>
     </div>
     <div class="match-team">
-        <div class="match-team-name {% if not team1_won %}winner{% endif %}">{{ stats.team2 }}</div>
+        <div class="match-team-name {% if has_match_winner and not team1_won %}winner{% endif %}">{{ stats.team2 }}</div>
     </div>
 </div>
 
