@@ -632,7 +632,8 @@ class HLTVScheduler:
                 return
 
             img = await render_stats(stats)
-            msg = MessageSegment.text("🏁 比赛已结束\n\n") + MessageSegment.image(img)
+            score_line = f"{result.team1} {result.score1}:{result.score2} {result.team2}"
+            msg = MessageSegment.text(f"🏁 比赛已结束\n{score_line}\n\n") + MessageSegment.image(img)
 
             for group_id in groups:
                 try:
@@ -668,9 +669,15 @@ class HLTVScheduler:
 
         try:
             img = await render_stats(completed_map.single_map_stats)
+            score_line = (
+                f"{completed_map.team1} "
+                f"{completed_map.score1_after_map}:{completed_map.score2_after_map} "
+                f"{completed_map.team2}"
+            )
             msg = (
                 MessageSegment.text(
-                    f"🗺️ 地图已结束 · BO{completed_map.bo_maps} 图{completed_map.map_index}\n\n"
+                    f"🗺️ 地图已结束 · BO{completed_map.bo_maps} 图{completed_map.map_index}\n"
+                    f"{score_line}\n\n"
                 )
                 + MessageSegment.image(img)
             )
