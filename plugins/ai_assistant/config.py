@@ -41,9 +41,19 @@ class ChatConfig(StrictBaseModel):
     # 图片最大边长（像素），超过此值会等比缩放+JPEG压缩，以减少视觉API的token消耗
     # 设为 0 或 None 则不压缩
     image_max_size: int = 1536
+    # 回复合并转发时，最多展开的节点数量
+    forward_max_nodes: int = 50
+    # 回复合并转发时，最多传入模型的图片数量
+    forward_max_images: int = 8
+    # 回复合并转发时，文本上下文最大字符数
+    forward_max_text_chars: int = 6000
+    # 是否把合并转发内图片作为多模态输入传给模型
+    forward_include_images: bool = True
     watermark: str = ""
     # 图片回复的背景颜色，默认为浅灰色（护眼白），例如也可用绿豆沙色 #C7EDCC 等
     bg_color: str = "#f8f9fa"
+    # 运行时上下文使用的时区，用于纠正模型对当前日期的误判
+    runtime_timezone: str = "Asia/Shanghai"
 
 
 class ImageConfig(StrictBaseModel):
@@ -91,6 +101,18 @@ class SearchConfig(StrictBaseModel):
     query_max_len: int = 120
     # 一次问题最多生成多少条 query（多角度检索）
     num_queries: int = 3
+
+    # --- Auto Search Harness ---
+    # 普通 /chat 是否根据问题内容自动轻量联网
+    auto_search_enabled: bool = True
+    # off: 不自动联网；smart: 仅命中新鲜度信号时联网；always: 每次 /chat 都轻量联网
+    auto_search_mode: str = "smart"
+    # 自动 quick 搜索的最大结果数，默认小于手动 /chat联网
+    auto_search_quick_max_results: int = 3
+    # 自动 deep 或强制联网的最大结果数
+    auto_search_deep_max_results: int = 5
+    # 自动 quick 搜索注入模型的证据包最大字符数
+    auto_search_context_max_chars: int = 3000
 
     # --- Chat Web Search ---
     chat_max_results: int = 5

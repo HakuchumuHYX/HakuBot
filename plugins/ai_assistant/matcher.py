@@ -16,12 +16,11 @@ from ..utils.browser import md_to_pic, read_tpl
 from .utils import *
 from .config import plugin_config, save_config
 from .services.chat_service import call_chat_completion
+from .services.chat_harness import decide_chat_search, prepare_chat_messages
 from .services.imagen_service import call_image_generation
 from .services.search_service import (
     build_visual_brief_from_search,
     compile_image_prompt_from_visual_brief,
-    format_chat_evidence_pack,
-    web_chat_search_with_rewrite,
     web_image_search_with_rewrite,
 )
 
@@ -99,15 +98,16 @@ async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         update_cd(cd_key, group_id, user_id)
 
     try:
-        content_list = await parse_message_content(event, args)
+        content_list = await parse_message_content(bot, event, args, include_forward=True)
 
         if not content_list:
             await chat_matcher.finish("请提供对话内容，或回复包含内容的消息。")
 
-        messages = [
-            {"role": "system", "content": plugin_config.chat.system_prompt},
-            {"role": "user", "content": content_list}
-        ]
+        decision = decide_chat_search(content_list)
+        if decision.mode != "none":
+            await chat_matcher.send("正在联网搜索中...")
+        harness = await prepare_chat_messages(content_list, decision=decision)
+        messages = harness.messages
 
         await chat_matcher.send("正在思考中...")
         reply_text, meta = await call_chat_completion(
@@ -121,6 +121,11 @@ async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         elapsed = float(meta.get("elapsed", 0.0) or 0.0)
 
         stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 耗时: {elapsed:.2f}s"
+        if harness.search_mode != "none":
+            search_state = f"自动{harness.search_mode}"
+            if harness.search_error:
+                search_state += "失败"
+            stat_text += f" | 联网: {search_state} | Query数: {len(harness.queries)}"
         watermark = plugin_config.chat.watermark
 
         if watermark:
@@ -171,38 +176,19 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         update_cd(cd_key, group_id, user_id)
 
     try:
-        content_list = await parse_message_content(event, args)
+        content_list = await parse_message_content(bot, event, args, include_forward=True)
         if not content_list:
             await chat_web_matcher.finish("请提供对话内容，或回复包含内容的消息。")
 
-        raw_text = extract_pure_text(content_list).strip()
-        if not raw_text:
+        decision = decide_chat_search(content_list, force_search=True)
+        if not decision.search_text:
             await chat_web_matcher.finish("未检测到可用于搜索的文本内容。")
 
         await chat_web_matcher.send("正在联网搜索中...")
-        queries, search_payloads = await web_chat_search_with_rewrite(raw_text)
-        context_text = format_chat_evidence_pack(search_payloads)
-
-        queries_hint = " / ".join(queries) if queries else "（无）"
-
-        messages = [
-            {"role": "system", "content": plugin_config.chat.system_prompt},
-            {
-                "role": "system",
-                "content": (
-                    "你将收到一段【联网证据包】（含编号来源、链接、摘要，可能包含 Tavily 摘要和正文片段）以及【本次检索 query】。请严格遵守以下规则：\n"
-                    "1) 最新事实、数据、版本、政策、新闻、报价等必须来自【联网证据包】里的编号来源，并附引用编号，例如：[1] 或 [1][2]。\n"
-                    "2) 【Tavily 摘要】只能作为阅读线索；关键事实应优先落到具体编号来源，不能只引用 Tavily 摘要。\n"
-                    "3) 允许补充少量通用解释，但不得杜撰证据包中不存在的来源、链接、标题、编号或事实。\n"
-                    "4) 如果证据包没有覆盖问题关键点：请明确说明\"搜索结果未包含X\"，并给出建议的补充检索关键词。\n"
-                    "5) 如果不同来源有冲突：请指出冲突，并说明依据哪些编号来源判断。\n"
-                    "6) 输出结构：先给结论与解释（带引用编号），最后单独列出\"来源：\"并逐条贴出实际使用过的 URL。\n"
-                    "\n【本次检索 query】\n" + queries_hint +
-                    "\n\n【联网证据包】\n" + context_text
-                ),
-            },
-            {"role": "user", "content": content_list},
-        ]
+        harness = await prepare_chat_messages(content_list, decision=decision)
+        if harness.search_error:
+            await chat_web_matcher.finish(f"联网Chat失败: {harness.search_error}")
+        messages = harness.messages
 
         await chat_web_matcher.send("正在思考中...")
         reply_text, meta = await call_chat_completion(
@@ -215,7 +201,7 @@ async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = Command
         tokens = int(meta.get("total_tokens", 0) or 0)
         elapsed = float(meta.get("elapsed", 0.0) or 0.0)
 
-        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 耗时: {elapsed:.2f}s | 联网: Tavily | Query数: {len(queries) if queries else 0}"
+        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 耗时: {elapsed:.2f}s | 联网: Tavily {harness.search_mode} | Query数: {len(harness.queries)}"
         watermark = plugin_config.chat.watermark
 
         if watermark:

@@ -446,10 +446,19 @@ async def web_search_with_rewrite(raw_text: str, *, mode: str = "chat") -> Tuple
     return queries, merged_results
 
 
-async def web_chat_search_with_rewrite(raw_text: str) -> Tuple[List[str], List[dict]]:
+async def web_chat_search_with_rewrite(
+    raw_text: str,
+    *,
+    max_results: Optional[int] = None,
+    search_depth: Optional[str] = None,
+    include_answer: Any = None,
+    include_raw_content: Any = None,
+    chunks_per_source: Optional[int] = None,
+    auto_parameters: Optional[bool] = None,
+) -> Tuple[List[str], List[dict]]:
     queries = await _resolve_search_queries(raw_text, mode="chat")
 
-    total_max = int(getattr(plugin_config.search, "chat_max_results", 5) or 5)
+    total_max = int(max_results if max_results is not None else (getattr(plugin_config.search, "chat_max_results", 5) or 5))
     if total_max < 1:
         total_max = 5
     per_query = max(1, int(math.ceil(total_max / max(1, len(queries)))))
@@ -459,18 +468,18 @@ async def web_chat_search_with_rewrite(raw_text: str) -> Tuple[List[str], List[d
     collected_results = 0
 
     for q in queries:
-        depth = getattr(plugin_config.search, "chat_depth", "basic") or "basic"
+        depth = search_depth if search_depth is not None else (getattr(plugin_config.search, "chat_depth", "basic") or "basic")
         try:
             data = await tavily_search_full(
                 q,
                 max_results=per_query,
                 search_depth=depth,
-                include_answer=getattr(plugin_config.search, "chat_include_answer", "basic"),
-                include_raw_content=getattr(plugin_config.search, "chat_include_raw_content", False),
+                include_answer=include_answer if include_answer is not None else getattr(plugin_config.search, "chat_include_answer", "basic"),
+                include_raw_content=include_raw_content if include_raw_content is not None else getattr(plugin_config.search, "chat_include_raw_content", False),
                 include_images=False,
                 include_image_descriptions=False,
-                chunks_per_source=int(getattr(plugin_config.search, "chat_chunks_per_source", 1) or 1),
-                auto_parameters=bool(getattr(plugin_config.search, "chat_auto_parameters", False)),
+                chunks_per_source=int(chunks_per_source if chunks_per_source is not None else (getattr(plugin_config.search, "chat_chunks_per_source", 1) or 1)),
+                auto_parameters=bool(auto_parameters if auto_parameters is not None else getattr(plugin_config.search, "chat_auto_parameters", False)),
                 topic="general",
             )
         except Exception as e:
