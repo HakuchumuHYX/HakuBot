@@ -3,7 +3,7 @@ from nonebot import on_command, on_message, logger
 from nonebot.adapters.onebot.v11 import (
     Message, GroupMessageEvent, MessageEvent, Bot
 )
-from nonebot.rule import to_me
+from nonebot.rule import Rule, to_me
 from nonebot.params import CommandArg
 from nonebot.exception import FinishedException
 
@@ -19,9 +19,17 @@ from plugins.plugin_manager.enable import is_feature_enabled
 from plugins.plugin_manager.cd_manager import check_cd, update_cd
 
 # --- 注册匹配器 ---
+def is_convert_to_text_message(event: MessageEvent) -> bool:
+    return event.get_plaintext().strip() == "转文字"
+
+
+async def _convert_to_text_rule(event: MessageEvent) -> bool:
+    return is_convert_to_text_message(event)
+
+
 contribute = on_command("投稿", rule=ensure_at_me() & to_me(), priority=CONTRIBUTE_COMMAND_PRIORITY, block=True)
 mention_handler = on_message(rule=to_me(), priority=15, block=False)
-convert_to_text = on_message(rule=to_me(), priority=10, block=True)
+convert_to_text = on_message(rule=to_me() & Rule(_convert_to_text_rule), priority=10, block=True)
 
 # --- 辅助函数：缓存 ---
 def cache_message_direct(group_id: int, message_id: int, content: str,

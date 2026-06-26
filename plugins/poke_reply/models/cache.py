@@ -1,10 +1,10 @@
-import json
 import time
 from typing import Dict, Optional
 from nonebot import logger
 from ..config import (
     MESSAGE_CACHE_FILE, TEXT_IMAGE_CACHE_FILE, CACHE_EXPIRE_TIME
 )
+from ..utils.json_store import atomic_write_json, load_json_file
 
 class MessageCache:
     def __init__(self):
@@ -15,9 +15,12 @@ class MessageCache:
     def load_cache(self):
         try:
             if self.cache_file.exists():
-                with open(self.cache_file, 'r', encoding='utf-8') as f:
-                    self.cache_data = json.load(f)
-                logger.info(f"消息缓存加载成功，共 {len(self.cache_data)} 条记录")
+                result = load_json_file(self.cache_file, dict, default={})
+                self.cache_data = result.data
+                if result.success:
+                    logger.info(f"消息缓存加载成功，共 {len(self.cache_data)} 条记录")
+                else:
+                    logger.error(f"加载消息缓存失败: {result.error}")
             else:
                 self.cache_data = {}
                 self.save_cache()
@@ -27,9 +30,7 @@ class MessageCache:
 
     def save_cache(self):
         try:
-            self.cache_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.cache_file, 'w', encoding='utf-8') as f:
-                json.dump(self.cache_data, f, ensure_ascii=False, indent=2)
+            atomic_write_json(self.cache_file, self.cache_data, dict)
         except Exception as e:
             logger.error(f"保存消息缓存失败: {e}")
 
@@ -61,14 +62,15 @@ class MessageCache:
             return True
         return False
 
-    def clean_expired_cache(self):
-        current_time = time.time()
+    def clean_expired_cache(self, now: Optional[float] = None) -> int:
+        current_time = now if now is not None else time.time()
         expired_keys = [key for key, record in self.cache_data.items() if record.get("expire_time", 0) < current_time]
         for key in expired_keys:
             del self.cache_data[key]
         if expired_keys:
             logger.info(f"清理了 {len(expired_keys)} 条过期消息缓存")
             self.save_cache()
+        return len(expired_keys)
 
 
 class TextImageCache:
@@ -80,8 +82,10 @@ class TextImageCache:
     def load_cache(self):
         try:
             if self.cache_file.exists():
-                with open(self.cache_file, 'r', encoding='utf-8') as f:
-                    self.cache_data = json.load(f)
+                result = load_json_file(self.cache_file, dict, default={})
+                self.cache_data = result.data
+                if not result.success:
+                    logger.error(f"加载文本图片缓存失败: {result.error}")
             else:
                 self.cache_data = {}
         except Exception as e:
@@ -90,8 +94,7 @@ class TextImageCache:
 
     def save_cache(self):
         try:
-            with open(self.cache_file, 'w', encoding='utf-8') as f:
-                json.dump(self.cache_data, f, ensure_ascii=False, indent=2)
+            atomic_write_json(self.cache_file, self.cache_data, dict)
         except Exception as e:
             logger.error(f"保存文本图片缓存失败: {e}")
 
@@ -118,14 +121,15 @@ class TextImageCache:
             return True
         return False
 
-    def clean_expired_cache(self):
-        current_time = time.time()
+    def clean_expired_cache(self, now: Optional[float] = None) -> int:
+        current_time = now if now is not None else time.time()
         expired_keys = [key for key, record in self.cache_data.items() if record.get("expire_time", 0) < current_time]
         for key in expired_keys:
             del self.cache_data[key]
         if expired_keys:
             logger.info(f"清理了 {len(expired_keys)} 条过期文本图片缓存")
             self.save_cache()
+        return len(expired_keys)
 
 # 全局实例
 message_cache = MessageCache()

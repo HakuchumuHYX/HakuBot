@@ -42,20 +42,25 @@ set_text_threshold = on_command("设置文本阈值", permission=SUPERUSER, rule
 
 # --- 辅助逻辑 ---
 
-async def get_image_preview(group_id: int, content: str, message_type: str) -> Tuple[bool, str]:
+def _extract_image_filenames(content: str, message_type: str, filenames=None) -> list:
+    if filenames:
+        return [str(filename).strip() for filename in filenames if str(filename).strip()]
+    if message_type == "image":
+        return [content] if content else []
+    if message_type == "contribute_image" and "图片投稿:" in content:
+        _, raw_names = content.split(":", 1)
+        return [name.strip() for name in raw_names.split(",") if name.strip()]
+    return []
+
+
+async def get_image_preview(group_id: int, content: str, message_type: str, filenames=None) -> Tuple[bool, str]:
     try:
-        if message_type == "image":
+        image_filenames = _extract_image_filenames(content, message_type, filenames)
+        if image_filenames:
             image_dir = get_group_image_dir(group_id)
-            image_path = image_dir / content
-            return (True, str(image_path)) if image_path.exists() else (False, f"图片文件不存在: {content}")
-        elif message_type == "contribute_image":
-            if "图片投稿:" in content:
-                parts = content.split(": ")
-                if len(parts) > 1:
-                    filename = parts[1].split(", ")[0]
-                    image_dir = get_group_image_dir(group_id)
-                    image_path = image_dir / filename
-                    return (True, str(image_path)) if image_path.exists() else (False, f"投稿图片文件不存在: {filename}")
+            filename = image_filenames[0]
+            image_path = image_dir / filename
+            return (True, str(image_path)) if image_path.exists() else (False, f"图片文件不存在: {filename}")
         return False, "不支持的消息类型或格式错误"
     except Exception as e:
         logger.error(f"获取图片预览失败: {e}")
@@ -80,7 +85,12 @@ async def notify_superuser(bot: Bot, request_info: dict):
         sent_msg_ids = []
 
         if request_info['type'] in ["image", "contribute_image"]:
-            success, image_path_or_error = await get_image_preview(request_info['group_id'], request_info['content'], request_info['type'])
+            success, image_path_or_error = await get_image_preview(
+                request_info['group_id'],
+                request_info['content'],
+                request_info['type'],
+                request_info.get("filenames"),
+            )
             if success:
                 for superuser in superusers:
                     try:
@@ -101,7 +111,8 @@ async def notify_superuser(bot: Bot, request_info: dict):
                     sent_msg_ids.append(receipt['message_id'])
         
         if not image_preview_sent and request_info['type'] not in ["image", "contribute_image"]:
-            content_preview = request_info['content'][:100] + "..." if len(request_info['content']) > 100 else request_info['content']
+            preview_source = request_info.get("content_preview", request_info['content'])
+            content_preview = preview_source[:100] + "..." if len(preview_source) > 100 else preview_source
             final_message = base_message + f"\n\n内容预览: {content_preview}"
             for superuser in superusers:
                 receipt = await bot.send_private_msg(user_id=int(superuser), message=final_message)
@@ -114,33 +125,22 @@ async def notify_superuser(bot: Bot, request_info: dict):
     except Exception as e:
         logger.error(f"通知超级用户失败: {e}")
 
-async def process_content_deletion(group_id: int, message_type: str, content: str) -> bool:
+async def process_content_deletion(group_id: int, message_type: str, content: str, filenames=None) -> bool:
     try:
         success = False
         if message_type in ["text", "text_image", "contribute_text"]:
-            if group_id in data_manager.group_texts:
-                if content in data_manager.group_texts[group_id]:
-                    data_manager.group_texts[group_id].remove(content)
-                    success = data_manager.save_text_data(group_id)
+            success = data_manager.remove_text(group_id, content)
         elif message_type in ["image", "contribute_image"]:
-            if group_id in data_manager.group_images:
-                filename = content
-                if "图片投稿:" in content:
-                    parts = content.split(": ")
-                    if len(parts) > 1:
-                        filename = parts[1].split(", ")[0]
-                if filename in data_manager.group_images[group_id]:
-                    data_manager.group_images[group_id].remove(filename)
-                    image_dir = get_group_image_dir(group_id)
+            target_filenames = _extract_image_filenames(content, message_type, filenames)
+            if target_filenames:
+                success = True
+                image_dir = get_group_image_dir(group_id)
+                for filename in target_filenames:
                     image_path = image_dir / filename
                     if image_path.exists():
-                        image_path.unlink()
                         invalidate_cache_for_file(image_path)
-                    success = data_manager.save_image_data(group_id)
-        
-        # 重新加载以确保同步
-        data_manager.load_text_data(group_id)
-        data_manager.load_image_data(group_id)
+                    if not data_manager.remove_image(group_id, filename):
+                        success = False
         return success
     except Exception as e:
         logger.error(f"删除内容时出错: {e}")
@@ -232,7 +232,8 @@ async def execute_delete_decision(bot: Bot, request_id: str, decision: str, proc
         success = await process_content_deletion(
             request_info["group_id"],
             request_info["type"],
-            request_info["content"]
+            request_info["content"],
+            request_info.get("filenames"),
         )
         
     result_msg = "同意" if status == "approved" else "拒绝"
@@ -311,7 +312,7 @@ async def handle_view_requests(event: PrivateMessageEvent):
             await view_delete_requests.finish("当前没有待处理的删除申请喵！")
         message = "📋 待处理的删除申请:\n\n"
         for i, req in enumerate(pending_requests, 1):
-            content_preview = req['content']
+            content_preview = req.get('content_preview', req['content'])
             if req['type'] in ["image", "contribute_image"]:
                 content_preview = "[图片] " + content_preview
             message += (

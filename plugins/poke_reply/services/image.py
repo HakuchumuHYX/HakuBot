@@ -1,6 +1,5 @@
 import hashlib
 import io
-import json
 import time
 from pathlib import Path
 from typing import Tuple, Dict, Optional, List, Set, Union
@@ -19,6 +18,7 @@ from ..config import (
     IMAGE_SIMILARITY_THRESHOLD, get_group_image_dir
 )
 from ..models.data import data_manager
+from ..utils.json_store import atomic_write_json, load_json_file
 
 # --- 缓存管理 ---
 _hash_cache = None
@@ -33,8 +33,12 @@ def load_hash_cache() -> Dict:
         return _hash_cache
 
     try:
-        with open(IMAGE_HASH_CACHE_FILE, 'r', encoding='utf-8') as f:
-            cache_data = json.load(f)
+        result = load_json_file(IMAGE_HASH_CACHE_FILE, dict, default={"version": CACHE_VERSION, "entries": {}})
+        cache_data = result.data
+        if not result.success:
+            logger.error(f"加载图片哈希缓存失败: {result.error}，创建新缓存")
+            _hash_cache = {"version": CACHE_VERSION, "entries": {}}
+            return _hash_cache
         if cache_data.get("version") != CACHE_VERSION:
             _hash_cache = {"version": CACHE_VERSION, "entries": {}}
         else:
@@ -49,10 +53,24 @@ def save_hash_cache():
     if _hash_cache is None:
         return
     try:
-        with open(IMAGE_HASH_CACHE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(_hash_cache, f, ensure_ascii=False, indent=2)
+        atomic_write_json(IMAGE_HASH_CACHE_FILE, _hash_cache, dict)
     except Exception as e:
         logger.error(f"保存图片哈希缓存失败: {e}")
+
+def clean_expired_hash_cache(now: Optional[float] = None) -> int:
+    cache = load_hash_cache()
+    current_time = now if now is not None else time.time()
+    entries = cache.get("entries", {})
+    expired_keys = [
+        key for key, entry in entries.items()
+        if current_time - entry.get("timestamp", 0) > IMAGE_HASH_CACHE_TTL
+    ]
+    for key in expired_keys:
+        del entries[key]
+    if expired_keys:
+        logger.info(f"清理了 {len(expired_keys)} 条过期图片哈希缓存")
+        save_hash_cache()
+    return len(expired_keys)
 
 def get_cache_key(image_path: Path) -> str:
     try:

@@ -8,9 +8,12 @@ from nonebot.rule import Rule
 
 def get_group_id(event) -> int:
     """从事件中获取群号"""
-    if hasattr(event, 'group_id'):
-        return event.group_id
-    return 0
+    raw_group_id = getattr(event, 'group_id', 0)
+    try:
+        group_id = int(raw_group_id)
+    except (TypeError, ValueError):
+        return 0
+    return group_id if group_id > 0 else 0
 
 def preprocess_text(text: str) -> str:
     """预处理文本：去除标点符号和空格，转换为小写"""

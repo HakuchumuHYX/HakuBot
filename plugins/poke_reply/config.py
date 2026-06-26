@@ -1,8 +1,9 @@
 from pathlib import Path
-from typing import Set, Dict, List
-import json
+from typing import Set
 from nonebot import logger
 import nonebot_plugin_localstore as localstore
+
+from .utils.json_store import atomic_write_json, load_json_file
 
 # --- 基础路径配置 ---
 PLUGIN_NAME = "poke_reply"
@@ -57,33 +58,31 @@ DEFAULT_TEXTS = [
 # --- 运行时配置 ---
 TEXT_TO_IMAGE_ENABLED_GROUPS: Set[int] = set()
 TEXT_TO_IMAGE_LENGTH_THRESHOLD = DEFAULT_TEXT_TO_IMAGE_THRESHOLD
-DEFAULT_TEXT_TO_IMAGE_GROUPS = {}
+DEFAULT_TEXT_TO_IMAGE_GROUPS: Set[int] = set()
 
 # --- 配置加载与保存函数 ---
 
 def load_config():
     """加载所有配置"""
     global TEXT_TO_IMAGE_ENABLED_GROUPS
-    
+
     # 加载文本转图片群组
     if TEXT_TO_IMAGE_GROUPS_FILE.exists():
-        try:
-            with open(TEXT_TO_IMAGE_GROUPS_FILE, 'r', encoding='utf-8') as f:
-                TEXT_TO_IMAGE_ENABLED_GROUPS = set(json.load(f))
+        result = load_json_file(TEXT_TO_IMAGE_GROUPS_FILE, list, default=list(DEFAULT_TEXT_TO_IMAGE_GROUPS))
+        if result.success:
+            TEXT_TO_IMAGE_ENABLED_GROUPS = set(result.data)
             logger.info(f"已加载文本转图片群组配置: {len(TEXT_TO_IMAGE_ENABLED_GROUPS)} 个群组")
-        except Exception as e:
-            logger.error(f"加载文本转图片群组配置失败: {e}")
-            TEXT_TO_IMAGE_ENABLED_GROUPS = DEFAULT_TEXT_TO_IMAGE_GROUPS.copy()
-            save_text_to_image_groups()
+        else:
+            logger.error(f"加载文本转图片群组配置失败: {result.error}")
+            TEXT_TO_IMAGE_ENABLED_GROUPS = set(DEFAULT_TEXT_TO_IMAGE_GROUPS)
     else:
-        TEXT_TO_IMAGE_ENABLED_GROUPS = DEFAULT_TEXT_TO_IMAGE_GROUPS.copy()
+        TEXT_TO_IMAGE_ENABLED_GROUPS = set(DEFAULT_TEXT_TO_IMAGE_GROUPS)
         save_text_to_image_groups()
-
 def save_text_to_image_groups():
     """保存文本转图片群组配置"""
     try:
-        with open(TEXT_TO_IMAGE_GROUPS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(list(TEXT_TO_IMAGE_ENABLED_GROUPS), f, ensure_ascii=False, indent=2)
+        if not atomic_write_json(TEXT_TO_IMAGE_GROUPS_FILE, list(TEXT_TO_IMAGE_ENABLED_GROUPS), list):
+            return
         logger.debug(f"已保存文本转图片群组配置: {len(TEXT_TO_IMAGE_ENABLED_GROUPS)} 个群组")
     except Exception as e:
         logger.error(f"保存文本转图片群组配置失败: {e}")
