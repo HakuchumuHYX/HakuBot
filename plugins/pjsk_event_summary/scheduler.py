@@ -3,9 +3,9 @@ import asyncio
 from nonebot import get_driver, require
 
 from ..utils.moesekai_hub import (
-    INITIAL_SYNC_DELAY_SECONDS,
-    SYNC_INTERVAL_HOURS,
-    sync_repo_and_rebuild_index,
+    INITIAL_REBUILD_DELAY_SECONDS,
+    REBUILD_INTERVAL_HOURS,
+    rebuild_event_index,
 )
 from ..utils.tools import get_logger
 
@@ -16,26 +16,26 @@ logger = get_logger("pjsk_event_summary.scheduler")
 driver = get_driver()
 
 
-async def _run_sync(reason: str) -> None:
+async def _run_rebuild(reason: str) -> None:
     try:
-        await sync_repo_and_rebuild_index(reason=reason)
+        rebuild_event_index(reason=reason)
     except Exception as e:
-        logger.exception(f"MoeSekai-Hub 同步任务失败 ({reason}): {e}")
+        logger.exception(f"MoeSekai-Hub 事件索引重建任务失败 ({reason}): {e}")
 
 
 @driver.on_startup
-async def _startup_sync() -> None:
-    async def delayed_sync() -> None:
-        await asyncio.sleep(INITIAL_SYNC_DELAY_SECONDS)
-        await _run_sync("startup")
+async def _startup_rebuild() -> None:
+    async def delayed_rebuild() -> None:
+        await asyncio.sleep(INITIAL_REBUILD_DELAY_SECONDS)
+        await _run_rebuild("startup")
 
-    asyncio.create_task(delayed_sync())
+    asyncio.create_task(delayed_rebuild())
 
 
 @scheduler.scheduled_job(
     "interval",
-    hours=SYNC_INTERVAL_HOURS,
-    id="sync_moesekai_hub_repo",
+    hours=REBUILD_INTERVAL_HOURS,
+    id="rebuild_moesekai_hub_event_index",
 )
-async def scheduled_sync_moesekai_hub() -> None:
-    await _run_sync("scheduled")
+async def scheduled_rebuild_moesekai_hub_index() -> None:
+    await _run_rebuild("scheduled")

@@ -3,14 +3,16 @@ import json
 import random
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 from nonebot.log import logger
 
-from .config import plugin_config, CARD_IMAGES_DIR
+from .config import plugin_config
 
 
 # 可用卡牌列表（已过滤）
 _available_cards: List[Dict] = []
+
+CardImageType = Literal["normal", "after_training"]
 
 # masterdata 路径
 MASTERDATA_DIR = Path(__file__).parent.parent.parent.parent / "haruki-sekai-master" / "master"
@@ -21,9 +23,11 @@ def _has_after_training(card: Dict) -> bool:
     return card["cardRarityType"] in ("rarity_3", "rarity_4")
 
 
-def _only_has_after_training(card: Dict) -> bool:
-    """判断卡牌是否只有特训后卡面（生日卡）"""
-    return card["cardRarityType"] == "rarity_birthday"
+def get_card_image_types(card: Dict) -> Tuple[CardImageType, ...]:
+    """获取卡牌可用的卡图类型。"""
+    if _has_after_training(card):
+        return ("normal", "after_training")
+    return ("normal",)
 
 
 def load_cards():
@@ -55,37 +59,29 @@ def load_cards():
         logger.error(f"加载卡牌数据失败: {e}")
 
 
-def random_card() -> Tuple[Dict, bool]:
+def random_card() -> Tuple[Dict, CardImageType]:
     """
-    随机选一张卡牌，返回 (卡牌数据, 是否特训后)
+    随机选一张卡牌，返回 (卡牌数据, 卡图类型)
     """
     if not _available_cards:
         raise RuntimeError("没有可用的卡牌数据，请检查 masterdata 路径")
 
     card = random.choice(_available_cards)
-
-    if _only_has_after_training(card):
-        after_training = True
-    elif not _has_after_training(card):
-        after_training = False
-    else:
-        after_training = random.choice([True, False])
-
-    return card, after_training
+    image_type = random.choice(get_card_image_types(card))
+    return card, image_type
 
 
-def get_card_image_url(card: Dict, after_training: bool) -> str:
+def get_card_image_url(card: Dict, image_type: CardImageType) -> str:
     """
     拼接卡面图片的完整下载 URL
     格式: {base_url}character/member/{assetbundleName}/card_{normal|after_training}.png
     """
     base_url = plugin_config.asset_base_url.rstrip("/") + "/"
     asset_name = card["assetbundleName"]
-    image_type = "after_training" if after_training else "normal"
     return f"{base_url}character/member/{asset_name}/card_{image_type}.png"
 
 
-def get_card_title(card: Dict, after_training: bool) -> str:
+def get_card_title(card: Dict, image_type: CardImageType) -> str:
     """获取卡面的显示标题"""
     from .nickname import get_character_name_by_id
 
@@ -102,38 +98,9 @@ def get_card_title(card: Dict, after_training: bool) -> str:
     title += f" - {card['prefix']}"
 
     if rarity in ("rarity_3", "rarity_4"):
-        title += "（特训后）" if after_training else "（特训前）"
+        title += "（特训后）" if image_type == "after_training" else "（特训前）"
 
     return title
-
-
-def get_local_card_path(card: Dict, after_training: bool) -> Path:
-    """获取卡面图片的本地缓存路径"""
-    asset_name = card["assetbundleName"]
-    image_type = "after_training" if after_training else "normal"
-    return CARD_IMAGES_DIR / asset_name / f"card_{image_type}.png"
-
-
-def get_all_download_tasks() -> List[Tuple[Dict, bool, str, Path]]:
-    """
-    获取所有需要下载的卡面图片任务列表。
-    返回: [(card, after_training, url, local_path), ...]
-    """
-    tasks = []
-    for card in _available_cards:
-        rarity = card["cardRarityType"]
-        if rarity in ("rarity_3", "rarity_4"):
-            # 3星/4星：normal + after_training
-            for at in (False, True):
-                url = get_card_image_url(card, at)
-                local = get_local_card_path(card, at)
-                tasks.append((card, at, url, local))
-        elif rarity == "rarity_birthday":
-            # 生日卡：只有 after_training
-            url = get_card_image_url(card, True)
-            local = get_local_card_path(card, True)
-            tasks.append((card, True, url, local))
-    return tasks
 
 
 def get_card_hint(card: Dict, used_hints: set) -> Optional[str]:

@@ -1,30 +1,26 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
-import os
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from .tools import get_exc_desc, get_logger
 
 logger = get_logger("moesekai_hub")
 
-REMOTE_URL = "https://github.com/moe-sekai/MoeSekai-Hub.git"
-BRANCH = "main"
-SPARSE_PATHS = ("story/detail", "mangas")
-
 REPO_DIR = Path("/opt/moesekai-hub")
 INDEX_DIR = Path("/opt/moesekai-hub-index")
 EVENT_INDEX_FILE = INDEX_DIR / "events.json"
-MANGA_INDEX_FILE = INDEX_DIR / "mangas.json"
 STATE_FILE = INDEX_DIR / "state.json"
 
-SYNC_INTERVAL_HOURS = 6
-INITIAL_SYNC_DELAY_SECONDS = 15
+REBUILD_INTERVAL_HOURS = 6
+INITIAL_REBUILD_DELAY_SECONDS = 15
 
-_sync_lock = asyncio.Lock()
+_rebuild_lock = asyncio.Lock()
 
 
 def _now_iso() -> str:
@@ -52,68 +48,42 @@ def _read_json_file(path: Path) -> Any:
         return json.load(f)
 
 
-async def _run_git(*args: str, cwd: Path | None = None) -> str:
-    env = os.environ.copy()
-    env.setdefault("GIT_TERMINAL_PROMPT", "0")
-
-    proc = await asyncio.create_subprocess_exec(
-        "git",
-        *args,
-        cwd=str(cwd) if cwd else None,
-        env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    stdout_text = stdout.decode("utf-8", errors="replace").strip()
-    stderr_text = stderr.decode("utf-8", errors="replace").strip()
-    if proc.returncode != 0:
-        detail = stderr_text or stdout_text or f"exit code {proc.returncode}"
-        raise RuntimeError(f"git {' '.join(args)} 失败: {detail}")
-    return stdout_text
+def _event_dir() -> Path:
+    return REPO_DIR / "story" / "detail"
 
 
-async def _rev_parse(ref: str) -> str:
-    return await _run_git("-C", str(REPO_DIR), "rev-parse", ref)
+def _read_head_commit() -> str:
+    git_dir = REPO_DIR / ".git"
+    head_path = git_dir / "HEAD"
+    if not head_path.exists():
+        return ""
 
-
-async def _ensure_repo_clean_for_reset() -> None:
-    status = await _run_git("-C", str(REPO_DIR), "status", "--porcelain")
-    if status:
-        raise RuntimeError(
-            "MoeSekai-Hub 工作区存在未提交改动，已停止自动同步以避免 reset 覆盖本地修改"
-        )
-
-
-async def _ensure_repo_initialized() -> None:
-    if (REPO_DIR / ".git").exists():
-        await _run_git("-C", str(REPO_DIR), "sparse-checkout", "set", *SPARSE_PATHS)
-        return
-
-    if REPO_DIR.exists() and any(REPO_DIR.iterdir()):
-        raise RuntimeError(f"{REPO_DIR} 已存在且不是可用的 Git 仓库，请先手动检查")
-
-    REPO_DIR.parent.mkdir(parents=True, exist_ok=True)
-    await _run_git(
-        "clone",
-        "--branch",
-        BRANCH,
-        "--depth",
-        "1",
-        "--filter=blob:none",
-        "--sparse",
-        REMOTE_URL,
-        str(REPO_DIR),
-    )
-    await _run_git("-C", str(REPO_DIR), "sparse-checkout", "set", *SPARSE_PATHS)
+    head = head_path.read_text(encoding="utf-8").strip()
+    if head.startswith("ref: "):
+        ref_path = git_dir / head.removeprefix("ref: ").strip()
+        if ref_path.exists():
+            return ref_path.read_text(encoding="utf-8").strip()
+        packed_refs = git_dir / "packed-refs"
+        if packed_refs.exists():
+            ref_name = head.removeprefix("ref: ").strip()
+            for line in packed_refs.read_text(encoding="utf-8").splitlines():
+                if line.startswith("#") or not line.strip():
+                    continue
+                commit, _, ref = line.partition(" ")
+                if ref == ref_name:
+                    return commit
+        return ""
+    return head
 
 
 def _build_event_index() -> list[dict[str, Any]]:
-    event_dir = REPO_DIR / "story" / "detail"
-    items: list[dict[str, Any]] = []
+    event_dir = _event_dir()
     if not event_dir.exists():
-        return items
+        raise FileNotFoundError(
+            f"MoeSekai-Hub 本地剧情目录不存在: {event_dir}，请先运行外部同步脚本"
+        )
 
+    items: list[dict[str, Any]] = []
     for path in event_dir.glob("event_*.json"):
         try:
             data = _read_json_file(path)
@@ -138,73 +108,12 @@ def _build_event_index() -> list[dict[str, Any]]:
     return items
 
 
-def _find_local_manga_path(manga_dir: Path, manga_id: int) -> Path | None:
-    for path in sorted(manga_dir.glob(f"{manga_id}.*")):
-        if path.is_file() and path.name != "mangas.json":
-            return path
-    return None
-
-
-def _build_manga_index() -> list[dict[str, Any]]:
-    manga_dir = REPO_DIR / "mangas"
-    meta_path = manga_dir / "mangas.json"
-    items: list[dict[str, Any]] = []
-    if not meta_path.exists():
-        return items
-
-    raw_data = _read_json_file(meta_path)
-    if not isinstance(raw_data, dict):
-        raise ValueError("mangas.json 格式不是对象")
-
-    for key, value in raw_data.items():
-        if not isinstance(value, dict):
-            continue
-        try:
-            manga_id = int(value.get("id") or key)
-            local_path = _find_local_manga_path(manga_dir, manga_id)
-            items.append(
-                {
-                    "id": manga_id,
-                    "title": value.get("title", ""),
-                    "file_name": local_path.name if local_path else "",
-                    "relative_path": local_path.relative_to(REPO_DIR).as_posix() if local_path else "",
-                    "image_url": value.get("manga", ""),
-                    "post_url": value.get("url", ""),
-                    "published_at": value.get("date"),
-                    "contributors": value.get("contributors", {}),
-                    "updated_at": _file_mtime_iso(local_path) if local_path else "",
-                }
-            )
-        except Exception:
-            logger.exception(f"构建漫画索引失败: manga_id={key}")
-
-    items.sort(key=lambda item: item["id"], reverse=True)
-    return items
-
-
-def _rebuild_indexes() -> dict[str, int]:
-    events = _build_event_index()
-    mangas = _build_manga_index()
-    _atomic_write_json(EVENT_INDEX_FILE, events)
-    _atomic_write_json(MANGA_INDEX_FILE, mangas)
-    return {"event_count": len(events), "manga_count": len(mangas)}
-
-
 def load_event_index() -> list[dict[str, Any]]:
     if not EVENT_INDEX_FILE.exists():
         raise FileNotFoundError(f"事件索引不存在: {EVENT_INDEX_FILE}")
     data = _read_json_file(EVENT_INDEX_FILE)
     if not isinstance(data, list):
         raise ValueError("事件索引格式错误")
-    return data
-
-
-def load_manga_index() -> list[dict[str, Any]]:
-    if not MANGA_INDEX_FILE.exists():
-        raise FileNotFoundError(f"漫画索引不存在: {MANGA_INDEX_FILE}")
-    data = _read_json_file(MANGA_INDEX_FILE)
-    if not isinstance(data, list):
-        raise ValueError("漫画索引格式错误")
     return data
 
 
@@ -215,87 +124,101 @@ def load_state() -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def rebuild_event_index(*, reason: str = "manual", commit: str = "") -> dict[str, Any]:
+    state = load_state()
+    state["last_rebuild_at"] = _now_iso()
+    state["last_reason"] = reason
+    _atomic_write_json(STATE_FILE, state)
+
+    try:
+        events = _build_event_index()
+        _atomic_write_json(EVENT_INDEX_FILE, events)
+
+        head_commit = commit or _read_head_commit()
+        success_at = _now_iso()
+        result = {
+            "event_count": len(events),
+            "commit": head_commit,
+            "reason": reason,
+            "last_success_at": success_at,
+        }
+        state.update(
+            {
+                "last_success_at": success_at,
+                "last_commit": head_commit,
+                "last_error": "",
+                "event_count": len(events),
+            }
+        )
+        _atomic_write_json(STATE_FILE, state)
+        logger.info(f"MoeSekai-Hub 事件索引重建完成: {result}")
+        return result
+    except Exception as e:
+        state["last_error"] = get_exc_desc(e)
+        _atomic_write_json(STATE_FILE, state)
+        logger.exception(f"MoeSekai-Hub 事件索引重建失败: {e}")
+        raise
+
+
 def get_event_detail_path(event_id: int) -> Path:
-    return REPO_DIR / "story" / "detail" / f"event_{event_id:03d}.json"
+    return _event_dir() / f"event_{event_id:03d}.json"
 
 
-async def ensure_event_detail_path(event_id: int, *, auto_sync: bool = True) -> Path | None:
+async def ensure_event_detail_path(event_id: int, *, auto_rebuild: bool = True) -> Path | None:
     path = get_event_detail_path(event_id)
     if path.exists():
         return path
-    if not auto_sync:
+    if not auto_rebuild:
         return None
 
-    await sync_repo_and_rebuild_index(reason=f"missing_event_{event_id}")
+    async with _rebuild_lock:
+        rebuild_event_index(reason=f"missing_event_{event_id}")
     return path if path.exists() else None
 
 
 async def ensure_event_index_ready() -> None:
     if EVENT_INDEX_FILE.exists():
         return
-    await sync_repo_and_rebuild_index(reason="missing_event_index")
+
+    async with _rebuild_lock:
+        if EVENT_INDEX_FILE.exists():
+            return
+        rebuild_event_index(reason="missing_event_index")
 
 
-async def ensure_manga_index_ready() -> None:
-    if MANGA_INDEX_FILE.exists():
-        return
-    await sync_repo_and_rebuild_index(reason="missing_manga_index")
+def main(argv: Sequence[str] | None = None) -> int:
+    global REPO_DIR, INDEX_DIR, EVENT_INDEX_FILE, STATE_FILE
+
+    parser = argparse.ArgumentParser(description="Maintain local MoeSekai-Hub indexes.")
+    parser.add_argument(
+        "--rebuild-index",
+        action="store_true",
+        help="rebuild /opt/moesekai-hub-index/events.json from local story/detail files",
+    )
+    parser.add_argument("--repo-dir", default="", help="override local MoeSekai-Hub repository path")
+    parser.add_argument("--index-dir", default="", help="override local MoeSekai-Hub index directory")
+    parser.add_argument("--reason", default="manual", help="reason written into state.json")
+    parser.add_argument("--commit", default="", help="source repository commit written into state.json")
+    args = parser.parse_args(argv)
+
+    if not args.rebuild_index:
+        parser.error("--rebuild-index is required")
+
+    old_paths = (REPO_DIR, INDEX_DIR, EVENT_INDEX_FILE, STATE_FILE)
+    try:
+        if args.repo_dir:
+            REPO_DIR = Path(args.repo_dir)
+        if args.index_dir:
+            INDEX_DIR = Path(args.index_dir)
+        EVENT_INDEX_FILE = INDEX_DIR / "events.json"
+        STATE_FILE = INDEX_DIR / "state.json"
+
+        result = rebuild_event_index(reason=args.reason, commit=args.commit)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+    finally:
+        REPO_DIR, INDEX_DIR, EVENT_INDEX_FILE, STATE_FILE = old_paths
 
 
-async def sync_repo_and_rebuild_index(*, force_rebuild: bool = False, reason: str = "manual") -> dict[str, Any]:
-    async with _sync_lock:
-        state = load_state()
-        state["last_sync_at"] = _now_iso()
-        state["last_reason"] = reason
-        _atomic_write_json(STATE_FILE, state)
-
-        try:
-            await _ensure_repo_initialized()
-
-            before_commit = await _rev_parse("HEAD")
-            await _run_git("-C", str(REPO_DIR), "fetch", "origin", BRANCH, "--depth", "1")
-            remote_commit = await _rev_parse(f"origin/{BRANCH}")
-            updated = before_commit != remote_commit
-
-            if updated:
-                # For this shallow sparse clone, `pull --ff-only` can fail once
-                # both local HEAD and origin/main become disconnected shallow tips.
-                # Resetting to the fetched remote commit keeps the checkout current
-                # without requiring a full history.
-                await _ensure_repo_clean_for_reset()
-                await _run_git("-C", str(REPO_DIR), "reset", "--hard", remote_commit)
-
-            await _run_git("-C", str(REPO_DIR), "sparse-checkout", "reapply")
-
-            need_rebuild = (
-                force_rebuild
-                or updated
-                or not EVENT_INDEX_FILE.exists()
-                or not MANGA_INDEX_FILE.exists()
-            )
-
-            counts = _rebuild_indexes() if need_rebuild else {
-                "event_count": len(load_event_index()),
-                "manga_count": len(load_manga_index()),
-            }
-            head_commit = await _rev_parse("HEAD")
-
-            state.update(
-                {
-                    "last_success_at": _now_iso(),
-                    "last_commit": head_commit,
-                    "last_error": "",
-                    "updated": updated,
-                    **counts,
-                }
-            )
-            _atomic_write_json(STATE_FILE, state)
-
-            result = {"updated": updated, "commit": head_commit, **counts}
-            logger.info(f"MoeSekai-Hub 同步完成: {result}")
-            return result
-        except Exception as e:
-            state["last_error"] = get_exc_desc(e)
-            _atomic_write_json(STATE_FILE, state)
-            logger.exception(f"MoeSekai-Hub 同步失败: {e}")
-            raise
+if __name__ == "__main__":
+    sys.exit(main())

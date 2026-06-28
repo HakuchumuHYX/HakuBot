@@ -26,7 +26,7 @@ pjsk_detail = on_command("剧情总结", priority=5, block=True)
 async def init_plugin():
     state = load_state()
     last_success = state.get("last_success_at", "从未")
-    logger.info(f"pjsk_event_summary 插件已加载，MoeSekai-Hub 最近成功同步时间: {last_success}")
+    logger.info(f"pjsk_event_summary 插件已加载，MoeSekai-Hub 最近成功重建索引时间: {last_success}")
 
 
 @pjsk_list.handle()

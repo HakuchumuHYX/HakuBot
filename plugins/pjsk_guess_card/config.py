@@ -1,12 +1,11 @@
 import json
 from pathlib import Path
-from typing import Optional
-from pydantic import BaseModel, Extra
+from pydantic import BaseModel
 from nonebot.log import logger
 import nonebot_plugin_localstore as localstore
 
 
-class PluginConfig(BaseModel, extra=Extra.ignore):
+class PluginConfig(BaseModel, extra="ignore"):
     """猜卡面插件配置"""
     asset_base_url: str = "https://xxx/jp-assets/startapp/"
     masterdata_path: str = ""  # 留空则自动使用 haruki-sekai-master/master/
@@ -21,10 +20,6 @@ data_dir = localstore.get_data_dir(PLUGIN_NAME)
 data_dir.mkdir(parents=True, exist_ok=True)
 CONFIG_FILE_PATH = PLUGIN_DIR / "config.json"
 
-# 卡面图片本地缓存目录
-CARD_IMAGES_DIR = data_dir / "card_images"
-CARD_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-
 
 def load_plugin_config() -> PluginConfig:
     """加载插件配置，不存在则创建默认配置"""
@@ -33,7 +28,7 @@ def load_plugin_config() -> PluginConfig:
         try:
             with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
-                return PluginConfig.parse_obj(config_data)
+                return PluginConfig.model_validate(config_data)
         except Exception as e:
             logger.error(f"加载 config.json 失败: {e}，将使用默认配置。")
             return PluginConfig()
