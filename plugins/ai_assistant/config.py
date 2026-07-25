@@ -2,12 +2,11 @@ from pathlib import Path
 from typing import Any, Optional
 import json
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StrictBaseModel(BaseModel):
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ChatConfig(StrictBaseModel):
@@ -34,10 +33,6 @@ class ChatConfig(StrictBaseModel):
     temperature: Optional[float] = 0.7
     # nucleus sampling，与 temperature 二选一微调即可
     top_p: Optional[float] = None
-    # Claude 特有的 assistant prefill：在 messages 末尾追加一条 assistant 消息作为回复开头引导
-    # 模型会接着这段文字继续生成，可有效引导输出风格和详细度
-    # 留空则不启用；示例值："好的，让我来详细回答你的问题：\n\n"
-    assistant_prefill: Optional[str] = None
     # 图片最大边长（像素），超过此值会等比缩放+JPEG压缩，以减少视觉API的token消耗
     # 设为 0 或 None 则不压缩
     image_max_size: int = 1536
@@ -57,30 +52,22 @@ class ChatConfig(StrictBaseModel):
 
 
 class ImageConfig(StrictBaseModel):
-    # --- Per-module provider override (留空则回退到全局配置) ---
-    provider: Optional[str] = None
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
-
-    model: str = "dall-e-3"
+    model: str = "gpt-image-2"
     size: Optional[str] = None
     quality: Optional[str] = None # standard, hd, medium
-    size_param: Optional[str] = None # 1K, 2K, 4K
+    # Images API 没有 system 角色；该文本会作为中性默认指令放在用户需求之前
+    prompt_prefix: str = (
+        "请根据用户需求生成或编辑图片，准确遵循用户明确指定的主体、构图、文字、"
+        "配色和风格。若提供参考图，请保留与任务相关的关键视觉特征。"
+        "不要擅自套用固定画风，也不要添加用户未要求的角色、文字、水印或元素。"
+    )
+    # 图生图参考图只在超过此边长时缩放，并保留 PNG/WebP/JPEG 格式和透明通道
+    reference_image_max_size: int = 2048
 
-    # 当中转商的生图模型仅提供 /v1/chat/completions 端点时，设为 True
-    # False（默认）：走标准 /images/generations + /images/edits
-    # True：走 /chat/completions 兼容路径
-    use_chat_endpoint: bool = False
-    
-    # --- Image generation reliability / safety fallback ---
-    # 当生图返回 content=None / 无 images 时，自动进行“安全改写”并重试，以提升成功率
-    retry_on_empty: bool = True
-    # 最大重试次数（建议 1；过多会增加成本与延迟）
-    retry_max_times: int = 1
-    # 安全改写使用的模型（默认 None 表示复用 chat.model）
-    safe_rewrite_model: Optional[str] = None
-    # 安全改写最大 token
-    safe_rewrite_max_tokens: int = 256
+    # 生图可单独使用更长的读超时；None 时回退到全局 timeout
+    timeout: Optional[float] = None
+    # OpenAI SDK 传输层重试次数；建议设为 0，避免重复计费/重复任务
+    api_max_retries: int = 2
 
 
 class SearchConfig(StrictBaseModel):
@@ -152,11 +139,10 @@ class ResolvedProviderConfig:
 
 
 class PluginConfig(StrictBaseModel):
-    # --- Provider Switch ---
-    # openai_compatible: 走 /chat/completions 的 OpenAI 兼容接口（保持现状）
+    # Chat 与生图共用默认的 OpenAI-compatible 连接配置。
     provider: str = "openai_compatible"
 
-    # OpenAI compatible config (legacy / default)
+    # 默认连接配置；模块级配置可以单独覆盖。
     api_key: str
     base_url: str = "https://api.openai.com/v1"
 
@@ -164,9 +150,9 @@ class PluginConfig(StrictBaseModel):
     timeout: float = 60.0
 
     # Modules
-    chat: ChatConfig = ChatConfig()
-    image: ImageConfig = ImageConfig()
-    search: SearchConfig = SearchConfig()
+    chat: ChatConfig = Field(default_factory=ChatConfig)
+    image: ImageConfig = Field(default_factory=ImageConfig)
+    search: SearchConfig = Field(default_factory=SearchConfig)
 
     def resolve(self, module: str = "chat") -> ResolvedProviderConfig:
         """
@@ -211,14 +197,13 @@ def load_config() -> PluginConfig:
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    return PluginConfig(**data)
+    return PluginConfig.model_validate(data)
 
 
 def save_config(config: PluginConfig):
     """保存配置到文件"""
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        # 使用 dict() 以兼容 Pydantic V1/V2，确保中文不乱码
-        json.dump(config.dict(), f, indent=4, ensure_ascii=False)
+        json.dump(config.model_dump(), f, indent=4, ensure_ascii=False)
 
 
 plugin_config = load_config()

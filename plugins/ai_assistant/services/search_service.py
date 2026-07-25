@@ -4,8 +4,35 @@ import re
 import math
 from typing import Any, Tuple, Optional, List
 from nonebot.log import logger
-from ..config import plugin_config
+from pydantic import Field
+
+from ..config import StrictBaseModel, plugin_config
 from .chat_service import call_chat_completion
+
+
+class VisualReferenceImage(StrictBaseModel):
+    url: str = ""
+    description: str = ""
+
+
+class VisualSource(StrictBaseModel):
+    title: str = ""
+    url: str = ""
+
+
+class VisualBrief(StrictBaseModel):
+    subject: str = ""
+    appearance: List[str] = Field(default_factory=list)
+    clothing: List[str] = Field(default_factory=list)
+    colors: List[str] = Field(default_factory=list)
+    props: List[str] = Field(default_factory=list)
+    setting: List[str] = Field(default_factory=list)
+    composition_hints: List[str] = Field(default_factory=list)
+    style_constraints: List[str] = Field(default_factory=list)
+    avoid: List[str] = Field(default_factory=list)
+    uncertain: List[str] = Field(default_factory=list)
+    reference_images: List[VisualReferenceImage] = Field(default_factory=list)
+    sources: List[VisualSource] = Field(default_factory=list)
 
 
 def _strip_control_chars(text: str) -> str:
@@ -349,7 +376,7 @@ async def rewrite_search_queries_with_llm(raw_text: str, *, mode: str = "chat") 
     user = f"mode={mode}\nraw={_cleanup_search_text(raw_text)}"
 
     try:
-        content, _ = await call_chat_completion(
+        result = await call_chat_completion(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -360,7 +387,7 @@ async def rewrite_search_queries_with_llm(raw_text: str, *, mode: str = "chat") 
         logger.warning(f"LLM query rewrite 调用失败，回退启发式。err={e}")
         return []
 
-    text = (content or "").strip()
+    text = result.content.strip()
     # 去掉可能包裹的代码块
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I).strip()
     text = re.sub(r"\s*```$", "", text).strip()
@@ -615,8 +642,8 @@ async def web_image_search_with_rewrite(raw_text: str) -> Tuple[List[str], List[
     return queries, payloads
 
 
-def _collect_sources(search_payloads: List[dict], *, limit: int = 6) -> List[dict]:
-    sources: List[dict] = []
+def _collect_sources(search_payloads: List[dict], *, limit: int = 6) -> List[VisualSource]:
+    sources: List[VisualSource] = []
     seen = set()
     for payload in search_payloads:
         for item in payload.get("results", []) or []:
@@ -626,17 +653,21 @@ def _collect_sources(search_payloads: List[dict], *, limit: int = 6) -> List[dic
             if not key or key in seen:
                 continue
             seen.add(key)
-            sources.append({"title": title, "url": url})
+            sources.append(VisualSource(title=title, url=url))
             if len(sources) >= limit:
                 return sources
     return sources
 
 
-def _collect_reference_images(search_payloads: List[dict], *, limit: Optional[int] = None) -> List[dict]:
+def _collect_reference_images(
+    search_payloads: List[dict],
+    *,
+    limit: Optional[int] = None,
+) -> List[VisualReferenceImage]:
     if limit is None:
         limit = int(getattr(plugin_config.search, "image_max_reference_images", 6) or 6)
 
-    images: List[dict] = []
+    images: List[VisualReferenceImage] = []
     seen = set()
     for payload in search_payloads:
         for image in payload.get("images", []) or []:
@@ -644,7 +675,12 @@ def _collect_reference_images(search_payloads: List[dict], *, limit: Optional[in
             if not key or key in seen:
                 continue
             seen.add(key)
-            images.append(image)
+            images.append(
+                VisualReferenceImage(
+                    url=str(image.get("url") or ""),
+                    description=str(image.get("description") or ""),
+                )
+            )
             if len(images) >= limit:
                 return images
         for result in payload.get("results", []) or []:
@@ -653,7 +689,12 @@ def _collect_reference_images(search_payloads: List[dict], *, limit: Optional[in
                 if not key or key in seen:
                     continue
                 seen.add(key)
-                images.append(image)
+                images.append(
+                    VisualReferenceImage(
+                        url=str(image.get("url") or ""),
+                        description=str(image.get("description") or ""),
+                    )
+                )
                 if len(images) >= limit:
                     return images
     return images
@@ -674,8 +715,8 @@ def build_visual_brief_source_text(user_prompt: str, queries: List[str], search_
     if ref_images:
         lines.append("\n【Tavily 图片线索】")
         for idx, image in enumerate(ref_images, start=1):
-            desc = image.get("description") or ""
-            url = image.get("url") or ""
+            desc = image.description
+            url = image.url
             lines.append(f"[I{idx}] {desc}\n{url}".strip())
 
     source_idx = 1
@@ -710,21 +751,18 @@ def build_visual_brief_source_text(user_prompt: str, queries: List[str], search_
     return "\n".join(lines).strip()
 
 
-def _empty_visual_brief(user_prompt: str, search_payloads: Optional[List[dict]] = None) -> dict:
-    return {
-        "subject": _truncate_text(_extract_core_question(_cleanup_search_text(user_prompt)), 80),
-        "appearance": [],
-        "clothing": [],
-        "colors": [],
-        "props": [],
-        "setting": [],
-        "composition_hints": [],
-        "style_constraints": ["二次元/动漫/manga 风格", "禁止写实/照片风格"],
-        "avoid": [],
-        "uncertain": [],
-        "reference_images": _collect_reference_images(search_payloads or []),
-        "sources": _collect_sources(search_payloads or []),
-    }
+def _empty_visual_brief(
+    user_prompt: str,
+    search_payloads: Optional[List[dict]] = None,
+) -> VisualBrief:
+    return VisualBrief(
+        subject=_truncate_text(
+            _extract_core_question(_cleanup_search_text(user_prompt)),
+            80,
+        ),
+        reference_images=_collect_reference_images(search_payloads or []),
+        sources=_collect_sources(search_payloads or []),
+    )
 
 
 def _coerce_list(value: Any, *, limit: int = 8) -> List[str]:
@@ -756,7 +794,11 @@ def _parse_visual_brief_json(text: str) -> dict:
     return json.loads(text)
 
 
-async def build_visual_brief_from_search(user_prompt: str, queries: List[str], search_payloads: List[dict]) -> dict:
+async def build_visual_brief_from_search(
+    user_prompt: str,
+    queries: List[str],
+    search_payloads: List[dict],
+) -> VisualBrief:
     source_text = build_visual_brief_source_text(user_prompt, queries, search_payloads)
     if not search_payloads:
         return _empty_visual_brief(user_prompt, search_payloads)
@@ -779,7 +821,7 @@ async def build_visual_brief_from_search(user_prompt: str, queries: List[str], s
     max_tokens = int(getattr(plugin_config.search, "image_visual_brief_max_tokens", 800) or 800)
 
     try:
-        content, _ = await call_chat_completion(
+        result = await call_chat_completion(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": source_text},
@@ -787,7 +829,7 @@ async def build_visual_brief_from_search(user_prompt: str, queries: List[str], s
             max_tokens=max_tokens,
             model=model,
         )
-        obj = _parse_visual_brief_json(content)
+        obj = _parse_visual_brief_json(result.content)
         if not isinstance(obj, dict):
             raise ValueError("visual brief is not object")
     except Exception as e:
@@ -795,7 +837,7 @@ async def build_visual_brief_from_search(user_prompt: str, queries: List[str], s
         return _empty_visual_brief(user_prompt, search_payloads)
 
     brief = _empty_visual_brief(user_prompt, search_payloads)
-    brief["subject"] = _truncate_text(obj.get("subject") or brief["subject"], 80)
+    brief.subject = _truncate_text(obj.get("subject") or brief.subject, 80)
     for key in (
         "appearance",
         "clothing",
@@ -807,21 +849,20 @@ async def build_visual_brief_from_search(user_prompt: str, queries: List[str], s
         "avoid",
         "uncertain",
     ):
-        brief[key] = _coerce_list(obj.get(key), limit=8)
-    if "二次元/动漫/manga 风格" not in brief["style_constraints"]:
-        brief["style_constraints"].insert(0, "二次元/动漫/manga 风格")
-    if "禁止写实/照片风格" not in brief["style_constraints"]:
-        brief["style_constraints"].append("禁止写实/照片风格")
+        setattr(brief, key, _coerce_list(obj.get(key), limit=8))
     return brief
 
 
-def compile_image_prompt_from_visual_brief(user_prompt: str, visual_brief: dict) -> str:
+def compile_image_prompt_from_visual_brief(
+    user_prompt: str,
+    visual_brief: VisualBrief,
+) -> str:
     lines: List[str] = [
         "联网资料已被提炼为视觉设定，请只把这些内容作为外观参考。",
         "优先级：用户明确要求 > 联网视觉设定 > 模型常识；不确定的信息不要强行表现。",
     ]
 
-    subject = visual_brief.get("subject") or ""
+    subject = visual_brief.subject
     if subject:
         lines.append(f"主体：{subject}")
 
@@ -838,15 +879,15 @@ def compile_image_prompt_from_visual_brief(user_prompt: str, visual_brief: dict)
     )
 
     for title, key in sections:
-        items = _coerce_list(visual_brief.get(key), limit=8)
+        items = getattr(visual_brief, key)
         if not items:
             continue
         lines.append(f"{title}：")
         lines.extend(f"- {item}" for item in items)
 
     ref_descriptions = []
-    for image in visual_brief.get("reference_images", []) or []:
-        desc = image.get("description") if isinstance(image, dict) else ""
+    for image in visual_brief.reference_images:
+        desc = image.description
         if desc:
             ref_descriptions.append(desc)
     if ref_descriptions:

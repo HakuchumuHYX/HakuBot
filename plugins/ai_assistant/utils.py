@@ -2,63 +2,98 @@ import base64
 import io
 import httpx
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
-from PIL import Image
+from PIL import Image, ImageOps
 from .config import plugin_config
 
 
-async def download_image_as_base64(url: str, max_size: Optional[int] = None) -> str:
-    """下载图片并转换为base64字符串（data:...;base64,...），用于 OpenAI 多模态输入。
+ImagePurpose = Literal["chat", "generation"]
 
-    Args:
-        url: 图片 URL
-        max_size: 图片最大边长（像素）。超过则等比缩放并 JPEG 压缩。
-                  为 None 时从 config.chat.image_max_size 读取，为 0 则不压缩。
-    """
-    if max_size is None:
-        max_size = getattr(plugin_config.chat, "image_max_size", 1536)
+_SUPPORTED_IMAGE_FORMATS = {
+    "JPEG": ("image/jpeg", "JPEG"),
+    "PNG": ("image/png", "PNG"),
+    "WEBP": ("image/webp", "WEBP"),
+}
+
+
+def _to_jpeg_rgb(image: Image.Image) -> Image.Image:
+    """Convert an image to RGB while compositing transparency onto white."""
+    if image.mode in ("RGBA", "LA") or "transparency" in image.info:
+        rgba = image.convert("RGBA")
+        background = Image.new("RGBA", rgba.size, "white")
+        return Image.alpha_composite(background, rgba).convert("RGB")
+    return image.convert("RGB")
+
+
+def _prepare_image_data(
+    raw: bytes,
+    *,
+    max_size: int,
+    preserve_format: bool,
+) -> tuple[bytes, str]:
+    """Validate and optionally resize an image, returning bytes and the real MIME type."""
+    with Image.open(io.BytesIO(raw)) as source:
+        source.load()
+        source_format = (source.format or "").upper()
+        image = ImageOps.exif_transpose(source)
+
+        needs_resize = max_size > 0 and max(image.size) > max_size
+        if preserve_format and not needs_resize and source_format in _SUPPORTED_IMAGE_FORMATS:
+            mime_type, _ = _SUPPORTED_IMAGE_FORMATS[source_format]
+            return raw, mime_type
+
+        if needs_resize:
+            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+        if preserve_format and source_format in _SUPPORTED_IMAGE_FORMATS:
+            output_format = source_format
+        elif preserve_format:
+            output_format = "PNG"
+        else:
+            output_format = "JPEG"
+
+        if output_format == "JPEG":
+            image = _to_jpeg_rgb(image)
+
+        save_options: dict[str, Any] = {}
+        if output_format == "JPEG":
+            save_options = {"quality": 85, "optimize": True}
+        elif output_format == "WEBP":
+            save_options = {"quality": 90}
+
+        buffer = io.BytesIO()
+        image.save(buffer, format=output_format, **save_options)
+        mime_type, _ = _SUPPORTED_IMAGE_FORMATS[output_format]
+        return buffer.getvalue(), mime_type
+
+
+async def download_image_as_data_url(
+    url: str,
+    *,
+    purpose: ImagePurpose = "chat",
+) -> str:
+    """Download and normalize an image for chat vision or Images API editing."""
+    if purpose == "chat":
+        max_size = plugin_config.chat.image_max_size
+        preserve_format = max_size <= 0
+    elif purpose == "generation":
+        max_size = plugin_config.image.reference_image_max_size
+        preserve_format = True
+    else:
+        raise ValueError(f"Unsupported image purpose: {purpose}")
 
     async with httpx.AsyncClient(proxy=plugin_config.proxy, timeout=20.0) as client:
         resp = await client.get(url)
         resp.raise_for_status()
-        raw = resp.content
 
-    # 如果配置了 max_size 且 > 0，使用 Pillow 缩放 + JPEG 压缩
-    if max_size and max_size > 0:
-        try:
-            img = Image.open(io.BytesIO(raw))
-            w, h = img.size
-            if max(w, h) > max_size:
-                ratio = max_size / max(w, h)
-                new_w, new_h = int(w * ratio), int(h * ratio)
-                img = img.resize((new_w, new_h), Image.LANCZOS)
-            # 统一转 RGB（去掉 alpha 通道）再压缩为 JPEG
-            if img.mode in ("RGBA", "P", "LA"):
-                img = img.convert("RGB")
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=85)
-            raw = buf.getvalue()
-        except Exception:
-            pass  # Pillow 处理失败时回退使用原始数据
-
-    b64 = base64.b64encode(raw).decode("utf-8")
-    return f"data:image/jpeg;base64,{b64}"
-
-
-async def download_image_as_onebot_base64(url: str) -> str:
-    """
-    下载图片并转换为 OneBot v11 可发送的 base64 格式：base64://<纯base64>
-
-    用途：当 OneBot 端无法直接下载远端图片 URL（鉴权/签名/防盗链等）时，
-    由机器人侧先下载到本地内存，再以 base64 方式发图，避免 OneBot 端拉取失败。
-    """
-    async with httpx.AsyncClient(proxy=plugin_config.proxy, timeout=30.0) as client:
-        resp = await client.get(url, follow_redirects=True)
-        resp.raise_for_status()
-
-    b64 = base64.b64encode(resp.content).decode("utf-8")
-    return f"base64://{b64}"
+    raw, mime_type = _prepare_image_data(
+        resp.content,
+        max_size=max_size,
+        preserve_format=preserve_format,
+    )
+    encoded = base64.b64encode(raw).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def find_forward_id(message: Message) -> Optional[str]:
@@ -189,7 +224,7 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
                 image_url = data.get("url")
                 if include_images and image_url and len(image_parts) < max_images:
                     try:
-                        b64_img = await download_image_as_base64(image_url)
+                        b64_img = await download_image_as_data_url(image_url)
                         image_parts.append({
                             "type": "image_url",
                             "image_url": {"url": b64_img},
@@ -219,7 +254,11 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
     return [text_part] + image_parts
 
 
-async def parse_message_content(*params: Any, include_forward: bool = False) -> list:
+async def parse_message_content(
+    *params: Any,
+    include_forward: bool = False,
+    image_purpose: ImagePurpose = "chat",
+) -> list:
     """
     解析消息内容，构建OpenAI格式的 messages content 列表。
     支持：命令后的参数、回复的消息（含图片）、可选解析回复的合并转发。
@@ -253,7 +292,10 @@ async def parse_message_content(*params: Any, include_forward: bool = False) -> 
                 elif seg.type == "image":
                     url = seg.data.get("url")
                     if url:
-                        b64_img = await download_image_as_base64(url)
+                        b64_img = await download_image_as_data_url(
+                            url,
+                            purpose=image_purpose,
+                        )
                         content_list.append({
                             "type": "image_url",
                             "image_url": {"url": b64_img}
@@ -268,7 +310,10 @@ async def parse_message_content(*params: Any, include_forward: bool = False) -> 
         elif seg.type == "image":
             url = seg.data.get("url")
             if url:
-                b64_img = await download_image_as_base64(url)
+                b64_img = await download_image_as_data_url(
+                    url,
+                    purpose=image_purpose,
+                )
                 content_list.append({
                     "type": "image_url",
                     "image_url": {"url": b64_img}

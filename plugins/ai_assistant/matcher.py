@@ -1,20 +1,24 @@
 import time
-from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, MessageEvent, Message, MessageSegment, GroupMessageEvent
-from nonebot.adapters.onebot.v11.exception import ActionFailed
-from nonebot.params import CommandArg
-from nonebot.log import logger
-from nonebot.permission import SUPERUSER
-from nonebot.exception import FinishedException
-from nonebot import require, get_driver
-import aiofiles
-import os
 from pathlib import Path
 
-from ..utils.browser import md_to_pic, read_tpl
+import aiofiles
+from nonebot import get_driver, on_command
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    GroupMessageEvent,
+    Message,
+    MessageEvent,
+    MessageSegment,
+)
+from nonebot.exception import FinishedException
+from nonebot.log import logger
+from nonebot.matcher import Matcher
+from nonebot.params import CommandArg
+from nonebot.permission import SUPERUSER
 
-from .utils import *
+from ..utils.browser import md_to_pic, read_tpl
 from .config import plugin_config, save_config
+from .utils import extract_pure_text, parse_message_content, remove_markdown
 from .services.chat_service import call_chat_completion
 from .services.chat_harness import decide_chat_search, prepare_chat_messages
 from .services.imagen_service import call_image_generation
@@ -78,287 +82,245 @@ draw_web_matcher = on_command("生图联网", aliases={"生图web", "生图搜�
 model_cmd = on_command("切换模型", aliases={"更改模型", "change_model"}, permission=SUPERUSER, priority=1, block=True)
 
 
-@chat_matcher.handle()
-async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+async def _enforce_group_access(
+    matcher: type[Matcher],
+    event: MessageEvent,
+    *,
+    feature: str,
+    display_name: str,
+) -> None:
+    """Apply the plugin-manager feature gate and cooldown for group commands."""
     if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
         group_id = str(event.group_id)
         user_id = str(event.user_id)
 
-        # 1. 检查功能分开关 (feature: chat)
-        if not is_feature_enabled(PLUGIN_NAME, "chat", group_id, user_id):
-            await chat_matcher.finish()
+        if not is_feature_enabled(PLUGIN_NAME, feature, group_id, user_id):
+            await matcher.finish()
 
-        # 2. 检查功能 CD (key: ai_assistant:chat)
-        cd_key = f"{PLUGIN_NAME}:chat"
+        cd_key = f"{PLUGIN_NAME}:{feature}"
         cd_remain = check_cd(cd_key, group_id, user_id)
         if cd_remain > 0:
-            await chat_matcher.finish(f"Chat功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
+            await matcher.finish(
+                f"{display_name}功能冷却中，请等待 {cd_remain} 秒",
+                at_sender=True,
+            )
 
-        # 3. 更新 CD (命令成功触发即进入CD)
         update_cd(cd_key, group_id, user_id)
 
+
+async def _render_chat_reply(reply_text: str, stat_text: str) -> MessageSegment | Message:
+    watermark = plugin_config.chat.watermark
+    md_content = reply_text + f"\n\n---\n*{stat_text}*"
+    if watermark:
+        watermark_html = watermark.replace("\n", "<br>")
+        md_content += (
+            "\n\n<div align='right' "
+            "style='color: gray; font-size: 0.9em; font-style: italic;'>"
+            f"{watermark_html}</div>"
+        )
+
     try:
-        content_list = await parse_message_content(bot, event, args, include_forward=True)
+        css_path = str(CUSTOM_CSS_PATH.absolute()) if CUSTOM_CSS_PATH.exists() else ""
+        img_bytes = await md_to_pic(md=md_content, width=800, css_path=css_path)
+        return MessageSegment.image(img_bytes)
+    except Exception as exc:
+        logger.error(f"渲染 Markdown 失败: {exc}")
+        return Message(remove_markdown(reply_text) + f"\n\n{stat_text}")
 
+
+async def _handle_chat_command(
+    matcher: type[Matcher],
+    bot: Bot,
+    event: MessageEvent,
+    args: Message,
+    *,
+    force_search: bool,
+) -> None:
+    await _enforce_group_access(
+        matcher,
+        event,
+        feature="chat",
+        display_name="Chat",
+    )
+
+    error_prefix = "联网Chat失败" if force_search else "发生错误"
+    log_context = "Chat Web Error" if force_search else "Chat Error"
+
+    try:
+        content_list = await parse_message_content(
+            bot,
+            event,
+            args,
+            include_forward=True,
+        )
         if not content_list:
-            await chat_matcher.finish("请提供对话内容，或回复包含内容的消息。")
+            await matcher.finish("请提供对话内容，或回复包含内容的消息。")
 
-        decision = decide_chat_search(content_list)
+        decision = decide_chat_search(content_list, force_search=force_search)
+        if force_search and not decision.search_text:
+            await matcher.finish("未检测到可用于搜索的文本内容。")
         if decision.mode != "none":
-            await chat_matcher.send("正在联网搜索中...")
-        harness = await prepare_chat_messages(content_list, decision=decision)
-        messages = harness.messages
+            await matcher.send("正在联网搜索中...")
 
-        await chat_matcher.send("正在思考中...")
-        reply_text, meta = await call_chat_completion(
-            messages,
+        harness = await prepare_chat_messages(content_list, decision=decision)
+        if force_search and harness.search_error:
+            await matcher.finish(f"联网Chat失败: {harness.search_error}")
+
+        await matcher.send("正在思考中...")
+        result = await call_chat_completion(
+            harness.messages,
             temperature=plugin_config.chat.temperature,
             top_p=plugin_config.chat.top_p,
-            assistant_prefill=plugin_config.chat.assistant_prefill,
         )
-        model_name = meta.get("model", plugin_config.chat.model)
-        tokens = int(meta.get("total_tokens", 0) or 0)
-        elapsed = float(meta.get("elapsed", 0.0) or 0.0)
 
-        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 耗时: {elapsed:.2f}s"
-        if harness.search_mode != "none":
+        stat_text = (
+            f"—— 使用模型: {result.model}"
+            f" | Token消耗: {result.usage.total_tokens}"
+            f" | 耗时: {result.elapsed:.2f}s"
+        )
+        if force_search:
+            stat_text += (
+                f" | 联网: Tavily {harness.search_mode}"
+                f" | Query数: {len(harness.queries)}"
+            )
+        elif harness.search_mode != "none":
             search_state = f"自动{harness.search_mode}"
             if harness.search_error:
                 search_state += "失败"
             stat_text += f" | 联网: {search_state} | Query数: {len(harness.queries)}"
-        watermark = plugin_config.chat.watermark
 
-        if watermark:
-            watermark_html = watermark.replace('\n', '<br>')
-            md_content = reply_text + f"\n\n---\n*{stat_text}*\n\n<div align='right' style='color: gray; font-size: 0.9em; font-style: italic;'>{watermark_html}</div>"
-        else:
-            md_content = reply_text + f"\n\n---\n*{stat_text}*"
-        
-        try:
-            css_path = str(CUSTOM_CSS_PATH.absolute()) if CUSTOM_CSS_PATH.exists() else ""
-            img_bytes = await md_to_pic(md=md_content, width=800, css_path=css_path)
-            reply_msg = MessageSegment.image(img_bytes)
-        except Exception as e:
-            logger.error(f"渲染 Markdown 失败: {e}")
-            cleaned_text = remove_markdown(reply_text)
-            reply_msg = Message(cleaned_text + f"\n\n{stat_text}")
-
-        await chat_matcher.finish(reply_msg, at_sender=True)
+        reply_msg = await _render_chat_reply(result.content, stat_text)
+        await matcher.finish(reply_msg, at_sender=True)
 
     except FinishedException:
         raise
+    except Exception as exc:
+        logger.exception(log_context)
+        await matcher.finish(f"{error_prefix}: {exc}")
 
-    except Exception as e:
-        logger.error(f"Chat Error: {e}")
-        await chat_matcher.finish(f"发生错误: {str(e)}")
+
+async def _handle_draw_command(
+    matcher: type[Matcher],
+    event: MessageEvent,
+    args: Message,
+    *,
+    use_web: bool,
+) -> None:
+    await _enforce_group_access(
+        matcher,
+        event,
+        feature="imagen",
+        display_name="生图",
+    )
+
+    error_prefix = "联网生图失败" if use_web else "生图失败"
+    log_context = "Draw Web Error" if use_web else "Draw Error"
+
+    try:
+        content_list = await parse_message_content(
+            event,
+            args,
+            image_purpose="generation",
+        )
+        if not content_list:
+            await matcher.finish("请提供文字描述，或回复一张图片。")
+
+        context_text = None
+        if use_web:
+            raw_text = extract_pure_text(content_list).strip()
+            if not raw_text:
+                await matcher.finish("未检测到可用于搜索的文本内容。")
+
+            await matcher.send("正在联网搜索视觉设定中...")
+            queries, search_payloads = await web_image_search_with_rewrite(raw_text)
+
+            await matcher.send("正在提炼视觉设定...")
+            visual_brief = await build_visual_brief_from_search(
+                raw_text,
+                queries,
+                search_payloads,
+            )
+            context_text = compile_image_prompt_from_visual_brief(
+                raw_text,
+                visual_brief,
+            )
+
+        await matcher.send("正在绘制中，请稍候...")
+
+        started_at = time.perf_counter()
+        image_url = await call_image_generation(
+            content_list,
+            extra_context=context_text,
+        )
+        generation_elapsed = time.perf_counter() - started_at
+
+        started_at = time.perf_counter()
+        await matcher.send(MessageSegment.image(image_url))
+        send_elapsed = time.perf_counter() - started_at
+
+        stat_text = (
+            f"使用模型：{plugin_config.image.model}\n"
+            f"生成耗费{generation_elapsed:.2f}s，发送耗费{send_elapsed:.2f}s"
+        )
+        if use_web:
+            stat_text += "\n联网：Tavily，已提炼视觉设定"
+        await matcher.finish(stat_text)
+
+    except FinishedException:
+        raise
+    except Exception as exc:
+        logger.exception(log_context)
+        await matcher.finish(f"{error_prefix}: {exc}")
+
+
+@chat_matcher.handle()
+async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    await _handle_chat_command(
+        chat_matcher,
+        bot,
+        event,
+        args,
+        force_search=False,
+    )
 
 
 @chat_web_matcher.handle()
-async def handle_chat_web(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    """
-    手动联网 Chat：先 Tavily 搜索，再将搜索结果注入 prompt，让模型基于最新资料回答。
-    """
-    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
-        group_id = str(event.group_id)
-        user_id = str(event.user_id)
-
-        # 1. 检查功能分开关 (feature: chat)
-        if not is_feature_enabled(PLUGIN_NAME, "chat", group_id, user_id):
-            await chat_web_matcher.finish()
-
-        # 2. 检查功能 CD (key: ai_assistant:chat)
-        cd_key = f"{PLUGIN_NAME}:chat"
-        cd_remain = check_cd(cd_key, group_id, user_id)
-        if cd_remain > 0:
-            await chat_web_matcher.finish(f"Chat功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
-
-        # 3. 更新 CD
-        update_cd(cd_key, group_id, user_id)
-
-    try:
-        content_list = await parse_message_content(bot, event, args, include_forward=True)
-        if not content_list:
-            await chat_web_matcher.finish("请提供对话内容，或回复包含内容的消息。")
-
-        decision = decide_chat_search(content_list, force_search=True)
-        if not decision.search_text:
-            await chat_web_matcher.finish("未检测到可用于搜索的文本内容。")
-
-        await chat_web_matcher.send("正在联网搜索中...")
-        harness = await prepare_chat_messages(content_list, decision=decision)
-        if harness.search_error:
-            await chat_web_matcher.finish(f"联网Chat失败: {harness.search_error}")
-        messages = harness.messages
-
-        await chat_web_matcher.send("正在思考中...")
-        reply_text, meta = await call_chat_completion(
-            messages,
-            temperature=plugin_config.chat.temperature,
-            top_p=plugin_config.chat.top_p,
-            assistant_prefill=plugin_config.chat.assistant_prefill,
-        )
-        model_name = meta.get("model", plugin_config.chat.model)
-        tokens = int(meta.get("total_tokens", 0) or 0)
-        elapsed = float(meta.get("elapsed", 0.0) or 0.0)
-
-        stat_text = f"—— 使用模型: {model_name} | Token消耗: {tokens} | 耗时: {elapsed:.2f}s | 联网: Tavily {harness.search_mode} | Query数: {len(harness.queries)}"
-        watermark = plugin_config.chat.watermark
-
-        if watermark:
-            watermark_html = watermark.replace('\n', '<br>')
-            md_content = reply_text + f"\n\n---\n*{stat_text}*\n\n<div align='right' style='color: gray; font-size: 0.9em; font-style: italic;'>{watermark_html}</div>"
-        else:
-            md_content = reply_text + f"\n\n---\n*{stat_text}*"
-        
-        try:
-            css_path = str(CUSTOM_CSS_PATH.absolute()) if CUSTOM_CSS_PATH.exists() else ""
-            img_bytes = await md_to_pic(md=md_content, width=800, css_path=css_path)
-            reply_msg = MessageSegment.image(img_bytes)
-        except Exception as e:
-            logger.error(f"渲染 Markdown 失败: {e}")
-            cleaned_text = remove_markdown(reply_text)
-            reply_msg = Message(cleaned_text + f"\n\n{stat_text}")
-
-        await chat_web_matcher.finish(reply_msg, at_sender=True)
-
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.error(f"Chat Web Error: {e}")
-        await chat_web_matcher.finish(f"联网Chat失败: {str(e)}")
+async def handle_chat_web(
+    bot: Bot,
+    event: MessageEvent,
+    args: Message = CommandArg(),
+):
+    await _handle_chat_command(
+        chat_web_matcher,
+        bot,
+        event,
+        args,
+        force_search=True,
+    )
 
 
 @draw_matcher.handle()
-async def handle_draw(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
-        group_id = str(event.group_id)
-        user_id = str(event.user_id)
-
-        # 1. 检查功能分开关 (feature: imagen)
-        if not is_feature_enabled(PLUGIN_NAME, "imagen", group_id, user_id):
-            await draw_matcher.finish()
-
-        # 2. 检查功能 CD (key: ai_assistant:imagen)
-        cd_key = f"{PLUGIN_NAME}:imagen"
-        cd_remain = check_cd(cd_key, group_id, user_id)
-        if cd_remain > 0:
-            await draw_matcher.finish(f"生图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
-
-        # 3. 更新 CD
-        update_cd(cd_key, group_id, user_id)
-
-    try:
-        content_list = await parse_message_content(event, args)
-
-        if not content_list:
-            await draw_matcher.finish("请提供文字描述，或回复一张图片。")
-
-        await draw_matcher.send("正在绘制中，请稍候...")
-
-        t1 = time.time()
-        image_url, meta = await call_image_generation(content_list)
-        t2 = time.time()
-        gen_time = t2 - t1
-
-        t3 = time.time()
-        try:
-            await draw_matcher.send(MessageSegment.image(image_url))
-        except ActionFailed as e:
-            # OneBot 端无法下载远端图片（鉴权/签名/防盗链等），改为机器人侧下载并以 base64 发送
-            logger.warning(f"OneBot 下载图片失败，尝试 base64 发送。retcode={getattr(e, 'retcode', None)} wording={getattr(e, 'wording', None)} url={image_url}")
-            b64_payload = await download_image_as_onebot_base64(image_url)
-            await draw_matcher.send(MessageSegment.image(b64_payload))
-        t4 = time.time()
-        send_time = t4 - t3
-
-        note = ""
-        used_model = plugin_config.image.model
-        if isinstance(meta, dict):
-            used_model = meta.get("model", plugin_config.image.model)
-            if meta.get("used_safe_rewrite"):
-                # "触发安全重写"不准确：实际是发生了合规化改写并重试
-                note = "（已进行合规化改写并重试）"
-
-        await draw_matcher.finish(f"使用模型：{used_model}\n生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s{note}")
-
-    except FinishedException:
-        raise
-
-    except Exception as e:
-        logger.exception("Draw Error")
-        await draw_matcher.finish(f"生图失败: {str(e)}")
+async def handle_draw(event: MessageEvent, args: Message = CommandArg()):
+    await _handle_draw_command(
+        draw_matcher,
+        event,
+        args,
+        use_web=False,
+    )
 
 
 @draw_web_matcher.handle()
-async def handle_draw_web(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    """
-    手动联网生图：先 Tavily 搜索（补充设定/资料），再将搜索摘要注入 system_instruction 进行生图。
-    """
-    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
-        group_id = str(event.group_id)
-        user_id = str(event.user_id)
-
-        if not is_feature_enabled(PLUGIN_NAME, "imagen", group_id, user_id):
-            await draw_web_matcher.finish()
-
-        cd_key = f"{PLUGIN_NAME}:imagen"
-        cd_remain = check_cd(cd_key, group_id, user_id)
-        if cd_remain > 0:
-            await draw_web_matcher.finish(f"生图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
-
-        update_cd(cd_key, group_id, user_id)
-
-    try:
-        content_list = await parse_message_content(event, args)
-        if not content_list:
-            await draw_web_matcher.finish("请提供文字描述，或回复一张图片。")
-
-        raw_text = extract_pure_text(content_list).strip()
-        if not raw_text:
-            await draw_web_matcher.finish("未检测到可用于搜索的文本内容。")
-
-        await draw_web_matcher.send("正在联网搜索视觉设定中...")
-        queries, search_payloads = await web_image_search_with_rewrite(raw_text)
-
-        await draw_web_matcher.send("正在提炼视觉设定...")
-        visual_brief = await build_visual_brief_from_search(raw_text, queries, search_payloads)
-        context_text = compile_image_prompt_from_visual_brief(raw_text, visual_brief)
-
-        await draw_web_matcher.send("正在绘制中，请稍候...")
-
-        t1 = time.time()
-        image_url, meta = await call_image_generation(content_list, extra_context=context_text)
-        t2 = time.time()
-        gen_time = t2 - t1
-
-        t3 = time.time()
-        try:
-            await draw_web_matcher.send(MessageSegment.image(image_url))
-        except ActionFailed as e:
-            logger.warning(f"OneBot 下载图片失败，尝试 base64 发送。retcode={getattr(e, 'retcode', None)} wording={getattr(e, 'wording', None)} url={image_url}")
-            b64_payload = await download_image_as_onebot_base64(image_url)
-            await draw_web_matcher.send(MessageSegment.image(b64_payload))
-        t4 = time.time()
-        send_time = t4 - t3
-
-        note = ""
-        used_model = plugin_config.image.model
-        if isinstance(meta, dict):
-            used_model = meta.get("model", plugin_config.image.model)
-            if meta.get("used_safe_rewrite"):
-                note = "（已进行合规化改写并重试）"
-
-        await draw_web_matcher.finish(f"使用模型：{used_model}\n生成耗费{gen_time:.2f}s，发送耗费{send_time:.2f}s（联网: Tavily，已提炼视觉设定）{note}")
-
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.exception("Draw Web Error")
-        await draw_web_matcher.finish(f"联网生图失败: {str(e)}")
+async def handle_draw_web(event: MessageEvent, args: Message = CommandArg()):
+    await _handle_draw_command(
+        draw_web_matcher,
+        event,
+        args,
+        use_web=True,
+    )
 
 
 @model_cmd.handle()
-async def handle_change_model(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+async def handle_change_model(args: Message = CommandArg()):
     new_model = args.extract_plain_text().strip()
     if not new_model:
         await model_cmd.finish("请提供新的模型名称。例如：切换模型 gpt-4")
@@ -377,8 +339,9 @@ async def handle_change_model(bot: Bot, event: MessageEvent, args: Message = Com
         messages = [{"role": "user", "content": "Hello! This is a connection test."}]
         
         # 发起测试请求
-        reply_text, meta = await call_chat_completion(messages)
-        used_model = meta.get("model", new_model)
+        result = await call_chat_completion(messages)
+        reply_text = result.content
+        used_model = result.model
 
         # 如果代码执行到这里，说明测试成功
         save_config(plugin_config)

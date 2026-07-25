@@ -28,6 +28,7 @@ class LLMClientConfig:
     provider: str = "openai_compatible"
     timeout: float = 60.0
     proxy: Optional[str] = None
+    max_retries: int = 2
     max_tokens: Optional[int] = 8192
     thinking_enabled: bool = False
     reasoning_effort: Optional[str] = None
@@ -38,19 +39,13 @@ class LLMClientConfig:
 class ChatResult:
     content: str
     model: str
-    provider: str
     usage: TokenUsage
     elapsed: float
-    raw: Any = None
 
 
 @dataclass
 class ImageResult:
     image_url: str
-    model: str
-    provider: str
-    elapsed: float
-    raw: Any = None
 
 
 _RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
@@ -80,6 +75,7 @@ def _make_client(config: LLMClientConfig) -> AsyncOpenAI:
         api_key=config.api_key,
         base_url=config.base_url,
         timeout=config.timeout,
+        max_retries=config.max_retries,
         http_client=http_client,
     )
 
@@ -201,10 +197,8 @@ async def chat_completion(
     return ChatResult(
         content=_message_content_from_response(resp),
         model=str(kwargs["model"]),
-        provider=config.provider,
         usage=_usage_from_response(resp),
         elapsed=elapsed,
-        raw=resp,
     )
 
 
@@ -215,53 +209,38 @@ async def image_generation(
     model: Optional[str] = None,
     size: Optional[str] = None,
     quality: Optional[str] = None,
-    size_param: Optional[str] = None,
 ) -> ImageResult:
     used_model = model or config.model
     kwargs: dict[str, Any] = {
         "model": used_model,
         "prompt": prompt,
         "n": 1,
-        "response_format": "b64_json",
     }
     if size:
         kwargs["size"] = size
     if quality:
         kwargs["quality"] = quality
-    if size_param:
-        kwargs["extra_body"] = {"imageSize": size_param}
 
     client = _make_client(config)
-    t1 = time.time()
     try:
         resp = await client.images.generate(**kwargs)
+        data = getattr(resp, "data", None) or []
+        if not data:
+            raise Exception(f"生图 API 返回成功但无数据。完整数据: {resp}")
+        item = data[0]
     finally:
         await client.close()
-    elapsed = max(0.0, time.time() - t1)
 
-    data = getattr(resp, "data", None) or []
-    if not data:
-        raise Exception(f"生图 API 返回成功但无数据。完整数据: {resp}")
-
-    item = data[0]
     b64_json = getattr(item, "b64_json", None)
+    if isinstance(item, dict):
+        b64_json = item.get("b64_json")
     if b64_json:
-        return ImageResult(
-            image_url=f"base64://{b64_json}",
-            model=used_model,
-            provider=config.provider,
-            elapsed=elapsed,
-            raw=resp,
-        )
+        return ImageResult(image_url=f"base64://{b64_json}")
     url = getattr(item, "url", None)
+    if isinstance(item, dict):
+        url = item.get("url")
     if url:
-        return ImageResult(
-            image_url=str(url).strip(),
-            model=used_model,
-            provider=config.provider,
-            elapsed=elapsed,
-            raw=resp,
-        )
+        return ImageResult(image_url=str(url).strip())
 
     raise Exception(f"生图 API 返回了未知的数据格式: {item}")
 
@@ -274,7 +253,6 @@ async def image_edit(
     model: Optional[str] = None,
     size: Optional[str] = None,
     quality: Optional[str] = None,
-    size_param: Optional[str] = None,
 ) -> ImageResult:
     used_model = model or config.model
     files = [
@@ -286,45 +264,31 @@ async def image_edit(
         "prompt": prompt,
         "image": files[0] if len(files) == 1 else files,
         "n": 1,
-        "response_format": "b64_json",
     }
     if size:
         kwargs["size"] = size
     if quality:
         kwargs["quality"] = quality
-    if size_param:
-        kwargs["extra_body"] = {"imageSize": size_param}
 
     client = _make_client(config)
-    t1 = time.time()
     try:
         resp = await client.images.edit(**kwargs)
+        data = getattr(resp, "data", None) or []
+        if not data:
+            raise Exception(f"图生图 API 返回成功但无数据。完整数据: {resp}")
+        item = data[0]
     finally:
         await client.close()
-    elapsed = max(0.0, time.time() - t1)
 
-    data = getattr(resp, "data", None) or []
-    if not data:
-        raise Exception(f"图生图 API 返回成功但无数据。完整数据: {resp}")
-
-    item = data[0]
     b64_json = getattr(item, "b64_json", None)
+    if isinstance(item, dict):
+        b64_json = item.get("b64_json")
     if b64_json:
-        return ImageResult(
-            image_url=f"base64://{b64_json}",
-            model=used_model,
-            provider=config.provider,
-            elapsed=elapsed,
-            raw=resp,
-        )
+        return ImageResult(image_url=f"base64://{b64_json}")
     url = getattr(item, "url", None)
+    if isinstance(item, dict):
+        url = item.get("url")
     if url:
-        return ImageResult(
-            image_url=str(url).strip(),
-            model=used_model,
-            provider=config.provider,
-            elapsed=elapsed,
-            raw=resp,
-        )
+        return ImageResult(image_url=str(url).strip())
 
     raise Exception(f"图生图 API 返回了未知的数据格式: {item}")
