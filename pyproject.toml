@@ -40,7 +40,6 @@ dependencies = [
     "msgspec>=0.20.0",
     "watchdog>=6.0.0",
     "sssekai>=0.7.62",
-    "nonebot-bison>=0.9.14",
     "json-repair>=0.58.0",
     "psutil>=7.2.2",
     "playwright-stealth>=2.0.2",
@@ -59,4 +58,6 @@ nonebot-adapter-onebot = [
 "@local" = []
 
 [tool.nonebot.plugins]
-plugins = ["nonebot_bison"]
+# 以插件包形式加载的第三方插件（plugin_dirs 下的本地插件不在此列）。
+# nonebot_bison 已由本仓 plugins/bili_dyn_sub 替代并移除，故当前为空。
+plugins = []

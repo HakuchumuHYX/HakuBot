@@ -52,11 +52,11 @@
 - **[two_choices](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/two_choices)**: 简单的二择插件。
 - **[atri_reply](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/atri_reply)**: 关键词检测回复（Atri 风格）。
 - **[plus_one](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/plus_one)**: 复读姬。移植修改自 [nonebot-plugin-plus-one](https://github.com/yejue/nonebot-plugin-plus-one)。
-- **[hyw](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/hyw)**: 非常意义不明的插件。
 - **[setu_plugin](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/setu_plugin)**: 简单的涩图获取插件。解耦自 [ATRI](https://github.com/Kyomotoi/ATRI)。
 
 ### 📊 统计 & 订阅
 
+- **[bili_dyn_sub](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/bili_dyn_sub)**: B 站 UP 主动态订阅推送。 参考[nonebot-bison](https://github.com/MountainDash/nonebot-bison) 实现。
 - **[group_daily_analysis](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/group_daily_analysis)**: 基于 LLM 的群聊分析插件。从 [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis) 重构且微作修改后得来，引入json-repair库，增强解析json能力。
 - **[group_statistics](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/group_statistics)**: 简单的本日群聊消息统计插件。
 - **[hltv_sub](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/hltv_sub)**: [HLTV](https://www.hltv.org/) 比赛信息推送，支持手动及自动推送。
@@ -72,6 +72,7 @@
   - [astrbot_plugin_music](https://github.com/Zhalslar/astrbot_plugin_music)
   - [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis)
   - [nonebot-plugin-analysis-bilibili](https://github.com/mengshouer/nonebot_plugin_analysis_bilibili)
+  - [nonebot-bison](https://github.com/MountainDash/nonebot-bison)
   - [nonebot-plugin-deer-pipe](https://github.com/SamuNatsu/nonebot-plugin-deer-pipe)
   - [nonebot-plugin-CyberSensoji](https://github.com/Raidenneox/nonebot_plugin_CyberSensoji)
   - [nonebot-plugin-groupmate-waifu](https://github.com/KarisAya/nonebot_plugin_groupmate_waifu)
