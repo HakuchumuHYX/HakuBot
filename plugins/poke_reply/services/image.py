@@ -1,5 +1,7 @@
+import asyncio
 import hashlib
 import io
+import threading
 import time
 from pathlib import Path
 from typing import Tuple, Dict, Optional, List, Set, Union
@@ -22,55 +24,60 @@ from ..utils.json_store import atomic_write_json, load_json_file
 
 # --- 缓存管理 ---
 _hash_cache = None
+# 哈希计算已移入线程池执行，用可重入锁保护 _hash_cache 的并发读写
+_hash_cache_lock = threading.RLock()
 
 def load_hash_cache() -> Dict:
     global _hash_cache
-    if _hash_cache is not None:
-        return _hash_cache
+    with _hash_cache_lock:
+        if _hash_cache is not None:
+            return _hash_cache
 
-    if not IMAGE_HASH_CACHE_FILE.exists():
-        _hash_cache = {"version": CACHE_VERSION, "entries": {}}
-        return _hash_cache
-
-    try:
-        result = load_json_file(IMAGE_HASH_CACHE_FILE, dict, default={"version": CACHE_VERSION, "entries": {}})
-        cache_data = result.data
-        if not result.success:
-            logger.error(f"加载图片哈希缓存失败: {result.error}，创建新缓存")
+        if not IMAGE_HASH_CACHE_FILE.exists():
             _hash_cache = {"version": CACHE_VERSION, "entries": {}}
             return _hash_cache
-        if cache_data.get("version") != CACHE_VERSION:
+
+        try:
+            result = load_json_file(IMAGE_HASH_CACHE_FILE, dict, default={"version": CACHE_VERSION, "entries": {}})
+            cache_data = result.data
+            if not result.success:
+                logger.error(f"加载图片哈希缓存失败: {result.error}，创建新缓存")
+                _hash_cache = {"version": CACHE_VERSION, "entries": {}}
+                return _hash_cache
+            if cache_data.get("version") != CACHE_VERSION:
+                _hash_cache = {"version": CACHE_VERSION, "entries": {}}
+            else:
+                _hash_cache = cache_data
+        except Exception as e:
+            logger.error(f"加载图片哈希缓存失败: {e}，创建新缓存")
             _hash_cache = {"version": CACHE_VERSION, "entries": {}}
-        else:
-            _hash_cache = cache_data
-    except Exception as e:
-        logger.error(f"加载图片哈希缓存失败: {e}，创建新缓存")
-        _hash_cache = {"version": CACHE_VERSION, "entries": {}}
-    return _hash_cache
+        return _hash_cache
 
 def save_hash_cache():
     global _hash_cache
-    if _hash_cache is None:
-        return
-    try:
-        atomic_write_json(IMAGE_HASH_CACHE_FILE, _hash_cache, dict)
-    except Exception as e:
-        logger.error(f"保存图片哈希缓存失败: {e}")
+    with _hash_cache_lock:
+        if _hash_cache is None:
+            return
+        try:
+            atomic_write_json(IMAGE_HASH_CACHE_FILE, _hash_cache, dict)
+        except Exception as e:
+            logger.error(f"保存图片哈希缓存失败: {e}")
 
 def clean_expired_hash_cache(now: Optional[float] = None) -> int:
-    cache = load_hash_cache()
-    current_time = now if now is not None else time.time()
-    entries = cache.get("entries", {})
-    expired_keys = [
-        key for key, entry in entries.items()
-        if current_time - entry.get("timestamp", 0) > IMAGE_HASH_CACHE_TTL
-    ]
-    for key in expired_keys:
-        del entries[key]
-    if expired_keys:
-        logger.info(f"清理了 {len(expired_keys)} 条过期图片哈希缓存")
-        save_hash_cache()
-    return len(expired_keys)
+    with _hash_cache_lock:
+        cache = load_hash_cache()
+        current_time = now if now is not None else time.time()
+        entries = cache.get("entries", {})
+        expired_keys = [
+            key for key, entry in entries.items()
+            if current_time - entry.get("timestamp", 0) > IMAGE_HASH_CACHE_TTL
+        ]
+        for key in expired_keys:
+            del entries[key]
+        if expired_keys:
+            logger.info(f"清理了 {len(expired_keys)} 条过期图片哈希缓存")
+            save_hash_cache()
+        return len(expired_keys)
 
 def get_cache_key(image_path: Path) -> str:
     try:
@@ -82,36 +89,39 @@ def get_cache_key(image_path: Path) -> str:
 def get_cached_hash(image_path: Path, hash_type: str) -> Tuple[str, bool]:
     if not image_path.exists():
         return "", False
-    cache = load_hash_cache()
-    cache_key = get_cache_key(image_path)
-    entry = cache["entries"].get(cache_key)
-    if not entry:
-        return "", False
-    if time.time() - entry.get("timestamp", 0) > IMAGE_HASH_CACHE_TTL:
-        if cache_key in cache["entries"]:
-            del cache["entries"][cache_key]
-        return "", False
-    return entry.get(hash_type, ""), True
+    with _hash_cache_lock:
+        cache = load_hash_cache()
+        cache_key = get_cache_key(image_path)
+        entry = cache["entries"].get(cache_key)
+        if not entry:
+            return "", False
+        if time.time() - entry.get("timestamp", 0) > IMAGE_HASH_CACHE_TTL:
+            if cache_key in cache["entries"]:
+                del cache["entries"][cache_key]
+            return "", False
+        return entry.get(hash_type, ""), True
 
 def update_hash_cache(image_path: Path, perceptual_hash: str, file_hash: str):
     if not image_path.exists():
         return
-    cache = load_hash_cache()
-    cache_key = get_cache_key(image_path)
-    cache["entries"][cache_key] = {
-        "perceptual_hash": perceptual_hash,
-        "file_hash": file_hash,
-        "timestamp": time.time(),
-    }
-    save_hash_cache()
+    with _hash_cache_lock:
+        cache = load_hash_cache()
+        cache_key = get_cache_key(image_path)
+        cache["entries"][cache_key] = {
+            "perceptual_hash": perceptual_hash,
+            "file_hash": file_hash,
+            "timestamp": time.time(),
+        }
+        save_hash_cache()
 
 def invalidate_cache_for_file(image_path: Path):
-    cache = load_hash_cache()
-    cache_key = get_cache_key(image_path)
-    if cache_key in cache["entries"]:
-        del cache["entries"][cache_key]
-        save_hash_cache()
-        logger.info(f"已使 {image_path.name} 的哈希缓存失效")
+    with _hash_cache_lock:
+        cache = load_hash_cache()
+        cache_key = get_cache_key(image_path)
+        if cache_key in cache["entries"]:
+            del cache["entries"][cache_key]
+            save_hash_cache()
+            logger.info(f"已使 {image_path.name} 的哈希缓存失效")
 
 # --- 哈希计算 ---
 
@@ -157,7 +167,7 @@ def get_hashes_from_bytes(image_bytes: bytes) -> Tuple[Optional[str], Optional[s
 
 # --- 验证逻辑 ---
 
-async def _verify_duplicate_check(img1: Image.Image, img2: Image.Image) -> bool:
+def _verify_duplicate_check_sync(img1: Image.Image, img2: Image.Image) -> bool:
     try:
         if img1.mode != 'RGB': img1 = img1.convert('RGB')
         if img2.mode != 'RGB': img2 = img2.convert('RGB')
@@ -180,29 +190,39 @@ async def _verify_duplicate_check(img1: Image.Image, img2: Image.Image) -> bool:
         logger.error(f"验证重复图片时出错: {e}")
         return False
 
-async def verify_duplicate_bytes_vs_path(img_path_1: Path, img_bytes_2: bytes) -> bool:
+async def _verify_duplicate_check(img1: Image.Image, img2: Image.Image) -> bool:
+    # 兼容保留的薄封装，实际逻辑见 _verify_duplicate_check_sync
+    return _verify_duplicate_check_sync(img1, img2)
+
+def _verify_duplicate_bytes_vs_path_sync(img_path_1: Path, img_bytes_2: bytes) -> bool:
     if not img_path_1.exists(): return False
     try:
         with Image.open(img_path_1) as image1, Image.open(io.BytesIO(img_bytes_2)) as image2:
-            return await _verify_duplicate_check(image1, image2)
+            return _verify_duplicate_check_sync(image1, image2)
     except Exception as e:
         logger.error(f"验证(Path vs Bytes)失败: {e}")
         return False
 
-async def verify_duplicate_path_vs_path(img_path_1: Path, img_path_2: Path) -> bool:
+async def verify_duplicate_bytes_vs_path(img_path_1: Path, img_bytes_2: bytes) -> bool:
+    return _verify_duplicate_bytes_vs_path_sync(img_path_1, img_bytes_2)
+
+def _verify_duplicate_path_vs_path_sync(img_path_1: Path, img_path_2: Path) -> bool:
     if not img_path_1.exists() or not img_path_2.exists(): return False
     if img_path_1.absolute() == img_path_2.absolute(): return False
     try:
         with Image.open(img_path_1) as image1, Image.open(img_path_2) as image2:
-            return await _verify_duplicate_check(image1, image2)
+            return _verify_duplicate_check_sync(image1, image2)
     except Exception as e:
         logger.error(f"验证(Path vs Path)失败: {e}")
         return False
 
+async def verify_duplicate_path_vs_path(img_path_1: Path, img_path_2: Path) -> bool:
+    return _verify_duplicate_path_vs_path_sync(img_path_1, img_path_2)
+
 # --- 对外接口 ---
 
-async def check_duplicate_image(group_id: int, new_image_bytes: bytes) -> Tuple[bool, Optional[str]]:
-    """(投稿用) 检查新图片是否与群组中现有图片重复"""
+def _check_duplicate_image_sync(group_id: int, new_image_bytes: bytes) -> Tuple[bool, Optional[str]]:
+    """(投稿用) 查重的同步实现，在线程池中执行"""
     new_p_hash, new_f_hash = get_hashes_from_bytes(new_image_bytes)
     if not new_p_hash or not new_f_hash: return False, None
     if not data_manager.ensure_group_data_loaded(group_id): return False, None
@@ -224,14 +244,18 @@ async def check_duplicate_image(group_id: int, new_image_bytes: bytes) -> Tuple[
 
     if new_p_hash in existing_perceptual_hashes:
         existing_img_path = existing_perceptual_hashes[new_p_hash]
-        if await verify_duplicate_bytes_vs_path(existing_img_path, new_image_bytes):
+        if _verify_duplicate_bytes_vs_path_sync(existing_img_path, new_image_bytes):
             logger.info("二次验证通过，确认为重复")
             return True, existing_img_path.name
             
     return False, None
 
-async def find_group_duplicates(group_id: int) -> List[Tuple[Path, Path]]:
-    """(SU清理用) 查找重复图片"""
+async def check_duplicate_image(group_id: int, new_image_bytes: bytes) -> Tuple[bool, Optional[str]]:
+    """(投稿用) 检查新图片是否与群组中现有图片重复"""
+    return await asyncio.to_thread(_check_duplicate_image_sync, group_id, new_image_bytes)
+
+def _find_group_duplicates_sync(group_id: int) -> List[Tuple[Path, Path]]:
+    """(SU清理用) 查重的同步实现，在线程池中执行"""
     if not data_manager.ensure_group_data_loaded(group_id): return []
     image_files = data_manager.group_images.get(group_id, [])
     image_dir = get_group_image_dir(group_id)
@@ -249,12 +273,16 @@ async def find_group_duplicates(group_id: int) -> List[Tuple[Path, Path]]:
             existing_img = perceptual_hashes[p_hash]
             existing_f_hash = file_hashes.get(existing_img)
             if (f_hash == existing_f_hash and
-                    await verify_duplicate_path_vs_path(existing_img, img_path)):
+                    _verify_duplicate_path_vs_path_sync(existing_img, img_path)):
                 duplicates_to_remove.append((existing_img, img_path))
         else:
             perceptual_hashes[p_hash] = img_path
             file_hashes[img_path] = f_hash
     return duplicates_to_remove
+
+async def find_group_duplicates(group_id: int) -> List[Tuple[Path, Path]]:
+    """(SU清理用) 查找重复图片"""
+    return await asyncio.to_thread(_find_group_duplicates_sync, group_id)
 
 def safe_remove_group_duplicates(group_id: int, duplicates: List[Tuple[Path, Path]]) -> int:
     """(SU清理用) 删除重复图片"""

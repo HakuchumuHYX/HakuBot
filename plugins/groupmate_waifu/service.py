@@ -170,9 +170,11 @@ def remove_displaced_partner(group_id: int, user_id: int) -> None:
 # Yinpa
 
 
-def record_yinpa(actor_id: int, target_id: int) -> None:
-    record_yinpa1[actor_id] = record_yinpa1.get(actor_id, 0) + 1
-    record_yinpa2[target_id] = record_yinpa2.get(target_id, 0) + 1
+def record_yinpa(group_id: int, actor_id: int, target_id: int) -> None:
+    actor_record = record_yinpa1.setdefault(group_id, {})
+    actor_record[actor_id] = actor_record.get(actor_id, 0) + 1
+    target_record = record_yinpa2.setdefault(group_id, {})
+    target_record[target_id] = target_record.get(target_id, 0) + 1
     save_record_yinpa1()
     save_record_yinpa2()
 
@@ -200,24 +202,26 @@ def resolve_yinpa_target(
 
 
 def get_yinpa_record_rows(
+    group_id: int,
     member_list: Iterable[Dict[str, Any]],
-    record: Dict[int, int],
+    record: Dict[int, Dict[int, int]],
 ) -> List[Tuple[str, int]]:
+    group_record = record.get(group_id, {})
     rows = [
         ((member["card"] or member["nickname"]), times)
         for member in member_list
-        if (times := record.get(member["user_id"]))
+        if (times := group_record.get(member["user_id"]))
     ]
     rows.sort(key=lambda x: x[1], reverse=True)
     return rows
 
 
-def get_yinpa_actor_record_rows(member_list: Iterable[Dict[str, Any]]) -> List[Tuple[str, int]]:
-    return get_yinpa_record_rows(member_list, record_yinpa1)
+def get_yinpa_actor_record_rows(group_id: int, member_list: Iterable[Dict[str, Any]]) -> List[Tuple[str, int]]:
+    return get_yinpa_record_rows(group_id, member_list, record_yinpa1)
 
 
-def get_yinpa_target_record_rows(member_list: Iterable[Dict[str, Any]]) -> List[Tuple[str, int]]:
-    return get_yinpa_record_rows(member_list, record_yinpa2)
+def get_yinpa_target_record_rows(group_id: int, member_list: Iterable[Dict[str, Any]]) -> List[Tuple[str, int]]:
+    return get_yinpa_record_rows(group_id, member_list, record_yinpa2)
 
 
 # Marriage

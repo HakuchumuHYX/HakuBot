@@ -118,14 +118,27 @@ record_lock: Dict[int, Dict[int, int]] = _load_record(
     RECORD_LOCK_FILE, _OLD_RECORD_LOCK_FILE, waifu_reset, Zero_today
 )
 
-# 透群友记录1: {user_id: count}
-record_yinpa1: Dict[int, int] = _load_record(
-    RECORD_YINPA1_FILE, _OLD_RECORD_YINPA1_FILE, waifu_reset, Zero_today
+def _discard_flat_yinpa_record(record: Dict, name: str) -> Dict:
+    """检测旧的扁平格式 {user_id: count}（值为 int 而非 dict）则丢弃。
+
+    该数据每日 0 点重置，丢弃无实际损失。
+    """
+    if any(not isinstance(value, dict) for value in record.values()):
+        logger.info(f"{name} 检测到旧的扁平格式数据（不分群），已丢弃。")
+        return {}
+    return record
+
+
+# 透群友记录1: {group_id: {user_id: count}}
+record_yinpa1: Dict[int, Dict[int, int]] = _discard_flat_yinpa_record(
+    _load_record(RECORD_YINPA1_FILE, _OLD_RECORD_YINPA1_FILE, waifu_reset, Zero_today),
+    "record_yinpa1",
 )
 
-# 透群友记录2: {user_id: count}
-record_yinpa2: Dict[int, int] = _load_record(
-    RECORD_YINPA2_FILE, _OLD_RECORD_YINPA2_FILE, waifu_reset, Zero_today
+# 透群友记录2: {group_id: {user_id: count}}
+record_yinpa2: Dict[int, Dict[int, int]] = _discard_flat_yinpa_record(
+    _load_record(RECORD_YINPA2_FILE, _OLD_RECORD_YINPA2_FILE, waifu_reset, Zero_today),
+    "record_yinpa2",
 )
 
 # 保护名单: {group_id: set(user_ids)}

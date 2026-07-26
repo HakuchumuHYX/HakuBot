@@ -75,6 +75,8 @@ async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
             at_segment = MessageSegment.at(user_id)
             full_message = at_segment + MessageSegment.text(f" {reply_message_content}")
             await bot.send_group_msg(group_id=group_id, message=full_message)
+            # 回复完成，从上下文中移除该条目
+            message_context.pop(replied_msg_id, None)
             logger.info(f"超级用户 {superuser_id} 在群 {group_id} 中回复用户 {user_id}")
             await reply_message.finish(f"回复已发送到群 {group_info}")
         else:
@@ -83,6 +85,8 @@ async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
                 user_id=int(user_id),
                 message=reply_message_content
             )
+            # 回复完成，从上下文中移除该条目
+            message_context.pop(replied_msg_id, None)
             logger.info(f"超级用户 {superuser_id} 成功私聊回复用户 {user_id}")
             await reply_message.finish(f"回复已发送给 {user_info}")
     except FinishedException:

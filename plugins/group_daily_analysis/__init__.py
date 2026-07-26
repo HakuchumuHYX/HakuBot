@@ -63,7 +63,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 # --- 消息记录器 ---
-# 优先级设为 10，确保不阻塞其他高优先级命令，但能记录所有消息
+# 优先级设为 1，确保不阻塞其他命令，但能记录所有消息
 message_recorder = on_message(priority=1, block=False)
 
 # --- Bot 自己发出的群消息回流事件记录器 (post_type=message_sent) ---
@@ -78,6 +78,9 @@ message_sent_recorder = on_type(
 @message_recorder.handle()
 async def record_message(bot: Bot, event: GroupMessageEvent):
     """记录群消息到数据库"""
+    # 群里显式禁用本插件时不记录（user_id 传 "0"，避免 superuser 旁路导致开关失效）
+    if not is_plugin_enabled("group_daily_analysis", str(event.group_id), "0"):
+        return
     try:
         # 获取发送者昵称
         sender = event.sender
@@ -129,6 +132,11 @@ async def record_message_sent(bot: Bot, event: OneBotEvent):
     """
     try:
         group_id = int(getattr(event, "group_id"))
+
+        # 群里显式禁用本插件时不记录（user_id 传 "0"，避免 superuser 旁路导致开关失效）
+        if not is_plugin_enabled("group_daily_analysis", str(group_id), "0"):
+            return
+
         message_id = int(getattr(event, "message_id", 0) or 0)
 
         # 跳过本插件发出的日报总结，避免“总结套娃”
@@ -426,6 +434,8 @@ async def auto_run_daily_analysis():
 
     target_groups = []
     # 从 plugin_manager 获取启用的群列表
+    # 设计决策：自动日报只推送给 plugin_status 中显式开启（True）的群，
+    # 与手动命令的“默认启用”语义不同，避免向未主动开启的群推送日报
     if "group_daily_analysis" in plugin_status:
         for gid, enabled in plugin_status["group_daily_analysis"].items():
             if enabled:

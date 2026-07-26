@@ -12,7 +12,7 @@ from nonebot.log import logger
 
 # 缓存文件名模板
 CACHE_IMG_TEMPLATE = "help_cache_{mode}.png"
-CACHE_HASH_NAME = "config_hash.txt"
+CACHE_HASH_TEMPLATE = "config_hash_{mode}.txt"
 
 
 def get_config_hash(config: HelpConfig) -> str:
@@ -32,16 +32,15 @@ def extract_links(text_list: List[str]) -> List[str]:
 class HelpManager:
     def __init__(self):
         self.cache_dir = store.get_plugin_data_dir()
-        self.hash_path = self.cache_dir / CACHE_HASH_NAME
         # 确保目录存在
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.current_config = load_config()
 
-    def _save_cache(self, img_bytes: bytes, img_path: Path, new_hash: str):
+    def _save_cache(self, img_bytes: bytes, img_path: Path, hash_path: Path, new_hash: str):
         """保存图片和哈希值到 data 目录"""
         with open(img_path, "wb") as f:
             f.write(img_bytes)
-        with open(self.hash_path, "w", encoding="utf-8") as f:
+        with open(hash_path, "w", encoding="utf-8") as f:
             f.write(new_hash)
 
     def _is_night_mode(self) -> bool:
@@ -62,15 +61,16 @@ class HelpManager:
         is_dark = self._is_night_mode()
         mode_suffix = "night" if is_dark else "day"
 
-        # 确定当前模式对应的缓存图片路径
+        # 确定当前模式对应的缓存图片和哈希文件路径
         current_img_path = self.cache_dir / CACHE_IMG_TEMPLATE.format(mode=mode_suffix)
+        current_hash_path = self.cache_dir / CACHE_HASH_TEMPLATE.format(mode=mode_suffix)
 
         # 3. 检查缓存是否有效
-        # 有效条件：Hash文件存在且匹配 + 当前模式的图片文件存在 + 非强制更新
+        # 有效条件：当前模式的 Hash 文件存在且匹配 + 当前模式的图片文件存在 + 非强制更新
         cache_valid = False
-        if self.hash_path.exists() and current_img_path.exists():
+        if current_hash_path.exists() and current_img_path.exists():
             try:
-                with open(self.hash_path, "r", encoding="utf-8") as f:
+                with open(current_hash_path, "r", encoding="utf-8") as f:
                     saved_hash = f.read().strip()
                 if saved_hash == current_hash and not force_update:
                     cache_valid = True
@@ -82,7 +82,7 @@ class HelpManager:
             logger.info(f"Rendering help image for mode: {mode_suffix.upper()}...")
             # 传入 is_dark 参数
             img_bytes = await render_help_image(self.current_config, is_dark=is_dark)
-            self._save_cache(img_bytes, current_img_path, current_hash)
+            self._save_cache(img_bytes, current_img_path, current_hash_path, current_hash)
 
         # 5. 提取链接
         links = extract_links(self.current_config.help_text)

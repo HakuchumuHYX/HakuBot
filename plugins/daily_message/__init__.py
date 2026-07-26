@@ -56,32 +56,35 @@ def load_schedule_config():
         ]
 
 
-async def get_all_groups():
-    """获取所有机器人加入的群组"""
-    all_groups = set()
+async def get_group_bot_map():
+    """获取群组到机器人的映射，每个群只由第一个认领它的机器人负责"""
+    group_bot_map = {}
 
     for bot in bots.values():
         try:
             # 获取机器人加入的所有群组
             groups = await bot.get_group_list()
             for group in groups:
-                all_groups.add(str(group["group_id"]))
+                group_id = str(group["group_id"])
+                # 群已被前一个机器人认领则跳过，避免多 bot 重复发送
+                if group_id not in group_bot_map:
+                    group_bot_map[group_id] = bot
         except Exception as e:
             logger.error(f"获取机器人 {bot.self_id} 的群列表失败: {e}")
 
-    return all_groups
+    return group_bot_map
 
 
 async def send_message_to_enabled_groups(message: str):
     """发送消息到所有启用了插件的群组"""
-    all_groups = await get_all_groups()
+    group_bot_map = await get_group_bot_map()
 
-    if not all_groups:
+    if not group_bot_map:
         logger.error("未找到任何群组")
         return
 
     enabled_groups = []
-    for group_id in all_groups:
+    for group_id in group_bot_map:
         user_id = "0"
         if is_plugin_enabled("daily_message", group_id, user_id):
             enabled_groups.append(group_id)
@@ -90,13 +93,13 @@ async def send_message_to_enabled_groups(message: str):
         logger.info("没有启用了定时消息插件的群组")
         return
 
-    for bot in bots.values():
-        for group_id in enabled_groups:
-            try:
-                await bot.send_group_msg(group_id=int(group_id), message=message)
-                logger.info(f"成功发送消息到群 {group_id}: {message}")
-            except Exception as e:
-                logger.error(f"发送消息到群 {group_id} 失败: {e}")
+    for group_id in enabled_groups:
+        bot = group_bot_map[group_id]
+        try:
+            await bot.send_group_msg(group_id=int(group_id), message=message)
+            logger.info(f"成功发送消息到群 {group_id}: {message}")
+        except Exception as e:
+            logger.error(f"发送消息到群 {group_id} 失败: {e}")
 
 
 def setup_scheduled_jobs():
@@ -140,12 +143,6 @@ async def init_plugin():
     setup_scheduled_jobs()
     logger.success("定时消息插件 daily_message 加载成功")
 
-    # 延迟导入，避免循环导入
-    @get_driver().on_startup
-    async def register_commands():
-        """注册命令处理器"""
-        try:
-            from . import command_handler
-            logger.debug("定时消息插件命令处理器注册成功")
-        except ImportError as e:
-            logger.warning(f"注册命令处理器失败: {e}")
+
+# 模块底部导入命令处理器，注册命令（command_handler 内对本模块使用延迟导入，避免循环导入）
+from . import command_handler  # noqa: E402

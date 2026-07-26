@@ -1,7 +1,7 @@
 from nonebot.plugin import on_message
 from nonebot.rule import regex
 from nonebot.adapters import Event, Message, Bot
-from nonebot_plugin_session import extract_session, SessionIdType
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from .config import config
 from ..plugin_manager.enable import is_plugin_enabled
@@ -60,8 +60,11 @@ def extract_text_from_message(msg: Message) -> str:
 async def plush_handler(bot: Bot, event: Event):
     global msg_dict
 
-    session = extract_session(bot, event)
-    group_id = session.get_id(SessionIdType.GROUP).split("_")[-1]
+    # 仅处理群聊消息
+    if not isinstance(event, GroupMessageEvent):
+        return
+
+    group_id = str(event.group_id)
 
     # 检查插件是否启用
     if not is_plugin_enabled("plus_one", group_id, "0"):
@@ -72,7 +75,7 @@ async def plush_handler(bot: Bot, event: Event):
 
     # 如果是机器人自己发的消息（虽然通常 on_message 不会触发，但以防万一有 echo）
     if event.get_user_id() == bot.self_id:
-        msg_dict[group_id] = []
+        msg_dict.pop(group_id, None)
         return
 
     # 获取当前信息
@@ -81,21 +84,20 @@ async def plush_handler(bot: Bot, event: Event):
     message_text = extract_text_from_message(msg)
     if contains_blocked_words(message_text):
         # 如果包含屏蔽词，清空记录并返回
-        msg_dict[group_id] = []
+        msg_dict.pop(group_id, None)
         return
 
-    # 获取群聊记录
-    text_list = msg_dict.get(group_id, [])
+    # 获取群聊记录 (上一条消息, 连续复读次数)
+    record = msg_dict.get(group_id)
 
     # 检查是否与上一条消息相同
-    if text_list:
-        if not is_equal(text_list[-1], msg):
-            # 如果不相同，重置列表
-            text_list = []
-    
-    # 将当前消息加入（此时 text_list 要么是空的，要么包含之前的相同消息）
-    text_list.append(msg)
-    msg_dict[group_id] = text_list
+    if record is not None and is_equal(record[0], msg):
+        count = record[1] + 1
+    else:
+        # 如果不相同，重置计数
+        count = 1
 
-    if len(text_list) == 2:
+    msg_dict[group_id] = (msg, count)
+
+    if count == 2:
         await plus.send(msg)

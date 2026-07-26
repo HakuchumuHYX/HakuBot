@@ -3,6 +3,7 @@ import os
 
 import io
 import tempfile
+import threading
 from pathlib import Path
 
 import cv2
@@ -10,6 +11,7 @@ import numpy as np
 from PIL import Image
 from nonebot.log import logger
 
+from ..utils.tools import run_in_pool
 from .utils import (
     IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
     IMAGE_PROCESSOR_MAX_GIF_BYTES,
@@ -79,6 +81,8 @@ REMBG_MODEL_FALLBACK = os.getenv("HAKUBOT_REMBG_MODEL_FALLBACK", "isnet-general-
 # - cuda/gpu: 强制 GPU（若不可用会回退 CPU）
 REMBG_DEVICE = os.getenv("HAKUBOT_REMBG_DEVICE", "auto").strip().lower()
 _REMBG_SESSION_CACHE = {}
+# 线程池并发访问 session 缓存时的保护锁
+_REMBG_SESSION_LOCK = threading.Lock()
 
 # rembg 质量检测：alpha 太“边缘化/过小”就尝试 fallback 模型
 REMBG_MIN_FG_RATIO = 0.03
@@ -276,9 +280,9 @@ def _alpha_quality_from_png_path(png_path: str) -> tuple[float, float]:
         return 0.0, 0.0
 
 
-async def remove_background_lineart(image_path: str) -> str:
+def _remove_background_lineart_sync(image_path: str) -> str:
     """
-    线稿/描边类表情包兜底：
+    线稿/描边类表情包兜底（同步重活，在线程池中执行）：
     - 当 rembg 也只抠出线条时，用“线条作墙 + flood fill”把封闭区域填成前景。
     适用于：背景与主体颜色接近、但黑色/深色描边很明显的图。
     """
@@ -347,9 +351,14 @@ async def remove_background_lineart(image_path: str) -> str:
         return ""
 
 
-async def remove_background_solid_bg(image_path: str) -> str:
+async def remove_background_lineart(image_path: str) -> str:
+    """线稿/描边类表情包兜底（线程池中执行同步计算）"""
+    return await run_in_pool(_remove_background_lineart_sync, image_path)
+
+
+def _remove_background_solid_bg_sync(image_path: str) -> str:
     """
-    贴纸/表情包专用：针对近纯色背景的高保真抠图。
+    贴纸/表情包专用（同步重活，在线程池中执行）：针对近纯色背景的高保真抠图。
     能显著提升“细小文字/描边”保留率，解决 u2net 容易把字抠没的问题。
     """
     try:
@@ -428,8 +437,16 @@ async def remove_background_solid_bg(image_path: str) -> str:
         return ""
 
 
-async def remove_background_rembg(image_path: str) -> str:
-    """使用 rembg 背景移除（用于非纯色背景兜底）"""
+async def remove_background_solid_bg(image_path: str) -> str:
+    """贴纸/表情包专用：针对近纯色背景的高保真抠图（线程池中执行同步计算）"""
+    return await run_in_pool(_remove_background_solid_bg_sync, image_path)
+
+
+def _remove_background_rembg_sync(image_path: str) -> str:
+    """
+    rembg 抠图的同步重活（在线程池中执行）：
+    输入预处理(PIL resize/encode) + primary 推理 + 打分 + 可能的 fallback 推理 + 缩回原尺寸。
+    """
     try:
         from rembg import remove
         from rembg.session_factory import new_session
@@ -460,10 +477,14 @@ async def remove_background_rembg(image_path: str) -> str:
         def _run_model(model_name: str) -> bytes:
             logger.info(f"rembg model: {model_name}")
             key = (model_name, tuple(providers))
+            # double-check：先无锁 get，miss 后加锁再 get-or-create，避免并发重复建 session
             session = _REMBG_SESSION_CACHE.get(key)
             if session is None:
-                session = new_session(model_name, providers=providers)
-                _REMBG_SESSION_CACHE[key] = session
+                with _REMBG_SESSION_LOCK:
+                    session = _REMBG_SESSION_CACHE.get(key)
+                    if session is None:
+                        session = new_session(model_name, providers=providers)
+                        _REMBG_SESSION_CACHE[key] = session
             return remove(input_data, session=session)
 
         def _score_alpha(png_bytes: bytes) -> tuple[float, float]:
@@ -521,8 +542,13 @@ async def remove_background_rembg(image_path: str) -> str:
         return ""
 
 
-async def remove_background_opencv(image_path: str) -> str:
-    """使用 OpenCV 的 GrabCut（最终兜底）"""
+async def remove_background_rembg(image_path: str) -> str:
+    """使用 rembg 背景移除（用于非纯色背景兜底，线程池中执行推理）"""
+    return await run_in_pool(_remove_background_rembg_sync, image_path)
+
+
+def _remove_background_opencv_sync(image_path: str) -> str:
+    """使用 OpenCV 的 GrabCut（同步重活，在线程池中执行）"""
     try:
         img_bgr = _read_cv_bgr(image_path)
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -556,9 +582,14 @@ async def remove_background_opencv(image_path: str) -> str:
         return ""
 
 
-async def remove_background_simple(image_path: str) -> str:
+async def remove_background_opencv(image_path: str) -> str:
+    """使用 OpenCV 的 GrabCut（最终兜底，线程池中执行同步计算）"""
+    return await run_in_pool(_remove_background_opencv_sync, image_path)
+
+
+def _remove_background_simple_sync(image_path: str) -> str:
     """
-    最简方案兜底（尽量不要走到这里）
+    最简方案兜底（同步重活，在线程池中执行，尽量不要走到这里）
     通过检测近白背景并保留边缘。
     """
     try:
@@ -596,6 +627,11 @@ async def remove_background_simple(image_path: str) -> str:
         return ""
 
 
+async def remove_background_simple(image_path: str) -> str:
+    """最简方案兜底（线程池中执行同步计算）"""
+    return await run_in_pool(_remove_background_simple_sync, image_path)
+
+
 def _preserve_existing_alpha(image_path: str) -> str:
     try:
         with Image.open(image_path) as im:
@@ -617,7 +653,7 @@ def _preserve_existing_alpha(image_path: str) -> str:
 
 async def remove_background_file(image_path: str, *, allow_rembg: bool = True) -> str:
     """对本地文件做抠图：已有透明优先 -> 纯色背景 -> rembg -> grabcut -> simple"""
-    alpha = _preserve_existing_alpha(image_path)
+    alpha = await run_in_pool(_preserve_existing_alpha, image_path)
     if alpha and os.path.exists(alpha):
         return alpha
 
@@ -628,7 +664,7 @@ async def remove_background_file(image_path: str, *, allow_rembg: bool = True) -
     if allow_rembg:
         rem = await remove_background_rembg(image_path)
         if rem and os.path.exists(rem):
-            fg_ratio, core_ratio = _alpha_quality_from_png_path(rem)
+            fg_ratio, core_ratio = await run_in_pool(_alpha_quality_from_png_path, rem)
             if fg_ratio < REMBG_MIN_FG_RATIO or core_ratio < REMBG_MIN_CORE_RATIO:
                 lineart = await remove_background_lineart(image_path)
                 if lineart and os.path.exists(lineart):
@@ -647,10 +683,16 @@ async def remove_background_file(image_path: str, *, allow_rembg: bool = True) -
     return ""
 
 
+def _load_frame_rgba(path: str) -> Image.Image:
+    """读取处理后的单帧并转为 RGBA（同步，在线程池中执行）"""
+    with Image.open(path) as processed_frame:
+        return processed_frame.convert("RGBA").copy()
+
+
 async def remove_background_gif(image_path: str) -> str:
     """处理 GIF 抠图 - 逐帧处理（复用同样的策略）"""
     try:
-        source_frames, durations, meta = load_gif_frames(image_path)
+        source_frames, durations, meta = await run_in_pool(load_gif_frames, image_path)
         if not source_frames:
             raise Exception("没有成功读取的帧")
         if len(source_frames) > CUTOUT_GIF_MAX_FRAMES:
@@ -663,11 +705,10 @@ async def remove_background_gif(image_path: str) -> str:
             temp_frame_path = os.path.join(tempfile.gettempdir(), f"temp_frame_{os.urandom(4).hex()}.png")
             processed_frame_path = ""
             try:
-                frame_rgba.save(temp_frame_path, "PNG")
+                await run_in_pool(frame_rgba.save, temp_frame_path, "PNG")
                 processed_frame_path = await remove_background_file(temp_frame_path, allow_rembg=allow_rembg)
                 if processed_frame_path and os.path.exists(processed_frame_path):
-                    with Image.open(processed_frame_path) as processed_frame:
-                        frames.append(processed_frame.convert("RGBA").copy())
+                    frames.append(await run_in_pool(_load_frame_rgba, processed_frame_path))
             finally:
                 await cleanup_files(temp_frame_path, processed_frame_path)
 
@@ -676,7 +717,9 @@ async def remove_background_gif(image_path: str) -> str:
 
         output_dir = ensure_output_dir("nonebot_image_cutout")
         output_path = output_dir / f"cutout_gif_{os.urandom(4).hex()}.gif"
-        save_gif(frames, output_path, durations=durations[: len(frames)], loop=int(meta.get("loop", 0)))
+        await run_in_pool(
+            save_gif, frames, output_path, durations=durations[: len(frames)], loop=int(meta.get("loop", 0))
+        )
         return str(output_path)
 
     except Exception as e:

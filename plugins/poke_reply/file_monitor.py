@@ -13,19 +13,13 @@ DEBOUNCE_SECONDS = 0.2
 
 
 def discover_watch_paths():
+    """返回需要监听的 (目录, 是否递归) 列表"""
     watch_paths = []
     if TEXT_FILES_DIR.exists():
-        watch_paths.append(TEXT_FILES_DIR)
+        watch_paths.append((TEXT_FILES_DIR, False))
     if IMAGE_FILES_DIR.exists():
-        watch_paths.append(IMAGE_FILES_DIR)
-        for child in IMAGE_FILES_DIR.iterdir():
-            if not child.is_dir() or not child.name.startswith("group_"):
-                continue
-            try:
-                int(child.name[len("group_"):])
-            except ValueError:
-                continue
-            watch_paths.append(child)
+        # 递归监听，覆盖现有及运行期间新建的 group_* 子目录
+        watch_paths.append((IMAGE_FILES_DIR, True))
     return watch_paths
 
 class JsonFileHandler(FileSystemEventHandler):
@@ -120,8 +114,8 @@ class FileMonitor:
             self.observer = Observer()
             event_handler = JsonFileHandler(on_modified_callback)
 
-            for watch_path in discover_watch_paths():
-                self.observer.schedule(event_handler, path=str(watch_path), recursive=False)
+            for watch_path, recursive in discover_watch_paths():
+                self.observer.schedule(event_handler, path=str(watch_path), recursive=recursive)
 
             self.observer.start()
             self.is_monitoring = True

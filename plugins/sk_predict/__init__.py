@@ -46,7 +46,7 @@ async def handle_predict_command(
         await matcher.send(f"正在实时获取 {region_name} 预测数据，请稍候...")
 
     try:
-        img_bytes = await refresh_prediction_cache(region)
+        img_bytes = await refresh_prediction_cache(region, force=force_reload)
     except Exception as e:
         err = str(e)
         logger.exception(f"获取 {region_name} 预测线失败: {err}")

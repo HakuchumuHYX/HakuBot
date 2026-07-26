@@ -138,7 +138,6 @@ async def search_googlelens(
         proxy = get_effective_proxy(config.get("proxy"))
         async with get_client_session().get(
             serp_url,
-            verify_ssl=False,
             proxy=proxy,
             timeout=DEFAULT_TIMEOUT,
         ) as response:

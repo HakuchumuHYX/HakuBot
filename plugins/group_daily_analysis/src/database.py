@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -11,10 +12,25 @@ DB_PATH = DATA_DIR / "messages.db"
 
 class DatabaseManager:
     def __init__(self):
+        # 线程本地存储，每个线程复用一个连接
+        # （add_message 经 asyncio.to_thread 调用，连接数最多为默认线程池大小，可接受）
+        self._local = threading.local()
         self._init_db()
 
-    def _get_conn(self):
-        return sqlite3.connect(DB_PATH)
+    def _get_conn(self) -> sqlite3.Connection:
+        """获取当前线程的数据库连接（线程本地复用，避免每次新建连接）"""
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(
+                str(DB_PATH),
+                timeout=30.0,
+                check_same_thread=False,
+            )
+            # 开启 WAL 模式，提高并发性能
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            self._local.conn = conn
+        return conn
 
     def _init_db(self):
         """初始化数据库表"""
@@ -81,7 +97,7 @@ class DatabaseManager:
                 conn.commit()
                 if deleted_count > 0:
                     logger.info(f"已清理 {deleted_count} 条过期消息 (保留 {retention_days} 天)")
-                    # 整理碎片
+                    # 整理碎片（VACUUM 必须在无活动事务时执行，上方已 commit）
                     cursor.execute("VACUUM")
         except Exception as e:
             logger.error(f"清理旧消息失败: {e}")

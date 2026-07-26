@@ -11,7 +11,7 @@ class PredictApiError(RuntimeError):
 
 
 async def fetch_json(url: str) -> Any:
-    async with get_client_session().get(url, verify_ssl=False) as resp:
+    async with get_client_session().get(url) as resp:
         if resp.status != 200:
             text = await resp.text()
             raise HttpError(resp.status, text or resp.reason)

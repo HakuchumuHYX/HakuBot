@@ -58,7 +58,7 @@ async def bili_keyword(
             msg, vurl = await dynamic_detail(url, session)
 
         # 避免多个机器人解析重复推送
-        if group_id:
+        if group_id and vurl:
             if group_id in analysis_stat:
                 if analysis_stat[group_id].get(vurl):
                     return False
@@ -76,6 +76,9 @@ async def b23_extract(text: str, session: ClientSession) -> str:
     b23 = re.compile(r"b23.tv/(\w+)|(bili(22|23|33|2233).cn)/(\w+)").search(
         text.replace("\\", "")
     )
+    if not b23:
+        # 正文只含裸域名（无路径）时正则不命中，直接返回原文交给 extract() 处理
+        return text
     url = f"https://{b23[0]}"
 
     async with session.get(url) as resp:

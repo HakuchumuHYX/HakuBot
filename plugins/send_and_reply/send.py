@@ -8,7 +8,7 @@ from nonebot.rule import to_me
 from nonebot.log import logger
 
 # 导入共享上下文
-from .content import message_context
+from .content import message_context, prune_message_context
 from ..plugin_manager.enable import *
 # 获取配置中的超级用户列表
 superusers = get_driver().config.superusers
@@ -102,6 +102,9 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
 
     # 记录消息发送尝试
     logger.info(f"用户 {user_id} 尝试发送消息给超级用户: {text[:50]}...")
+
+    # 存入新条目前先清理过期上下文，防止内存泄漏
+    prune_message_context()
 
     # 发送给所有超级用户
     success_count = 0

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Tuple
 
+from ..utils.json_io import atomic_write_json
 from ..utils.tools import get_logger
 
 logger = get_logger("plugin_manager")
@@ -59,8 +60,7 @@ def load_plugin_status() -> Dict[str, Dict[str, bool]]:
 
 def save_plugin_status(data: Dict[str, Dict[str, bool]]):
     """保存插件状态数据"""
-    with open(STATUS_DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    atomic_write_json(STATUS_DATA_FILE, data, indent=2, ensure_ascii=False)
 
 
 # --- CD 管理 I/O ---
@@ -78,8 +78,7 @@ def load_cd_config() -> Dict[str, Dict[str, int]]:
 
 def save_cd_config(data: Dict[str, Dict[str, int]]):
     """保存插件CD时长配置 (已更新为分群结构)"""
-    with open(CD_CONFIG_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    atomic_write_json(CD_CONFIG_FILE, data, indent=2, ensure_ascii=False)
 
 
 def load_cd_runtime() -> Dict[str, Dict[str, Dict[str, float]]]:
@@ -96,8 +95,7 @@ def load_cd_runtime() -> Dict[str, Dict[str, Dict[str, float]]]:
 
 def save_cd_runtime(data: Dict[str, Dict[str, Dict[str, float]]]):
     """保存用户CD运行时数据"""
-    with open(CD_RUNTIME_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    atomic_write_json(CD_RUNTIME_FILE, data, indent=2, ensure_ascii=False)
 
 
 # --- 水印配置 I/O ---
@@ -142,8 +140,7 @@ def load_watermark_config() -> Dict[str, Any]:
 
 def save_watermark_config(data: Dict[str, Any]):
     """保存水印配置"""
-    with open(WATERMARK_CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    atomic_write_json(WATERMARK_CONFIG_FILE, data, indent=2, ensure_ascii=False)
 
 
 def normalize_plugin_status(data: Dict[str, Dict[str, bool]]) -> Tuple[Dict[str, Dict[str, bool]], bool]:

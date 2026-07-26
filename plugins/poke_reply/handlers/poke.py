@@ -56,7 +56,6 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
         if remaining_time > 0:
             logger.info(f"群 {group_id} 用户 {user_id} 戳一戳CD中，剩余 {remaining_time}秒")
             return
-        update_cd(PLUGIN_ID, str(group_id), str(user_id))
 
     try:
         if not data_manager.ensure_group_data_loaded(group_id):
@@ -136,6 +135,10 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
                     content=selected_text,
                     message_type="text"
                 )
+
+        # 成功发送投稿内容后才扣CD（提示性回复不扣，发送失败不扣）
+        if not is_superuser:
+            update_cd(PLUGIN_ID, str(group_id), str(user_id))
     except FinishedException:
         raise
     except Exception as e:

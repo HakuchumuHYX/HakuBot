@@ -83,14 +83,22 @@ class DailyRecordManager:
     def cleanup_old_records(self, days_to_keep: int = 3):
         """清理旧记录，保留指定天数的数据"""
         try:
-            current_time = time.time()
-            today_key = self.get_today_key()
+            # 计算最早保留日期（今天 - days_to_keep 天）
+            cutoff_key = time.strftime(
+                "%Y-%m-%d", time.localtime(time.time() - days_to_keep * 86400)
+            )
 
             # 找出需要删除的旧日期
             dates_to_remove = []
-            for date_key in self.records_data.keys():
-                if date_key != today_key:
-                    # 简单判断：如果日期键不是今天，就删除（实际应该用日期比较）
+            for date_key in list(self.records_data.keys()):
+                try:
+                    time.strptime(date_key, "%Y-%m-%d")
+                except (ValueError, TypeError):
+                    # 日期键解析失败，一并删除
+                    dates_to_remove.append(date_key)
+                    continue
+                if date_key < cutoff_key:
+                    # 格式合法时字典序即时间序，早于最早保留日期的删除
                     dates_to_remove.append(date_key)
 
             # 删除旧记录

@@ -7,6 +7,7 @@ from pathlib import Path
 from nonebot import on_command
 from nonebot.log import logger
 from nonebot.matcher import Matcher
+from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, Bot, GroupMessageEvent
 
 from .. import db_service, image_service
@@ -58,6 +59,9 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
             await matcher.send("...排行榜图片生成失败，即将发送文本版：\n" + \
                                _format_leaderboard_text(group_name, leaderboard_data))
 
+    except FinishedException:
+        # 忽略 FinishedException，这是正常的结束流程
+        raise
     except Exception as e:
         logger.error(f"获取或绘制排行榜失败: {e}", exc_info=True)
         await matcher.send("...获取排行榜时出错，请联系管理员。")

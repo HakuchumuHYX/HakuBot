@@ -105,7 +105,11 @@ async def _enforce_group_access(
                 at_sender=True,
             )
 
-        update_cd(cd_key, group_id, user_id)
+
+def _update_group_cd(event: MessageEvent, feature: str) -> None:
+    """成功执行后再更新群聊 CD。"""
+    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
+        update_cd(f"{PLUGIN_NAME}:{feature}", str(event.group_id), str(event.user_id))
 
 
 async def _render_chat_reply(reply_text: str, stat_text: str) -> MessageSegment | Message:
@@ -172,6 +176,8 @@ async def _handle_chat_command(
             temperature=plugin_config.chat.temperature,
             top_p=plugin_config.chat.top_p,
         )
+        # LLM 调用成功（已产生消耗）后再更新 CD
+        _update_group_cd(event, "chat")
 
         stat_text = (
             f"—— 使用模型: {result.model}"
@@ -253,6 +259,8 @@ async def _handle_draw_command(
             extra_context=context_text,
         )
         generation_elapsed = time.perf_counter() - started_at
+        # 生图调用成功（已产生消耗）后再更新 CD
+        _update_group_cd(event, "imagen")
 
         started_at = time.perf_counter()
         await matcher.send(MessageSegment.image(image_url))
@@ -330,20 +338,18 @@ async def handle_change_model(args: Message = CommandArg()):
         await model_cmd.finish(f"当前已经是 {new_model} 模型了。")
 
     await model_cmd.send(f"正在尝试切换到模型: {new_model}\n正在进行连接测试，请稍候...")
-    
-    # 临时修改配置
-    plugin_config.chat.model = new_model
-    
+
     try:
         # 构造测试消息
         messages = [{"role": "user", "content": "Hello! This is a connection test."}]
-        
-        # 发起测试请求
-        result = await call_chat_completion(messages)
+
+        # 直接用新模型发起测试请求，不修改全局配置，避免测试期间并发请求用到未验证的模型
+        result = await call_chat_completion(messages, model=new_model)
         reply_text = result.content
         used_model = result.model
 
-        # 如果代码执行到这里，说明测试成功
+        # 如果代码执行到这里，说明测试成功，写入配置
+        plugin_config.chat.model = new_model
         save_config(plugin_config)
 
         # 截取简短的响应预览
@@ -361,15 +367,13 @@ async def handle_change_model(args: Message = CommandArg()):
         raise
 
     except Exception as e:
-        # 测试失败，回滚配置
-        plugin_config.chat.model = old_model
-        
+        # 测试失败，全局配置未被修改
         error_msg = str(e)
         if len(error_msg) > 100:
             error_msg = error_msg[:100] + "..."
-            
+
         await model_cmd.finish(
             f"❌ 切换失败，模型 {new_model} 似乎不可用。\n"
-            f"已回滚到: {old_model}\n"
+            f"当前模型保持为: {old_model}\n"
             f"错误信息: {error_msg}"
         )

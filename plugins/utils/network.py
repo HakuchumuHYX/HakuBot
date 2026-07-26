@@ -13,6 +13,9 @@ logger = get_logger("Network")
 
 DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=120, connect=30, sock_read=120)
 
+# 逃生阀：兼容老行为（跳过 SSL 证书校验），仅在明确设置环境变量时开启；默认执行证书校验
+INSECURE_SSL = os.environ.get("HAKUBOT_INSECURE_SSL", "").strip() in ("1", "true", "yes")
+
 
 def normalize_proxy(proxy: Optional[str]) -> Optional[str]:
     """
@@ -136,7 +139,7 @@ async def download_file(url: str, file_path: str, *, proxy: Optional[str] = None
     下载文件到指定路径
     """
     proxy = get_effective_proxy(proxy)
-    async with get_client_session().get(url, verify_ssl=False, proxy=proxy, timeout=DEFAULT_TIMEOUT) as resp:
+    async with get_client_session().get(url, verify_ssl=not INSECURE_SSL, proxy=proxy, timeout=DEFAULT_TIMEOUT) as resp:
         if resp.status != 200:
             raise HttpError(resp.status, f"下载文件 {truncate(url, 32)} 失败: {resp.reason}")
         with open(file_path, "wb") as f:
@@ -149,7 +152,7 @@ async def download_bytes(url: str, *, proxy: Optional[str] = None) -> bytes:
     下载 URL 内容并返回 bytes（用于需要“先下载再上传/提交”的场景，例如目标站点不支持直接抓取某些带鉴权/防盗链的图片 URL）
     """
     proxy = get_effective_proxy(proxy)
-    async with get_client_session().get(url, verify_ssl=False, proxy=proxy, timeout=DEFAULT_TIMEOUT) as resp:
+    async with get_client_session().get(url, verify_ssl=not INSECURE_SSL, proxy=proxy, timeout=DEFAULT_TIMEOUT) as resp:
         if resp.status != 200:
             raise HttpError(resp.status, f"下载内容 {truncate(url, 32)} 失败: {resp.reason}")
         return await resp.read()
@@ -185,7 +188,7 @@ async def download_image(image_url: str, force_http: bool = False, *, proxy: Opt
     proxy = get_effective_proxy(proxy)
     async with get_client_session().get(
         image_url,
-        verify_ssl=False,
+        verify_ssl=not INSECURE_SSL,
         proxy=proxy,
         timeout=DEFAULT_TIMEOUT,
     ) as resp:

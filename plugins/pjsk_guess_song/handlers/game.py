@@ -9,6 +9,7 @@ from pathlib import Path
 from nonebot import on_command
 from nonebot.log import logger
 from nonebot.typing import T_State
+from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment, Bot, GroupMessageEvent
 
 from .. import db_service, cache_service, plugin_config, game_service, image_service
@@ -141,6 +142,9 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
 
         await _run_game_session(bot, event, game_data, intro_messages, answer_reveal_messages)
 
+    except FinishedException:
+        # 忽略 FinishedException，这是正常的结束流程
+        raise
     except Exception as e:
         logger.error(f"游戏启动过程中发生未处理的异常: {e}", exc_info=True)
         await start_guess_song_unified.send("......开始游戏时发生内部错误，已中断。")
@@ -242,6 +246,9 @@ async def _(bot: Bot, event: MessageEvent):
 
         await _run_game_session(bot, event, game_data, intro_messages, answer_reveal_messages)
 
+    except FinishedException:
+        # 忽略 FinishedException，这是正常的结束流程
+        raise
     except Exception as e:
         logger.error(f"随机游戏启动过程中发生未处理的异常: {e}", exc_info=True)
         await start_random_guess_song.send("......开始游戏时发生内部错误，已中断。")
@@ -353,6 +360,9 @@ async def _(bot: Bot, event: MessageEvent):
 
         await _run_game_session(bot, event, game_data, intro_messages, answer_reveal_messages)
 
+    except FinishedException:
+        # 忽略 FinishedException，这是正常的结束流程
+        raise
     except Exception as e:
         logger.error(f"猜歌手游戏启动过程中发生未处理的异常: {e}", exc_info=True)
         await start_vocalist_game.send("......开始游戏时发生内部错误，已中断。")

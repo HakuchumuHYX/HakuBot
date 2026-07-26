@@ -146,7 +146,6 @@ async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message 
         cd_remain = check_cd(cd_key, group_id, user_id)
         if cd_remain > 0:
             await ximg.finish(f"功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
-        update_cd(cd_key, group_id, user_id)
 
     raw_args = args.extract_plain_text().strip().split()
     
@@ -254,3 +253,7 @@ async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message 
         # 发送逻辑
         # 使用合并转发发送
         await send_forward_msg(bot, event, messages)
+
+    # 发送成功后再更新 CD
+    if MANAGER_AVAILABLE:
+        update_cd(f"{PLUGIN_NAME}:ximg", str(event.group_id), str(event.user_id))

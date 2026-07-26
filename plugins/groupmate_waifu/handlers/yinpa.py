@@ -115,7 +115,7 @@ async def handle_yinpa(bot: Bot, event: GroupMessageEvent, state: T_State):
     if not yinpa_id:
         await yinpa.finish("不可以涩涩！", at_sender=True)
     
-    service.record_yinpa(user_id, yinpa_id)
+    service.record_yinpa(group_id, user_id, yinpa_id)
 
     # 获取目标信息并发送结果
     member = await bot.get_group_member_info(group_id=group_id, user_id=yinpa_id)
@@ -166,7 +166,7 @@ async def handle_yinpa_list(bot: Bot, event: GroupMessageEvent):
     ))
     
     # --- 输出透群友记录 ---
-    record1 = service.get_yinpa_actor_record_rows(member_list)
+    record1 = service.get_yinpa_actor_record_rows(group_id, member_list)
     
     if record1:
         msg_list.append(make_forward_node(
@@ -176,7 +176,7 @@ async def handle_yinpa_list(bot: Bot, event: GroupMessageEvent):
         ))
     
     # --- 输出被透记录 ---
-    record2 = service.get_yinpa_target_record_rows(member_list)
+    record2 = service.get_yinpa_target_record_rows(group_id, member_list)
     
     if record2:
         msg_list.append(make_forward_node(

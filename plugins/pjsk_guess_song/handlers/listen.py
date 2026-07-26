@@ -9,6 +9,7 @@ from nonebot import on_command
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
+from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment, Bot
 
 from .. import db_service, cache_service, game_service, plugin_config
@@ -94,6 +95,9 @@ async def _handle_listen_command(matcher: Matcher, bot: Bot, event: MessageEvent
         user_id = get_user_id(event)
         await db_service.record_listen_song(user_id, get_user_name(event))
 
+    except FinishedException:
+        # 忽略 FinishedException，这是正常的结束流程
+        raise
     except Exception as e:
         logger.error(f"处理听歌功能(模式: {mode})时出错: {e}", exc_info=True)
         await matcher.send("......播放时出错了，请联系管理员。")
@@ -239,6 +243,9 @@ async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = Com
         user_id = get_user_id(event)
         await db_service.record_listen_song(user_id, get_user_name(event))
 
+    except FinishedException:
+        # 忽略 FinishedException，这是正常的结束流程
+        raise
     except Exception as e:
         logger.error(f"处理 听歌 功能时出错: {e}", exc_info=True)
         await matcher.send("......播放时出错了，请联系管理员。")
@@ -356,6 +363,9 @@ async def _(matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = Com
         user_id = get_user_id(event)
         await db_service.record_listen_song(user_id, get_user_name(event))
 
+    except FinishedException:
+        # 忽略 FinishedException，这是正常的结束流程
+        raise
     except Exception as e:
         logger.error(f"处理听anvo功能时出错: {e}", exc_info=True)
         await matcher.send("......播放时出错了，请联系管理员。")

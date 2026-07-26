@@ -44,9 +44,6 @@ async def _(bot: Bot, event: MessageEvent, state: T_State, matcher: Matcher, arg
         if cd_remain > 0:
             await imgexp.finish(f"搜图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
-        # 3. 更新 CD
-        update_cd(cd_key, group_id, user_id)
-
     # 尝试从参数中提取图片
     img_urls = extract_image_urls(arg)
     if img_urls:
@@ -69,7 +66,8 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
         await imgexp.finish("没有检测到图片，请重新发送命令。")
 
     await imgexp.send("正在搜索图片，请稍候...")
-    
+
+    cd_updated = False  # 成功发送结果后才扣 CD，多张图只扣一次
     for url in img_urls:
         try:
             # 获取图片大小，这里简单用 Content-Length 头判断可能不准，或者直接下载后判断
@@ -114,7 +112,12 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
                         )
 
                 await send_forward_msg(bot, event, forward_messages)
-            
+
+            # 发送成功后再更新 CD（仅群聊，多张图只扣一次）
+            if not cd_updated and MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
+                update_cd(f"{PLUGIN_NAME}:search", str(event.group_id), str(event.user_id))
+                cd_updated = True
+
         except Exception as e:
             logger.error(f"搜图失败: {e}")
             import traceback

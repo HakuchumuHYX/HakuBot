@@ -56,10 +56,14 @@ async def daily_statistics_task():
         groups_with_stats = list(data_manager.group_stats.keys())
 
         # 为每个有统计数据的群组发送统计报告（如果启用）
+        # 单个群失败不影响其他群，也不影响循环结束后的重置
         for group_id in groups_with_stats:
-            if get_total_messages(group_id) > 0:
-                await send_daily_report(bot, group_id)
-                await asyncio.sleep(1)  # 避免发送过快
+            try:
+                if get_total_messages(group_id) > 0:
+                    await send_daily_report(bot, group_id)
+                    await asyncio.sleep(1)  # 避免发送过快
+            except Exception as e:
+                logger.exception(f"发送群 {group_id} 的每日统计报告失败: {e}")
 
         # 重置统计数据
         reset_daily_stats()

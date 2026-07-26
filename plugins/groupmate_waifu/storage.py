@@ -13,6 +13,8 @@ from typing import Any, Dict, Set
 
 from nonebot.log import logger
 
+from ..utils.json_io import atomic_write_json
+
 
 def _convert_keys_to_int(data: Dict) -> Dict:
     result = {}
@@ -159,7 +161,6 @@ def _save_json(file: Path, data: Any):
         else:
             serializable_data = data
 
-        with open(file, 'w', encoding='utf-8') as f:
-            json.dump(serializable_data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(file, serializable_data)
     except Exception as e:
         logger.error(f"保存 {file} 失败: {e}")

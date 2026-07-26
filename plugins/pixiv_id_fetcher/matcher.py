@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import List, Optional
 
-from nonebot import on_command, require
+from nonebot import get_driver, on_command, require
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageEvent, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.exception import FinishedException
@@ -15,6 +16,7 @@ require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as localstore
 
 from ..utils.image_utils import path_to_base64_image
+from ..utils.tools import run_in_pool
 from .client import PixivClient, PixivClientError, PixivSendForwardError
 from .config import config
 from .formatter import (
@@ -69,6 +71,64 @@ def _get_semaphore() -> asyncio.Semaphore:
     return _semaphore
 
 
+PIXIV_CACHE_TTL_DAYS = 7
+PIXIV_CACHE_CLEAN_INTERVAL_SECONDS = 24 * 60 * 60  # daily
+_pixiv_cache_clean_task: Optional[asyncio.Task] = None
+
+
+async def _cleanup_pixiv_cache_once() -> None:
+    """Remove cache files older than PIXIV_CACHE_TTL_DAYS in pixiv_id_fetcher cache dir."""
+    cache_dir = localstore.get_plugin_cache_file("_cache_dir_placeholder").parent
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    expire_before = time.time() - PIXIV_CACHE_TTL_DAYS * 24 * 60 * 60
+    removed = 0
+
+    # 仅清理本插件生成的文件，避免误删未来可能写入 cache 的其他文件
+    for p in cache_dir.glob("pixiv_*"):
+        try:
+            if not p.is_file():
+                continue
+            if p.stat().st_mtime >= expire_before:
+                continue
+            p.unlink(missing_ok=True)  # py3.9+
+            removed += 1
+        except Exception as e:
+            logger.exception(f"[pixiv_id_fetcher] cache cleanup failed: {e} file={p}")
+
+    if removed:
+        logger.info(f"[pixiv_id_fetcher] cache cleanup removed {removed} files")
+
+
+@get_driver().on_startup
+async def _start_pixiv_cache_cleaner():
+    global _pixiv_cache_clean_task
+
+    # 启动时先清一次，防止积压
+    try:
+        await _cleanup_pixiv_cache_once()
+    except Exception as e:
+        logger.exception(f"[pixiv_id_fetcher] startup cache cleanup failed: {e}")
+
+    async def _loop():
+        while True:
+            await asyncio.sleep(PIXIV_CACHE_CLEAN_INTERVAL_SECONDS)
+            try:
+                await _cleanup_pixiv_cache_once()
+            except Exception as e:
+                logger.exception(f"[pixiv_id_fetcher] scheduled cache cleanup failed: {e}")
+
+    _pixiv_cache_clean_task = asyncio.create_task(_loop())
+
+
+@get_driver().on_shutdown
+async def _stop_pixiv_cache_cleaner():
+    global _pixiv_cache_clean_task
+    if _pixiv_cache_clean_task:
+        _pixiv_cache_clean_task.cancel()
+        _pixiv_cache_clean_task = None
+
+
 def _cache_path(illust: PixivIllust, page: PixivPage) -> Path:
     return localstore.get_plugin_cache_file(f"pixiv_{illust.pid}_p{page.index}.{page.ext}")
 
@@ -98,7 +158,7 @@ async def _download_page(
             return path_to_base64_image(path)
         data = path.read_bytes()
         ext = detect_image_ext(data, path.suffix.lstrip(".") or page.ext)
-        data, ext = _get_client().normalize_static_image_for_forward(data, ext)
+        data, ext = await run_in_pool(_get_client().normalize_static_image_for_forward, data, ext)
         path = _cache_path_with_ext(illust, page, ext)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
@@ -110,7 +170,7 @@ async def _download_page(
     )
     ext = detect_image_ext(data, page.ext)
     if normalize_for_forward:
-        data, ext = _get_client().normalize_static_image_for_forward(data, ext)
+        data, ext = await run_in_pool(_get_client().normalize_static_image_for_forward, data, ext)
     path = _cache_path_with_ext(illust, page, ext)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
@@ -128,7 +188,8 @@ async def _download_ugoira(illust: PixivIllust) -> MessageSegment:
         metadata.zip_url,
         max_bytes=int(config.get("ugoira_zip_max_bytes", 30 * 1024 * 1024)),
     )
-    gif_data = client.render_ugoira_gif(
+    gif_data = await run_in_pool(
+        client.render_ugoira_gif,
         zip_data,
         metadata,
         max_frames=int(config.get("ugoira_max_frames", 150)),

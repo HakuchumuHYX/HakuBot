@@ -31,6 +31,13 @@ async def handle_recall(bot: Bot, event: Event):
         await recall.finish()
         return
 
+    # 校验被回复的消息是否为机器人自己发送的，防止撤回他人消息
+    reply_sender = getattr(event.reply, 'sender', None)
+    reply_sender_id = getattr(reply_sender, 'user_id', None)
+    if reply_sender_id is None or str(reply_sender_id) != str(bot.self_id):
+        await recall.finish()
+        return
+
     # 获取被回复的消息ID（即机器人发送的消息）
     reply_msg_id = event.reply.message_id
 

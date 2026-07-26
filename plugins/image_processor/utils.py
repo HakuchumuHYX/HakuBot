@@ -9,7 +9,7 @@ import aiohttp
 from PIL import Image, ImageSequence
 from nonebot.log import logger
 
-from ..utils.network import get_client_session, get_effective_proxy
+from ..utils.network import INSECURE_SSL, get_client_session, get_effective_proxy
 
 IMAGE_PROCESSOR_MAX_IMAGE_BYTES = int(os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
 IMAGE_PROCESSOR_MAX_GIF_BYTES = int(os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_GIF_BYTES", str(50 * 1024 * 1024)))
@@ -84,7 +84,7 @@ async def download_to_temp(
             headers=headers,
             proxy=proxy,
             timeout=timeout,
-            verify_ssl=False,
+            verify_ssl=not INSECURE_SSL,
         ) as response:
             if response.status not in set(allowed_statuses):
                 raise Exception(f"下载失败: HTTP {response.status}")

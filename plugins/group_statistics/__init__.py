@@ -1,7 +1,10 @@
+import asyncio
+
 from nonebot import get_driver, require
 from nonebot.log import logger
 
 require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler
 
 # 导入管理模块
 from ..plugin_manager.enable import is_plugin_enabled
@@ -16,6 +19,13 @@ from .scheduler import daily_statistics_task
 async def init_plugin():
     """插件初始化"""
     logger.info("群聊消息统计插件已加载")
+
+
+# 定期落盘（record_user_message 只打脏标记，不再每条消息同步写盘）
+@scheduler.scheduled_job("interval", seconds=60, id="group_statistics_flush")
+async def flush_stats():
+    """每 60 秒检查脏标记，有改动时在线程中写盘，避免阻塞事件循环"""
+    await asyncio.to_thread(data_manager.flush)
 
 
 # 机器人关闭时保存数据

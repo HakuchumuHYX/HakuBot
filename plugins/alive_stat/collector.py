@@ -11,7 +11,7 @@ import psutil
 
 from .config import config
 
-from ..utils.tools import get_logger
+from ..utils.tools import get_logger, run_in_pool
 
 logger = get_logger("alive_stat.collector")
 
@@ -214,7 +214,7 @@ def _parse_docker_mem(s: str) -> int:
 
 
 async def get_processes() -> list[ProcessInfo]:
-    results = _get_processes_psutil()
+    results = await run_in_pool(_get_processes_psutil)
     for entry in config.docker_processes:
         running, mem_bytes = await _get_docker_process(entry.container)
         results.append(ProcessInfo(name=entry.name, running=running, mem_bytes=mem_bytes))
@@ -259,7 +259,7 @@ async def get_network() -> list[NetworkResult]:
 # ================= 汇总 =================
 
 async def collect_server_status() -> ServerStatus:
-    resources = get_resources()
+    resources = await run_in_pool(get_resources)
     processes = await get_processes()
     network = await get_network()
 

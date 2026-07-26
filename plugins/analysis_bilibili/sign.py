@@ -21,6 +21,14 @@ mixinKeyEncTab = [
 ]
 # fmt: on
 
+# wbi keys 缓存：{img_key, sub_key, ts}，避免每次搜索都请求 nav 接口
+_wbi_keys_cache = {"img_key": "", "sub_key": "", "ts": 0.0}
+_WBI_KEYS_TTL = 3600
+
+# bili_ticket 缓存：{ticket, ts}
+_ticket_cache = {"ticket": "", "ts": 0.0}
+_TICKET_TTL = 7200
+
 
 def getMixinKey(orig: str):
     "对 imgKey 和 subKey 进行字符顺序打乱编码"
@@ -45,7 +53,10 @@ def encWbi(params: dict, img_key: str, sub_key: str):
 
 
 async def getWbiKeys():
-    "获取最新的 img_key 和 sub_key"
+    "获取最新的 img_key 和 sub_key（缓存 1 小时，过期才重新请求）"
+    now = time.time()
+    if _wbi_keys_cache["img_key"] and now - _wbi_keys_cache["ts"] < _WBI_KEYS_TTL:
+        return _wbi_keys_cache["img_key"], _wbi_keys_cache["sub_key"]
     async with ClientSession(headers=headers) as session:
         async with session.get("https://api.bilibili.com/x/web-interface/nav") as resp:
             json_content = await resp.json()
@@ -53,6 +64,7 @@ async def getWbiKeys():
     sub_url: str = json_content["data"]["wbi_img"]["sub_url"]
     img_key = img_url.rsplit("/", 1)[1].split(".")[0]
     sub_key = sub_url.rsplit("/", 1)[1].split(".")[0]
+    _wbi_keys_cache.update(img_key=img_key, sub_key=sub_key, ts=now)
     return img_key, sub_key
 
 
@@ -91,8 +103,11 @@ def hmac_sha256(key, message):
 
 async def get_ticket():
     """
-    获取ticket
+    获取ticket（缓存 2 小时，过期才重新请求）
     """
+    now = time.time()
+    if _ticket_cache["ticket"] and now - _ticket_cache["ts"] < _TICKET_TTL:
+        return _ticket_cache["ticket"]
     o = hmac_sha256("XgwSnGZ1p", f"ts{int(time.time())}")
     url = "https://api.bilibili.com/bapis/bilibili.api.ticket.v1.Ticket/GenWebTicket"
     params = {
@@ -104,7 +119,9 @@ async def get_ticket():
     async with ClientSession(headers=headers) as session:
         async with session.post(url, params=params) as resp:
             json_content = await resp.json()
-            return json_content["data"]["ticket"]
+            ticket = json_content["data"]["ticket"]
+            _ticket_cache.update(ticket=ticket, ts=now)
+            return ticket
 
 
 if __name__ == "__main__":

@@ -1,5 +1,4 @@
-import asyncio
-from nonebot import get_driver, on_command, on_message, logger
+from nonebot import get_driver, on_command, on_message, logger, require
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     Message,
@@ -11,6 +10,9 @@ from nonebot.rule import to_me
 from nonebot.permission import SUPERUSER
 from nonebot.params import CommandArg
 from typing import Optional
+
+require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler
 
 # 导入管理模块
 from ..plugin_manager.enable import is_plugin_enabled
@@ -225,35 +227,20 @@ async def handle_identify_other(bot: Bot, event: GroupMessageEvent):
         await identify_other.finish("鉴定失败，请稍后再试喵~")
 
 
+@scheduler.scheduled_job("cron", hour=0, minute=5, id="identify_daily_cleanup")
 async def daily_cleanup():
     """每日清理任务"""
-    while True:
-        try:
-            # 计算到下一个0点的时间
-            now = asyncio.get_event_loop().time()
-            next_cleanup = ((now // 86400) + 1) * 86400  # 下一个UTC 0点
-            wait_time = next_cleanup - now
-
-            # 等待到0点
-            await asyncio.sleep(wait_time)
-
-            # 执行清理
-            daily_record_manager.cleanup_old_records()
-            logger.info("已执行每日鉴定记录清理")
-
-        except Exception as e:
-            logger.error(f"每日清理任务出错: {e}")
-            # 出错时等待1小时后重试
-            await asyncio.sleep(3600)
+    try:
+        daily_record_manager.cleanup_old_records()
+        logger.info("已执行每日鉴定记录清理")
+    except Exception as e:
+        logger.error(f"每日清理任务出错: {e}")
 
 
 # 插件启动时初始化
 @get_driver().on_startup
 async def init_plugin():
     """插件初始化"""
-    # 启动每日清理任务
-    asyncio.create_task(daily_cleanup())
-
     # 清理旧记录
     daily_record_manager.cleanup_old_records()
 
