@@ -4,7 +4,9 @@ from nonebot import get_driver, require
 from nonebot.log import logger
 
 require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler
+# 注意：本包有同名子模块 scheduler.py，import 子模块时会覆盖包命名空间里的
+# 同名全局变量（包属性即 __init__ 全局），因此这里必须使用别名。
+from nonebot_plugin_apscheduler import scheduler as apscheduler
 
 # 导入管理模块
 from ..plugin_manager.enable import is_plugin_enabled
@@ -22,7 +24,7 @@ async def init_plugin():
 
 
 # 定期落盘（record_user_message 只打脏标记，不再每条消息同步写盘）
-@scheduler.scheduled_job("interval", seconds=60, id="group_statistics_flush")
+@apscheduler.scheduled_job("interval", seconds=60, id="group_statistics_flush")
 async def flush_stats():
     """每 60 秒检查脏标记，有改动时在线程中写盘，避免阻塞事件循环"""
     await asyncio.to_thread(data_manager.flush)

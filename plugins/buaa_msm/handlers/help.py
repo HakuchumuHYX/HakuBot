@@ -12,7 +12,6 @@ from typing import List
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment, PrivateMessageEvent
 from nonebot.log import logger
-from nonebot.rule import is_type
 
 # 群聊帮助文本
 GROUP_HELP_TEXT = """该功能由于技术原因，仅在**私聊**中使用，请**添加ATRI好友**发送"buaamshelp"查看完整帮助文档。
@@ -49,16 +48,16 @@ async def create_forward_nodes(text: str, bot_name: str, bot_uin: str) -> List[M
     return nodes
 
 
-private_help_cmd = on_command(
+# 同一命令只注册一个 matcher，私聊/群聊由按事件类型分流的 handler 处理（避免 Duplicated prefix rule 警告）
+help_cmd = on_command(
     "buaamshelp",
     aliases={"mshelp"},
-    rule=is_type(PrivateMessageEvent),
     priority=5,
     block=True,
 )
 
 
-@private_help_cmd.handle()
+@help_cmd.handle()
 async def handle_private_help(bot: Bot, event: PrivateMessageEvent):
     """处理私聊help命令"""
     try:
@@ -71,21 +70,12 @@ async def handle_private_help(bot: Bot, event: PrivateMessageEvent):
         await bot.send_private_forward_msg(user_id=event.user_id, messages=nodes)
     except Exception as e:
         logger.error(f"发送私聊帮助失败: {e}")
-        await private_help_cmd.send(PRIVATE_HELP_TEXT)
+        await help_cmd.send(PRIVATE_HELP_TEXT)
 
-    await private_help_cmd.finish()
-
-
-group_help_cmd = on_command(
-    "buaamshelp",
-    aliases={"mshelp"},
-    rule=is_type(GroupMessageEvent),
-    priority=5,
-    block=True,
-)
+    await help_cmd.finish()
 
 
-@group_help_cmd.handle()
+@help_cmd.handle()
 async def handle_group_help(bot: Bot, event: GroupMessageEvent):
     """处理群聊help命令"""
     try:
@@ -98,8 +88,8 @@ async def handle_group_help(bot: Bot, event: GroupMessageEvent):
         await bot.send_group_forward_msg(group_id=event.group_id, messages=nodes)
     except Exception as e:
         logger.error(f"发送群聊帮助失败: {e}")
-        await group_help_cmd.send(GROUP_HELP_TEXT)
+        await help_cmd.send(GROUP_HELP_TEXT)
 
-    await group_help_cmd.finish()
+    await help_cmd.finish()
 
 

@@ -14,7 +14,6 @@ from nonebot import get_driver, on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, PrivateMessageEvent
 from nonebot.log import logger
 from nonebot.params import CommandArg
-from nonebot.rule import is_type
 
 from ..config import plugin_config
 
@@ -109,7 +108,10 @@ bind_manager = BindManager()
 
 # ============== 私聊命令 ==============
 
-bind_cmd = on_command("buaa绑定", rule=is_type(PrivateMessageEvent), priority=5, block=True)
+# 注意：同一命令只注册一个 matcher（不区分私聊/群聊 rule），
+# 私聊/群聊行为由下方两个按事件类型分流的 handler 决定；
+# 若注册两个同名 matcher，NoneBot 启动时会报 Duplicated prefix rule 警告。
+bind_cmd = on_command("buaa绑定", priority=5, block=True)
 
 
 @bind_cmd.handle()
@@ -132,7 +134,7 @@ async def handle_bind_command(bot: Bot, event: PrivateMessageEvent, args: Messag
         await bind_cmd.finish("绑定失败，数据保存出错，请稍后重试")
 
 
-query_bind = on_command("buaa查询绑定", rule=is_type(PrivateMessageEvent), priority=5, block=True)
+query_bind = on_command("buaa查询绑定", priority=5, block=True)
 
 
 @query_bind.handle()
@@ -146,7 +148,7 @@ async def handle_query_command(bot: Bot, event: PrivateMessageEvent):
         await query_bind.finish("您尚未绑定任何内容")
 
 
-unbind_cmd = on_command("buaa解除绑定", rule=is_type(PrivateMessageEvent), priority=5, block=True)
+unbind_cmd = on_command("buaa解除绑定", priority=5, block=True)
 
 
 @unbind_cmd.handle()
@@ -162,7 +164,7 @@ async def handle_unbind_command(bot: Bot, event: PrivateMessageEvent):
         await unbind_cmd.finish("解除绑定失败，数据保存出错")
 
 
-view_all_binds = on_command("buaa查看所有绑定", rule=is_type(PrivateMessageEvent), priority=10, block=True)
+view_all_binds = on_command("buaa查看所有绑定", priority=10, block=True)
 
 
 @view_all_binds.handle()
@@ -189,38 +191,28 @@ async def handle_view_all_command(bot: Bot, event: PrivateMessageEvent):
         await view_all_binds.finish(result)
 
 
-# ============== 群聊提示命令 ==============
+# ============== 群聊提示 handler（挂在同一 matcher 上，按事件类型分流） ==============
+# NoneBot 会跳过事件类型与参数注解不匹配的 handler：
+# 群聊事件走这里，私聊事件走上面的业务 handler。
 
-group_bind_cmd = on_command("buaa绑定", rule=is_type(GroupMessageEvent), priority=5, block=True)
-
-
-@group_bind_cmd.handle()
+@bind_cmd.handle()
 async def handle_group_bind(bot: Bot, event: GroupMessageEvent):
-    await group_bind_cmd.finish("该指令仅在私聊中可用")
+    await bind_cmd.finish("该指令仅在私聊中可用")
 
 
-group_query_cmd = on_command("buaa查询绑定", rule=is_type(GroupMessageEvent), priority=5, block=True)
-
-
-@group_query_cmd.handle()
+@query_bind.handle()
 async def handle_group_query(bot: Bot, event: GroupMessageEvent):
-    await group_query_cmd.finish("该指令仅在私聊中可用")
+    await query_bind.finish("该指令仅在私聊中可用")
 
 
-group_unbind_cmd = on_command("buaa解除绑定", rule=is_type(GroupMessageEvent), priority=5, block=True)
-
-
-@group_unbind_cmd.handle()
+@unbind_cmd.handle()
 async def handle_group_unbind(bot: Bot, event: GroupMessageEvent):
-    await group_unbind_cmd.finish("该指令仅在私聊中可用")
+    await unbind_cmd.finish("该指令仅在私聊中可用")
 
 
-group_view_all_cmd = on_command("buaa查看所有绑定", rule=is_type(GroupMessageEvent), priority=10, block=True)
-
-
-@group_view_all_cmd.handle()
+@view_all_binds.handle()
 async def handle_group_view_all(bot: Bot, event: GroupMessageEvent):
-    await group_view_all_cmd.finish("该指令仅在私聊中可用")
+    await view_all_binds.finish("该指令仅在私聊中可用")
 
 
 

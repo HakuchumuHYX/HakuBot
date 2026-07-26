@@ -55,7 +55,8 @@ def _cleanup_expired_waiting(now: float | None = None) -> None:
 
 # ============== 上传命令 ==============
 
-upload_cmd = on_command("buaa上传文件", rule=is_type(PrivateMessageEvent), priority=5, block=True)
+# 同一命令只注册一个 matcher，私聊/群聊由按事件类型分流的 handler 处理（避免 Duplicated prefix rule 警告）
+upload_cmd = on_command("buaa上传文件", priority=5, block=True)
 
 
 @upload_cmd.handle()
@@ -66,13 +67,10 @@ async def handle_upload_command(bot: Bot, event: PrivateMessageEvent):
     await upload_cmd.finish("已准备好接收文件，请直接发送您要上传的文件。如需取消，请发送'取消'。")
 
 
-# 群聊提示
-group_upload_cmd = on_command("buaa上传文件", rule=is_type(GroupMessageEvent), priority=5, block=True)
-
-
-@group_upload_cmd.handle()
+# 群聊提示（挂在同一 matcher 上，群聊事件走此 handler）
+@upload_cmd.handle()
 async def handle_group_upload(bot: Bot, event: GroupMessageEvent):
-    await group_upload_cmd.finish("该指令仅在私聊中生效")
+    await upload_cmd.finish("该指令仅在私聊中生效")
 
 
 # ============== 文件接收处理 ==============

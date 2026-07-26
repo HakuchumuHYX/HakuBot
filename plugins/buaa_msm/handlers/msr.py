@@ -12,15 +12,14 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, Private
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
-from nonebot.rule import is_type
 
 from ..services.msr_service import run_msr
 from ..services.processing_guard import is_processing, set_processing
 
 
+# 同一命令只注册一个 matcher，私聊/群聊由按事件类型分流的 handler 处理（避免 Duplicated prefix rule 警告）
 msr_cmd = on_command(
     "buaamsr",
-    rule=is_type(PrivateMessageEvent),
     priority=5,
     block=True,
 )
@@ -47,10 +46,7 @@ async def handle_msr_command(bot: Bot, event: PrivateMessageEvent, args: Message
         await set_processing(user_id, False)
 
 
-# 群聊提示
-group_msr_cmd = on_command("buaamsr", rule=is_type(GroupMessageEvent), priority=5, block=True)
-
-
-@group_msr_cmd.handle()
+# 群聊提示（挂在同一 matcher 上，群聊事件走此 handler）
+@msr_cmd.handle()
 async def handle_group_msr(bot: Bot, event: GroupMessageEvent):
-    await group_msr_cmd.finish("该指令仅在私聊中可用")
+    await msr_cmd.finish("该指令仅在私聊中可用")
