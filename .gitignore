@@ -2,6 +2,7 @@
 data/
 *.json
 !plugins/buaa_msm/config.example.json
+!plugins/webconsole_bridge/config.example.json
 plugins/identify/data/
 .env.prod
 cache/
