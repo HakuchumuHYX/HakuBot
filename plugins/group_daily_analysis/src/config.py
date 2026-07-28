@@ -19,7 +19,7 @@ class LLMConfig(StrictBaseModel):
     base_url: str = "https://api.openai.com/v1"
 
     model: str = "gpt-3.5-turbo"
-    max_tokens: int = 8192
+    max_tokens: int = 65536
     thinking_enabled: bool = False
     reasoning_effort: Optional[str] = None
     extra_body: dict = Field(default_factory=dict)
@@ -131,7 +131,7 @@ def load_config() -> PluginConfig:
                     data["llm"]["base_url"] = ai_data.get("base_url", data["llm"]["base_url"])
                     chat_data = ai_data.get("chat") or {}
                     data["llm"]["model"] = chat_data.get("model", data["llm"]["model"])
-                    data["llm"]["max_tokens"] = chat_data.get("max_tokens", data["llm"].get("max_tokens", 8192))
+                    data["llm"]["max_tokens"] = chat_data.get("max_tokens", data["llm"].get("max_tokens", 65536))
                     data["llm"]["thinking_enabled"] = chat_data.get(
                         "thinking_enabled", data["llm"].get("thinking_enabled", False)
                     )

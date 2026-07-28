@@ -663,7 +663,7 @@ class MessageAnalyzer:
             [{"role": "user", "content": prompt}],
             temperature=0.7,
             response_format={"type": "json_object"},
-            max_tokens=min(plugin_config.llm.max_tokens, 4096),
+            max_tokens=plugin_config.llm.max_tokens,
         )
         data = parse_payload_items(content, UserTitlesPayload, module_name="用户称号")
 

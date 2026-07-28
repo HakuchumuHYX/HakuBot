@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -9,6 +10,26 @@ from nonebot.matcher import current_matcher
 from .capture import DiagnosticLogEntry, capture_manager
 from .persistence import PersistenceWriter
 from .status import BridgeRuntime
+
+
+def _plugin_name_from_record(record: Any) -> str | None:
+    """Resolve the owning plugin without relying on a matcher's context."""
+    file_record = record.get("file")
+    file_path = getattr(file_record, "path", None)
+    if file_path:
+        parts = Path(str(file_path)).parts
+        for index in range(len(parts) - 1, -1, -1):
+            if parts[index] == "plugins" and index + 1 < len(parts):
+                return parts[index + 1]
+
+    logger_name = record.get("name")
+    if logger_name:
+        components = str(logger_name).split(".")
+        if len(components) >= 2 and components[0] == "plugins":
+            return components[1]
+        if components[0].startswith("nonebot_plugin_"):
+            return components[0]
+    return None
 
 
 class DiagnosticCapture:
@@ -71,8 +92,8 @@ class DiagnosticCapture:
             line=int(record["line"]) if record["line"] is not None else None,
             message=str(record["message"]),
             full_log=str(message),
+            plugin_name=_plugin_name_from_record(record),
         )
         matcher = current_matcher.get(None)
         capture_manager.record_diagnostic(entry, matcher)
         self.persistence.persist_log_from_sink(entry)
-

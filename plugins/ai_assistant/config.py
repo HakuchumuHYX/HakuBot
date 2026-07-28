@@ -16,7 +16,7 @@ class ChatConfig(StrictBaseModel):
     base_url: Optional[str] = None
 
     model: str = "gpt-3.5-turbo"
-    max_tokens: Optional[int] = 8192
+    max_tokens: Optional[int] = 65536
     thinking_enabled: bool = False
     reasoning_effort: Optional[str] = None
     extra_body: dict = Field(default_factory=dict)
@@ -122,7 +122,7 @@ class SearchConfig(StrictBaseModel):
     image_include_image_descriptions: bool = True
     image_auto_parameters: bool = False
     image_visual_brief_model: Optional[str] = None
-    image_visual_brief_max_tokens: int = 800
+    image_visual_brief_max_tokens: int = 65536
     image_raw_content_max_chars: int = 1200
     image_content_max_chars: int = 500
     image_max_reference_images: int = 6

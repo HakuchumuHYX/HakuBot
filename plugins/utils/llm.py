@@ -29,7 +29,7 @@ class LLMClientConfig:
     timeout: float = 60.0
     proxy: Optional[str] = None
     max_retries: int = 2
-    max_tokens: Optional[int] = 8192
+    max_tokens: Optional[int] = 65536
     thinking_enabled: bool = False
     reasoning_effort: Optional[str] = None
     extra_body: dict[str, Any] = field(default_factory=dict)

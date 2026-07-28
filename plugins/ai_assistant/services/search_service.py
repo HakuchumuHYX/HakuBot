@@ -381,7 +381,6 @@ async def rewrite_search_queries_with_llm(raw_text: str, *, mode: str = "chat") 
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            max_tokens=256,
         )
     except Exception as e:
         logger.warning(f"LLM query rewrite 调用失败，回退启发式。err={e}")
@@ -818,7 +817,7 @@ async def build_visual_brief_from_search(
     )
 
     model = getattr(plugin_config.search, "image_visual_brief_model", None) or plugin_config.chat.model
-    max_tokens = int(getattr(plugin_config.search, "image_visual_brief_max_tokens", 800) or 800)
+    max_tokens = int(getattr(plugin_config.search, "image_visual_brief_max_tokens", 65536) or 65536)
 
     try:
         result = await call_chat_completion(
