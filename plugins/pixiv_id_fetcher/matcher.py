@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from nonebot import get_driver, on_command, require
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageEvent, MessageSegment
-from nonebot.adapters.onebot.v11.exception import ActionFailed
+from nonebot.adapters.onebot.v11.exception import ActionFailed, NetworkError
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
@@ -15,14 +15,15 @@ from nonebot.params import CommandArg
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as localstore
 
-from ..utils.image_utils import path_to_base64_image
-from ..utils.tools import run_in_pool
-from .client import PixivClient, PixivClientError, PixivSendForwardError
+from ..utils.image_utils import image_segment
+from ..utils.tools import ForwardSendError, ForwardStatus, run_in_pool, send_forward_msg
+from .client import PixivClient, PixivClientError
 from .config import config
 from .formatter import (
     PixivPolicy,
     build_forward_contents,
     build_info_text,
+    build_link_fallback_contents,
     detect_image_ext,
     describe_client_error,
     parse_pid,
@@ -150,19 +151,19 @@ async def _download_page(
     if normalize_for_forward:
         forward_path = _cache_path_with_ext(illust, page, "jpg")
         if forward_path.exists() and forward_path.stat().st_size > 0:
-            return path_to_base64_image(forward_path)
+            return image_segment(forward_path)
 
     path = _cache_path(illust, page)
     if path.exists() and path.stat().st_size > 0:
         if not normalize_for_forward:
-            return path_to_base64_image(path)
+            return image_segment(path)
         data = path.read_bytes()
         ext = detect_image_ext(data, path.suffix.lstrip(".") or page.ext)
         data, ext = await run_in_pool(_get_client().normalize_static_image_for_forward, data, ext)
         path = _cache_path_with_ext(illust, page, ext)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-        return path_to_base64_image(path)
+        return image_segment(path)
 
     data = await _get_client().download_image(
         page.url,
@@ -174,13 +175,13 @@ async def _download_page(
     path = _cache_path_with_ext(illust, page, ext)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
-    return path_to_base64_image(path)
+    return image_segment(path)
 
 
 async def _download_ugoira(illust: PixivIllust) -> MessageSegment:
     path = _ugoira_cache_path(illust)
     if path.exists() and path.stat().st_size > 0:
-        return path_to_base64_image(path)
+        return image_segment(path)
 
     client = _get_client()
     metadata = await client.fetch_ugoira_metadata(illust.pid)
@@ -198,7 +199,7 @@ async def _download_ugoira(illust: PixivIllust) -> MessageSegment:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(gif_data)
-    return path_to_base64_image(path)
+    return image_segment(path)
 
 
 def _build_image_message(illust: PixivIllust, image: MessageSegment) -> Message:
@@ -210,14 +211,22 @@ async def _send_direct(
     event: MessageEvent,
     illust: PixivIllust,
     page: Optional[PixivPage],
-) -> None:
+) -> bool:
     if illust.is_ugoira:
         image = await _download_ugoira(illust)
     else:
         if page is None:
             raise PixivClientError("没有找到可发送的图片")
         image = await _download_page(illust, page)
-    await bot.send(event, _build_image_message(illust, image))
+    try:
+        await bot.send(event, _build_image_message(illust, image))
+        return True
+    except (ActionFailed, NetworkError, asyncio.TimeoutError) as e:
+        logger.warning(
+            f"[pixiv_id_fetcher] direct image send failed pid={illust.pid}: "
+            f"{type(e).__name__}: {e}"
+        )
+        return False
 
 
 async def _send_forward(
@@ -227,7 +236,7 @@ async def _send_forward(
     pages: List[PixivPage],
     *,
     truncated: bool,
-) -> None:
+) -> bool:
     images: List[MessageSegment] = []
     if illust.is_ugoira:
         image = await _download_ugoira(illust)
@@ -241,43 +250,59 @@ async def _send_forward(
     if truncated:
         messages.append(Message(f"多页作品，仅发送前 {len(pages)} / {illust.page_count} 页"))
 
-    await _send_forward_without_image_fallback(bot, event, messages)
+    return await _send_forward_contents(bot, event, messages, pid=illust.pid)
 
 
-async def _send_forward_without_image_fallback(
+async def _send_forward_contents(
     bot: Bot,
     event: MessageEvent,
     messages: List[object],
+    *,
+    pid: int,
+) -> bool:
+    try:
+        status = await send_forward_msg(
+            bot,
+            event,
+            messages,
+            timeout=60.0,
+            fallback_on_action_failed=False,
+        )
+    except ForwardSendError as e:
+        logger.warning(f"[pixiv_id_fetcher] image forward rejected pid={pid}: {e}")
+        return False
+    return status is ForwardStatus.SENT
+
+
+async def _send_link_fallback(
+    bot: Bot,
+    event: MessageEvent,
+    contents: List[str],
+    *,
+    pid: int,
 ) -> None:
     try:
-        login_info = await bot.get_login_info()
-        user_id = str(login_info.get("user_id", event.self_id))
-        nickname = str(login_info.get("nickname", "Bot"))
-    except Exception:
-        user_id = str(event.self_id)
-        nickname = "Bot"
+        status = await send_forward_msg(
+            bot,
+            event,
+            contents,
+            timeout=60.0,
+            fallback_on_action_failed=False,
+        )
+        if status is ForwardStatus.SENT:
+            logger.info(f"[pixiv_id_fetcher] link fallback sent pid={pid}")
+            return
+        logger.warning(
+            f"[pixiv_id_fetcher] link forward result unknown pid={pid}; "
+            "falling back to one plain-text message"
+        )
+    except ForwardSendError as e:
+        logger.warning(
+            f"[pixiv_id_fetcher] link forward rejected pid={pid}; "
+            f"falling back to plain text: {e}"
+        )
 
-    nodes = [
-        {
-            "type": "node",
-            "data": {
-                "name": nickname,
-                "uin": user_id,
-                "content": str(msg),
-            },
-        }
-        for msg in messages
-    ]
-
-    try:
-        if isinstance(event, GroupMessageEvent):
-            await bot.send_forward_msg(group_id=int(event.group_id), messages=nodes)
-        else:
-            await bot.send_private_forward_msg(user_id=int(event.get_user_id()), messages=nodes)
-    except ActionFailed as e:
-        raise PixivSendForwardError(str(e)) from e
-    except Exception as e:
-        raise PixivSendForwardError(str(e)) from e
+    await bot.send(event, Message("\n\n".join(contents)))
 
 
 @pixiv_cmd.handle()
@@ -324,9 +349,32 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
             pages, truncated = select_pages(illust, int(config.get("max_pages", 9) or 9))
 
             if should_use_forward(illust):
-                await _send_forward(bot, event, illust, pages, truncated=truncated)
+                image_sent = await _send_forward(
+                    bot,
+                    event,
+                    illust,
+                    pages,
+                    truncated=truncated,
+                )
             else:
-                await _send_direct(bot, event, illust, pages[0] if pages else None)
+                image_sent = await _send_direct(
+                    bot,
+                    event,
+                    illust,
+                    pages[0] if pages else None,
+                )
+
+            if not image_sent:
+                await _send_link_fallback(
+                    bot,
+                    event,
+                    build_link_fallback_contents(
+                        illust,
+                        pages,
+                        truncated=truncated,
+                    ),
+                    pid=illust.pid,
+                )
 
             if group_id and MANAGER_AVAILABLE:
                 update_cd(PLUGIN_ID, group_id, user_id)

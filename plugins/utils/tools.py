@@ -1,8 +1,10 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Any, TypeVar, Union, List
+from dataclasses import dataclass
+from enum import Enum
+from typing import Callable, Any, TypeVar, Union, List, Optional, Sequence
 from nonebot.log import logger
-from nonebot.adapters.onebot.v11 import Bot, Event, GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, Event, Message, MessageSegment
 from nonebot.exception import NetworkError, ActionFailed
 
 T = TypeVar("T")
@@ -91,57 +93,129 @@ class TempFilePath:
                             pass
         return False
 
+@dataclass(frozen=True)
+class ForwardItem:
+    content: Union[str, Message, MessageSegment]
+    name: Optional[str] = None
+    uin: Optional[Union[str, int]] = None
+
+
+class ForwardStatus(str, Enum):
+    SENT = "sent"
+    FALLBACK_SENT = "fallback_sent"
+    TIMEOUT_UNKNOWN = "timeout_unknown"
+
+
+class ForwardSendError(RuntimeError):
+    def __init__(self, message: str, *, sent: int = 0, failed: int = 0) -> None:
+        super().__init__(message)
+        self.sent = sent
+        self.failed = failed
+
+
+def _as_message(content: Union[str, Message, MessageSegment]) -> Message:
+    if isinstance(content, Message):
+        return content
+    if isinstance(content, MessageSegment):
+        return Message(content)
+    return Message(content)
+
+
 async def send_forward_msg(
-    bot: Bot, 
-    event: Event, 
-    messages: List[Union[str, Message, MessageSegment]]
-):
-    """
-    发送合并转发消息
-    """
-    # 获取 Bot 信息作为发送者
+    bot: Bot,
+    event: Optional[Event] = None,
+    messages: Optional[Sequence[Union[ForwardItem, str, Message, MessageSegment]]] = None,
+    *,
+    items: Optional[Sequence[Union[ForwardItem, str, Message, MessageSegment]]] = None,
+    group_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+    timeout: float = 60.0,
+    fallback_on_action_failed: bool = True,
+    fallback_interval: float = 1.0,
+) -> ForwardStatus:
+    """Send structured forward nodes with timeout-safe fallback semantics."""
+    if messages is not None and items is not None:
+        raise ValueError("messages 和 items 不能同时传入")
+    forward_items = list(items if items is not None else messages or [])
+    if not forward_items:
+        raise ValueError("合并转发消息不能为空")
+
+    event_group_id = getattr(event, "group_id", None) if event is not None else None
+    event_user_id = None
+    if event is not None and event_group_id is None:
+        event_user_id = int(event.get_user_id())
+    resolved_group_id = int(group_id if group_id is not None else event_group_id) if (group_id is not None or event_group_id is not None) else None
+    resolved_user_id = int(user_id if user_id is not None else event_user_id) if (user_id is not None or event_user_id is not None) else None
+    if (resolved_group_id is None) == (resolved_user_id is None):
+        raise ValueError("必须且只能指定一个群聊或私聊目标")
+
     try:
         login_info = await bot.get_login_info()
-        user_id = str(login_info.get("user_id", event.self_id))
-        nickname = login_info.get("nickname", "Bot")
+        default_uin = str(login_info.get("user_id", bot.self_id))
+        default_name = str(login_info.get("nickname") or "Bot")
     except Exception:
-        user_id = str(event.self_id)
-        nickname = "Bot"
-    
-    nodes = []
-    for msg in messages:
-        nodes.append({
+        default_uin = str(bot.self_id)
+        default_name = "Bot"
+
+    normalized_items = [
+        item if isinstance(item, ForwardItem) else ForwardItem(content=item)
+        for item in forward_items
+    ]
+    nodes = [
+        {
             "type": "node",
             "data": {
-                "name": nickname,
-                "uin": user_id,
-                "content": msg
-            }
-        })
-    
+                "name": item.name or default_name,
+                "uin": str(item.uin if item.uin is not None else default_uin),
+                "content": _as_message(item.content),
+            },
+        }
+        for item in normalized_items
+    ]
+
+    api_name = "send_group_forward_msg" if resolved_group_id is not None else "send_private_forward_msg"
+    target_data = {"group_id": resolved_group_id} if resolved_group_id is not None else {"user_id": resolved_user_id}
     try:
-        if isinstance(event, GroupMessageEvent):
-            await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=nodes)
-        else:
-            # 尝试发送私聊合并转发，如果不直接支持可能需要 fallback
-            # 大多数 OneBot 实现支持 send_private_forward_msg
-            await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=nodes)
+        await bot.call_api(api_name, messages=nodes, _timeout=timeout, **target_data)
     except NetworkError as e:
-        logger.error(f"发送合并转发网络错误: {e}")
-        if "timeout" in str(e).lower():
-            logger.warning("合并转发请求超时，服务端可能仍在处理中，跳过 fallback 以避免重复发送。")
-        else:
-            # 非超时网络错误，尝试逐条发送
-            for msg in messages:
-                if isinstance(msg, str):
-                    await bot.send(event, Message(msg))
+        logger.warning(
+            f"合并转发网络结果未知 api={api_name} nodes={len(nodes)}: {get_exc_desc(e)}；"
+            "跳过补发以避免重复消息"
+        )
+        return ForwardStatus.TIMEOUT_UNKNOWN
+    except asyncio.TimeoutError as e:
+        logger.warning(
+            f"合并转发等待超时 api={api_name} nodes={len(nodes)}: {get_exc_desc(e)}；"
+            "跳过补发以避免重复消息"
+        )
+        return ForwardStatus.TIMEOUT_UNKNOWN
+    except ActionFailed as e:
+        if not fallback_on_action_failed:
+            raise ForwardSendError(f"合并转发被 OneBot 拒绝: {get_exc_desc(e)}") from e
+        logger.warning(
+            f"合并转发被 OneBot 拒绝，开始逐条补发 nodes={len(nodes)}: {get_exc_desc(e)}"
+        )
+        sent = 0
+        failures: List[str] = []
+        for index, item in enumerate(normalized_items):
+            try:
+                message = _as_message(item.content)
+                if event is not None:
+                    await bot.send(event, message)
+                elif resolved_group_id is not None:
+                    await bot.send_group_msg(group_id=resolved_group_id, message=message)
                 else:
-                    await bot.send(event, msg)
-    except (ActionFailed, Exception) as e:
-        logger.error(f"发送合并转发失败 ({type(e).__name__}): {e}")
-        # 其他错误（如API调用失败），尝试逐条发送
-        for msg in messages:
-            if isinstance(msg, str):
-                await bot.send(event, Message(msg))
-            else:
-                await bot.send(event, msg)
+                    await bot.send_private_msg(user_id=resolved_user_id, message=message)
+                sent += 1
+            except Exception as fallback_error:
+                failures.append(f"#{index + 1} {get_exc_desc(fallback_error)}")
+            if fallback_interval > 0 and index < len(normalized_items) - 1:
+                await asyncio.sleep(fallback_interval)
+        if failures:
+            raise ForwardSendError(
+                f"合并转发降级部分失败: {'; '.join(failures)}",
+                sent=sent,
+                failed=len(failures),
+            ) from e
+        return ForwardStatus.FALLBACK_SENT
+    return ForwardStatus.SENT

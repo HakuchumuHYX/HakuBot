@@ -6,7 +6,7 @@ from nonebot import on_command, get_driver
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.permission import SUPERUSER
 
-from ..utils.tools import get_logger
+from ..utils.tools import get_logger, send_forward_msg
 
 logger = get_logger("plugin_manager.cd_manager")
 
@@ -244,24 +244,7 @@ async def handle_list_cd(bot: Bot, event: MessageEvent):
         message = "当前群聊暂无插件CD配置"
 
     try:
-        bot_info = await bot.get_login_info()
-        bot_uin = bot_info['user_id']
-        bot_nickname = bot_info['nickname']
-
-        forward_nodes = [
-            {
-                "type": "node",
-                "data": {
-                    "name": bot_nickname,
-                    "uin": str(bot_uin),
-                    "content": message
-                }
-            }
-        ]
-        await bot.send_forward_msg(
-            group_id=event.group_id,
-            messages=forward_nodes
-        )
+        await send_forward_msg(bot, event, [message])
     except Exception as e:
         logger.exception(f"合并转发失败: {e}")
         await list_cd.finish(message)

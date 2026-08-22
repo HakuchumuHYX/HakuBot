@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Tuple, Set, Dict, Optional
 from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot
 from nonebot.log import logger
+from ..utils.image_utils import image_segment
 
 from .send import sticker_dir, sticker_folders, resolve_folder_name, count_images_in_folder, get_next_image_id, invalidate_count_cache
 from .check import check_duplicate_images, render_duplicate_report
@@ -260,7 +261,7 @@ async def save_contribution_images(
 
         if saved_count == 0 and duplicate_count > 0:
             if report_bytes:
-                return False, MessageSegment.image(report_bytes), 0
+                return False, image_segment(report_bytes), 0
             else:
                 return False, f"投稿失败！检测到 {duplicate_count} 张图片全部为重复图片。", 0
 
@@ -269,7 +270,7 @@ async def save_contribution_images(
         if duplicate_count > 0:
             message_segments.append(MessageSegment.text(f"\n检测到 {duplicate_count} 张重复图片。"))
             if report_bytes:
-                message_segments.append(MessageSegment.image(report_bytes))
+                message_segments.append(image_segment(report_bytes))
             else:
                 message_segments.append(MessageSegment.text("\n（重复报告生成失败）"))
 

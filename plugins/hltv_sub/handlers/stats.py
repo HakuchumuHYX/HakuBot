@@ -10,6 +10,7 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
+from ...utils.image_utils import image_segment
 from ..data_manager import data_manager
 from ..data_source import hltv_data
 from ..permissions import is_group_enabled
@@ -42,7 +43,7 @@ async def handle_stats(bot: Bot, event: GroupMessageEvent, args: Message = Comma
                 stats = await hltv_data.get_latest_result_with_stats(sub.event_id, sub.event_title)
                 if stats:
                     img = await render_stats(stats)
-                    await stats_cmd.finish(MessageSegment.image(img))
+                    await stats_cmd.finish(image_segment(img))
                     return
 
             await stats_cmd.finish("暂无比赛数据")
@@ -87,7 +88,7 @@ async def handle_stats(bot: Bot, event: GroupMessageEvent, args: Message = Comma
 
             if stats:
                 img = await render_stats(stats)
-                await stats_cmd.finish(MessageSegment.image(img))
+                await stats_cmd.finish(image_segment(img))
             else:
                 await stats_cmd.finish(f"无法获取比赛 #{match_id} 的数据")
 

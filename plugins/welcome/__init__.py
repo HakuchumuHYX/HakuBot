@@ -3,7 +3,7 @@ from nonebot.adapters.onebot.v11 import GroupIncreaseNoticeEvent, Message, Messa
 import random
 from pathlib import Path
 from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import path_to_base64_image
+from ..utils.image_utils import image_segment
 
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as store
@@ -66,7 +66,7 @@ async def handle_welcome(event: GroupIncreaseNoticeEvent):
 
     if selected_image:
         # 如果选到了图片
-        msg_segments.append(path_to_base64_image(selected_image))
+        msg_segments.append(image_segment(selected_image))
         msg_segments.append(MessageSegment.text("\n欢迎新人！群高性能萝卜子ATRIだよ~\n发送“help”可获取帮助文档~"))
     else:
         # 如果 normal 和 special 都没有图片，发送纯文字

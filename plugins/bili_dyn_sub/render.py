@@ -29,6 +29,7 @@ from PIL import Image
 from PIL.Image import Image as PILImage
 
 from ..utils.browser import text_to_pic
+from ..utils.image_utils import image_segment
 from ..utils.network import HttpError, download_bytes
 from ..utils.tools import get_exc_desc, get_logger, run_in_pool
 from .config import plugin_config
@@ -278,13 +279,13 @@ async def merge_pics(pic_urls: list[str]) -> list[Union[bytes, str]]:
 
 
 def _image_segment(pic: Union[bytes, str]) -> Optional[MessageSegment]:
-    """图片消息段：bytes 走 base64（同 `image_utils.path_to_base64_image` 的思路），str 直传 URL"""
+    """图片消息段：本地数据走共享文件，远程图片保留 URL。"""
     if isinstance(pic, (bytes, bytearray)):
         if not pic:
             return None
-        return MessageSegment.image(bytes(pic))
+        return image_segment(bytes(pic))
     if isinstance(pic, str) and pic.strip():
-        return MessageSegment.image(pic)
+        return image_segment(pic)
     logger.debug(f"忽略非法配图项: {type(pic).__name__}")
     return None
 
@@ -306,7 +307,7 @@ async def build_messages(parsed: ParsedDynamic) -> list[MessageSegment]:
         logger.error(f"动态 {parsed.dyn_id} 文字卡片渲染失败，降级为纯文本: {get_exc_desc(e)}")
         segments.append(MessageSegment.text(text))
     else:
-        segments.append(MessageSegment.image(card))
+        segments.append(image_segment(card))
 
     pics_group: list[list[str]] = []
     if parsed.pics:

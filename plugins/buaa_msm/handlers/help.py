@@ -10,8 +10,9 @@ from __future__ import annotations
 from typing import List
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment, PrivateMessageEvent
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.log import logger
+from ...utils.tools import send_forward_msg
 
 # 群聊帮助文本
 GROUP_HELP_TEXT = """该功能由于技术原因，仅在**私聊**中使用，请**添加ATRI好友**发送"buaamshelp"查看完整帮助文档。
@@ -29,7 +30,7 @@ PRIVATE_HELP_TEXT = """欢迎使用BUAAMSM插件，更适合百航宝宝体质�
 最后：如果你发现任何问题，请联系bot主。Have fun!"""
 
 
-async def create_forward_nodes(text: str, bot_name: str, bot_uin: str) -> List[MessageSegment]:
+async def create_forward_nodes(text: str) -> List[str]:
     """将长文本按行分割，创建合并转发节点"""
     nodes = []
     lines = text.strip().split("\n")
@@ -37,13 +38,7 @@ async def create_forward_nodes(text: str, bot_name: str, bot_uin: str) -> List[M
     for line in lines:
         if not line.strip():
             continue
-        nodes.append(
-            MessageSegment.node_custom(
-                user_id=int(bot_uin),
-                nickname=bot_name,
-                content=Message(line.strip()),
-            )
-        )
+        nodes.append(line.strip())
 
     return nodes
 
@@ -61,13 +56,9 @@ help_cmd = on_command(
 async def handle_private_help(bot: Bot, event: PrivateMessageEvent):
     """处理私聊help命令"""
     try:
-        bot_info = await bot.get_login_info()
-        bot_uin = bot_info.get("user_id")
-        bot_name = bot_info.get("nickname", "ATRI")
+        nodes = await create_forward_nodes(PRIVATE_HELP_TEXT)
 
-        nodes = await create_forward_nodes(PRIVATE_HELP_TEXT, bot_name, str(bot_uin))
-
-        await bot.send_private_forward_msg(user_id=event.user_id, messages=nodes)
+        await send_forward_msg(bot, user_id=event.user_id, items=nodes)
     except Exception as e:
         logger.error(f"发送私聊帮助失败: {e}")
         await help_cmd.send(PRIVATE_HELP_TEXT)
@@ -79,13 +70,9 @@ async def handle_private_help(bot: Bot, event: PrivateMessageEvent):
 async def handle_group_help(bot: Bot, event: GroupMessageEvent):
     """处理群聊help命令"""
     try:
-        bot_info = await bot.get_login_info()
-        bot_uin = bot_info.get("user_id")
-        bot_name = bot_info.get("nickname", "ATRI")
+        nodes = await create_forward_nodes(GROUP_HELP_TEXT)
 
-        nodes = await create_forward_nodes(GROUP_HELP_TEXT, bot_name, str(bot_uin))
-
-        await bot.send_group_forward_msg(group_id=event.group_id, messages=nodes)
+        await send_forward_msg(bot, group_id=event.group_id, items=nodes)
     except Exception as e:
         logger.error(f"发送群聊帮助失败: {e}")
         await help_cmd.send(GROUP_HELP_TEXT)

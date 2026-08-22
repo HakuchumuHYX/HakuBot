@@ -3,6 +3,7 @@ from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, MessageSegment, GroupMessageEvent
 from httpx import AsyncClient
 from ..plugin_manager.enable import is_plugin_enabled
+from ..utils.image_utils import image_segment
 
 __plugin_meta__ = PluginMetadata(
     name="表情包保存器",
@@ -32,7 +33,7 @@ async def handle_face_extraction(bot: Bot, event: MessageEvent):
         for seg in original_message:
             logger.debug("seg: " + seg + " type: " + str(seg.type))
             if seg.type == "image":
-                content = MessageSegment.text("表情：") + MessageSegment.image(seg.data["url"], type_=0)
+                content = MessageSegment.text("表情：") + image_segment(seg.data["url"], type_=0)
                 # 用于 .gif 格式的表情包保存，加上一层跳转防止可能的检测
                 url = str(seg.data["url"]).replace("https://gchat.qpic.cn", TARGET_REDIRECT_URL).replace("https://multimedia.nt.qq.com.cn", TARGET_REDIRECT_URL_NT)
                 # async with AsyncClient() as client:

@@ -22,7 +22,7 @@ from .send import sticker_folders, resolve_folder_name, get_all_images_in_folder
 from .config import IMAGE_EXTENSIONS, OVERVIEW_BATCH_SIZE, MAX_CANVAS_PIXELS
 from . import send
 from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import path_to_base64_image
+from ..utils.image_utils import image_segment
 
 # === 字体缓存 ===
 _font_cache: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
@@ -181,7 +181,7 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
         if found_image_path:
             try:
                 # 累加图片消息段
-                msg += path_to_base64_image(found_image_path)
+                msg += image_segment(found_image_path)
                 has_valid_image = True
             except Exception as e:
                 logger.error(f"发送图片 {found_image_path} 失败: {e}")
@@ -256,7 +256,7 @@ async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()
 
             if img_bytes:
                 # 发送图片
-                msg = MessageSegment.image(img_bytes)
+                msg = image_segment(img_bytes)
                 if is_multi_page:
                     msg += MessageSegment.text(f"\nPart {page_num}/{total_pages} ({len(batch)} items)")
 

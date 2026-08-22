@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from nonebot import get_bot
-from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot_plugin_apscheduler import scheduler
 
 # 导入管理模块
@@ -12,6 +11,7 @@ from .data_manager import data_manager
 from .utils import get_total_messages, get_top_users, reset_daily_stats
 from .render import render_daily_stat_image
 from ..utils.tools import get_logger
+from ..utils.image_utils import image_segment
 
 logger = get_logger("group_statistics.scheduler")
 
@@ -38,7 +38,7 @@ async def send_daily_report(bot, group_id: int):
     img_bytes = await render_daily_stat_image(total, top_users, stat_date=stat_date)
 
     try:
-        await bot.send_group_msg(group_id=group_id, message=MessageSegment.image(img_bytes))
+        await bot.send_group_msg(group_id=group_id, message=image_segment(img_bytes))
         logger.info(f"已发送群 {group_id} 的每日统计报告")
     except Exception as e:
         logger.exception(f"发送群 {group_id} 的统计报告失败: {e}")

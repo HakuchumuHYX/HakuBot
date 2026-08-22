@@ -13,6 +13,8 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.log import logger
 from pil_utils import BuildImage, Text2Image
 
+from ..utils.image_utils import image_segment
+from ..utils.tools import ForwardItem
 from .utils import download_user_img
 
 
@@ -22,7 +24,7 @@ async def user_img(user_id: int) -> bytes:
 
 async def user_img_segment(user_id: int) -> MessageSegment:
     try:
-        return MessageSegment.image(await user_img(user_id))
+        return image_segment(await user_img(user_id))
     except Exception as e:
         logger.warning(f"获取用户头像失败，发送文本结果: user_id={user_id} error={e}")
         return MessageSegment.text("")
@@ -102,11 +104,11 @@ def text_to_png(msg: str) -> io.BytesIO:
 
 
 def image_from_text(msg: str) -> MessageSegment:
-    return MessageSegment.image(text_to_png(msg))
+    return image_segment(text_to_png(msg))
 
 
 def image_from_bbcode(msg: str) -> MessageSegment:
-    return MessageSegment.image(bbcode_to_png(msg))
+    return image_segment(bbcode_to_png(msg))
 
 
 def render_protect_list(names: Iterable[str]) -> MessageSegment:
@@ -124,15 +126,8 @@ def render_cp_list(pairs: Iterable[Tuple[str, str]]) -> MessageSegment:
     return image_from_text("本群CP：\n——————————————\n" + msg[:-1])
 
 
-def make_forward_node(name: str, uin: int, content) -> dict:
-    return {
-        "type": "node",
-        "data": {
-            "name": name,
-            "uin": uin,
-            "content": content,
-        },
-    }
+def make_forward_node(name: str, uin: int, content) -> ForwardItem:
+    return ForwardItem(content=content, name=name, uin=uin)
 
 
 def render_yinpa_record(title: str, rows: Iterable[Tuple[str, int]], action: str) -> MessageSegment:

@@ -17,6 +17,7 @@ from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
 from ..utils.browser import md_to_pic, read_tpl
+from ..utils.image_utils import image_segment
 from .config import plugin_config, save_config
 from .utils import extract_pure_text, parse_message_content, remove_markdown
 from .services.chat_service import call_chat_completion
@@ -126,7 +127,7 @@ async def _render_chat_reply(reply_text: str, stat_text: str) -> MessageSegment 
     try:
         css_path = str(CUSTOM_CSS_PATH.absolute()) if CUSTOM_CSS_PATH.exists() else ""
         img_bytes = await md_to_pic(md=md_content, width=800, css_path=css_path)
-        return MessageSegment.image(img_bytes)
+        return image_segment(img_bytes)
     except Exception as exc:
         logger.error(f"渲染 Markdown 失败: {exc}")
         return Message(remove_markdown(reply_text) + f"\n\n{stat_text}")
@@ -263,7 +264,7 @@ async def _handle_draw_command(
         _update_group_cd(event, "imagen")
 
         started_at = time.perf_counter()
-        await matcher.send(MessageSegment.image(image_url))
+        await matcher.send(image_segment(image_url))
         send_elapsed = time.perf_counter() - started_at
 
         stat_text = (

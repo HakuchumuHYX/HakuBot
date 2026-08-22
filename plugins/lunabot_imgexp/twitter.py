@@ -21,7 +21,7 @@ from ..utils.tools import get_logger, get_exc_desc, run_in_pool, truncate, TempF
 from ..utils.network import download_image
 from ..utils.browser import PlaywrightPage
 from ..utils.draw.img_utils import concat_images, save_transparent_static_gif
-from ..utils.image_utils import path_to_base64_image
+from ..utils.image_utils import image_segment
 
 logger = get_logger('Twitter')
 
@@ -228,14 +228,14 @@ async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message 
                 gif_path_ctx = TempFilePath("gif", remove_after=timedelta(minutes=3))
                 gif_path = stack.enter_context(gif_path_ctx)
                 await run_in_pool(save_transparent_static_gif, img, str(gif_path))
-                messages.append(path_to_base64_image(gif_path))
+                messages.append(image_segment(gif_path))
             
             elif isinstance(img, Image.Image):
                 # PIL Image -> Temp File
                 tmp_ctx = TempFilePath("png")
                 tmp_path = stack.enter_context(tmp_ctx)
                 img.save(tmp_path, format='PNG')
-                messages.append(path_to_base64_image(tmp_path))
+                messages.append(image_segment(tmp_path))
             
             elif isinstance(img, bytes):
                 # Bytes -> Temp File
@@ -244,11 +244,11 @@ async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message 
                 tmp_path = stack.enter_context(tmp_ctx)
                 with open(tmp_path, 'wb') as f:
                     f.write(img)
-                messages.append(path_to_base64_image(tmp_path))
+                messages.append(image_segment(tmp_path))
                 
             else:
                 # URL string
-                messages.append(MessageSegment.image(img))
+                messages.append(image_segment(img))
 
         # 发送逻辑
         # 使用合并转发发送

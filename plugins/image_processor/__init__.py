@@ -28,7 +28,7 @@ from .image_rotate import process_image_rotate
 
 from ..plugin_manager.enable import *
 from ..plugin_manager.cd_manager import *
-from ..utils.image_utils import path_to_base64_image
+from ..utils.image_utils import image_segment
 from ..utils.tools import run_in_pool
 from .utils import safe_delete_file
 
@@ -38,7 +38,7 @@ async def _send_generated_image(handler, result_path: str, abnormal_message: str
         if result_path and os.path.exists(result_path):
             file_size = os.path.getsize(result_path)
             if file_size > 100:
-                await handler.send(path_to_base64_image(result_path))
+                await handler.send(image_segment(result_path))
                 return True
             await handler.send(abnormal_message)
             return False
@@ -473,7 +473,7 @@ async def handle_image_help(event: Event, cmd_arg: Message = CommandArg()):
         if help_image_path and os.path.exists(help_image_path):
             file_size = os.path.getsize(help_image_path)
             if file_size > 100:
-                await image_help_handler.send(path_to_base64_image(help_image_path))
+                await image_help_handler.send(image_segment(help_image_path))
             else:
                 # 如果图片生成失败，回退到文本帮助
                 help_text = await get_help_text()

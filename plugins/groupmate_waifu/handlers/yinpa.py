@@ -27,6 +27,7 @@ from ..rules import check_plugin_enabled, check_yinpa_enabled, is_yinpa_enabled
 
 # 外部模块导入
 from ...utils.common import create_exact_command_rule
+from ...utils.tools import send_forward_msg
 
 
 # ============================================================
@@ -188,7 +189,7 @@ async def handle_yinpa_list(bot: Bot, event: GroupMessageEvent):
     # 发送结果
     if len(msg_list) > 1:
         # 有记录时发送合并转发
-        await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
+        await send_forward_msg(bot, group_id=group_id, items=msg_list)
     else:
         # 只有卡池，没有记录
         await yinpa_list.finish("今天还没有人涩涩哦。")

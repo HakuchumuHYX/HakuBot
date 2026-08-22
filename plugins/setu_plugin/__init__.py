@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, Any
 
 import httpx
 
@@ -25,7 +25,8 @@ from ..plugin_manager.enable import is_plugin_enabled
 from ..plugin_manager.cd_manager import check_cd, update_cd
 
 from .client import SetuClient
-from ..utils.image_utils import path_to_base64_image
+from ..utils.image_utils import image_segment
+from ..utils.tools import send_forward_msg
 
 __plugin_name__ = "涩图（lzst）"
 __plugin_usage__ = """
@@ -270,22 +271,14 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
 
             # 构造“图片消息段”：优先本地文件，其次 URL（注意：遇到 404 我们会提前 refetch，不会走到这里）
             if cache_path and cache_path.exists():
-                img_seg = path_to_base64_image(cache_path)
+                img_seg = image_segment(cache_path)
             elif result.display_url:
-                img_seg = MessageSegment.image(result.display_url)
+                img_seg = image_segment(result.display_url)
 
             break
 
         # result 在上面流程中确保非空
         info = f"Title: {result.title}\nPid: {result.pid}"
-
-        # --- 合并转发 ---
-        bot_info = await bot.get_login_info()
-        bot_uin = str(bot_info.get("user_id", "0"))
-        bot_nickname = str(bot_info.get("nickname", "bot"))
-
-        def _mk_node(content: str) -> Dict[str, Any]:
-            return {"type": "node", "data": {"name": bot_nickname, "uin": bot_uin, "content": content}}
 
         original_link = result.url or ""
         regular_link = result.display_url or ""
@@ -293,42 +286,20 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         fallback_link_text = f"图片链接：{regular_link or original_link}"
 
         # --- 1) 优先尝试：合并转发（Title/Pid + 图片/链接 + 原图链接） ---
-        nodes: List[Dict[str, Any]] = [
-            _mk_node(info),
-            _mk_node(str(img_seg) if img_seg else fallback_link_text),
-        ]
+        items = [info, img_seg if img_seg else fallback_link_text]
         if original_link_text:
-            nodes.append(_mk_node(original_link_text))
+            items.append(original_link_text)
 
         sent_ok = False
         try:
-            if group_id:
-                await bot.send_forward_msg(group_id=int(group_id), messages=nodes)
-            else:
-                await bot.send_private_forward_msg(user_id=int(user_id), messages=nodes)
+            await send_forward_msg(bot, event, items)
             sent_ok = True
         except FinishedException:
             raise
         except Exception as e:
             logger.exception(f"[setu_plugin] send forward failed: {e}")
 
-        # --- 2) 合并转发失败：fallback 到分开发图（先发 info，再发图；失败则发链接） ---
-        if not sent_ok:
-            try:
-                await bot.send(event, info)
-                if img_seg:
-                    await bot.send(event, img_seg)
-                else:
-                    await bot.send(event, fallback_link_text)
-
-                if original_link_text:
-                    await bot.send(event, original_link_text)
-
-                sent_ok = True
-            except Exception as e:
-                logger.exception(f"[setu_plugin] send split failed: {e}")
-
-        # --- 3) 分开发图也失败：最后 fallback 到仅链接 ---
+        # 公共转发器已处理明确失败时的逐条补发；仍失败则最后仅发链接。
         if not sent_ok:
             try:
                 await bot.send(event, original_link_text or fallback_link_text)

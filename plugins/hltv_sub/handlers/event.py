@@ -10,6 +10,7 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
+from ...utils.image_utils import image_segment
 from ..data_manager import EventSubscription, data_manager
 from ..data_source import hltv_data
 from ..permissions import check_permission, is_group_enabled
@@ -42,7 +43,7 @@ async def handle_event_list(bot: Bot, event: GroupMessageEvent):
         subscribed_ids = data_manager.get_subscribed_event_ids(group_id)
 
         img = await render_events(ongoing, upcoming, subscribed_ids)
-        await event_list.finish(MessageSegment.image(img))
+        await event_list.finish(image_segment(img))
 
     except FinishedException:
         raise

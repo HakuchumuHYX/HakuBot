@@ -6,7 +6,7 @@ import time
 from collections import defaultdict
 
 from nonebot import require, on_command, on_message, on_type, get_bot, get_driver
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
 from nonebot.adapters.onebot.v11.event import Event as OneBotEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.log import logger
@@ -19,6 +19,7 @@ from nonebot_plugin_apscheduler import scheduler
 
 from plugins.plugin_manager.enable import is_plugin_enabled, is_feature_enabled
 from plugins.plugin_manager import plugin_status
+from plugins.utils.image_utils import image_segment
 
 from .src.config import plugin_config, save_config
 from .src.analysis.main import MessageAnalyzer
@@ -338,7 +339,7 @@ async def handle_analysis(bot: Bot, event: GroupMessageEvent):
         if image_bytes:
             # 用 send_group_msg 发送以拿到 message_id，用于过滤本插件发出的总结
             resp = await bot.send_group_msg(
-                group_id=group_id, message=MessageSegment.image(image_bytes)
+                group_id=group_id, message=image_segment(image_bytes)
             )
             if isinstance(resp, dict):
                 _mark_report_message_id(group_id, resp.get("message_id"))
@@ -361,7 +362,7 @@ async def handle_debug_analysis(bot: Bot, event: GroupMessageEvent):
         image_bytes = await run_analysis(bot, group_id, retries=1, debug=True)
         
         if image_bytes:
-            await debug_analysis_cmd.finish(MessageSegment.image(image_bytes))
+            await debug_analysis_cmd.finish(image_segment(image_bytes))
         else:
             await debug_analysis_cmd.finish("Debug 分析生成失败，未返回图片。")
             
@@ -451,7 +452,7 @@ async def auto_run_daily_analysis():
             image_bytes = await run_analysis(bot, group_id, retries=3) # 自动任务重试3次
             if image_bytes:
                 resp = await bot.send_group_msg(
-                    group_id=group_id, message=MessageSegment.image(image_bytes)
+                    group_id=group_id, message=image_segment(image_bytes)
                 )
                 if isinstance(resp, dict):
                     _mark_report_message_id(group_id, resp.get("message_id"))

@@ -13,9 +13,9 @@ from typing import Any, Callable
 
 import aiohttp
 from PIL import Image
-from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.exception import FinishedException
 from nonebot.log import logger
+from ...utils.image_utils import image_segment
 
 from .. import analysis
 from ..config import plugin_config
@@ -189,7 +189,7 @@ async def _execute_msr_analysis(
     # 发送顺序保持稳定：先 summary 后 map
     try:
         summary_bytes = await summary_task
-        await bot.send_private_msg(user_id=event_user_id, message=MessageSegment.image(summary_bytes))
+        await bot.send_private_msg(user_id=event_user_id, message=image_segment(summary_bytes))
         sent_any = True
     except FinishedException:
         raise
@@ -204,7 +204,7 @@ async def _execute_msr_analysis(
 
     try:
         map_bytes = await map_task
-        await bot.send_private_msg(user_id=event_user_id, message=MessageSegment.image(map_bytes))
+        await bot.send_private_msg(user_id=event_user_id, message=image_segment(map_bytes))
         sent_any = True
     except FinishedException:
         raise

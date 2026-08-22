@@ -57,10 +57,6 @@ class PixivUgoiraError(PixivClientError):
     kind = "ugoira"
 
 
-class PixivSendForwardError(PixivClientError):
-    kind = "send_forward"
-
-
 class PixivClient:
     def __init__(
         self,

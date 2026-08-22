@@ -14,7 +14,7 @@ from ..utils.common import get_group_id
 from ..services.text import convert_text_to_image
 from plugins.plugin_manager.enable import is_feature_enabled
 from plugins.plugin_manager.cd_manager import check_cd, update_cd
-from plugins.utils.image_utils import path_to_base64_image
+from plugins.utils.image_utils import image_segment
 
 poke = on_notice()
 
@@ -81,7 +81,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
                     image_hash = hashlib.md5(image_data).hexdigest()
                     result = await bot.send_group_msg(
                         group_id=group_id,
-                        message=Message(MessageSegment.image(image_data))
+                        message=Message(image_segment(image_data))
                     )
                     text_image_cache.add_cache_by_image_hash(
                         image_hash=image_hash,
@@ -116,7 +116,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
             if image_path and os.path.exists(image_path):
                 result = await bot.send_group_msg(
                     group_id=group_id,
-                    message=Message(path_to_base64_image(image_path))
+                    message=Message(image_segment(image_path))
                 )
                 filename = os.path.basename(image_path)
                 cache_message_direct(

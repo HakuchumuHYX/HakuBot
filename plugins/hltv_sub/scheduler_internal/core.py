@@ -15,6 +15,7 @@ from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import Bot, MessageSegment
 from nonebot.log import logger
 
+from ...utils.image_utils import image_segment
 from ..config import plugin_config
 from ..data_manager import data_manager
 from ..data_source import hltv_data
@@ -568,7 +569,7 @@ class HLTVScheduler:
                 is_grand_final=match.is_grand_final,
                 is_third_place=match.is_third_place,
             )
-            msg = MessageSegment.image(img)
+            msg = image_segment(img)
         except Exception as e:
             logger.warning(f"[HLTV Scheduler] 渲染提醒图片失败，使用文本消息: {e}")
             start_time_str = "LIVE" if match.minutes_until <= 0 else match.start_time.strftime("%H:%M")
@@ -633,7 +634,7 @@ class HLTVScheduler:
 
             img = await render_stats(stats)
             score_line = f"{result.team1} {result.score1}:{result.score2} {result.team2}"
-            msg = MessageSegment.text(f"🏁 比赛已结束\n{score_line}\n\n") + MessageSegment.image(img)
+            msg = MessageSegment.text(f"🏁 比赛已结束\n{score_line}\n\n") + image_segment(img)
 
             for group_id in groups:
                 try:
@@ -679,7 +680,7 @@ class HLTVScheduler:
                     f"🗺️ 地图已结束 · BO{completed_map.bo_maps} 图{completed_map.map_index}\n"
                     f"{score_line}\n\n"
                 )
-                + MessageSegment.image(img)
+                + image_segment(img)
             )
 
             for group_id in groups:

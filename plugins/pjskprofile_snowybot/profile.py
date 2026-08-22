@@ -1,11 +1,12 @@
 from typing import Tuple, Optional
 from nonebot import on_regex
-from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
 from nonebot.params import RegexGroup
 from nonebot.log import logger
 from nonebot.exception import FinishedException
 
 from ..plugin_manager.enable import is_plugin_enabled
+from ..utils.image_utils import image_segment
 from .config import plugin_config
 from .data_manager import get_binding
 from .render import render_profile
@@ -58,7 +59,7 @@ async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup(
 
     try:
         image_bytes = await render_profile(target_url)
-        await profile_matcher.finish(MessageSegment.image(image_bytes))
+        await profile_matcher.finish(image_segment(image_bytes))
 
     except FinishedException:
         raise

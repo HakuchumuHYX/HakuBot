@@ -126,9 +126,9 @@ class SetuClient:
         retries: int = 2,
     ) -> bytes:
         """
-        Download image bytes for MessageSegment.image(bytes) to avoid adapter-side TLS/download issues.
+        Download image bytes locally so the shared image sender can avoid adapter-side downloads.
 
-        NapCat 在发送“合并转发”时会尝试自行下载 URL 图片；这里改为由 bot 端下载后以 base64 发送，稳定性更高。
+        NapCat 在发送合并转发时会自行下载 URL；这里由 bot 下载后交给共享文件发送层。
         """
         last_exc: Optional[Exception] = None
 

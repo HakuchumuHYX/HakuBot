@@ -31,6 +31,7 @@ from .image_utils import (
     download_image, random_crop_image, image_to_bytes,
 )
 from ..plugin_manager.enable import is_plugin_enabled
+from ..utils.image_utils import image_segment
 
 PLUGIN_ID = "pjsk_guess_card"
 
@@ -136,7 +137,7 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
         # 发送裁剪图；发送成功后才开始倒计时
         timeout = plugin_config.guess_timeout
         msg = (
-            MessageSegment.image(cropped_bytes)
+            image_segment(cropped_bytes)
             + f"\n猜卡面开始！限时 {timeout} 秒"
             + "\n直接发送角色昵称/简称来猜测（如 ick, saki, miku）"
             + "\n发送「提示」获取提示，发送「结束猜卡」提前结束"
@@ -161,7 +162,7 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
                     # 超时
                     logger.info(f"[猜卡面] 群 {group_id} 超时")
                     await bot.send(event, f"时间到！\n正确答案：\n{title}")
-                    await bot.send(event, MessageSegment.image(full_image_bytes))
+                    await bot.send(event, image_segment(full_image_bytes))
                     return
 
                 try:
@@ -171,7 +172,7 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
                 except asyncio.TimeoutError:
                     logger.info(f"[猜卡面] 群 {group_id} 超时")
                     await bot.send(event, f"时间到！\n正确答案：\n{title}")
-                    await bot.send(event, MessageSegment.image(full_image_bytes))
+                    await bot.send(event, image_segment(full_image_bytes))
                     return
 
                 text = msg_event.get_plaintext().strip()
@@ -182,7 +183,7 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
                 if any(kw in text for kw in STOP_KEYWORDS):
                     logger.info(f"[猜卡面] 群 {group_id} 手动停止 user={msg_event.user_id}")
                     await bot.send(event, f"猜卡面已手动结束！\n正确答案：\n{title}")
-                    await bot.send(event, MessageSegment.image(full_image_bytes))
+                    await bot.send(event, image_segment(full_image_bytes))
                     return
 
                 # 提示关键词
@@ -211,7 +212,7 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
                         event,
                         MessageSegment.reply(msg_event.message_id) + f"猜对了！\n{title}",
                     )
-                    await bot.send(event, MessageSegment.image(full_image_bytes))
+                    await bot.send(event, image_segment(full_image_bytes))
                     return
                 else:
                     logger.debug(f"[猜卡面] 群 {group_id} 猜错 cid={cid}, guessed={len(guessed_cids)}")
@@ -220,7 +221,7 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
             logger.error(f"[猜卡面] 群 {group_id} 游戏主循环异常: {e}", exc_info=True)
             try:
                 await bot.send(event, f"猜卡面出错了，正确答案：\n{title}")
-                await bot.send(event, MessageSegment.image(full_image_bytes))
+                await bot.send(event, image_segment(full_image_bytes))
             except Exception:
                 pass
     finally:

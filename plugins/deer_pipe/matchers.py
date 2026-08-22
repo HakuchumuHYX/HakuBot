@@ -16,6 +16,7 @@ from .config import config
 from .constants import PLUGIN_ID, PLUGIN_VERSION
 from .database import attend, attend_past, get_avatar, get_deer_map, update_avatar
 from .image import generate_calendar
+from ..utils.image_utils import prepare_image_source
 
 # 导入插件管理器
 try:
@@ -141,13 +142,13 @@ async def handle_deer(
                 UniMessage.text("成功帮")
                 .at(target_user_id)
                 .text("🦌了")
-                .image(raw=img)
+                .image(path=prepare_image_source(img))
                 .finish(reply_to=True)
             )
         else:
             await (
                 UniMessage.text(config.success_message)
-                .image(raw=img)
+                .image(path=prepare_image_source(img))
                 .finish(reply_to=True)
             )
             
@@ -220,13 +221,13 @@ async def handle_deer_past(
         if success:
             await (
                 UniMessage.text(config.past_success_message)
-                .image(raw=img)
+                .image(path=prepare_image_source(img))
                 .finish(reply_to=True)
             )
         else:
             await (
                 UniMessage.text(config.already_signed_message)
-                .image(raw=img)
+                .image(path=prepare_image_source(img))
                 .finish(reply_to=True)
             )
             
@@ -279,7 +280,7 @@ async def handle_deer_calendar(
         # 生成日历图片
         img = generate_calendar(now, deer_map, avatar)
         
-        await UniMessage.image(raw=img).finish(reply_to=True)
+        await UniMessage.image(path=prepare_image_source(img)).finish(reply_to=True)
         
     except FinishedException:
         raise

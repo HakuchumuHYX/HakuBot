@@ -18,6 +18,7 @@ from typing import Dict, Any, Optional
 # 导入管理模块
 from ..plugin_manager.enable import is_plugin_enabled
 from ..utils.common import create_exact_command_rule
+from ..utils.image_utils import image_segment
 
 # --- 配置 ---
 DATA_FILE = Path("data/draw_lots/records.json")
@@ -159,7 +160,7 @@ async def lq_(bot: Bot, event: MessageEvent):
     # 获取/生成图片并发送
     try:
         img_bytes = await get_or_render_image(sign_index)
-        msg.append(MessageSegment.image(img_bytes))
+        msg.append(image_segment(img_bytes))
         await command.finish(msg, at_sender=True)
     except FinishedException:
         raise

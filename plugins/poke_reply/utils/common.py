@@ -1,10 +1,12 @@
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import (
     Message, GroupMessageEvent, MessageSegment, Bot
 )
 from nonebot.rule import Rule
+from plugins.utils.image_utils import image_segment
+from plugins.utils.tools import ForwardItem
 
 def get_group_id(event) -> int:
     """从事件中获取群号"""
@@ -29,46 +31,29 @@ def ensure_at_me():
         return False
     return Rule(_checker)
 
-async def create_forward_message(bot: Bot, group_id: int, messages: List[Tuple[str, str, str]]) -> List[dict]:
+async def create_forward_message(
+    bot: Bot,
+    group_id: int,
+    messages: List[Tuple[str, str, Union[str, MessageSegment]]],
+) -> List[ForwardItem]:
     """
-    创建合并转发消息（支持文本和图片base64）
-    messages: 列表，元素为 (发送者名称, "text"或"image", 内容或base64)
+    创建合并转发条目（支持文本和共享本地图片）
+    messages: 列表，元素为 (发送者名称, "text"或"image", 内容或图片段)
     """
     try:
-        bot_info = await bot.get_login_info()
-        bot_uin = bot_info.get("user_id", bot.self_id)
-        forward_nodes = []
+        forward_items = []
         for sender_name, msg_type, content in messages:
             if msg_type == "text":
-                node_content = MessageSegment.text(content)
+                node_content = MessageSegment.text(str(content))
             elif msg_type == "image":
-                # content 应为 "base64://..." 格式
-                node_content = MessageSegment.image(content)
+                node_content = content if isinstance(content, MessageSegment) else image_segment(content)
             else:
                 node_content = MessageSegment.text(str(content))
-
-            node = {
-                "type": "node",
-                "data": {
-                    "name": sender_name,
-                    "uin": str(bot_uin),
-                    "content": node_content
-                }
-            }
-            forward_nodes.append(node)
-        return forward_nodes
+            forward_items.append(ForwardItem(node_content, name=sender_name, uin=bot.self_id))
+        return forward_items
     except Exception as e:
         logger.error(f"创建合并转发消息失败: {e}")
-        return [
-            {
-                "type": "node",
-                "data": {
-                    "name": "错误",
-                    "uin": str(bot.self_id),
-                    "content": "合并转发消息创建失败"
-                }
-            }
-        ]
+        return [ForwardItem("合并转发消息创建失败", name="错误", uin=bot.self_id)]
 
 def extract_image_data(message: Message) -> Tuple[bool, list]:
     """提取消息中的图片数据"""

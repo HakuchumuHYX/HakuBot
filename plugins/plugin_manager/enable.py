@@ -1,11 +1,12 @@
 # plugin_manager/enable.py
 from nonebot import on_command, get_loaded_plugins, get_driver
-from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
 from typing import Optional
 
 from ..utils.tools import get_logger
+from ..utils.image_utils import image_segment
 
 logger = get_logger("plugin_manager.enable")
 
@@ -273,7 +274,7 @@ async def handle_list(bot: Bot, event: MessageEvent):
             watermark_text=wm_text,
             watermark_position=wm_pos,
         )
-        await list_plugins.finish(MessageSegment.image(img_bytes))
+        await list_plugins.finish(image_segment(img_bytes))
     except FinishedException:
         # finish() 会抛 FinishedException 用于中断流程；不要当作渲染失败处理
         raise

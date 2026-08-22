@@ -7,6 +7,7 @@ from __future__ import annotations
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment
 
+from ...utils.image_utils import image_segment
 from ..permissions import is_group_enabled
 from ..render import render_help
 
@@ -151,4 +152,4 @@ async def handle_hltv_help(bot: Bot, event: GroupMessageEvent):
     ]
 
     img = await render_help(sections)
-    await hltv_help.finish(MessageSegment.image(img))
+    await hltv_help.finish(image_segment(img))

@@ -6,7 +6,7 @@ from nonebot.params import CommandArg
 from nonebot.log import logger
 
 from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import path_to_base64_image
+from ..utils.image_utils import image_segment
 from .service import get_cache_file, is_cache_valid, read_cache_age_text, refresh_prediction_cache
 
 from . import scheduler as _scheduler  # noqa: F401
@@ -38,7 +38,7 @@ async def handle_predict_command(
             f"以下是预测结果（{read_cache_age_text(cache_file)}）\n"
             f"若发现数据过时或图片错误，可在命令后加上 reload 强制刷新：\n"
         )
-        await matcher.finish(Message(msg_text) + path_to_base64_image(cache_file))
+        await matcher.finish(Message(msg_text) + image_segment(cache_file))
 
     if force_reload:
         await matcher.send(f"正在强制刷新 {region_name} 预测数据，请稍候...")
@@ -53,11 +53,11 @@ async def handle_predict_command(
         if cache_file.exists():
             await matcher.finish(
                 Message(f"获取最新数据失败 ({err})，显示旧缓存：\n")
-                + path_to_base64_image(cache_file)
+                + image_segment(cache_file)
             )
         await matcher.finish(f"获取失败。\n错误信息: {err}")
 
-    await matcher.finish(MessageSegment.image(img_bytes))
+    await matcher.finish(image_segment(img_bytes))
 
 
 @cn_shot_cmd.handle()

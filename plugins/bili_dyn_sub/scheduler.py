@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Any, NamedTuple, Optional, Union
+from typing import Any, NamedTuple, Optional
 
 from nonebot import get_bot, get_driver, require
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
@@ -35,7 +35,7 @@ require("nonebot_plugin_apscheduler")
 # 故一律用 apscheduler 别名引用外部调度器。
 from nonebot_plugin_apscheduler import scheduler as apscheduler
 
-from ..utils.tools import get_exc_desc, get_logger, run_in_pool
+from ..utils.tools import get_exc_desc, get_logger, run_in_pool, send_forward_msg
 from . import api
 from .backoff import ACTION_REFRESH_COOKIE, backoff_manager
 from .config import plugin_config
@@ -75,10 +75,6 @@ _empty_feed_streak: dict[str, int] = {}
 
 # 发送失败时的兜底重试上下限，防止 config 被填成 0/负值
 _MIN_SEND_ATTEMPTS = 1
-
-# 合并转发的 Bot 身份（uin, nickname），首次用到时取一次
-_self_identity: Optional[tuple[str, str]] = None
-
 
 # ---------------------------------------------------------------- 配置兜底
 
@@ -463,22 +459,6 @@ def _select_pushable(uid: str, parsed_list: list[ParsedDynamic]) -> PushSelectio
 # ---------------------------------------------------------------- 发送节奏
 
 
-async def _self_info(bot: Bot) -> tuple[str, str]:
-    """合并转发节点用的 Bot 身份，取一次后进程内复用"""
-    global _self_identity
-    if _self_identity is not None:
-        return _self_identity
-    uin, nickname = str(bot.self_id), "Bot"
-    try:
-        info = await bot.get_login_info()
-        uin = str(info.get("user_id", bot.self_id))
-        nickname = str(info.get("nickname") or "Bot")
-    except (ActionFailed, NetworkError, asyncio.TimeoutError) as e:
-        logger.debug(f"获取登录信息失败，合并转发使用兜底身份: {get_exc_desc(e)}")
-    _self_identity = (uin, nickname)
-    return _self_identity
-
-
 @dataclass(frozen=True, slots=True)
 class SendTarget:
     """一个发送目标：群聊或私聊二选一。
@@ -502,9 +482,8 @@ class SendTarget:
 async def _send_with_retry(
     bot: Bot,
     target: SendTarget,
-    payload: Union[Message, list[dict[str, Any]]],
+    payload: Message,
     *,
-    forward: bool = False,
     desc: str = "",
 ) -> bool:
     """发一条消息，失败重试 send_retry_times 次；每次发送后固定 sleep 全局间隔。
@@ -517,13 +496,7 @@ async def _send_with_retry(
 
     for attempt in range(1, attempts + 1):
         try:
-            if forward:
-                api_name = "send_private_forward_msg" if target.is_private else "send_group_forward_msg"
-                kwargs = (
-                    {"user_id": target.user_id} if target.is_private else {"group_id": target.group_id}
-                )
-                await bot.call_api(api_name, messages=payload, **kwargs)
-            elif target.is_private:
+            if target.is_private:
                 await bot.send_private_msg(user_id=target.user_id, message=payload)
             else:
                 await bot.send_group_msg(group_id=target.group_id, message=payload)
@@ -563,19 +536,13 @@ async def dispatch_segments(bot: Bot, target: SendTarget, segments: list[Message
         await _send_with_retry(bot, target, Message(rest[0]), desc="动态配图")
         return
 
-    uin, nickname = await _self_info(bot)
-    nodes = [
-        {"type": "node", "data": {"name": nickname, "uin": uin, "content": Message(segment)}}
-        for segment in rest
-    ]
-    ok = await _send_with_retry(
-        bot, target, nodes, forward=True, desc=f"{len(rest)} 张配图（合并转发）"
+    await send_forward_msg(
+        bot,
+        group_id=target.group_id,
+        user_id=target.user_id,
+        items=[Message(segment) for segment in rest],
+        fallback_interval=_cfg_float("send_interval_seconds", 1.5, 0.0),
     )
-    if not ok:
-        # 合并转发被拒时逐张补发，宁可丑不可漏
-        logger.info(f"{target} 合并转发失败，降级为逐张发送 {len(rest)} 张配图")
-        for segment in rest:
-            await _send_with_retry(bot, target, Message(segment), desc="动态配图（降级）")
 
 
 # ---------------------------------------------------------------- 主循环
@@ -639,7 +606,7 @@ async def _poll_uid(bot: Bot, uid: str) -> None:
     if overflow > 0:
         tip = Message(f"另有 {overflow} 条动态未展示")
         for group_id in targets:
-            await _send_with_retry(bot, group_id, tip, desc="未展示提示")
+            await _send_with_retry(bot, SendTarget(group_id=group_id), tip, desc="未展示提示")
     if stale > 0:
         logger.info(f"UID {uid} 另有 {stale} 条动态超出推送窗口，已静默标记已读（不提示群友）")
 

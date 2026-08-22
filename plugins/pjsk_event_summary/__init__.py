@@ -2,11 +2,12 @@ from nonebot import get_driver, on_command, require
 from nonebot.log import logger
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
-from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import Message, GroupMessageEvent
 from nonebot.exception import FinishedException
 
 from ..plugin_manager.enable import is_plugin_enabled
 from ..utils.moesekai_hub import load_state
+from ..utils.image_utils import image_segment
 from .api import fetch_event_list, fetch_event_detail
 from .render import render_event_list_pic, render_event_detail_pic
 from . import scheduler as _scheduler  # noqa: F401
@@ -45,7 +46,7 @@ async def handle_list(bot: Bot, event: Event):
         # 传入水印
         pic = await render_event_list_pic(events, watermark=CUSTOM_WATERMARK, global_watermark=GLOBAL_WATERMARK_TEXT)
 
-        await pjsk_list.finish(MessageSegment.image(pic))
+        await pjsk_list.finish(image_segment(pic))
 
     except FinishedException:
         raise
@@ -77,7 +78,7 @@ async def handle_detail(bot: Bot, event: Event, args: Message = CommandArg()):
         # 传入水印
         pic = await render_event_detail_pic(result, watermark=CUSTOM_WATERMARK, global_watermark=GLOBAL_WATERMARK_TEXT)
 
-        await pjsk_detail.finish(MessageSegment.image(pic))
+        await pjsk_detail.finish(image_segment(pic))
 
     except FinishedException:
         raise

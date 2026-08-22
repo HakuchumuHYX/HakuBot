@@ -8,8 +8,9 @@ from nonebot.rule import to_me
 
 from ..models.data import data_manager
 from ..utils.common import ensure_at_me, create_forward_message
-from ..utils.image import image_to_base64
 from ..config import get_group_image_dir
+from plugins.utils.image_utils import image_segment
+from plugins.utils.tools import send_forward_msg
 
 view_all_contributions = on_command("查看所有投稿", rule=ensure_at_me() & to_me(), priority=5, block=True)
 view_all_texts = on_command("查看所有文本", rule=ensure_at_me() & to_me(), priority=5, block=True)
@@ -55,7 +56,7 @@ async def send_text_forward_message(bot: Bot, group_id: int, texts: List[str], t
                 messages.append(("投稿内容", "text", text_item))
 
             forward_nodes = await create_forward_message(bot, group_id, messages)
-            await bot.send_group_forward_msg(group_id=group_id, messages=forward_nodes)
+            await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
             if batch_index < total_batches:
                 await asyncio.sleep(1)
         return True
@@ -81,16 +82,12 @@ async def send_image_forward_message(bot: Bot, group_id: int, image_filenames: L
             for filename in batch:
                 image_path = get_group_image_dir(group_id) / filename
                 if image_path.exists():
-                    success, base64_data = image_to_base64(image_path)
-                    if success:
-                        messages.append(("投稿内容", "image", base64_data))
-                    else:
-                        logger.warning(f"图片转换失败: {filename}, 错误: {base64_data}")
+                    messages.append(("投稿内容", "image", image_segment(image_path)))
                 else:
                     logger.warning(f"图片文件不存在: {image_path}")
 
             forward_nodes = await create_forward_message(bot, group_id, messages)
-            await bot.send_group_forward_msg(group_id=group_id, messages=forward_nodes)
+            await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
             if batch_index < total_batches:
                 await asyncio.sleep(1)
         return True

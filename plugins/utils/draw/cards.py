@@ -18,7 +18,7 @@ from .plot import (
 # NOTE:
 # - 本模块目标：提供“可复用”的卡片渲染函数，避免插件侧各写一份画图逻辑。
 # - 实现完全基于 PIL/plot/painter，不依赖 htmlrender。
-# - 返回值统一为 PNG bytes，便于 NoneBot 直接 MessageSegment.image(bytes) 发送。
+# - 返回值统一为 PNG bytes，由共享 image_segment 负责落盘发送。
 
 
 @dataclass(frozen=True)

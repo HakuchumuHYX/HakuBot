@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 
+from ...utils.image_utils import image_segment
 from ..data_manager import data_manager
 from ..data_source import hltv_data
 from ..permissions import is_group_enabled
@@ -54,7 +55,7 @@ async def handle_matches_list(bot: Bot, event: GroupMessageEvent):
             return
 
         img = await render_matches(matches_by_event, live_count, upcoming_count)
-        await matches_list.finish(MessageSegment.image(img))
+        await matches_list.finish(image_segment(img))
 
     except FinishedException:
         raise

@@ -7,6 +7,7 @@ from nonebot.rule import Rule
 from nonebot.plugin import PluginMetadata
 from .analysis_bilibili import config, b23_extract, bili_keyword, search_bili_by_title
 from ..plugin_manager.enable import is_plugin_enabled
+from ..utils.image_utils import prepare_image_source
 
 require("nonebot_plugin_saa")
 from nonebot_plugin_saa import (  # noqa: E402
@@ -120,7 +121,7 @@ def format_msg(msg_list: List[Union[List[str], str]], is_plain_text: bool = Fals
         if not i:
             continue
         elif is_image(i):
-            msg.append(Image(i))
+            msg.append(Image(prepare_image_source(i)))
         else:
             msg.append(Text(i))
     return msg

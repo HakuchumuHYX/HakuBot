@@ -1,11 +1,12 @@
 from nonebot import on_command, get_driver
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment, Message
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 
 from .manager import help_manager
 from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import path_to_base64_image
+from ..utils.image_utils import image_segment
+from ..utils.tools import send_forward_msg
 
 driver = get_driver()
 
@@ -28,31 +29,14 @@ async def handle_help(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     try:
         img_path, links = await help_manager.get_help_data(force_update=False)
 
-        await matcher.send(path_to_base64_image(img_path))
+        await matcher.send(image_segment(img_path))
 
         if links:
-            forward_nodes = []
-            forward_nodes.append(
-                MessageSegment.node_custom(
-                    user_id=bot.self_id,
-                    nickname="ATRI",
-                    content=Message("包含的链接如下：")
-                )
-            )
+            forward_nodes = ["包含的链接如下："]
             for index, link in enumerate(links, 1):
-                forward_nodes.append(
-                    MessageSegment.node_custom(
-                        user_id=bot.self_id,
-                        nickname="ATRI",
-                        content=Message(f"{index}. {link}")
-                    )
-                )
+                forward_nodes.append(f"{index}. {link}")
 
-            await bot.call_api(
-                "send_group_forward_msg",
-                group_id=event.group_id,
-                messages=forward_nodes
-            )
+            await send_forward_msg(bot, group_id=event.group_id, items=forward_nodes)
 
     except FinishedException:
         raise

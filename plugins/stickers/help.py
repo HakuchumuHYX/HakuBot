@@ -2,6 +2,7 @@
 import io
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent
+from ..utils.image_utils import image_segment
 from nonebot.exception import FinishedException
 from ..plugin_manager.enable import is_plugin_enabled
 
@@ -240,7 +241,7 @@ async def handle_help(event: GroupMessageEvent):
             image_data = await render_help_text_fallback()
 
         if image_data:
-            await help_matcher.finish(MessageSegment.image(image_data))
+            await help_matcher.finish(image_segment(image_data))
         else:
             await help_matcher.finish("帮助图片生成失败，请检查日志。")
 

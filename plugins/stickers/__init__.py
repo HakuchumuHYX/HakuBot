@@ -9,7 +9,7 @@ from nonebot.params import CommandArg
 from nonebot.exception import FinishedException
 
 from ..utils.common import *
-from ..utils.image_utils import path_to_base64_image
+from ..utils.image_utils import image_segment
 from ..plugin_manager.enable import *
 from ..plugin_manager.cd_manager import check_cd, update_cd
 
@@ -91,7 +91,7 @@ async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[
         preview_bytes = await preview_duplicates_before_cleanup(all_duplicates)
         if preview_bytes:
             await sticker_matcher.send(
-                MessageSegment.image(preview_bytes) + "\n请回复『确认清理』来执行清理操作，或者回复『取消』取消操作")
+                image_segment(preview_bytes) + "\n请回复『确认清理』来执行清理操作，或者回复『取消』取消操作")
         else:
             total_pairs = sum(len(duplicates) for duplicates in all_duplicates.values())
             await sticker_matcher.send(
@@ -141,7 +141,7 @@ async def handle_clean_confirm(event: GroupMessageEvent):
 
     # 构建完整的结果消息
     if report_bytes:
-        await clean_confirm_matcher.send(MessageSegment.image(report_bytes))
+        await clean_confirm_matcher.send(image_segment(report_bytes))
         # 发送重命名结果
         if rename_count > 0:
             await clean_confirm_matcher.finish(f"📝 自动重命名完成：{rename_msg}")
@@ -208,7 +208,7 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
         try:
             pic_bytes = await render_stickers_preview()
             if pic_bytes:
-                await sticker_matcher.send(MessageSegment.image(pic_bytes))
+                await sticker_matcher.send(image_segment(pic_bytes))
                 return  # 使用 return 而不是 finish
         except Exception as e:
             logger.error(f"生成或发送贴图预览图片失败: {e}")
@@ -251,7 +251,7 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                     # 创建包含多张图片的消息
                     message_segments = []
                     for sticker_file in sticker_files:
-                        message_segments.append(path_to_base64_image(sticker_file))
+                        message_segments.append(image_segment(sticker_file))
 
                     update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
 
@@ -278,7 +278,7 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                 try:
                     update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
 
-                    await sticker_matcher.finish(path_to_base64_image(sticker_file))
+                    await sticker_matcher.finish(image_segment(sticker_file))
                 except FinishedException:
                     raise
                 except Exception as e:

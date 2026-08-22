@@ -17,6 +17,7 @@ from ..utils.network import download_and_hash_image
 from ..services.contribute import handle_text_contribution, handle_image_contribution
 from plugins.plugin_manager.enable import is_feature_enabled
 from plugins.plugin_manager.cd_manager import check_cd, update_cd
+from plugins.utils.tools import send_forward_msg
 
 # --- 注册匹配器 ---
 def is_convert_to_text_message(event: MessageEvent) -> bool:
@@ -180,7 +181,7 @@ async def handle_convert_to_text(bot: Bot, event: GroupMessageEvent):
         messages = [("转文字结果", "text", original_text)]
         forward_nodes = await create_forward_message(bot, group_id, messages)
 
-        await bot.send_group_forward_msg(group_id=group_id, messages=forward_nodes)
+        await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
         text_image_cache.remove_cache_by_image_hash(image_hash, group_id)
 
     except FinishedException:

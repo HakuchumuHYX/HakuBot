@@ -7,13 +7,14 @@ from datetime import datetime
 from nonebot import on_command, require, get_driver
 from nonebot.adapters import Bot, Event, Message
 from nonebot.params import CommandArg
-from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from .runtime import save_data, get_hakubot_runtime, get_autochat_runtime, BotRuntime
 from .collector import collect_server_status, ServerStatus, ProcessInfo, NetworkResult
 from . import drawer
 
 from ..utils.tools import get_logger
+from ..utils.image_utils import image_segment
 
 logger = get_logger("alive_stat")
 
@@ -81,4 +82,4 @@ async def handle_alive(bot: Bot, event: Event, args: Message = CommandArg()):
         is_night=is_night,
     )
 
-    await alive.finish(MessageSegment.image(image_bytes))
+    await alive.finish(image_segment(image_bytes))

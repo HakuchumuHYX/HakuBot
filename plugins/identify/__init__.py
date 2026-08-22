@@ -1,8 +1,6 @@
 from nonebot import get_driver, on_command, on_message, logger, require
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
-    Message,
-    MessageSegment,
     Bot,
     MessageEvent
 )
@@ -16,7 +14,8 @@ from nonebot_plugin_apscheduler import scheduler
 
 # 导入管理模块
 from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import path_to_base64_image
+from ..utils.image_utils import image_segment
+from ..utils.tools import ForwardItem, send_forward_msg
 from ..utils.common import create_exact_command_rule
 from .data_manager import daily_record_manager
 from nonebot.exception import FinishedException
@@ -67,41 +66,15 @@ async def create_identify_message(
             # 鉴定自己的情况
             text_content = f"呀吼！@{target_name}，经鉴定你是"
 
-        # 创建转发消息节点
-        forward_nodes = [
-            {
-                "type": "node",
-                "data": {
-                    "name": bot_name,
-                    "uin": str(bot.self_id),
-                    "content": text_content
-                }
-            },
-            {
-                "type": "node",
-                "data": {
-                    "name": bot_name,
-                    "uin": str(bot.self_id),
-                    "content": Message(path_to_base64_image(image_path))
-                }
-            }
+        return [
+            ForwardItem(text_content, name=bot_name, uin=bot.self_id),
+            ForwardItem(image_segment(image_path), name=bot_name, uin=bot.self_id),
         ]
-
-        return forward_nodes
 
     except Exception as e:
         logger.error(f"创建鉴定消息失败: {e}")
         # 失败时返回简单的文本消息格式
-        return [
-            {
-                "type": "node",
-                "data": {
-                    "name": "鉴定结果",
-                    "uin": str(bot.self_id),
-                    "content": f"鉴定完成！今日鉴定结果已生成"
-                }
-            }
-        ]
+        return [ForwardItem("鉴定完成！今日鉴定结果已生成", name="鉴定结果", uin=bot.self_id)]
 
 
 def get_at_target(event: GroupMessageEvent) -> Optional[int]:
@@ -155,7 +128,7 @@ async def handle_identify(bot: Bot, event: GroupMessageEvent):
         forward_nodes = await create_identify_message(bot, group_id, user_id, image_path)
 
         # 发送合并转发消息
-        await bot.send_group_forward_msg(group_id=group_id, messages=forward_nodes)
+        await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
 
         logger.info(f"用户 {user_id} 在群 {group_id} 进行了鉴定")
 
@@ -215,7 +188,7 @@ async def handle_identify_other(bot: Bot, event: GroupMessageEvent):
         )
 
         # 发送合并转发消息
-        await bot.send_group_forward_msg(group_id=group_id, messages=forward_nodes)
+        await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
 
         logger.info(f"用户 {initiator_id} 在群 {group_id} 鉴定了用户 {target_user_id}")
 

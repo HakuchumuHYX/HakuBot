@@ -59,6 +59,26 @@ def build_forward_contents(illust: PixivIllust, images: List[Any]) -> List[Any]:
     return [build_info_text(illust), *images]
 
 
+def build_link_fallback_contents(
+    illust: PixivIllust,
+    pages: List[PixivPage],
+    *,
+    truncated: bool,
+) -> List[str]:
+    contents = [f"图片发送失败，以下为图片链接\n{build_info_text(illust)}"]
+    if illust.is_ugoira:
+        contents.append(f"作品链接：{illust.web_url}")
+        return contents
+
+    contents.extend(
+        f"第 {page.index + 1} 页：{page.url}"
+        for page in pages
+    )
+    if truncated:
+        contents.append(f"仅列出前 {len(pages)} / {illust.page_count} 页")
+    return contents
+
+
 def detect_image_ext(data: bytes, fallback: str) -> str:
     if data.startswith(b"\xff\xd8\xff"):
         return "jpg"
@@ -83,6 +103,5 @@ def describe_client_error(kind: str) -> str:
         "network": "连接 Pixiv 失败，请检查网络或代理",
         "too_large": "图片或动图文件过大，已停止发送",
         "ugoira": "动图处理失败，请稍后再试",
-        "send_forward": "合并转发发送失败，可能是当前 OneBot/NapCat 不支持该图片内容或临时超时",
     }
     return descriptions.get(kind, "获取 Pixiv 图片失败，请稍后再试")

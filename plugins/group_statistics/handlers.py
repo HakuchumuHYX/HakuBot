@@ -1,5 +1,5 @@
 from nonebot import on_message, on_command, on
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Message, Event, MessageSegment
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Event
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
@@ -10,6 +10,7 @@ from .data_manager import data_manager
 from .utils import get_total_messages, get_top_users
 from .render import render_today_stat_image
 from .config import MESSAGE_HANDLER_PRIORITY, STAT_COMMAND_PRIORITY
+from ..utils.image_utils import image_segment
 
 # 创建消息处理器
 message_handler = on_message(priority=MESSAGE_HANDLER_PRIORITY, block=False)
@@ -90,4 +91,4 @@ async def handle_stat_command(event: GroupMessageEvent):
         await stat_command.finish("今日暂无消息统计")
 
     img_bytes = await render_today_stat_image(total, top_users)
-    await stat_command.finish(MessageSegment.image(img_bytes))
+    await stat_command.finish(image_segment(img_bytes))
