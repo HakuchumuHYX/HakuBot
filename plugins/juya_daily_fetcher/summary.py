@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from ..utils.llm import LLMClientConfig, chat_completion
-from ..utils.tools import get_logger
+from ..utils.tools import get_exc_desc, get_logger
 from .config import plugin_config
 
 logger = get_logger("juya_daily_fetcher.summary")
@@ -80,7 +80,7 @@ async def summarize_directory(directory: list[dict[str, Any]], summary_date: str
             temperature=0.7,
         )
     except Exception as exc:
-        logger.warning(f"导语生成失败，将只发送长图: {exc}")
+        logger.warning(f"导语生成失败，将只发送长图: {get_exc_desc(exc)}")
         return ""
 
     summary = _normalize_summary(result.content)

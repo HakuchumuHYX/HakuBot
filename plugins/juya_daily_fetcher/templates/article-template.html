@@ -3,24 +3,44 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=1200">
-  <title>{{TITLE}}</title>
+  <title>{{ title }}</title>
+  <style>
+    @font-face {
+      font-family: "Source Han Sans CN";
+      src: url("{{ font_regular }}") format("truetype");
+      font-weight: 400;
+      font-display: block;
+    }
+    @font-face {
+      font-family: "Source Han Sans CN";
+      src: url("{{ font_bold }}") format("truetype");
+      font-weight: 700;
+      font-display: block;
+    }
+    @font-face {
+      font-family: "Source Han Sans CN";
+      src: url("{{ font_heavy }}") format("truetype");
+      font-weight: 900;
+      font-display: block;
+    }
+  </style>
   <link rel="stylesheet" href="./article-styles.css">
 </head>
 <body>
   <main class="sheet">
     <header class="masthead">
       <div class="brand-mark">JUYA / AI DAILY</div>
-      <div class="issue-meta">{{DATE}}</div>
+      <div class="issue-meta">{{ date }}</div>
     </header>
 
-    {{HEADER}}
+    {{ header | safe }}
 
     <section class="page-content">
-      {{CONTENT}}
+      {{ content | safe }}
     </section>
 
     <footer class="footer">
-      <div class="footer-page">PAGE {{PAGE}} / {{TOTAL_PAGES}}</div>
+      <div class="footer-page">PAGE {{ page }} / {{ total_pages }}</div>
       <div class="footer-brand">JUYA AI DAILY</div>
     </footer>
   </main>

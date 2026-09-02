@@ -6,7 +6,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
 from ..utils.tools import get_exc_desc, get_logger
-from .config import plugin_config
+from .config import Config, plugin_config
 from . import scheduler as _scheduler  # noqa: F401
 from .scheduler import run_debug
 
@@ -16,6 +16,10 @@ __plugin_meta__ = PluginMetadata(
     name="橘鸦 AI 早报",
     description="订阅橘鸦 AI 早报 RSS，渲染原文长图并合并转发到指定群",
     usage="超管私聊命令：早报测试（只发到配置的 debug 私聊，不改生产 seen）",
+    type="application",
+    homepage="",
+    config=Config,
+    supported_adapters={"~onebot.v11"},
 )
 
 debug_cmd = on_command("早报测试", permission=SUPERUSER, priority=5, block=True)
@@ -25,6 +29,8 @@ debug_cmd = on_command("早报测试", permission=SUPERUSER, priority=5, block=T
 async def handle_debug(bot: Bot, event: Event):
     if not isinstance(event, PrivateMessageEvent):
         await debug_cmd.finish("早报测试只能在私聊使用")
+    if not plugin_config.debug_user_id:
+        await debug_cmd.finish("未配置 debug_user_id，无法发送早报测试")
     if str(event.user_id) != plugin_config.debug_user_id:
         await debug_cmd.finish("早报测试只能发到指定 debug 私聊")
     await debug_cmd.send("正在拉取并渲染最新一期早报，请稍候...")

@@ -60,6 +60,7 @@
 - **[group_daily_analysis](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/group_daily_analysis)**: 基于 LLM 的群聊分析插件。从 [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis) 重构且微作修改后得来，引入json-repair库，增强解析json能力。
 - **[group_statistics](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/group_statistics)**: 简单的本日群聊消息统计插件。
 - **[hltv_sub](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/hltv_sub)**: [HLTV](https://www.hltv.org/) 比赛信息推送，支持手动及自动推送。
+- **[juya_daily_fetcher](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/juya_daily_fetcher)**: [橘鸦 AI 早报](https://daily.juya.uk/) RSS 定时推送，渲染原文长图并合并转发到配置的群。
 
 ## 🙏 特别感谢
 

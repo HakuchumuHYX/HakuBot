@@ -5,12 +5,19 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ..utils.browser import html_to_pic
+from ..utils.browser import template_to_pic
 from .config import ARTICLE_DIR, TEMPLATE_DIR
 
 ARTICLES_PER_PAGE = 5
-TEMPLATE_PATH = TEMPLATE_DIR / "article-template.html"
-STYLE_PATH = TEMPLATE_DIR / "article-styles.css"
+FONT_NAMES = {
+    "regular": "SourceHanSansCN-Regular.ttf",
+    "bold": "SourceHanSansCN-Bold.ttf",
+    "heavy": "SourceHanSansCN-Heavy.ttf",
+}
+FONT_DIRS = (
+    Path("data/utils/fonts"),
+    Path("data/lunabot_imgexp/fonts"),
+)
 
 
 def _escape(value: Any) -> str:
@@ -24,6 +31,24 @@ def _safe_url(value: Any) -> str:
 
 def _inline_text(text: Any) -> str:
     return _escape(text).replace("\n", "<br>")
+
+
+def _font_dir() -> Path:
+    for base in FONT_DIRS:
+        if (base / FONT_NAMES["regular"]).is_file():
+            return base.resolve()
+    raise RuntimeError(
+        "未找到思源黑体，请确认 data/utils/fonts 或 data/lunabot_imgexp/fonts 下存在 SourceHanSansCN-*.ttf"
+    )
+
+
+def _font_uris() -> dict[str, str]:
+    font_dir = _font_dir()
+    return {
+        "font_regular": (font_dir / FONT_NAMES["regular"]).as_uri(),
+        "font_bold": (font_dir / FONT_NAMES["bold"]).as_uri(),
+        "font_heavy": (font_dir / FONT_NAMES["heavy"]).as_uri(),
+    }
 
 
 def _links_html(block: dict[str, Any]) -> str:
@@ -159,31 +184,16 @@ def _header_html(data: dict[str, Any], page: int, total_pages: int) -> str:
     )
 
 
-def _build_html(data: dict[str, Any], content: str, page: int, total_pages: int) -> str:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    css = STYLE_PATH.read_text(encoding="utf-8")
-    html = template.replace(
-        '<link rel="stylesheet" href="./article-styles.css">',
-        f"<style>{css}</style>",
-    )
-    html = html.replace("<head>", f"<head>\n  <base href=\"{_escape(TEMPLATE_DIR.as_uri())}/\">")
-    html = html.replace("{{TITLE}}", _escape(data.get("title") or "原文更新"))
-    html = html.replace("{{DATE}}", _escape(data.get("date") or ""))
-    html = html.replace("{{HEADER}}", _header_html(data, page, total_pages))
-    html = html.replace("{{CONTENT}}", content)
-    html = html.replace("{{PAGE}}", str(page))
-    html = html.replace("{{TOTAL_PAGES}}", str(total_pages))
-    return html
-
-
 async def render_document(document: dict[str, Any], event_id: str) -> list[Path]:
     directory = document.get("directory") if isinstance(document.get("directory"), list) else []
     articles = document.get("articles") if isinstance(document.get("articles"), list) else []
     if not directory or not articles:
-        raise RuntimeError("clean article document contains no directory or articles")
+        raise RuntimeError("早报文档缺少目录或正文")
 
     total_pages = 1 + ((len(articles) + ARTICLES_PER_PAGE - 1) // ARTICLES_PER_PAGE)
     ARTICLE_DIR.mkdir(parents=True, exist_ok=True)
+    font_uris = _font_uris()
+    template_dir = str(TEMPLATE_DIR.resolve())
     outputs: list[Path] = []
     for page_index in range(total_pages):
         page_number = page_index + 1
@@ -193,15 +203,24 @@ async def render_document(document: dict[str, Any], event_id: str) -> list[Path]
             offset = (page_number - 2) * ARTICLES_PER_PAGE
             page_articles = articles[offset:offset + ARTICLES_PER_PAGE]
             content = _article_page_html(page_articles, offset)
-        html = _build_html(document, content, page_number, total_pages)
-        image_bytes = await html_to_pic(
-            html=html,
-            template_path=TEMPLATE_DIR.as_uri(),
-            viewport={"width": 1200, "height": 10},
-            device_scale_factor=1,
-            type="png",
-            full_page=True,
+        image_bytes = await template_to_pic(
+            template_path=template_dir,
+            template_name="article-template.html",
+            templates={
+                "title": _escape(document.get("title") or "原文更新"),
+                "date": _escape(document.get("date") or ""),
+                "header": _header_html(document, page_number, total_pages),
+                "content": content,
+                "page": page_number,
+                "total_pages": total_pages,
+                **font_uris,
+            },
+            pages={
+                "viewport": {"width": 1200, "height": 10},
+                "base_url": f"{TEMPLATE_DIR.resolve().as_uri()}/",
+            },
             wait=2000,
+            device_scale_factor=1,
             screenshot_timeout=60_000,
         )
         suffix = "" if total_pages == 1 else f"-{page_number:02d}"
