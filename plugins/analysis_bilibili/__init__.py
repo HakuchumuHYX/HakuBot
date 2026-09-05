@@ -1,11 +1,17 @@
 import re
 from typing import List, Union
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 from nonebot import on_regex, logger, require, on_message
 from nonebot.adapters import Event
 from nonebot.rule import Rule
 from nonebot.plugin import PluginMetadata
-from .analysis_bilibili import config, b23_extract, bili_keyword, search_bili_by_title
+from .analysis_bilibili import (
+    config,
+    b23_extract,
+    bili_keyword,
+    search_bili_by_title,
+    extract_share_url,
+)
 from ..plugin_manager.enable import is_plugin_enabled
 from ..utils.image_utils import prepare_image_source
 
@@ -26,8 +32,11 @@ __plugin_meta__ = PluginMetadata(
 )
 
 headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0",
+    "Referer": "https://www.bilibili.com",
+    "Origin": "https://www.bilibili.com",
 }
+HTTP_TIMEOUT = ClientTimeout(total=20, connect=8)
 
 whitelist = [str(i) for i in getattr(config, "analysis_whitelist", [])]
 group_whitelist = [str(i) for i in getattr(config, "analysis_group_whitelist", [])]
@@ -127,10 +136,29 @@ def format_msg(msg_list: List[Union[List[str], str]], is_plain_text: bool = Fals
     return msg
 
 
+def _message_json_text(event: Event) -> str:
+    """优先用 json 卡片原始 data，避免 str(message) 转义后抓不到 qqdocurl。"""
+    try:
+        message = event.get_message()
+    except Exception:
+        return ""
+    for segment in message:
+        if getattr(segment, "type", None) != "json":
+            continue
+        data = getattr(segment, "data", None) or {}
+        raw = data.get("data") if isinstance(data, dict) else data
+        if not raw:
+            continue
+        text = raw if isinstance(raw, str) else str(raw)
+        share_url = extract_share_url(text)
+        return share_url or text
+    return ""
+
+
 async def send_msg(msg_list: List[Union[List[str], str, bool]]) -> None:
     if msg_list is False:
         return
-    if msg_list is None:
+    if not msg_list:
         logger.warning("此次解析的内容为空，接口可能被修改，需要更新！")
         return
 
@@ -154,10 +182,15 @@ async def get_msg(
         else None
     )
 
-    async with ClientSession(trust_env=trust_env, headers=headers) as session:
+    async with ClientSession(
+        trust_env=trust_env, headers=headers, timeout=HTTP_TIMEOUT
+    ) as session:
         if search:
             text = await search_bili_by_title(text, session=session)
         else:
+            share_url = extract_share_url(text)
+            if share_url:
+                text = share_url
             if re.search(r"(b23.tv)|(bili(22|23|33|2233).cn)", text, re.I):
                 # 提前处理短链接，避免解析到其他的
                 text = await b23_extract(text, session=session)
@@ -189,7 +222,8 @@ async def handle_analysis(event: Event) -> None:
         if not re.search(pattern, str(message)):
             return
     # on_regex
-    msg = await get_msg(event, str(message))
+    text = _message_json_text(event) or str(message)
+    msg = await get_msg(event, text)
     await send_msg(msg)
 
 

@@ -1,5 +1,6 @@
 import hmac
 import hashlib
+import json
 import time
 import urllib.parse
 from functools import reduce
@@ -9,7 +10,8 @@ from aiohttp import ClientSession
 # doc: https://github.com/SocialSisterYi/bilibili-API-collect/blob/master/docs/misc/sign/wbi.md
 
 headers = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Referer": "https://www.bilibili.com",
 }
 
 # fmt: off
@@ -59,7 +61,7 @@ async def getWbiKeys():
         return _wbi_keys_cache["img_key"], _wbi_keys_cache["sub_key"]
     async with ClientSession(headers=headers) as session:
         async with session.get("https://api.bilibili.com/x/web-interface/nav") as resp:
-            json_content = await resp.json()
+            json_content = json.loads(await resp.text())
     img_url: str = json_content["data"]["wbi_img"]["img_url"]
     sub_url: str = json_content["data"]["wbi_img"]["sub_url"]
     img_key = img_url.rsplit("/", 1)[1].split(".")[0]
@@ -118,7 +120,7 @@ async def get_ticket():
     }
     async with ClientSession(headers=headers) as session:
         async with session.post(url, params=params) as resp:
-            json_content = await resp.json()
+            json_content = json.loads(await resp.text())
             ticket = json_content["data"]["ticket"]
             _ticket_cache.update(ticket=ticket, ts=now)
             return ticket
