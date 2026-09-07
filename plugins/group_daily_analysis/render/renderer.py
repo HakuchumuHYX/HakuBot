@@ -1,9 +1,6 @@
 from pathlib import Path
 from datetime import datetime
-import asyncio
 import base64
-import aiohttp
-from aiohttp import ClientTimeout
 from nonebot.log import logger
 from utils.rendering.engine import render_html
 from jinja2 import Environment, FileSystemLoader
@@ -21,9 +18,6 @@ class ReportRenderer:
         )
         # 初始化 Jinja2 环境
         self.env = Environment(loader=FileSystemLoader(self.template_path))
-
-        # 简单内存缓存：减少同一次渲染过程里的重复请求
-        # key: user_id -> data_uri
 
     async def render_to_image(
         self, analysis_result: AnalysisResult, group_id: str
@@ -55,12 +49,10 @@ class ReportRenderer:
         stats = result.statistics
 
         # 渲染 Topics
-        # 兼容模板：目前 topic_item.html 使用 topic.topic.topic / topic.topic.detail（topic 是 SummaryTopic 对象）
         topics_list = [
             {
                 "index": i,
-                "topic": t,  # SummaryTopic
-                "topic_title": t.topic,  # 额外字段：方便未来模板直接使用
+                "title": t.topic,
                 "detail": t.detail,
                 "contributors": "、".join(t.contributors),
             }
@@ -88,15 +80,8 @@ class ReportRenderer:
         )
 
         # 渲染 Quotes
-        # 兼容：优先使用 result.golden_quotes（新结构）；若为空则回退到 stats.golden_quotes（旧结构）
-        quotes_src = (
-            result.golden_quotes
-            if getattr(result, "golden_quotes", None)
-            else stats.golden_quotes
-        )
-
         quotes_list = []
-        for q in quotes_src:
+        for q in result.golden_quotes:
             avatar_url = (
                 await self._get_user_avatar(str(q.qq))
                 if getattr(q, "qq", None)

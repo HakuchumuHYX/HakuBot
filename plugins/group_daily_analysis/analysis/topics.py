@@ -1,43 +1,18 @@
 import json
 import asyncio
-import re
-import traceback
-from collections import Counter, defaultdict
-from datetime import datetime
-from typing import Callable, TypeVar, Any
+from collections import Counter
+from typing import Callable, Any
 from nonebot.log import logger
-from core.access import is_feature_enabled
 from plugins.group_daily_analysis.config import plugin_config
-from plugins.group_daily_analysis.models import (
-    AnalysisResult,
-    GroupStatistics,
-    SummaryTopic,
-    UserTitle,
-    GoldenQuote,
-    TokenUsage,
-    EmojiStatistics,
-)
-from plugins.group_daily_analysis.visualization.charts import ActivityVisualizer
+from plugins.group_daily_analysis.models import SummaryTopic, GoldenQuote, TokenUsage
 from plugins.group_daily_analysis.utils.llm import call_chat_completion
 from utils.llm.client import is_retryable_llm_error
-from plugins.group_daily_analysis.analysis.context import (
-    TranscriptContext,
-    build_transcript_context,
-)
-from plugins.group_daily_analysis.analysis.fallbacks import (
-    build_golden_quote_fallback,
-    build_topic_fallback,
-    build_user_title_fallback,
-)
 from plugins.group_daily_analysis.analysis.schemas import (
     TopicsPayload,
-    UserTitlesPayload,
     GoldenQuotesPayload,
-    TopicsAndQuotesPayload,
 )
 from plugins.group_daily_analysis.analysis.analyzers.common import parse_payload_items
 
-T = TypeVar("T")
 from plugins.group_daily_analysis.analysis.prompts import safe_prompt_format
 
 
@@ -47,7 +22,10 @@ class TopicsAnalysis:
         messages: list,
         max_topics: int,
         max_golden_quotes: int,
-    ) -> tuple[tuple[list, list], TokenUsage]:
+        *,
+        topics_enabled: bool,
+        quotes_enabled: bool,
+    ) -> tuple[tuple[list[SummaryTopic], list[GoldenQuote]], TokenUsage]:
         async def topics_single(text):
             return await self._analyze_topics_single(text, max_topics)
 
@@ -60,12 +38,24 @@ class TopicsAnalysis:
         async def quotes_merge(items):
             return await self._merge_golden_quotes(items, max_golden_quotes)
 
-        topics, topic_usage = await self._analyze_with_strategy(
-            messages, topics_single, topics_merge
-        )
-        quotes, quote_usage = await self._analyze_with_strategy(
-            messages, quotes_single, quotes_merge
-        )
+        topics: list[SummaryTopic] = []
+        quotes: list[GoldenQuote] = []
+        topic_usage = TokenUsage()
+        quote_usage = TokenUsage()
+        if topics_enabled:
+            try:
+                topics, topic_usage = await self._analyze_with_strategy(
+                    messages, topics_single, topics_merge
+                )
+            except Exception:
+                logger.exception("话题分析失败，保留其他分析结果并使用本地降级")
+        if quotes_enabled:
+            try:
+                quotes, quote_usage = await self._analyze_with_strategy(
+                    messages, quotes_single, quotes_merge
+                )
+            except Exception:
+                logger.exception("金句分析失败，保留其他分析结果并使用本地降级")
 
         total_usage = TokenUsage(
             prompt_tokens=topic_usage.prompt_tokens + quote_usage.prompt_tokens,
@@ -140,40 +130,6 @@ class TopicsAnalysis:
             },
         ]
 
-    async def _analyze_topics_and_quotes_single(
-        self, messages_text: str, max_topics: int, max_golden_quotes: int
-    ) -> tuple[tuple[list[SummaryTopic], list[GoldenQuote]], TokenUsage]:
-        """话题+金句联合提取，一次请求返回两个列表，节省约50% Map阶段 API 调用。"""
-        prompt = safe_prompt_format(
-            plugin_config.combined_analysis_prompt,
-            max_topics=max_topics,
-            max_golden_quotes=max_golden_quotes,
-            messages_text="聊天记录已在本次 API 请求的前一条 user message 中提供，请基于该消息中的完整记录分析。",
-        )
-        prompt += (
-            "\n\n---\n\n"
-            "## 最高优先级输出格式要求\n"
-            "由于本次调用启用了 DeepSeek JSON Output，最终回复必须是一个 JSON object，包含 topics 和 quotes 两个数组。\n"
-            "不要输出 markdown，不要输出解释。\n"
-            "唯一允许的顶层格式示例："
-            '{"topics":[{"topic":"话题名称","contributors":["用户1"],"detail":"描述"}],'
-            '"quotes":[{"content":"金句","sender":"发言人","reason":"辣评"}]}'
-        )
-        content, tokens = await call_chat_completion(
-            self._build_ds_cached_messages(messages_text, prompt),
-            temperature=0.5,
-            response_format={"type": "json_object"},
-        )
-        payload = TopicsAndQuotesPayload.model_validate_json(content)
-        topics = [
-            SummaryTopic(**item.model_dump()) for item in payload.topics[:max_topics]
-        ]
-        quotes = [
-            GoldenQuote(**item.model_dump())
-            for item in payload.quotes[:max_golden_quotes]
-        ]
-        return (topics, quotes), tokens
-
     async def _analyze_topics_single(
         self, messages_text: str, max_topics: int
     ) -> tuple[list[SummaryTopic], TokenUsage]:
@@ -185,7 +141,7 @@ class TopicsAnalysis:
         prompt += self._json_object_tail(
             '{"items":[{"topic":"话题名称","contributors":["用户1"],"detail":"描述"}]}'
         )
-        # 不再 catch 异常 - 由上层 _run_subtask_with_retry / _run_chunk_with_retry 负责重试
+        # 请求层处理网络重试，分片层处理输出解析重试。
         content, tokens = await call_chat_completion(
             self._build_ds_cached_messages(messages_text, prompt),
             temperature=0.3,
@@ -205,7 +161,7 @@ class TopicsAnalysis:
         prompt += self._json_object_tail(
             '{"items":[{"content":"金句原文","sender":"发言人","reason":"辣评"}]}'
         )
-        # 不再 catch 异常 - 由上层 _run_subtask_with_retry / _run_chunk_with_retry 负责重试
+        # 请求层处理网络重试，分片层处理输出解析重试。
         content, tokens = await call_chat_completion(
             self._build_ds_cached_messages(messages_text, prompt),
             temperature=1.1,

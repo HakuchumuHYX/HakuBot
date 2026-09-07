@@ -64,7 +64,6 @@ class GroupStatistics(BaseModel):
     emoji_count: int
     emoji_statistics: EmojiStatistics
     activity_visualization: ActivityVisualization
-    golden_quotes: List[GoldenQuote] = []
     token_usage: TokenUsage = TokenUsage()
 
 

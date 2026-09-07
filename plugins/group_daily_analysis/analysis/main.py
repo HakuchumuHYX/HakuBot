@@ -1,44 +1,24 @@
-import json
 import asyncio
 import re
-import traceback
-from collections import Counter, defaultdict
-from datetime import datetime
-from typing import Callable, TypeVar, Any
+from typing import Callable, Any
 from nonebot.log import logger
 from core.access import is_feature_enabled
 from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.models import (
     AnalysisResult,
-    GroupStatistics,
     SummaryTopic,
     UserTitle,
     GoldenQuote,
     TokenUsage,
-    EmojiStatistics,
 )
 from plugins.group_daily_analysis.visualization.charts import ActivityVisualizer
-from plugins.group_daily_analysis.utils.llm import call_chat_completion
-from utils.llm.client import is_retryable_llm_error
-from plugins.group_daily_analysis.analysis.context import (
-    TranscriptContext,
-    build_transcript_context,
-)
+from plugins.group_daily_analysis.analysis.context import build_transcript_context
 from plugins.group_daily_analysis.analysis.fallbacks import (
     build_golden_quote_fallback,
     build_topic_fallback,
     build_user_title_fallback,
 )
-from plugins.group_daily_analysis.analysis.schemas import (
-    TopicsPayload,
-    UserTitlesPayload,
-    GoldenQuotesPayload,
-    TopicsAndQuotesPayload,
-)
-from plugins.group_daily_analysis.analysis.analyzers.common import parse_payload_items
 
-T = TypeVar("T")
-from plugins.group_daily_analysis.analysis.prompts import safe_prompt_format
 from plugins.group_daily_analysis.analysis.statistics import StatisticsAnalysis
 from plugins.group_daily_analysis.analysis.topics import TopicsAnalysis
 from plugins.group_daily_analysis.analysis.titles import TitlesAnalysis
@@ -48,63 +28,10 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
     def __init__(self):
         self.activity_visualizer = ActivityVisualizer()
 
-    async def _run_subtask_with_retry(
-        self,
-        name: str,
-        coro_factory: Callable[[], Any],
-        max_retries: int = 3,
-        base_delay: float = 3.0,
-    ) -> tuple[list, TokenUsage]:
-        """
-        对单个分析子任务进行独立重试包装
-
-        只有网络类/可重试异常才触发重试，JSON 解析等逻辑错误直接降级返回空。
-
-        Args:
-            name: 子任务名称（用于日志）
-            coro_factory: 一个无参 callable，每次调用返回一个新的 coroutine
-            max_retries: 最大重试次数
-            base_delay: 基础退避延迟(秒)，实际延迟 = base_delay * attempt
-        """
-        last_error: Exception | None = None
-
-        for attempt in range(max_retries):
-            try:
-                result = await coro_factory()
-                if attempt > 0:
-                    logger.info(f"子任务[{name}] 在第 {attempt + 1} 次尝试后成功")
-                return result
-            except Exception as e:
-                last_error = e
-                # JSON 解析等数据结构错误，现在也视为可重试的异常
-                is_retryable = False  # Individual requests/chunks own retries; completed work is not replayed.
-                if is_retryable and attempt < max_retries - 1:
-                    delay = base_delay * (attempt + 1)
-                    logger.warning(
-                        f"子任务[{name}] 失败 ({type(e).__name__}: {e})，"
-                        f"{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})..."
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-                # 不可重试的异常，或已耗尽重试次数
-                break
-
-        # 所有重试用尽或遇到不可重试异常
-        if last_error:
-            tb = "".join(
-                traceback.format_exception(
-                    type(last_error), last_error, last_error.__traceback__
-                )
-            )
-            logger.error(
-                f"子任务[{name}] 在 {max_retries} 次尝试后仍失败: {last_error}\n{tb}"
-            )
-        return [], TokenUsage()
-
     async def analyze_messages(
         self, messages: list, group_id: str, debug_mode: bool = False
     ) -> AnalysisResult:
-        """主分析流程（带子任务独立重试）"""
+        """分别分析话题、金句与称号，失败项使用本地统计降级。"""
         # 0. Debug 模式下的统计数据处理
         if debug_mode and not messages:
             stats = self._generate_mock_statistics()
@@ -149,7 +76,7 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
             f"自适应数量计算：话题 {dynamic_topics}，称号 {dynamic_titles}，金句 {dynamic_quotes} (有效消息数: {msg_count})"
         )
 
-        # 3. LLM 分析 — 话题+金句合并为单一子任务（节省约50% Map阶段API调用），与用户称号并发执行
+        # 3. 话题、金句顺序分析以复用前缀缓存，与用户称号并发执行。
         topics_enabled = plugin_config.topic_analysis_enabled and is_feature_enabled(
             "group_daily_analysis", "topics", group_id, "0"
         )
@@ -164,55 +91,39 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
             and is_feature_enabled("group_daily_analysis", "user_titles", group_id, "0")
         )
 
-        subtasks = []
+        topics_result, titles_result = await asyncio.gather(
+            self._analyze_topics_and_quotes_quality_with_strategy(
+                text_messages,
+                dynamic_topics,
+                dynamic_quotes,
+                topics_enabled=topics_enabled,
+                quotes_enabled=quotes_enabled,
+            ),
+            self._analyze_user_titles_safe(transcript_context, dynamic_titles)
+            if titles_enabled
+            else asyncio.sleep(0, result=([], TokenUsage())),
+            return_exceptions=True,
+        )
 
-        # 质量优先：话题和金句独立分析，但在同一子任务中顺序执行以保留 DeepSeek 前缀缓存机会
-        if topics_enabled or quotes_enabled:
-            subtasks.append(
-                self._run_subtask_with_retry(
-                    "话题+金句质量分析",
-                    lambda: self._analyze_topics_and_quotes_quality_with_strategy(
-                        text_messages, dynamic_topics, dynamic_quotes
-                    ),
-                )
-            )
-        else:
-            subtasks.append(asyncio.sleep(0, result=(([], []), TokenUsage())))
-
-        # 用户称号（独立子任务，不共享 chat log 前缀，保持并发）
-        if titles_enabled:
-            subtasks.append(
-                self._run_subtask_with_retry(
-                    "用户称号",
-                    lambda: self._analyze_user_titles_safe(
-                        transcript_context, dynamic_titles
-                    ),
-                )
-            )
-        else:
-            subtasks.append(asyncio.sleep(0, result=([], TokenUsage())))
-
-        results = await asyncio.gather(*subtasks, return_exceptions=True)
-
-        # 解包结果
         topics: list = []
         user_titles: list = []
         golden_quotes: list = []
-
         combined_usage = TokenUsage()
         user_title_usage = TokenUsage()
 
-        # 0: 联合分析结果 → (topics_list, quotes_list)
-        if isinstance(results[0], tuple):
-            (topics, golden_quotes), combined_usage = results[0]
-        elif isinstance(results[0], Exception):
-            logger.error(f"话题+金句联合分析子任务异常: {results[0]}")
+        for result in (topics_result, titles_result):
+            if isinstance(result, asyncio.CancelledError):
+                raise result
 
-        # 1: User Titles
-        if isinstance(results[1], tuple):
-            user_titles, user_title_usage = results[1]
-        elif isinstance(results[1], Exception):
-            logger.error(f"用户称号子任务异常: {results[1]}")
+        if isinstance(topics_result, Exception):
+            logger.error(f"话题、金句分析异常: {topics_result}")
+        else:
+            (topics, golden_quotes), combined_usage = topics_result
+
+        if isinstance(titles_result, Exception):
+            logger.error(f"用户称号分析异常: {titles_result}")
+        else:
+            user_titles, user_title_usage = titles_result
 
         if not user_titles and titles_enabled:
             fallback_titles = build_user_title_fallback(
@@ -223,10 +134,6 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
                 logger.warning(
                     f"用户称号分析为空，已使用本地统计兜底生成 {len(user_titles)} 个称号"
                 )
-
-        # 剥离出独立 topic/quote 用于后续降级检查
-        topic_usage = combined_usage
-        golden_quote_usage = TokenUsage()
 
         if not topics and topics_enabled:
             fallback_topics = build_topic_fallback(transcript_context, dynamic_topics)
@@ -255,7 +162,7 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
         if quotes_enabled and not golden_quotes:
             missing_parts.append("golden_quotes")
         if missing_parts:
-            logger.warning(f"以下分析项在重试后仍为空: {missing_parts}")
+            logger.warning(f"以下分析项在降级后仍为空: {missing_parts}")
 
         # 汇总 TokenUsage
         stats.token_usage = TokenUsage(
@@ -341,11 +248,6 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
             elif isinstance(res, Exception):
                 logger.warning(f"Map 分片 {i} 最终失败: {res}")
                 fail_count += 1
-            else:
-                # Fallback if someone returns just list (shouldn't happen with updated code)
-                if isinstance(res, list) and res:
-                    flattened.extend(res)
-                    success_count += 1
 
         logger.info(
             f"Map 阶段完成: {success_count}/{len(chunks)} 分片成功, {fail_count} 失败, 收集到 {len(flattened)} 条结果"
@@ -372,108 +274,6 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
                 return flattened, total_usage
 
         return flattened, total_usage
-
-    async def _analyze_combined_with_strategy(
-        self,
-        messages: list,
-        max_topics: int,
-        max_golden_quotes: int,
-        chunk_retry_count: int = 2,
-    ) -> tuple[tuple[list, list], TokenUsage]:
-        """
-        话题+金句联合分析策略，每个 chunk 只发一次请求。
-
-        Returns:
-            ((topics_list, quotes_list), TokenUsage)
-        """
-        total_len = sum(len(m["content"]) for m in messages)
-
-        # Direct Mode
-        if total_len <= plugin_config.max_input_length:
-            text = self._msgs_to_text(messages)
-            result, usage = await self._run_chunk_with_retry(
-                lambda t: self._analyze_topics_and_quotes_single(
-                    t, max_topics, max_golden_quotes
-                ),
-                text,
-                chunk_index=0,
-                max_retries=chunk_retry_count,
-            )
-            topics, quotes = result if result else ([], [])
-            return (topics, quotes), usage
-
-        # Map-Reduce Mode
-        logger.info(f"消息长度 ({total_len}) 超过阈值，启用 Map-Reduce 联合分段分析...")
-        chunks = self._split_messages(messages, plugin_config.max_input_length)
-
-        map_tasks = [
-            self._run_chunk_with_retry(
-                lambda t, i=i: self._analyze_topics_and_quotes_single(
-                    t, max_topics, max_golden_quotes
-                ),
-                self._msgs_to_text(chunk),
-                chunk_index=i,
-                max_retries=chunk_retry_count,
-            )
-            for i, chunk in enumerate(chunks)
-        ]
-        results = await asyncio.gather(*map_tasks, return_exceptions=True)
-
-        all_topics: list = []
-        all_quotes: list = []
-        total_usage = TokenUsage()
-        success_count = 0
-
-        for i, res in enumerate(results):
-            if isinstance(res, tuple):
-                (chunk_topics, chunk_quotes), usage = res
-                if chunk_topics or chunk_quotes:
-                    all_topics.extend(chunk_topics or [])
-                    all_quotes.extend(chunk_quotes or [])
-                    success_count += 1
-                if isinstance(usage, TokenUsage):
-                    total_usage.prompt_tokens += usage.prompt_tokens
-                    total_usage.completion_tokens += usage.completion_tokens
-                    total_usage.total_tokens += usage.total_tokens
-            elif isinstance(res, Exception):
-                logger.warning(f"联合分析 Map 分片 {i} 最终失败: {res}")
-
-        logger.info(
-            f"联合 Map 阶段完成: {success_count}/{len(chunks)} 分片成功, 收集话题 {len(all_topics)} 条, 金句 {len(all_quotes)} 条"
-        )
-
-        if not all_topics and not all_quotes:
-            return ([], []), total_usage
-
-        # Reduce Phase（话题和金句分别 merge）
-        final_topics = all_topics
-        final_quotes = all_quotes
-
-        if all_topics:
-            try:
-                merged_topics, merge_usage = await self._merge_topics(
-                    all_topics, max_topics
-                )
-                final_topics = merged_topics
-                total_usage.prompt_tokens += merge_usage.prompt_tokens
-                total_usage.completion_tokens += merge_usage.completion_tokens
-                total_usage.total_tokens += merge_usage.total_tokens
-            except Exception as e:
-                logger.warning(f"话题 Reduce 失败，使用未合并结果: {e}")
-
-        if all_quotes:
-            try:
-                merged_quotes, merge_usage = await self._merge_golden_quotes(
-                    all_quotes, max_golden_quotes
-                )
-                final_quotes = merged_quotes
-                total_usage.prompt_tokens += merge_usage.prompt_tokens
-                total_usage.completion_tokens += merge_usage.completion_tokens
-                total_usage.total_tokens += merge_usage.total_tokens
-            except Exception as e:
-                logger.warning(f"金句 Reduce 失败，使用未合并结果: {e}")
-
-        return (final_topics, final_quotes), total_usage
 
     def _split_messages(self, messages: list, chunk_size: int) -> list[list]:
         """按字符数切分消息块"""

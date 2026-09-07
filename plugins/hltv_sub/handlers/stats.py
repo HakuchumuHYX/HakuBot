@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
@@ -30,7 +30,7 @@ async def handle_stats(
         return
 
     match_id = args.extract_plain_text().strip()
-    subscriptions = data_manager.get_subscribed_events(group_id)
+    subscriptions = data_manager.get_subscribed_events()
 
     if not match_id:
         # 获取最新比赛数据

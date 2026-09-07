@@ -9,6 +9,37 @@ from plugins.poke_reply.config import (
 from utils.json_io import atomic_write_json, load_json
 
 
+def _load_cache(path, label: str) -> dict:
+    try:
+        result = load_json(
+            path, expected_type=dict, missing_ok=True, backup_on_error=True, default={}
+        )
+        if not result.success:
+            logger.error(f"加载{label}缓存失败: {result.error}")
+        return result.data
+    except Exception as error:
+        logger.error(f"加载{label}缓存失败: {error}")
+        return {}
+
+
+def _save_cache(path, data: dict, label: str) -> None:
+    try:
+        atomic_write_json(path, data, expected_type=dict)
+    except Exception as error:
+        logger.error(f"保存{label}缓存失败: {error}")
+
+
+def _clean_expired_cache(data: dict, now: Optional[float] = None) -> int:
+    current_time = now if now is not None else time.time()
+    expired_keys = [
+        key for key, record in data.items()
+        if record.get("expire_time", 0) < current_time
+    ]
+    for key in expired_keys:
+        del data[key]
+    return len(expired_keys)
+
+
 class MessageCache:
     def __init__(self):
         self.cache_file = MESSAGE_CACHE_FILE
@@ -16,32 +47,12 @@ class MessageCache:
         self.load_cache()
 
     def load_cache(self):
-        try:
-            if self.cache_file.exists():
-                result = load_json(
-                    self.cache_file,
-                    expected_type=dict,
-                    missing_ok=True,
-                    backup_on_error=True,
-                    default={},
-                )
-                self.cache_data = result.data
-                if result.success:
-                    logger.info(f"消息缓存加载成功，共 {len(self.cache_data)} 条记录")
-                else:
-                    logger.error(f"加载消息缓存失败: {result.error}")
-            else:
-                self.cache_data = {}
-                self.save_cache()
-        except Exception as e:
-            logger.error(f"加载消息缓存失败: {e}")
-            self.cache_data = {}
+        self.cache_data = _load_cache(self.cache_file, "消息")
+        if not self.cache_file.exists():
+            self.save_cache()
 
     def save_cache(self):
-        try:
-            atomic_write_json(self.cache_file, self.cache_data, expected_type=dict)
-        except Exception as e:
-            logger.error(f"保存消息缓存失败: {e}")
+        _save_cache(self.cache_file, self.cache_data, "消息")
 
     def add_message(
         self,
@@ -80,18 +91,11 @@ class MessageCache:
         return False
 
     def clean_expired_cache(self, now: Optional[float] = None) -> int:
-        current_time = now if now is not None else time.time()
-        expired_keys = [
-            key
-            for key, record in self.cache_data.items()
-            if record.get("expire_time", 0) < current_time
-        ]
-        for key in expired_keys:
-            del self.cache_data[key]
-        if expired_keys:
-            logger.info(f"清理了 {len(expired_keys)} 条过期消息缓存")
+        removed = _clean_expired_cache(self.cache_data, now)
+        if removed:
+            logger.info(f"清理了 {removed} 条过期消息缓存")
             self.save_cache()
-        return len(expired_keys)
+        return removed
 
 
 class TextImageCache:
@@ -101,29 +105,10 @@ class TextImageCache:
         self.load_cache()
 
     def load_cache(self):
-        try:
-            if self.cache_file.exists():
-                result = load_json(
-                    self.cache_file,
-                    expected_type=dict,
-                    missing_ok=True,
-                    backup_on_error=True,
-                    default={},
-                )
-                self.cache_data = result.data
-                if not result.success:
-                    logger.error(f"加载文本图片缓存失败: {result.error}")
-            else:
-                self.cache_data = {}
-        except Exception as e:
-            logger.error(f"加载文本图片缓存失败: {e}")
-            self.cache_data = {}
+        self.cache_data = _load_cache(self.cache_file, "文本图片")
 
     def save_cache(self):
-        try:
-            atomic_write_json(self.cache_file, self.cache_data, expected_type=dict)
-        except Exception as e:
-            logger.error(f"保存文本图片缓存失败: {e}")
+        _save_cache(self.cache_file, self.cache_data, "文本图片")
 
     def add_cache_by_image_hash(
         self, image_hash: str, group_id: int, original_text: str
@@ -151,18 +136,11 @@ class TextImageCache:
         return False
 
     def clean_expired_cache(self, now: Optional[float] = None) -> int:
-        current_time = now if now is not None else time.time()
-        expired_keys = [
-            key
-            for key, record in self.cache_data.items()
-            if record.get("expire_time", 0) < current_time
-        ]
-        for key in expired_keys:
-            del self.cache_data[key]
-        if expired_keys:
-            logger.info(f"清理了 {len(expired_keys)} 条过期文本图片缓存")
+        removed = _clean_expired_cache(self.cache_data, now)
+        if removed:
+            logger.info(f"清理了 {removed} 条过期文本图片缓存")
             self.save_cache()
-        return len(expired_keys)
+        return removed
 
 
 # 全局实例

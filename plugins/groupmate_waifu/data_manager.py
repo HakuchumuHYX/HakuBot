@@ -2,7 +2,7 @@
 Runtime state for groupmate_waifu.
 
 This module parses plugin config, defines data file paths, initializes in-memory
-records, and exposes save/reset entrypoints. JSON I/O and legacy migration live
+records, and exposes save/reset entrypoints. JSON I/O lives
 in `storage.py`; business code should go through `service.py` instead of
 accessing these records from handlers.
 """
@@ -18,11 +18,6 @@ from nonebot.log import logger
 
 from plugins.groupmate_waifu.config import Config
 from plugins.groupmate_waifu.storage import (
-    _convert_keys_to_int,
-    _convert_keys_to_str,
-    _convert_list_values_to_set,
-    _load_json,
-    _load_legacy,
     _load_protect_list,
     _load_record,
     _save_json,
@@ -79,15 +74,6 @@ RECORD_YINPA1_FILE = WAIFU_DATA_DIR / "record_yinpa1.json"
 RECORD_YINPA2_FILE = WAIFU_DATA_DIR / "record_yinpa2.json"
 PROTECT_LIST_FILE = WAIFU_DATA_DIR / "list_protect.json"
 
-# 旧文件路径（用于迁移）
-_OLD_RECORD_CP_FILE = WAIFU_DATA_DIR / "record_CP"
-_OLD_RECORD_WAIFU_FILE = WAIFU_DATA_DIR / "record_waifu"
-_OLD_RECORD_LOCK_FILE = WAIFU_DATA_DIR / "record_lock"
-_OLD_RECORD_YINPA1_FILE = WAIFU_DATA_DIR / "record_yinpa1"
-_OLD_RECORD_YINPA2_FILE = WAIFU_DATA_DIR / "record_yinpa2"
-_OLD_PROTECT_LIST_FILE = WAIFU_DATA_DIR / "list_protect"
-
-
 # --- 数据保存 ---
 
 
@@ -104,12 +90,12 @@ def save(file: Path, data: Any):
 
 # CP records are bidirectional for couples. `user_id -> user_id` means single today.
 record_CP: Dict[int, Dict[int, int]] = _load_record(
-    RECORD_CP_FILE, _OLD_RECORD_CP_FILE, waifu_reset, Zero_today
+    RECORD_CP_FILE, waifu_reset, Zero_today
 )
 
 # Stores the "waifu side" of each couple so CP list rendering does not duplicate pairs.
 _raw_record_waifu = _load_record(
-    RECORD_WAIFU_FILE, _OLD_RECORD_WAIFU_FILE, waifu_reset, Zero_today
+    RECORD_WAIFU_FILE, waifu_reset, Zero_today
 )
 record_waifu: Dict[int, Set[int]] = {
     k: set(v) if isinstance(v, list) else v for k, v in _raw_record_waifu.items()
@@ -117,37 +103,20 @@ record_waifu: Dict[int, Set[int]] = {
 
 # Locked couples are also stored bidirectionally, matching record_CP lookup style.
 record_lock: Dict[int, Dict[int, int]] = _load_record(
-    RECORD_LOCK_FILE, _OLD_RECORD_LOCK_FILE, waifu_reset, Zero_today
+    RECORD_LOCK_FILE, waifu_reset, Zero_today
 )
 
 
-def _discard_flat_yinpa_record(record: Dict, name: str) -> Dict:
-    """检测旧的扁平格式 {user_id: count}（值为 int 而非 dict）则丢弃。
-
-    该数据每日 0 点重置，丢弃无实际损失。
-    """
-    if any(not isinstance(value, dict) for value in record.values()):
-        logger.info(f"{name} 检测到旧的扁平格式数据（不分群），已丢弃。")
-        return {}
-    return record
-
-
-# 透群友记录1: {group_id: {user_id: count}}
-record_yinpa1: Dict[int, Dict[int, int]] = _discard_flat_yinpa_record(
-    _load_record(RECORD_YINPA1_FILE, _OLD_RECORD_YINPA1_FILE, waifu_reset, Zero_today),
-    "record_yinpa1",
+# 透群友记录: {group_id: {user_id: count}}
+record_yinpa1: Dict[int, Dict[int, int]] = _load_record(
+    RECORD_YINPA1_FILE, waifu_reset, Zero_today
 )
-
-# 透群友记录2: {group_id: {user_id: count}}
-record_yinpa2: Dict[int, Dict[int, int]] = _discard_flat_yinpa_record(
-    _load_record(RECORD_YINPA2_FILE, _OLD_RECORD_YINPA2_FILE, waifu_reset, Zero_today),
-    "record_yinpa2",
+record_yinpa2: Dict[int, Dict[int, int]] = _load_record(
+    RECORD_YINPA2_FILE, waifu_reset, Zero_today
 )
 
 # 保护名单: {group_id: set(user_ids)}
-protect_list: Dict[int, Set[int]] = _load_protect_list(
-    PROTECT_LIST_FILE, _OLD_PROTECT_LIST_FILE
-)
+protect_list: Dict[int, Set[int]] = _load_protect_list(PROTECT_LIST_FILE)
 
 
 # --- 便捷保存函数 ---

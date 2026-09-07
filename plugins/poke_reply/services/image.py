@@ -4,7 +4,7 @@ import io
 import threading
 import time
 from pathlib import Path
-from typing import Tuple, Dict, Optional, List, Set, Union
+from typing import Tuple, Dict, Optional, List, Set
 from PIL import Image
 from nonebot import logger
 
@@ -222,11 +222,6 @@ def _verify_duplicate_check_sync(img1: Image.Image, img2: Image.Image) -> bool:
         return False
 
 
-async def _verify_duplicate_check(img1: Image.Image, img2: Image.Image) -> bool:
-    # 兼容保留的薄封装，实际逻辑见 _verify_duplicate_check_sync
-    return _verify_duplicate_check_sync(img1, img2)
-
-
 def _verify_duplicate_bytes_vs_path_sync(img_path_1: Path, img_bytes_2: bytes) -> bool:
     if not img_path_1.exists():
         return False
@@ -241,10 +236,6 @@ def _verify_duplicate_bytes_vs_path_sync(img_path_1: Path, img_bytes_2: bytes) -
         return False
 
 
-async def verify_duplicate_bytes_vs_path(img_path_1: Path, img_bytes_2: bytes) -> bool:
-    return _verify_duplicate_bytes_vs_path_sync(img_path_1, img_bytes_2)
-
-
 def _verify_duplicate_path_vs_path_sync(img_path_1: Path, img_path_2: Path) -> bool:
     if not img_path_1.exists() or not img_path_2.exists():
         return False
@@ -256,10 +247,6 @@ def _verify_duplicate_path_vs_path_sync(img_path_1: Path, img_path_2: Path) -> b
     except Exception as e:
         logger.error(f"验证(Path vs Path)失败: {e}")
         return False
-
-
-async def verify_duplicate_path_vs_path(img_path_1: Path, img_path_2: Path) -> bool:
-    return _verify_duplicate_path_vs_path_sync(img_path_1, img_path_2)
 
 
 # --- 对外接口 ---

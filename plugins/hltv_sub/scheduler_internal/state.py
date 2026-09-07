@@ -70,12 +70,3 @@ def get_event_state(
         return "NOT_ONGOING"
 
     return "UNKNOWN"
-
-
-def has_active_events(tz: pytz.BaseTzInfo, end_grace_days: int) -> bool:
-    """active = ONGOING 或 UPCOMING（窗口内才恢复轮询）"""
-    event_ids = data_manager.get_all_subscribed_event_ids()
-    for event_id in event_ids:
-        if get_event_state(tz, end_grace_days, event_id) in ("ONGOING", "UPCOMING"):
-            return True
-    return False

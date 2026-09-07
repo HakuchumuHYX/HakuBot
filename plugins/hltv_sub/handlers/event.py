@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
@@ -80,7 +80,7 @@ async def handle_event_subscribe(
         return
 
     # 全局同步多订阅：若该赛事已在全局订阅中，直接提示
-    if data_manager.is_subscribed(group_id, event_id):
+    if data_manager.is_subscribed(event_id):
         await event_subscribe.finish(f"已经订阅了赛事 #{event_id}")
         return
 
@@ -99,7 +99,6 @@ async def handle_event_subscribe(
 
         if event_info:
             created = data_manager.subscribe_event(
-                group_id=group_id,
                 subscription=EventSubscription(
                     event_id=event_id,
                     event_title=event_info.title,
@@ -124,7 +123,6 @@ async def handle_event_subscribe(
         else:
             # 未获取到详细信息：仍允许订阅，元信息后续由每日维护自动补全
             created = data_manager.subscribe_event(
-                group_id=group_id,
                 subscription=EventSubscription(
                     event_id=event_id,
                     event_title=f"Event #{event_id}",
@@ -175,7 +173,7 @@ async def handle_event_unsubscribe(
         await event_unsubscribe.finish("请提供赛事ID，例如：event取消订阅 7148")
         return
 
-    if data_manager.unsubscribe_event_global(event_id):
+    if data_manager.unsubscribe_event(event_id):
         from plugins.hltv_sub.scheduler import hltv_scheduler
 
         hltv_scheduler.ensure_job_state()
@@ -198,7 +196,7 @@ async def handle_my_subscriptions(bot: Bot, event: GroupMessageEvent):
     if not is_group_enabled(group_id):
         return
 
-    subscriptions = data_manager.get_subscribed_events(group_id)
+    subscriptions = data_manager.get_subscribed_events()
     if not subscriptions:
         await my_subscriptions.finish(
             "当前没有订阅任何赛事\n使用 event列表 查看可订阅的赛事"

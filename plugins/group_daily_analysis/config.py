@@ -1,11 +1,7 @@
 from core.settings import load_config as read_config_model
-from utils.json_io import atomic_write_json
 from utils.paths import PluginPaths
-import json
-from pathlib import Path
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from nonebot.log import logger
 
 
 class StrictBaseModel(BaseModel):
@@ -61,9 +57,6 @@ class PluginConfig(StrictBaseModel):
     )
 
     # Prompts
-    combined_analysis_prompt: (
-        str  # 话题+金句联合分析（替代分别调用，节省约50% Map阶段API调用）
-    )
     topic_analysis_prompt: str
     topic_merge_prompt: str = (
         "你是群聊总结助手。以下是分段分析得到的群聊话题列表，请将它们**合并、去重**，并输出全天最重要的 "

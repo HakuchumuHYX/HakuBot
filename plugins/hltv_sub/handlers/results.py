@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 
@@ -28,7 +28,7 @@ async def handle_results_list(bot: Bot, event: GroupMessageEvent):
     if not is_group_enabled(group_id):
         return
 
-    subscriptions = data_manager.get_subscribed_events(group_id)
+    subscriptions = data_manager.get_subscribed_events()
     if not subscriptions:
         await results_list.finish("请先订阅赛事\n使用 event列表 查看可订阅的赛事")
         return

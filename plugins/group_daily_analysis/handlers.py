@@ -1,12 +1,11 @@
 import asyncio
-import os
 import json
 from pathlib import Path
 import time
 from collections import defaultdict
 
-from nonebot import require, on_command, on_message, on_type, get_bot, get_driver
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
+from nonebot import require, on_command, on_message, on_type, get_bot
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.adapters.onebot.v11.event import Event as OneBotEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.log import logger
@@ -16,7 +15,7 @@ from nonebot.exception import FinishedException
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-from core.access import is_plugin_enabled, is_feature_enabled
+from core.access import is_plugin_enabled
 from core.access_state import plugin_status
 from utils.onebot.media import image_segment
 
@@ -264,65 +263,11 @@ async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = 
     logger.info(f"群 {group_id} 获取到 {len(messages)} 条消息")
 
     # === 阶段 2: LLM 分析 ===
-    # 子任务内部已经有独立重试机制（_run_subtask_with_retry），
-    # 外层仅在"全部为空"时才触发整体重试（避免浪费 token）。
-    analysis_result = None
-    analysis_error = None
-    for i in range(retries):
-        try:
-            if i > 0:
-                logger.info(f"第 {i + 1} 次重试群 {group_id} 的 LLM 分析...")
-
-            analyzer = MessageAnalyzer()
-            analysis_result = await analyzer.analyze_messages(
-                messages, str(group_id), debug_mode=debug
-            )
-
-            # 按实际开启的分析项检查完整性
-            expected_items: dict[str, list] = {}
-            if plugin_config.topic_analysis_enabled and is_feature_enabled(
-                "group_daily_analysis", "topics", str(group_id), "0"
-            ):
-                expected_items["topics"] = analysis_result.topics
-            if plugin_config.user_title_analysis_enabled and is_feature_enabled(
-                "group_daily_analysis", "user_titles", str(group_id), "0"
-            ):
-                expected_items["user_titles"] = analysis_result.user_titles
-            if plugin_config.golden_quote_analysis_enabled and is_feature_enabled(
-                "group_daily_analysis", "golden_quotes", str(group_id), "0"
-            ):
-                expected_items["golden_quotes"] = analysis_result.golden_quotes
-
-            filled = {k: v for k, v in expected_items.items() if v}
-            missing = [k for k, v in expected_items.items() if not v]
-
-            if not filled and not debug:
-                # 全部为空 → 触发外层重试
-                logger.warning(
-                    f"群 {group_id} LLM 分析返回全空结果 (缺失: {missing})，触发整体重试"
-                )
-                if i < retries - 1:
-                    await asyncio.sleep(2 * (i + 1))
-                    continue
-            elif missing and not debug:
-                # 部分缺失 → 警告但继续渲染（避免因单项反复失败而浪费更多 token）
-                logger.warning(
-                    f"群 {group_id} LLM 分析部分缺失: {missing}，已有: {list(filled.keys())}。"
-                    f"子任务内部已重试过，继续渲染。"
-                )
-
-            break  # 有内容或已耗尽重试次数
-
-        except Exception as e:
-            logger.warning(f"群 {group_id} LLM 分析失败 (尝试 {i + 1}/{retries}): {e}")
-            analysis_error = e
-            await asyncio.sleep(2 * (i + 1))
-
-    if analysis_result is None:
-        logger.error(f"群 {group_id} LLM 分析最终失败")
-        if analysis_error:
-            raise analysis_error
-        return None
+    # 请求和分片负责重试；分析器保留成功项并处理降级，不重放整个分析流程。
+    analyzer = MessageAnalyzer()
+    analysis_result = await analyzer.analyze_messages(
+        messages, str(group_id), debug_mode=debug
+    )
 
     # 记录分析结果统计
     logger.info(

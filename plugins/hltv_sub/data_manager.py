@@ -4,15 +4,13 @@ from __future__ import annotations
 from utils.paths import PluginPaths
 
 import json
-import os
 import shutil
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from utils.json_io import atomic_write_json
 from typing import Optional
 
-from nonebot_plugin_localstore import get_plugin_data_dir
 
 from utils.logging import get_logger
 
@@ -31,28 +29,23 @@ class EventSubscription:
 
 @dataclass
 class GroupData:
-    """群组数据（仅保留群维度开关，订阅走全局 canonical）"""
+    """群组推送开关；赛事订阅由全局集合保存。"""
 
     group_id: int
     enabled: bool = False  # 是否启用插件，默认禁用，需要管理员手动开启
-    # 兼容历史数据：仍保留字段用于迁移读取，不再作为真实数据源
-    subscribed_events: list[EventSubscription] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
             "group_id": self.group_id,
             "enabled": self.enabled,
-            "subscribed_events": [asdict(e) for e in self.subscribed_events],
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "GroupData":
-        events = [EventSubscription(**e) for e in data.get("subscribed_events", [])]
         return cls(
             group_id=data["group_id"],
             # 默认关闭：只有显式开启才启用（缺字段的历史数据也应默认关闭）
             enabled=data.get("enabled", False),
-            subscribed_events=events,
         )
 
 
@@ -86,22 +79,6 @@ class DataManager:
     def _now_iso() -> str:
         return datetime.now().isoformat()
 
-    @staticmethod
-    def _normalize_notified(raw: object) -> dict[str, str]:
-        """兼容旧格式(list[str])和新格式(dict[str, iso_datetime])"""
-        if isinstance(raw, dict):
-            out: dict[str, str] = {}
-            for k, v in raw.items():
-                if isinstance(k, str):
-                    out[k] = v if isinstance(v, str) else datetime.now().isoformat()
-            return out
-
-        if isinstance(raw, list):
-            now = datetime.now().isoformat()
-            return {str(match_id): now for match_id in raw}
-
-        return {}
-
     def _load(self) -> None:
         """加载数据"""
         if not self._data_file.exists():
@@ -124,56 +101,18 @@ class DataManager:
                 return
 
         try:
-            dirty = False
-
-            # 1) groups
-            for group_data in data.get("groups", []):
-                if "enabled" not in group_data:
-                    group_data["enabled"] = False
-                    dirty = True
-
-                gd = GroupData.from_dict(group_data)
-                self._groups[gd.group_id] = gd
-
-            # 2) 全局订阅迁移
-            if "global_subscriptions" in data:
-                self._global_subscriptions = [
-                    EventSubscription(**e) for e in data.get("global_subscriptions", [])
-                ]
-            else:
-                # 从“启用群”的历史 subscribed_events 合并去重得到 canonical
-                merged: dict[str, EventSubscription] = {}
-                for group in self._groups.values():
-                    if not group.enabled:
-                        continue
-                    for sub in group.subscribed_events:
-                        merged[sub.event_id] = sub
-                self._global_subscriptions = list(merged.values())
-                dirty = True
-
-            # 3) 去重状态迁移
+            self._groups = {
+                group.group_id: group
+                for group in (GroupData.from_dict(item) for item in data.get("groups", []))
+            }
+            self._global_subscriptions = [
+                EventSubscription(**item)
+                for item in data.get("global_subscriptions", [])
+            ]
             scheduler_state = data.get("scheduler_state", {})
-            self._notified_starts = self._normalize_notified(
-                scheduler_state.get("notified_starts", {})
-            )
-            self._notified_results = self._normalize_notified(
-                scheduler_state.get("notified_results", {})
-            )
-            self._notified_map_results = self._normalize_notified(
-                scheduler_state.get("notified_map_results", {})
-            )
-
-            # 4) legacy group.subscribed_events 与 canonical 对齐（便于排查）
-            canonical = [asdict(e) for e in self._global_subscriptions]
-            for group in self._groups.values():
-                if [asdict(e) for e in group.subscribed_events] != canonical:
-                    group.subscribed_events = [
-                        EventSubscription(**e) for e in canonical
-                    ]
-                    dirty = True
-
-            if dirty:
-                self._save()
+            self._notified_starts = scheduler_state.get("notified_starts", {})
+            self._notified_results = scheduler_state.get("notified_results", {})
+            self._notified_map_results = scheduler_state.get("notified_map_results", {})
 
         except Exception as e:
             logger.exception(f"[HLTV Sub] 解析数据失败: {e}")
@@ -221,14 +160,6 @@ class DataManager:
         if should_flush:
             self._save()
 
-    def _sync_legacy_group_subscriptions(self) -> None:
-        """把 canonical 同步回每个群，保持文件结构兼容且便于人工查看"""
-        canonical = [EventSubscription(**asdict(e)) for e in self._global_subscriptions]
-        for group in self._groups.values():
-            group.subscribed_events = [
-                EventSubscription(**asdict(e)) for e in canonical
-            ]
-
     def get_group(self, group_id: int) -> GroupData:
         """获取群组数据，不存在则创建"""
         if group_id not in self._groups:
@@ -244,45 +175,20 @@ class DataManager:
         self.get_group(group_id).enabled = enabled
         self._save()
 
-    def get_subscribed_events(self, group_id: int) -> list[EventSubscription]:
-        """获取群组订阅的赛事列表（全局同步语义）"""
-        _ = self.get_group(group_id)  # 确保群对象存在
+    def get_subscribed_events(self) -> list[EventSubscription]:
+        """获取全局赛事订阅列表。"""
         return [EventSubscription(**asdict(e)) for e in self._global_subscriptions]
 
-    def get_single_subscription(self, group_id: int) -> Optional[EventSubscription]:
-        """获取群组的第一条订阅，不存在返回 None"""
-        subs = self.get_subscribed_events(group_id)
-        return subs[0] if subs else None
-
-    def subscribe_event(self, group_id: int, subscription: EventSubscription) -> bool:
+    def subscribe_event(self, subscription: EventSubscription) -> bool:
         """新增赛事订阅（全局同步），返回是否新增成功"""
-        _ = self.get_group(group_id)  # 确保发起操作的群有记录
-
-        if any(s.event_id == subscription.event_id for s in self._global_subscriptions):
+        if self.is_subscribed(subscription.event_id):
             return False
 
         self._global_subscriptions.append(subscription)
-        self._sync_legacy_group_subscriptions()
         self._save()
         return True
 
-    def clear_subscriptions(self, group_id: int) -> None:
-        """清空全局订阅列表（保留旧接口语义）"""
-        _ = self.get_group(group_id)
-        self._global_subscriptions = []
-        self._sync_legacy_group_subscriptions()
-        self._save()
-
-    def get_subscribed_event_ids(self, group_id: int) -> list[str]:
-        """获取群组订阅的赛事ID列表"""
-        return [e.event_id for e in self.get_subscribed_events(group_id)]
-
-    def unsubscribe_event(self, group_id: int, event_id: str) -> bool:
-        """取消订阅赛事（全局同步），返回是否成功"""
-        _ = self.get_group(group_id)
-        return self.unsubscribe_event_global(event_id)
-
-    def unsubscribe_event_global(self, event_id: str) -> bool:
+    def unsubscribe_event(self, event_id: str) -> bool:
         """取消订阅赛事（全局，不依赖群）"""
         before = len(self._global_subscriptions)
         self._global_subscriptions = [
@@ -291,14 +197,13 @@ class DataManager:
         removed = len(self._global_subscriptions) != before
 
         if removed:
-            self._sync_legacy_group_subscriptions()
             self._save()
 
         return removed
 
-    def is_subscribed(self, group_id: int, event_id: str) -> bool:
-        """检查是否已订阅赛事"""
-        return event_id in self.get_subscribed_event_ids(group_id)
+    def is_subscribed(self, event_id: str) -> bool:
+        """检查全局是否已订阅赛事。"""
+        return any(event.event_id == event_id for event in self._global_subscriptions)
 
     def get_all_subscribed_event_ids(self) -> set[str]:
         """获取当前全局订阅赛事ID（用于定时任务）"""
@@ -306,7 +211,7 @@ class DataManager:
 
     def get_groups_by_event(self, event_id: str) -> list[int]:
         """获取订阅了某赛事的群组列表（仅启用群）"""
-        if event_id not in self.get_all_subscribed_event_ids():
+        if not self.is_subscribed(event_id):
             return []
 
         groups = []
@@ -348,33 +253,20 @@ class DataManager:
                 changed = True
 
         if changed:
-            self._sync_legacy_group_subscriptions()
             self._save()
         return changed
 
     # -------------------- 推送去重状态 --------------------
-
-    def get_notified_starts(self) -> set[str]:
-        """获取已发送开始提醒的比赛ID集合"""
-        return set(self._notified_starts.keys())
 
     def add_notified_start(self, match_id: str, *, force: bool = False) -> None:
         """添加已发送开始提醒的比赛ID"""
         self._notified_starts[match_id] = self._now_iso()
         self._save_notified_state_debounced(force=force)
 
-    def get_notified_results(self) -> set[str]:
-        """获取已发送结果的比赛ID集合"""
-        return set(self._notified_results.keys())
-
     def add_notified_result(self, match_id: str, *, force: bool = False) -> None:
         """添加已发送结果的比赛ID"""
         self._notified_results[match_id] = self._now_iso()
         self._save_notified_state_debounced(force=force)
-
-    def get_notified_map_results(self) -> set[str]:
-        """获取已发送单图结果的去重键集合"""
-        return set(self._notified_map_results.keys())
 
     def add_notified_map_result(
         self, notification_id: str, *, force: bool = False

@@ -1,9 +1,7 @@
 from core.settings import load_config as read_config_model
-from utils.json_io import atomic_write_json
 from utils.paths import PluginPaths
 from pathlib import Path
 from typing import Any, Optional
-import json
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -74,11 +72,9 @@ class ImageConfig(StrictBaseModel):
 
 
 class SearchConfig(StrictBaseModel):
-    # --- Web Search (manual command only) ---
+    # --- Tavily ---
     # Tavily: https://tavily.com/
     tavily_api_key: Optional[str] = None
-    max_results: int = 5
-    depth: str = "basic"
 
     # --- Web Search Query Rewrite / Multi-query ---
     # 启用后，会先对用户输入做“检索 query 提炼/重写”，再进行搜索，避免直接拿长段口语去搜。

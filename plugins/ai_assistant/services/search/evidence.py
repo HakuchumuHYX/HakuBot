@@ -1,36 +1,6 @@
-import httpx
-import json
-import re
-import math
-from typing import Any, Tuple, Optional, List
-from nonebot.log import logger
-from pydantic import Field
-from plugins.ai_assistant.config import StrictBaseModel, plugin_config
-from plugins.ai_assistant.services.chat_service import call_chat_completion
+from typing import Optional, List
+from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.services.search import normalization as _normalization
-
-
-def format_search_results(results: List[dict], max_chars: int = 2500) -> str:
-    """
-    将 Tavily 搜索结果格式化为可注入 messages 的文本，包含可引用的链接。
-    """
-    if not results:
-        return "（联网搜索未返回结果）"
-
-    lines: List[str] = []
-    for idx, r in enumerate(results, start=1):
-        title = r.get("title") or ""
-        url = r.get("url") or ""
-        content = r.get("content") or ""
-        snippet = content.replace("\n", " ").strip()
-        if len(snippet) > 240:
-            snippet = snippet[:240] + "..."
-        lines.append(f"[{idx}] {title}\n{url}\n摘要：{snippet}")
-
-    text = "\n\n".join(lines)
-    if len(text) > max_chars:
-        text = text[:max_chars] + "\n\n（搜索结果过长，已截断）"
-    return text
 
 
 def format_chat_evidence_pack(

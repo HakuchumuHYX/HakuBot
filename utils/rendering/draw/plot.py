@@ -1,9 +1,8 @@
 from typing import Union, Tuple, List, Optional, Callable
-from PIL import Image, ImageFilter, ImageEnhance
+from PIL import Image
 import threading
 import contextvars
 from dataclasses import dataclass
-from copy import deepcopy
 from datetime import datetime
 
 from utils.rendering.draw.painter import (
@@ -59,21 +58,14 @@ class RoundRectBg(WidgetBg):
         stroke: Color = None,
         stroke_width: int = 1,
         corners=(True, True, True, True),
-        blurglass=False,
-        blurglass_kwargs: dict = {},
     ):
         self.fill = fill
         self.radius = radius
         self.stroke = stroke
         self.stroke_width = stroke_width
         self.corners = corners
-        self.blurglass = blurglass
-        self.blurglass_kwargs = blurglass_kwargs
 
     def draw(self, p: Painter):
-        # 注意: painter中可能没有 blurglass_roundrect，如果有需要补充，如果没有则不支持或替换实现
-        # 目前 painter.py 中没有看到 blurglass_roundrect，暂时注释掉或改为普通圆角矩形
-        # p.blurglass_roundrect((0, 0), p.size, self.fill, self.radius, corners=self.corners, **self.blurglass_kwargs)
         p.roundrect(
             (0, 0),
             p.size,
@@ -83,91 +75,6 @@ class RoundRectBg(WidgetBg):
             self.stroke_width,
             self.corners,
         )
-
-
-class ImageBg(WidgetBg):
-    def __init__(
-        self,
-        img: Union[str, Image.Image],
-        align: str = "c",
-        mode="fit",
-        blur=False,
-        fade=0.1,
-    ):
-        if isinstance(img, str):
-            self.img = Image.open(img)
-        else:
-            self.img = img
-        assert align in ALIGN_MAP
-        self.align = align
-        assert mode in ("fit", "fill", "fixed", "repeat")
-        self.mode = mode
-        if blur:
-            self.img = self.img.filter(ImageFilter.GaussianBlur(radius=3))
-        if fade > 0:
-            self.img = ImageEnhance.Brightness(self.img).enhance(1 - fade)
-
-    def draw(self, p: Painter):
-        if self.mode == "fit":
-            ha, va = ALIGN_MAP[self.align]
-            scale = max(p.w / self.img.size[0], p.h / self.img.size[1])
-            w, h = int(self.img.size[0] * scale), int(self.img.size[1] * scale)
-            if va == "c":
-                y = (p.h - h) // 2
-            elif va == "t":
-                y = 0
-            else:
-                y = p.h - h
-            if ha == "c":
-                x = (p.w - w) // 2
-            elif ha == "l":
-                x = 0
-            else:
-                x = p.w - w
-            p.paste(self.img, (x, y), (w, h))
-        if self.mode == "fill":
-            p.paste(self.img, (0, 0), p.size)
-        if self.mode == "fixed":
-            ha, va = ALIGN_MAP[self.align]
-            if va == "c":
-                y = (p.h - self.img.size[1]) // 2
-            elif va == "t":
-                y = 0
-            else:
-                y = p.h - self.img.size[1]
-            if ha == "c":
-                x = (p.w - self.img.size[0]) // 2
-            elif ha == "l":
-                x = 0
-            else:
-                x = p.w - self.img.size[0]
-            p.paste(self.img, (x, y))
-        if self.mode == "repeat":
-            w, h = self.img.size
-            for y in range(0, p.h, h):
-                for x in range(0, p.w, w):
-                    p.paste(self.img, (x, y))
-
-
-# RandomTriangleBg 依赖 painter 的 draw_random_triangle_bg 方法，但在 painter.py 中未实现。
-# 为了保持兼容性，先保留类定义但 draw 方法留空或抛出警告，或者完全移除。
-# 考虑到这是从原项目移植，可能原项目的 painter 还有更多方法。
-# 目前先注释掉 draw 实现。
-class RandomTriangleBg(WidgetBg):
-    def __init__(
-        self,
-        preset_config_name: str,
-        size_fixed_rate: float = 0.0,
-        dt: datetime | None = None,
-    ):
-        super().__init__()
-        self.preset_config_name = preset_config_name
-        self.size_fixed_rate = size_fixed_rate
-        self.dt = dt
-
-    def draw(self, p: Painter):
-        # p.draw_random_triangle_bg(self.preset_config_name, self.size_fixed_rate, self.dt)
-        pass
 
 
 # =========================== 布局类型 =========================== #
@@ -693,134 +600,6 @@ class VSplit(Widget):
             cur_y += h + self.sep
 
 
-class Grid(Widget):
-    def __init__(
-        self,
-        items: List[Widget] = None,
-        row_count=None,
-        col_count=None,
-        item_size_mode="fixed",
-        item_align="c",
-        hsep=DEFAULT_SEP,
-        vsep=DEFAULT_SEP,
-        vertical=False,
-    ):
-        super().__init__()
-        self.items = items or []
-        for item in self.items:
-            item.set_parent(self)
-        self.row_count = row_count
-        self.col_count = col_count
-        assert not (self.row_count and self.col_count), (
-            "Either row_count or col_count should be None"
-        )
-        assert item_size_mode in ("expand", "fixed")
-        self.item_size_mode = item_size_mode
-        self.hsep = hsep
-        self.vsep = vsep
-        if item_align not in ALIGN_MAP:
-            raise ValueError("Invalid align")
-        self.item_halign, self.item_valign = ALIGN_MAP[item_align]
-        self.item_bg = None
-        self.vertical = vertical
-
-    def set_vertical(self, vertical: bool):
-        self.vertical = vertical
-        return self
-
-    def set_item_align(self, align: str):
-        if align not in ALIGN_MAP:
-            raise ValueError("Invalid align")
-        self.item_halign, self.item_valign = ALIGN_MAP[align]
-        return self
-
-    def set_sep(self, hsep=None, vsep=None):
-        if hsep is not None:
-            self.hsep = hsep
-        if vsep is not None:
-            self.vsep = vsep
-        return self
-
-    def set_row_count(self, count: int):
-        self.row_count = count
-        self.col_count = None
-        return self
-
-    def set_col_count(self, count: int):
-        self.col_count = count
-        self.row_count = None
-        return self
-
-    def set_item_size_mode(self, mode: str):
-        assert mode in ("expand", "fixed")
-        self.item_size_mode = mode
-        return self
-
-    def set_item_bg(self, bg: WidgetBg | Callable[[int, int, Widget], WidgetBg]):
-        self.item_bg = bg
-        return self
-
-    def _get_grid_rc_and_size(self):
-        r, c = self.row_count, self.col_count
-        assert r and not c or c and not r, (
-            "Either row_count or col_count should be None"
-        )
-        if not r:
-            r = (len(self.items) + c - 1) // c
-        if not c:
-            c = (len(self.items) + r - 1) // r
-        if self.item_size_mode == "expand":
-            assert self.w is not None and self.h is not None, (
-                "Expand mode requires width and height"
-            )
-            gw = (self.w - self.hsep * (c - 1) - self.hpadding * 2) / c
-            gh = (self.h - self.vsep * (r - 1) - self.vpadding * 2) / r
-        else:
-            gw, gh = 0, 0
-            for item in self.items:
-                iw, ih = item._get_self_size()
-                gw = max(gw, iw)
-                gh = max(gh, ih)
-        return (int(r), int(c)), (int(gw), int(gh))
-
-    def _get_content_size(self):
-        (r, c), (gw, gh) = self._get_grid_rc_and_size()
-        return (int(c * gw + self.hsep * (c - 1)), int(r * gh + self.vsep * (r - 1)))
-
-    def _draw_content(self, p: Painter):
-        (r, c), (gw, gh) = self._get_grid_rc_and_size()
-        for idx, item in enumerate(self.items):
-            if not self.vertical:
-                i, j = idx // c, idx % c
-            else:
-                i, j = idx % r, idx // r
-            x = j * (gw + self.hsep)
-            y = i * (gh + self.vsep)
-            p.move_region((x, y), (gw, gh))
-            if self.item_bg and not item.omit_parent_bg:
-                if callable(self.item_bg):
-                    self.item_bg(i, j, item).draw(p)
-                else:
-                    self.item_bg.draw(p)
-            x, y = 0, 0
-            iw, ih = item._get_self_size()
-            if self.item_halign == "l":
-                x += 0
-            elif self.item_halign == "r":
-                x += gw - iw
-            elif self.item_halign == "c":
-                x += (gw - iw) // 2
-            if self.item_valign == "t":
-                y += 0
-            elif self.item_valign == "b":
-                y += gh - ih
-            elif self.item_valign == "c":
-                y += (gh - ih) // 2
-            p.move_region((x, y), (iw, ih))
-            item.draw(p)
-            p.restore_region(2)
-
-
 @dataclass
 class TextStyle:
     font: str = DEFAULT_FONT
@@ -1246,44 +1025,3 @@ class Canvas(Frame):
                 f"Canvas drawn in {(datetime.now() - t).total_seconds():.3f}s, size={size}"
             )
         return img
-
-
-# =========================== 控件函数 =========================== #
-
-
-# 由带颜色代码的字符串获取彩色文本组件
-def colored_text_box(s: str, style: TextStyle, padding=2, **text_box_kargs) -> HSplit:
-    try:
-        segs = [{"text": None, "color": None}]
-        while True:
-            i = s.find("<#")
-            if i == -1:
-                segs[-1]["text"] = s
-                break
-            j = s.find(">", i)
-            segs[-1]["text"] = s[:i]
-            code = s[i + 2 : j]
-            if len(code) == 6:
-                r, g, b = int(code[:2], 16), int(code[2:4], 16), int(code[4:], 16)
-            elif len(code) == 3:
-                r, g, b = (
-                    int(code[0], 16) * 17,
-                    int(code[1], 16) * 17,
-                    int(code[2], 16) * 17,
-                )
-            else:
-                raise ValueError(f"颜色代码格式错误: {code}")
-            segs.append({"text": None, "color": (r, g, b)})
-            s = s[j + 1 :]
-    except Exception as e:
-        segs = [{"text": s, "color": None}]
-
-    with HSplit().set_padding(padding).set_sep(0) as hs:
-        for seg in segs:
-            text, color = seg["text"], seg["color"]
-            if text:
-                color_style = deepcopy(style)
-                if color is not None:
-                    color_style.color = color
-                TextBox(text, style=color_style, **text_box_kargs).set_padding(0)
-    return hs

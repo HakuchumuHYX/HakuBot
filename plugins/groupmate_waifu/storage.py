@@ -1,11 +1,5 @@
-"""
-Storage helpers for groupmate_waifu runtime JSON files.
+"""Storage helpers for groupmate_waifu runtime JSON files."""
 
-The old no-extension files are still read for one-way migration into JSON. Use
-`ast.literal_eval()` only for that legacy local-data path.
-"""
-
-import ast
 import json
 import os
 from pathlib import Path
@@ -85,21 +79,6 @@ def _load_json(file: Path, default: Any = None) -> Any:
         return default
 
 
-def _load_legacy(file: Path) -> Any:
-    if not file.exists():
-        return None
-
-    try:
-        with open(file, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            if not content:
-                return None
-            return ast.literal_eval(content)
-    except Exception as e:
-        logger.error(f"加载旧格式文件 {file} 失败: {e}")
-        return None
-
-
 def _should_reset_file(file: Path, zero_timestamp: float) -> bool:
     if not file.exists():
         return False
@@ -113,45 +92,17 @@ def _should_reset_file(file: Path, zero_timestamp: float) -> bool:
 
 def _load_record(
     json_file: Path,
-    legacy_file: Path,
     apply_reset: bool,
     zero_timestamp: float,
 ) -> Dict:
-    if json_file.exists():
-        if apply_reset and _should_reset_file(json_file, zero_timestamp):
-            logger.info(f"{json_file} 是旧文件，已重置。")
-            return {}
-
-        data = _load_json(json_file)
-        return _convert_keys_to_int(data)
-
-    if legacy_file.exists():
-        if apply_reset and _should_reset_file(legacy_file, zero_timestamp):
-            logger.info(f"{legacy_file} 是旧文件，已重置（迁移跳过）。")
-            return {}
-
-        data = _load_legacy(legacy_file)
-        if data is not None:
-            logger.info(f"从旧文件 {legacy_file} 迁移数据到 {json_file}")
-            _save_json(json_file, data)
-            return data if isinstance(data, dict) else {}
-
-    return {}
+    if apply_reset and _should_reset_file(json_file, zero_timestamp):
+        logger.info(f"{json_file} 是旧文件，已重置。")
+        return {}
+    return _convert_keys_to_int(_load_json(json_file))
 
 
-def _load_protect_list(json_file: Path, legacy_file: Path) -> Dict[int, Set[int]]:
-    if json_file.exists():
-        data = _load_json(json_file)
-        return _convert_list_values_to_set(data)
-
-    if legacy_file.exists():
-        data = _load_legacy(legacy_file)
-        if data is not None:
-            logger.info(f"从旧文件 {legacy_file} 迁移数据到 {json_file}")
-            _save_json(json_file, _convert_keys_to_str(data))
-            return data if isinstance(data, dict) else {}
-
-    return {}
+def _load_protect_list(json_file: Path) -> Dict[int, Set[int]]:
+    return _convert_list_values_to_set(_load_json(json_file))
 
 
 def _save_json(file: Path, data: Any):

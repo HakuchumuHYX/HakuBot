@@ -1,20 +1,14 @@
 import httpx
-import json
-import re
-import math
-from typing import Any, Tuple, Optional, List
-from nonebot.log import logger
-from pydantic import Field
-from plugins.ai_assistant.config import StrictBaseModel, plugin_config
-from plugins.ai_assistant.services.chat_service import call_chat_completion
+from typing import Any, Optional, List
+from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.services.search import normalization as _normalization
 
 
 async def tavily_search_full(
     query: str,
     *,
-    max_results: Optional[int] = None,
-    search_depth: Optional[str] = None,
+    max_results: int,
+    search_depth: str,
     include_answer: Any = False,
     include_raw_content: Any = False,
     include_images: bool = False,
@@ -31,27 +25,18 @@ async def tavily_search_full(
             "未配置 tavily_api_key，请在 config/plugins/ai_assistant/config.json 中填写。"
         )
 
-    depth = (
-        search_depth
-        if search_depth is not None
-        else (getattr(plugin_config.search, "depth", "basic") or "basic")
-    )
     payload = {
         "api_key": api_key,
         "query": query,
-        "max_results": int(
-            max_results
-            if max_results is not None
-            else (getattr(plugin_config.search, "max_results", 5) or 5)
-        ),
-        "search_depth": depth,
+        "max_results": max_results,
+        "search_depth": search_depth,
         "include_answer": include_answer,
         "include_raw_content": include_raw_content,
         "include_images": bool(include_images),
         "include_image_descriptions": bool(include_image_descriptions),
     }
 
-    if chunks_per_source is not None and depth == "advanced":
+    if chunks_per_source is not None and search_depth == "advanced":
         payload["chunks_per_source"] = max(1, min(3, int(chunks_per_source)))
     if auto_parameters:
         payload["auto_parameters"] = True
@@ -95,36 +80,3 @@ async def tavily_search_full(
         "usage": data.get("usage"),
         "request_id": data.get("request_id"),
     }
-
-
-async def tavily_search(
-    query: str,
-    *,
-    max_results: Optional[int] = None,
-    search_depth: Optional[str] = None,
-    include_domains: Optional[List[str]] = None,
-    exclude_domains: Optional[List[str]] = None,
-) -> List[dict]:
-    """
-    使用 Tavily 进行联网搜索（手动命令触发）。
-    返回结果格式：[{title, url, content}]
-    """
-    data = await tavily_search_full(
-        query,
-        max_results=max_results,
-        search_depth=search_depth,
-        include_answer=False,
-        include_raw_content=False,
-        include_images=False,
-        include_image_descriptions=False,
-        include_domains=include_domains,
-        exclude_domains=exclude_domains,
-    )
-    return [
-        {
-            "title": item.get("title") or "",
-            "url": item.get("url") or "",
-            "content": item.get("content") or "",
-        }
-        for item in data.get("results", [])
-    ]

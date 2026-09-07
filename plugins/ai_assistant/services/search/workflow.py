@@ -1,55 +1,9 @@
-import httpx
-import json
-import re
 import math
 from typing import Any, Tuple, Optional, List
 from nonebot.log import logger
-from pydantic import Field
-from plugins.ai_assistant.config import StrictBaseModel, plugin_config
-from plugins.ai_assistant.services.chat_service import call_chat_completion
+from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.services.search import client as _client
 from plugins.ai_assistant.services.search import queries as _queries
-
-
-async def web_search_with_rewrite(
-    raw_text: str, *, mode: str = "chat"
-) -> Tuple[List[str], List[dict]]:
-    """
-    统一入口：对 raw_text 做 query 提炼/重写 → 多 query 搜索 → 合并去重。
-    返回：(queries, merged_results)
-    """
-    queries = await _queries._resolve_search_queries(raw_text, mode=mode)
-
-    total_max = int(getattr(plugin_config.search, "max_results", 5) or 5)
-    if total_max < 1:
-        total_max = 5
-
-    per_query = max(1, int(math.ceil(total_max / max(1, len(queries)))))
-
-    merged_results: List[dict] = []
-    seen_urls = set()
-
-    for q in queries:
-        try:
-            rs = await _client.tavily_search(q, max_results=per_query)
-        except Exception as e:
-            logger.warning(f"Tavily 搜索失败: query={q} err={e}")
-            continue
-
-        for item in rs:
-            url = (item.get("url") or "").strip()
-            key = url or (item.get("title") or "") + (item.get("content") or "")
-            if key in seen_urls:
-                continue
-            seen_urls.add(key)
-            merged_results.append(item)
-
-            if len(merged_results) >= total_max:
-                break
-        if len(merged_results) >= total_max:
-            break
-
-    return queries, merged_results
 
 
 async def web_chat_search_with_rewrite(

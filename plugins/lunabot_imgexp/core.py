@@ -230,7 +230,7 @@ async def search_image(
             c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1)
         )
     )
-    item_bg = RoundRectBg((255, 255, 255, 125), 10, blurglass=True)
+    item_bg = RoundRectBg((255, 255, 255, 125), 10)
     text_color1 = (50, 50, 50, 255)
     text_color2 = (75, 75, 75, 255)
     w = 800

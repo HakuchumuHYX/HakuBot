@@ -32,8 +32,3 @@ class UserTitlesPayload(BaseModel):
 
 class GoldenQuotesPayload(BaseModel):
     items: list[GoldenQuoteItem] = Field(default_factory=list)
-
-
-class TopicsAndQuotesPayload(BaseModel):
-    topics: list[SummaryTopicItem] = Field(default_factory=list)
-    quotes: list[GoldenQuoteItem] = Field(default_factory=list)

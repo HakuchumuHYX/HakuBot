@@ -1,43 +1,11 @@
-import json
-import asyncio
-import re
-import traceback
-from collections import Counter, defaultdict
-from datetime import datetime
-from typing import Callable, TypeVar, Any
 from nonebot.log import logger
-from core.access import is_feature_enabled
 from plugins.group_daily_analysis.config import plugin_config
-from plugins.group_daily_analysis.models import (
-    AnalysisResult,
-    GroupStatistics,
-    SummaryTopic,
-    UserTitle,
-    GoldenQuote,
-    TokenUsage,
-    EmojiStatistics,
-)
-from plugins.group_daily_analysis.visualization.charts import ActivityVisualizer
+from plugins.group_daily_analysis.models import UserTitle, TokenUsage
 from plugins.group_daily_analysis.utils.llm import call_chat_completion
-from utils.llm.client import is_retryable_llm_error
-from plugins.group_daily_analysis.analysis.context import (
-    TranscriptContext,
-    build_transcript_context,
-)
-from plugins.group_daily_analysis.analysis.fallbacks import (
-    build_golden_quote_fallback,
-    build_topic_fallback,
-    build_user_title_fallback,
-)
-from plugins.group_daily_analysis.analysis.schemas import (
-    TopicsPayload,
-    UserTitlesPayload,
-    GoldenQuotesPayload,
-    TopicsAndQuotesPayload,
-)
+from plugins.group_daily_analysis.analysis.context import TranscriptContext
+from plugins.group_daily_analysis.analysis.schemas import UserTitlesPayload
 from plugins.group_daily_analysis.analysis.analyzers.common import parse_payload_items
 
-T = TypeVar("T")
 from plugins.group_daily_analysis.analysis.prompts import safe_prompt_format
 
 
@@ -93,7 +61,7 @@ class TitlesAnalysis:
             )
         )
 
-        # 不再 catch 异常 - 由上层 _run_subtask_with_retry 负责重试
+        # 请求层处理网络重试，解析失败由主流程使用本地称号降级。
         content, tokens = await call_chat_completion(
             [{"role": "user", "content": prompt}],
             temperature=0.7,
