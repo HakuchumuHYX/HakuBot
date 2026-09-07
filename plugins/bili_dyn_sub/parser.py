@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, NamedTuple, Optional
 from urllib.parse import urlsplit, urlunsplit
 
-from ..utils.tools import get_logger
+from utils.logging import get_logger
 
 logger = get_logger("bili_dyn_sub.parser")
 
@@ -187,7 +187,9 @@ def _pic_urls(items: Any, key: str) -> list[str]:
     """从 [{key: url}, ...] 抽图片链接，跳过脏项"""
     if not isinstance(items, (list, tuple)):
         return []
-    return [url for url in (_as_str(_dget(item, key, "")).strip() for item in items) if url]
+    return [
+        url for url in (_as_str(_dget(item, key, "")).strip() for item in items) if url
+    ]
 
 
 def _text_similarity(str1: str, str2: str) -> float:
@@ -202,7 +204,9 @@ def _text_similarity(str1: str, str2: str) -> float:
 
 def _process_video_text(dynamic: str, desc: str, title: str) -> tuple[str, str]:
     """视频动态的标题/正文去重拼接（逐步照抄 bison `_text_process`，保证推送文案 1:1）"""
-    title_similarity = _text_similarity(title, desc[: len(title)]) if title and desc else 0.0
+    title_similarity = (
+        _text_similarity(title, desc[: len(title)]) if title and desc else 0.0
+    )
     if title_similarity > 0.9:
         # 简介开头就是标题，去掉重复部分
         desc = desc[len(title) :].lstrip()
@@ -233,12 +237,19 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
             _decode_escapes(_as_str(_dget(archive, "desc", ""))),
             _as_str(_dget(archive, "title", "")),
         )
-        return _MajorParsed(title, content, _one_pic(archive, "cover"), _normalize_url(_dget(archive, "jump_url")))
+        return _MajorParsed(
+            title,
+            content,
+            _one_pic(archive, "cover"),
+            _normalize_url(_dget(archive, "jump_url")),
+        )
 
     if major_type == "MAJOR_TYPE_OPUS":  # 通用图文（itemOpusStyle 下的专栏/图文动态）
         opus = _dget(major, "opus", {})
         summary = _dget(opus, "summary", {})
-        content = _as_str(_dget(summary, "text", "")) or _rich_text(_dget(summary, "rich_text_nodes"))
+        content = _as_str(_dget(summary, "text", "")) or _rich_text(
+            _dget(summary, "rich_text_nodes")
+        )
         return _MajorParsed(
             _as_str(_dget(opus, "title", "")),
             _decode_escapes(content) or desc_text,
@@ -265,7 +276,10 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
 
     if major_type == "MAJOR_TYPE_LIVE":  # 直播间卡片
         live = _dget(major, "live", {})
-        first, second = _as_str(_dget(live, "desc_first", "")), _as_str(_dget(live, "desc_second", ""))
+        first, second = (
+            _as_str(_dget(live, "desc_first", "")),
+            _as_str(_dget(live, "desc_second", "")),
+        )
         return _MajorParsed(
             _as_str(_dget(live, "title", "")),
             f"{first}\n{second}",
@@ -276,7 +290,10 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
     if major_type in ("MAJOR_TYPE_PGC", "MAJOR_TYPE_PGC_UNION"):  # 番剧
         pgc = _dget(major, "pgc", {})
         return _MajorParsed(
-            _as_str(_dget(pgc, "title", "")), "", _one_pic(pgc, "cover"), _normalize_url(_dget(pgc, "jump_url"))
+            _as_str(_dget(pgc, "title", "")),
+            "",
+            _one_pic(pgc, "cover"),
+            _normalize_url(_dget(pgc, "jump_url")),
         )
 
     if major_type == "MAJOR_TYPE_COMMON":  # 官方活动/会员购/漫画等通用卡
@@ -290,7 +307,10 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
 
     if major_type == "MAJOR_TYPE_COURSES":  # 课程
         courses = _dget(major, "courses", {})
-        sub_title, desc = _as_str(_dget(courses, "sub_title", "")), _as_str(_dget(courses, "desc", ""))
+        sub_title, desc = (
+            _as_str(_dget(courses, "sub_title", "")),
+            _as_str(_dget(courses, "desc", "")),
+        )
         return _MajorParsed(
             _as_str(_dget(courses, "title", "")),
             f"{sub_title}\n{desc}",
@@ -303,8 +323,12 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
         return _MajorParsed("", tips or DELETED_SOURCE_TIPS, [], "")
 
     # 未知 major：保留可读兜底文案（与 bison `UnknownMajor` 同义），不抛 KeyError
-    logger.warning(f"动态 {dyn_id or '<无id>'} 含无法解析的 major 类型: {major_type or '<空>'}")
-    return _MajorParsed("", desc_text or f"无法解析的动态，类型: {major_type}", [], "", degraded=True)
+    logger.warning(
+        f"动态 {dyn_id or '<无id>'} 含无法解析的 major 类型: {major_type or '<空>'}"
+    )
+    return _MajorParsed(
+        "", desc_text or f"无法解析的动态，类型: {major_type}", [], "", degraded=True
+    )
 
 
 def _one_pic(obj: Any, key: str) -> list[str]:
@@ -338,7 +362,10 @@ def _parse_live_rcmd(live_rcmd: Any, desc_text: str) -> _MajorParsed:
         logger.warning(f"直播推荐卡 content 不是合法 JSON，降级为纯文本: {e!r}")
         return _MajorParsed("", desc_text, [], "", degraded=True)
     info = _dget(content_obj, "live_play_info", {})
-    parent_area, area = _as_str(_dget(info, "parent_area_name", "")), _as_str(_dget(info, "area_name", ""))
+    parent_area, area = (
+        _as_str(_dget(info, "parent_area_name", "")),
+        _as_str(_dget(info, "area_name", "")),
+    )
     return _MajorParsed(
         _as_str(_dget(info, "title", "")),
         f"{parent_area} {area}".strip(),
@@ -356,12 +383,16 @@ def _build_dynamic(item: dict, dyn_id: str, depth: int) -> ParsedDynamic:
     category = CATEGORY_MAP.get(dyn_type, 0)
     degraded = category == 0
     if degraded:
-        logger.warning(f"动态 {dyn_id or '<无id>'} 类型未知，按通用兜底处理: {dyn_type or '<空>'}")
+        logger.warning(
+            f"动态 {dyn_id or '<无id>'} 类型未知，按通用兜底处理: {dyn_type or '<空>'}"
+        )
 
     modules = _dget(item, "modules", {})
     author = _dget(modules, "module_author", {})
     # 置顶识别（设计文档 §4.2）：modules.module_tag.text == "置顶"
-    is_pinned = _as_str(_dget(_dget(modules, "module_tag", {}), "text", "")).strip() == "置顶"
+    is_pinned = (
+        _as_str(_dget(_dget(modules, "module_tag", {}), "text", "")).strip() == "置顶"
+    )
 
     major = _parse_major(item, dyn_id)
     degraded = degraded or major.degraded
@@ -392,7 +423,9 @@ def _build_dynamic(item: dict, dyn_id: str, depth: int) -> ParsedDynamic:
     )
 
 
-def _parse_repost(item: dict, dyn_id: str, depth: int) -> tuple[Optional[ParsedDynamic], bool]:
+def _parse_repost(
+    item: dict, dyn_id: str, depth: int
+) -> tuple[Optional[ParsedDynamic], bool]:
     """解析转发动态的源动态；返回 (repost, 是否降级)。已删除源返回占位对象，绝不抛异常"""
     orig = _dget(item, "orig")
     if not isinstance(orig, dict):
@@ -483,9 +516,13 @@ def parse_feed(data: Any) -> list[ParsedDynamic]:
         logger.debug("feed 响应没有 items 字段，按空列表处理")
         return []
     if not isinstance(items, list):
-        logger.warning(f"feed 响应 items 不是列表（{type(items).__name__}），本轮按空列表处理")
+        logger.warning(
+            f"feed 响应 items 不是列表（{type(items).__name__}），本轮按空列表处理"
+        )
         return []
 
-    parsed_list = [parsed for parsed in (parse_item(item) for item in items) if parsed is not None]
+    parsed_list = [
+        parsed for parsed in (parse_item(item) for item in items) if parsed is not None
+    ]
     parsed_list.sort(key=_sort_key)
     return parsed_list

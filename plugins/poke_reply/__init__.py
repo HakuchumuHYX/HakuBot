@@ -1,19 +1,23 @@
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 from nonebot import get_driver, logger
 from nonebot.plugin import PluginMetadata
 
 # 导入所有 Handlers 以注册事件响应器
-from .handlers import poke
-from .handlers import contribute
-from .handlers import management
-from .handlers import view
-from .handlers import stats
+from plugins.poke_reply.handlers import poke
+from plugins.poke_reply.handlers import contribute
+from plugins.poke_reply.handlers import management
+from plugins.poke_reply.handlers import view
+from plugins.poke_reply.handlers import stats
 
 # 导入文件监听器
-from .file_monitor import file_monitor
-from .models.cache import message_cache, text_image_cache
-from .models.request import delete_request_manager
-from .services.health import log_health_report, scan_poke_reply_data_health
-from .services.image import clean_expired_hash_cache
+from plugins.poke_reply.file_monitor import file_monitor
+from plugins.poke_reply.models.cache import message_cache, text_image_cache
+from plugins.poke_reply.models.request import delete_request_manager
+from plugins.poke_reply.services.health import (
+    log_health_report,
+    scan_poke_reply_data_health,
+)
+from plugins.poke_reply.services.image import clean_expired_hash_cache
 
 __plugin_meta__ = PluginMetadata(
     name="戳一戳回复",
@@ -34,6 +38,7 @@ __plugin_meta__ = PluginMetadata(
 
 driver = get_driver()
 
+
 def cleanup_expired_runtime_state():
     result = {
         "message_cache": message_cache.clean_expired_cache(),
@@ -50,7 +55,8 @@ def cleanup_expired_runtime_state():
     )
     return result
 
-@driver.on_startup
+
+@on_plugin_startup(driver, "poke_reply")
 async def startup():
     logger.info("正在启动 Poke Reply 插件...")
     try:
@@ -66,7 +72,8 @@ async def startup():
     else:
         logger.error("Poke Reply 文件监听器启动失败")
 
-@driver.on_shutdown
+
+@on_plugin_shutdown(driver, "poke_reply")
 async def shutdown():
     logger.info("正在停止 Poke Reply 插件...")
     if file_monitor.stop_monitoring():

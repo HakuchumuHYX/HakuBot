@@ -1,4 +1,5 @@
 from __future__ import annotations
+from utils.paths import PluginPaths
 
 import json
 from pathlib import Path
@@ -6,7 +7,7 @@ from typing import Any, Dict, Optional
 
 
 BASE_DIR = Path(__file__).parent
-CONFIG_JSON = BASE_DIR / "config.json"
+CONFIG_JSON = PluginPaths("pixiv_id_fetcher").config / "config.json"
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "refresh_token": "",
@@ -39,8 +40,6 @@ class Config:
             return
 
         self.data = DEFAULT_CONFIG.copy()
-        with open(CONFIG_JSON, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=4, ensure_ascii=False)
 
     def get(self, key: str, default: Any = None) -> Any:
         return self.data.get(key, default)

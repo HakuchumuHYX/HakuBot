@@ -2,6 +2,7 @@
 """
 存放全局游戏状态
 """
+
 import asyncio
 from collections import defaultdict
 from typing import Dict

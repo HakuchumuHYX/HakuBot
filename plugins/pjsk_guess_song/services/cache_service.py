@@ -14,7 +14,7 @@ import aiohttp
 
 # --- Nonebot Imports ---
 from nonebot.log import logger
-from ..config import PluginConfig
+from plugins.pjsk_guess_song.config import PluginConfig
 
 
 # -------------------------
@@ -29,7 +29,7 @@ class CacheService:
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.use_local_resources = self.config.use_local_resources
-        self.remote_resource_url_base = self.config.remote_resource_url_base.strip('/')
+        self.remote_resource_url_base = self.config.remote_resource_url_base.strip("/")
 
         self.song_data: List[Dict] = []
         self.character_data: Dict[str, Dict] = {}
@@ -60,7 +60,9 @@ class CacheService:
         self._load_song_aliases()
 
         if not self.config.full_mode:
-            logger.info("当前为 Light 模式，跳过预处理音轨 manifest 加载。仅支持普通猜歌/听歌。")
+            logger.info(
+                "当前为 Light 模式，跳过预处理音轨 manifest 加载。仅支持普通猜歌/听歌。"
+            )
         elif self.use_local_resources:
             self._load_local_manifest()
         else:
@@ -76,20 +78,23 @@ class CacheService:
                 self.song_data = json.load(f)
 
             for song_item in self.song_data:
-                if 'vocals' in song_item and song_item['vocals']:
-                    if any(v.get('musicVocalType') == 'another_vocal' for v in song_item['vocals']):
+                if "vocals" in song_item and song_item["vocals"]:
+                    if any(
+                        v.get("musicVocalType") == "another_vocal"
+                        for v in song_item["vocals"]
+                    ):
                         self.another_vocal_songs.append(song_item)
-                    for vocal in song_item['vocals']:
-                        bundle_name = vocal.get('vocalAssetbundleName')
+                    for vocal in song_item["vocals"]:
+                        bundle_name = vocal.get("vocalAssetbundleName")
                         if bundle_name:
                             self.bundle_to_song_map[bundle_name] = song_item
 
             for song in self.another_vocal_songs:
                 processed_chars = set()
-                for vocal in song.get('vocals', []):
-                    if vocal.get('musicVocalType') == 'another_vocal':
-                        for char in vocal.get('characters', []):
-                            char_id = char.get('characterId')
+                for vocal in song.get("vocals", []):
+                    if vocal.get("musicVocalType") == "another_vocal":
+                        for char in vocal.get("characters", []):
+                            char_id = char.get("characterId")
                             if char_id and char_id not in processed_chars:
                                 self.char_id_to_anov_songs[char_id].append(song)
                                 processed_chars.add(char_id)
@@ -97,7 +102,9 @@ class CacheService:
             logger.info(f"成功加载 {len(self.song_data)} 首歌曲数据。")
             return True
         except FileNotFoundError as e:
-            logger.error(f"加载歌曲数据失败: {e}. 请确保 'guess_song.json' 在 'resources' 目录中。")
+            logger.error(
+                f"加载歌曲数据失败: {e}. 请确保 'guess_song.json' 在 'resources' 目录中。"
+            )
             return False
         except (json.JSONDecodeError, IOError) as e:
             logger.error(f"加载或解析歌曲数据失败: {e}")
@@ -116,12 +123,14 @@ class CacheService:
 
             self.character_data = {
                 str(item.get("characterId")): item
-                for item in data if item.get("characterId")
+                for item in data
+                if item.get("characterId")
             }
 
             self.abbr_to_char_id = {
-                char_info['name'].lower(): int(char_id)
-                for char_id, char_info in self.character_data.items() if char_info.get('name')
+                char_info["name"].lower(): int(char_id)
+                for char_id, char_info in self.character_data.items()
+                if char_info.get("name")
             }
             logger.info(f"成功加载 {len(self.character_data)} 个角色数据。")
             return True
@@ -133,7 +142,9 @@ class CacheService:
         """同步加载 song_aliases.json 数据"""
         aliases_file = self.resources_dir / "song_aliases.json"
         if not aliases_file.exists():
-            logger.warning(f"未找到歌曲别名文件: {aliases_file}。别名搜索功能将不可用。")
+            logger.warning(
+                f"未找到歌曲别名文件: {aliases_file}。别名搜索功能将不可用。"
+            )
             return False
 
         try:
@@ -160,20 +171,26 @@ class CacheService:
             if mode_dir.exists():
                 for mp3_file in mode_dir.glob("*.mp3"):
                     self.preprocessed_tracks[mode].add(mp3_file.stem)
-                logger.info(f"成功加载 {len(self.preprocessed_tracks[mode])} 个 '{mode}' 模式的本地音轨。")
+                logger.info(
+                    f"成功加载 {len(self.preprocessed_tracks[mode])} 个 '{mode}' 模式的本地音轨。"
+                )
 
         trimmed_mp3_dir = self.resources_dir / "songs_piano_trimmed_mp3"
         if trimmed_mp3_dir.exists():
             for mp3_path in trimmed_mp3_dir.glob("**/*.mp3"):
                 self.available_piano_songs_bundles.add(mp3_path.parent.name)
-            logger.info(f"成功加载 {len(self.available_piano_songs_bundles)} 个钢琴模式的本地音轨。")
+            logger.info(
+                f"成功加载 {len(self.available_piano_songs_bundles)} 个钢琴模式的本地音轨。"
+            )
 
     async def _load_remote_manifest(self):
         """异步加载远程资源清单。"""
         logger.info("使用远程资源模式，开始获取 manifest.json...")
         manifest_url = self.get_resource_path_or_url("manifest.json")
         if not manifest_url or not isinstance(manifest_url, str):
-            logger.error("无法构建 manifest.json 的 URL。插件将无法使用预处理音轨模式。")
+            logger.error(
+                "无法构建 manifest.json 的 URL。插件将无法使用预处理音轨模式。"
+            )
             return
 
         try:
@@ -182,20 +199,36 @@ class CacheService:
                     response.raise_for_status()
                     manifest_data = await response.json()
 
-                    for mode in ["accompaniment", "bass_only", "drums_only", "vocals_only"]:
-                        self.preprocessed_tracks[mode] = set(manifest_data.get(mode, []))
+                    for mode in [
+                        "accompaniment",
+                        "bass_only",
+                        "drums_only",
+                        "vocals_only",
+                    ]:
+                        self.preprocessed_tracks[mode] = set(
+                            manifest_data.get(mode, [])
+                        )
                         logger.info(
-                            f"成功从 manifest 加载 {len(self.preprocessed_tracks[mode])} 个 '{mode}' 模式的音轨。")
+                            f"成功从 manifest 加载 {len(self.preprocessed_tracks[mode])} 个 '{mode}' 模式的音轨。"
+                        )
 
-                    self.available_piano_songs_bundles = set(manifest_data.get("songs_piano_trimmed_mp3", []))
-                    logger.info(f"成功从 manifest 加载 {len(self.available_piano_songs_bundles)} 个钢琴模式的音轨。")
+                    self.available_piano_songs_bundles = set(
+                        manifest_data.get("songs_piano_trimmed_mp3", [])
+                    )
+                    logger.info(
+                        f"成功从 manifest 加载 {len(self.available_piano_songs_bundles)} 个钢琴模式的音轨。"
+                    )
 
         except Exception as e:
-            logger.error(f"获取或解析远程 manifest.json 失败: {e}。插件将无法使用预处理音轨模式。", exc_info=True)
+            logger.error(
+                f"获取或解析远程 manifest.json 失败: {e}。插件将无法使用预处理音轨模式。",
+                exc_info=True,
+            )
 
     def _populate_song_lists(self):
         """根据已加载的音轨信息，填充可用的歌曲列表。"""
-        if not self.song_data: return
+        if not self.song_data:
+            return
 
         self.available_accompaniment_songs.clear()
         self.available_vocals_songs.clear()
@@ -204,10 +237,10 @@ class CacheService:
         self.available_piano_songs.clear()
 
         song_list_map = {
-            'accompaniment': (self.available_accompaniment_songs, set()),
-            'vocals_only': (self.available_vocals_songs, set()),
-            'bass_only': (self.available_bass_songs, set()),
-            'drums_only': (self.available_drums_songs, set()),
+            "accompaniment": (self.available_accompaniment_songs, set()),
+            "vocals_only": (self.available_vocals_songs, set()),
+            "bass_only": (self.available_bass_songs, set()),
+            "drums_only": (self.available_drums_songs, set()),
         }
 
         for mode, bundles in self.preprocessed_tracks.items():
@@ -216,21 +249,23 @@ class CacheService:
                 for bundle_name in bundles:
                     if bundle_name in self.bundle_to_song_map:
                         song = self.bundle_to_song_map[bundle_name]
-                        if song['id'] not in processed_ids:
+                        if song["id"] not in processed_ids:
                             song_list.append(song)
-                            processed_ids.add(song['id'])
+                            processed_ids.add(song["id"])
 
         piano_processed_ids = set()
         for bundle_name in self.available_piano_songs_bundles:
             if bundle_name in self.bundle_to_song_map:
                 song = self.bundle_to_song_map[bundle_name]
-                if song['id'] not in piano_processed_ids:
+                if song["id"] not in piano_processed_ids:
                     self.available_piano_songs.append(song)
-                    piano_processed_ids.add(song['id'])
+                    piano_processed_ids.add(song["id"])
 
-        logger.info(f"填充可用歌曲列表完成。钢琴: {len(self.available_piano_songs)} 首, "
-                    f"伴奏: {len(self.available_accompaniment_songs)} 首, "
-                    f"人声: {len(self.available_vocals_songs)} 首.")
+        logger.info(
+            f"填充可用歌曲列表完成。钢琴: {len(self.available_piano_songs)} 首, "
+            f"伴奏: {len(self.available_accompaniment_songs)} 首, "
+            f"人声: {len(self.available_vocals_songs)} 首."
+        )
 
     async def periodic_cleanup_task(self):
         """每隔一小时自动清理一次 output 目录。"""
@@ -242,12 +277,15 @@ class CacheService:
 
     def cleanup_output_dir(self, max_age_seconds: int = 3600):
         """清理过时的输出文件。"""
-        if not self.output_dir.exists(): return
+        if not self.output_dir.exists():
+            return
         now = time.time()
         try:
             for filename in os.listdir(self.output_dir):
                 file_path = self.output_dir / filename
-                if file_path.is_file() and (file_path.suffix in ['.png', '.wav', '.mp3']):
+                if file_path.is_file() and (
+                    file_path.suffix in [".png", ".wav", ".mp3"]
+                ):
                     if (now - file_path.stat().st_mtime) > max_age_seconds:
                         os.remove(file_path)
                         logger.debug(f"已清理旧的输出文件: {filename}")
@@ -256,7 +294,7 @@ class CacheService:
 
     def _build_asset_url(self, relative_path: str) -> Optional[str]:
         """根据 asset 站 URL 格式，将插件内部的相对路径映射为 asset 站的实际 URL。"""
-        asset_base = self.config.asset_url_base.strip('/')
+        asset_base = self.config.asset_url_base.strip("/")
         server = self.config.asset_server
         if not asset_base:
             logger.error("asset_url_base 未配置，无法构建 asset URL。")
@@ -267,13 +305,21 @@ class CacheService:
         if len(parts) >= 3 and parts[0] == "songs" and parts[-1].endswith(".mp3"):
             bundle = parts[1]
             filename = parts[-1]
-            return f"{asset_base}/{server}-assets/ondemand/music/long/{bundle}/{filename}"
+            return (
+                f"{asset_base}/{server}-assets/ondemand/music/long/{bundle}/{filename}"
+            )
 
         # music_jacket/{name}.png → {base}/{server}-assets/startapp/music/jacket/{stem}/{name}
-        if len(parts) >= 1 and parts[0] == "music_jacket" and parts[-1].endswith(".png"):
+        if (
+            len(parts) >= 1
+            and parts[0] == "music_jacket"
+            and parts[-1].endswith(".png")
+        ):
             stem = Path(parts[-1]).stem  # e.g. jacket_s_001
             filename = parts[-1]
-            return f"{asset_base}/{server}-assets/startapp/music/jacket/{stem}/{filename}"
+            return (
+                f"{asset_base}/{server}-assets/startapp/music/jacket/{stem}/{filename}"
+            )
 
         # 其他路径无法映射到 asset 站，回退到 remote_resource_url_base
         if self.remote_resource_url_base:
@@ -282,7 +328,9 @@ class CacheService:
         logger.warning(f"无法将路径 '{relative_path}' 映射到 asset 站 URL。")
         return None
 
-    def get_resource_path_or_url(self, relative_path: str) -> Optional[Union[Path, str]]:
+    def get_resource_path_or_url(
+        self, relative_path: str
+    ) -> Optional[Union[Path, str]]:
         """根据配置返回资源的本地Path对象或远程URL字符串。"""
         if self.use_local_resources:
             path = self.resources_dir / relative_path
@@ -294,9 +342,13 @@ class CacheService:
 
         # 回退到原有的 remote_resource_url_base
         if self.remote_resource_url_base:
-            return f"{self.remote_resource_url_base}/{'/'.join(Path(relative_path).parts)}"
+            return (
+                f"{self.remote_resource_url_base}/{'/'.join(Path(relative_path).parts)}"
+            )
 
-        logger.error("未配置任何远程资源地址 (asset_url_base 或 remote_resource_url_base)。")
+        logger.error(
+            "未配置任何远程资源地址 (asset_url_base 或 remote_resource_url_base)。"
+        )
         return None
 
     async def open_image(self, relative_path: str) -> Optional[Image.Image]:
@@ -307,7 +359,7 @@ class CacheService:
             return None
 
         try:
-            if isinstance(source, str) and source.startswith(('http://', 'https://')):
+            if isinstance(source, str) and source.startswith(("http://", "https://")):
                 async with aiohttp.ClientSession() as session:
                     async with session.get(source) as response:
                         response.raise_for_status()
@@ -319,7 +371,9 @@ class CacheService:
             logger.error(f"无法打开图片资源 {source}: {e}", exc_info=True)
             return None
 
-    def find_song_by_query(self, query: str, pool: Optional[List[Dict]] = None) -> Optional[Dict]:
+    def find_song_by_query(
+        self, query: str, pool: Optional[List[Dict]] = None
+    ) -> Optional[Dict]:
         """
         通过ID、别名或名称统一查找歌曲。
         优先精确匹配，若无结果则尝试模糊匹配（允许少量错字）。
@@ -333,13 +387,13 @@ class CacheService:
         # 确定搜索池
         target_pool = pool if pool is not None else self.song_data
         # 建立 ID 集合以便快速验证 (提升性能)
-        pool_ids = {s['id'] for s in target_pool}
+        pool_ids = {s["id"] for s in target_pool}
 
         # 1. 按 ID 查找 (最快)
         if query.isdigit():
             s_id = int(query)
             if s_id in pool_ids:
-                return next((s for s in target_pool if s['id'] == s_id), None)
+                return next((s for s in target_pool if s["id"] == s_id), None)
 
         query_lower = query.lower().strip()
 
@@ -347,20 +401,22 @@ class CacheService:
         if query_lower in self.song_aliases:
             target_id = int(self.song_aliases[query_lower])
             if target_id in pool_ids:
-                return next((s for s in target_pool if s['id'] == target_id), None)
+                return next((s for s in target_pool if s["id"] == target_id), None)
 
         # 3. 按标题查找 (包含匹配 & 精确匹配优先)
-        found_songs = [s for s in target_pool if query_lower in s['title'].lower()]
+        found_songs = [s for s in target_pool if query_lower in s["title"].lower()]
         if found_songs:
             # 如果有完全一样的，优先返回
-            exact_match = next((s for s in found_songs if s['title'].lower() == query_lower), None)
-            return exact_match or min(found_songs, key=lambda s: len(s['title']))
+            exact_match = next(
+                (s for s in found_songs if s["title"].lower() == query_lower), None
+            )
+            return exact_match or min(found_songs, key=lambda s: len(s["title"]))
 
         # 4. 模糊匹配 (difflib)
         # 构建候选词典: {name_or_alias: song_id}
         candidates = {}
         for s in target_pool:
-            candidates[s['title'].lower()] = s['id']
+            candidates[s["title"].lower()] = s["id"]
 
         # 将指向当前 pool 中歌曲的别名也加入候选
         for alias, sid in self.song_aliases.items():
@@ -368,13 +424,17 @@ class CacheService:
                 candidates[alias] = int(sid)
 
         # cutoff=0.6 表示相似度至少要 60%
-        matches = difflib.get_close_matches(query_lower, candidates.keys(), n=1, cutoff=0.6)
+        matches = difflib.get_close_matches(
+            query_lower, candidates.keys(), n=1, cutoff=0.6
+        )
 
         if matches:
             best_match_name = matches[0]
             target_id = candidates[best_match_name]
-            logger.info(f"模糊搜索命中: '{query}' -> '{best_match_name}' (ID: {target_id})")
-            return next((s for s in target_pool if s['id'] == target_id), None)
+            logger.info(
+                f"模糊搜索命中: '{query}' -> '{best_match_name}' (ID: {target_id})"
+            )
+            return next((s for s in target_pool if s["id"] == target_id), None)
 
         return None
 

@@ -10,18 +10,20 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
-from ...utils.image_utils import image_segment
-from ..data_manager import data_manager
-from ..data_source import hltv_data
-from ..permissions import is_group_enabled
-from ..render import render_stats
+from utils.onebot.media import image_segment
+from plugins.hltv_sub.data_manager import data_manager
+from plugins.hltv_sub.data_source import hltv_data
+from plugins.hltv_sub.permissions import is_group_enabled
+from plugins.hltv_sub.render import render_stats
 
 
 stats_cmd = on_command("stats", priority=5, block=True)
 
 
 @stats_cmd.handle()
-async def handle_stats(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
+async def handle_stats(
+    bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()
+):
     group_id = event.group_id
 
     if not is_group_enabled(group_id):
@@ -40,7 +42,9 @@ async def handle_stats(bot: Bot, event: GroupMessageEvent, args: Message = Comma
 
         try:
             for sub in subscriptions:
-                stats = await hltv_data.get_latest_result_with_stats(sub.event_id, sub.event_title)
+                stats = await hltv_data.get_latest_result_with_stats(
+                    sub.event_id, sub.event_title
+                )
                 if stats:
                     img = await render_stats(stats)
                     await stats_cmd.finish(image_segment(img))
@@ -69,7 +73,9 @@ async def handle_stats(bot: Bot, event: GroupMessageEvent, args: Message = Comma
                 event_title = ""
 
                 for sub in subscriptions:
-                    results = await hltv_data.get_event_results(sub.event_id, max_results=10)
+                    results = await hltv_data.get_event_results(
+                        sub.event_id, max_results=10
+                    )
                     for r in results:
                         if r.id == match_id:
                             team1 = r.team1

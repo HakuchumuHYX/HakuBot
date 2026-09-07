@@ -4,9 +4,9 @@ import asyncio
 import time
 from pathlib import Path
 
-from .config import CACHE_TTL_SECONDS, plugin_config
-from .data_source import fetch_prediction_payload
-from .render import render_prediction_card
+from plugins.sk_predict.config import CACHE_TTL_SECONDS, plugin_config
+from plugins.sk_predict.data_source import fetch_prediction_payload
+from plugins.sk_predict.render import render_prediction_card
 
 # 按 region 划分的刷新锁，避免并发请求重复抓取渲染
 _refresh_locks: dict[str, asyncio.Lock] = {}

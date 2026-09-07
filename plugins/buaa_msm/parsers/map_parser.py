@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 import msgspec
 from nonebot.log import logger
 
-from ..domain.constants import SITE_ID_MAP
+from plugins.buaa_msm.domain.constants import SITE_ID_MAP
 
 
 # ============== msgspec 数据结构（与原 paint.py 保持一致） ==============
@@ -66,7 +66,9 @@ def parse_map(user_data: Dict[str, Any]) -> Optional[Dict[str, List]]:
         return None
 
     for mp in harvest_maps:
-        mp.siteName = SITE_ID_MAP.get(mp.mysekaiSiteId, f"Unknown Site {mp.mysekaiSiteId}")
+        mp.siteName = SITE_ID_MAP.get(
+            mp.mysekaiSiteId, f"Unknown Site {mp.mysekaiSiteId}"
+        )
 
     processed_map: Dict[str, List] = {}
     for mp in harvest_maps:
@@ -89,7 +91,8 @@ def parse_map(user_data: Dict[str, Any]) -> Optional[Dict[str, List]]:
                     continue
                 mp_detail[i]["reward"].setdefault(drop.resourceType, {})
                 mp_detail[i]["reward"][drop.resourceType][drop.resourceId] = (
-                    mp_detail[i]["reward"][drop.resourceType].get(drop.resourceId, 0) + drop.quantity
+                    mp_detail[i]["reward"][drop.resourceType].get(drop.resourceId, 0)
+                    + drop.quantity
                 )
                 break
 

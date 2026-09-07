@@ -1,10 +1,13 @@
 import time
 from typing import Dict, Optional
 from nonebot import logger
-from ..config import (
-    MESSAGE_CACHE_FILE, TEXT_IMAGE_CACHE_FILE, CACHE_EXPIRE_TIME
+from plugins.poke_reply.config import (
+    MESSAGE_CACHE_FILE,
+    TEXT_IMAGE_CACHE_FILE,
+    CACHE_EXPIRE_TIME,
 )
-from ..utils.json_store import atomic_write_json, load_json_file
+from utils.json_io import atomic_write_json, load_json
+
 
 class MessageCache:
     def __init__(self):
@@ -15,7 +18,13 @@ class MessageCache:
     def load_cache(self):
         try:
             if self.cache_file.exists():
-                result = load_json_file(self.cache_file, dict, default={})
+                result = load_json(
+                    self.cache_file,
+                    expected_type=dict,
+                    missing_ok=True,
+                    backup_on_error=True,
+                    default={},
+                )
                 self.cache_data = result.data
                 if result.success:
                     logger.info(f"消息缓存加载成功，共 {len(self.cache_data)} 条记录")
@@ -30,12 +39,18 @@ class MessageCache:
 
     def save_cache(self):
         try:
-            atomic_write_json(self.cache_file, self.cache_data, dict)
+            atomic_write_json(self.cache_file, self.cache_data, expected_type=dict)
         except Exception as e:
             logger.error(f"保存消息缓存失败: {e}")
 
-    def add_message(self, group_id: int, message_id: int, content: str,
-                    message_type: str = "text", image_hash: str = ""):
+    def add_message(
+        self,
+        group_id: int,
+        message_id: int,
+        content: str,
+        message_type: str = "text",
+        image_hash: str = "",
+    ):
         cache_key = f"{group_id}_{message_id}"
         self.cache_data[cache_key] = {
             "group_id": group_id,
@@ -44,10 +59,12 @@ class MessageCache:
             "type": message_type,
             "image_hash": image_hash,
             "timestamp": time.time(),
-            "expire_time": time.time() + CACHE_EXPIRE_TIME
+            "expire_time": time.time() + CACHE_EXPIRE_TIME,
         }
         self.save_cache()
-        logger.debug(f"已缓存消息: 群组={group_id}, 消息ID={message_id}, 类型={message_type}")
+        logger.debug(
+            f"已缓存消息: 群组={group_id}, 消息ID={message_id}, 类型={message_type}"
+        )
 
     def get_message(self, group_id: int, message_id: int) -> Optional[dict]:
         cache_key = f"{group_id}_{message_id}"
@@ -64,7 +81,11 @@ class MessageCache:
 
     def clean_expired_cache(self, now: Optional[float] = None) -> int:
         current_time = now if now is not None else time.time()
-        expired_keys = [key for key, record in self.cache_data.items() if record.get("expire_time", 0) < current_time]
+        expired_keys = [
+            key
+            for key, record in self.cache_data.items()
+            if record.get("expire_time", 0) < current_time
+        ]
         for key in expired_keys:
             del self.cache_data[key]
         if expired_keys:
@@ -82,7 +103,13 @@ class TextImageCache:
     def load_cache(self):
         try:
             if self.cache_file.exists():
-                result = load_json_file(self.cache_file, dict, default={})
+                result = load_json(
+                    self.cache_file,
+                    expected_type=dict,
+                    missing_ok=True,
+                    backup_on_error=True,
+                    default={},
+                )
                 self.cache_data = result.data
                 if not result.success:
                     logger.error(f"加载文本图片缓存失败: {result.error}")
@@ -94,17 +121,19 @@ class TextImageCache:
 
     def save_cache(self):
         try:
-            atomic_write_json(self.cache_file, self.cache_data, dict)
+            atomic_write_json(self.cache_file, self.cache_data, expected_type=dict)
         except Exception as e:
             logger.error(f"保存文本图片缓存失败: {e}")
 
-    def add_cache_by_image_hash(self, image_hash: str, group_id: int, original_text: str):
+    def add_cache_by_image_hash(
+        self, image_hash: str, group_id: int, original_text: str
+    ):
         cache_key = f"{group_id}_{image_hash}"
         self.cache_data[cache_key] = {
             "image_hash": image_hash,
             "group_id": group_id,
             "original_text": original_text,
-            "expire_time": time.time() + CACHE_EXPIRE_TIME
+            "expire_time": time.time() + CACHE_EXPIRE_TIME,
         }
         self.save_cache()
 
@@ -123,13 +152,18 @@ class TextImageCache:
 
     def clean_expired_cache(self, now: Optional[float] = None) -> int:
         current_time = now if now is not None else time.time()
-        expired_keys = [key for key, record in self.cache_data.items() if record.get("expire_time", 0) < current_time]
+        expired_keys = [
+            key
+            for key, record in self.cache_data.items()
+            if record.get("expire_time", 0) < current_time
+        ]
         for key in expired_keys:
             del self.cache_data[key]
         if expired_keys:
             logger.info(f"清理了 {len(expired_keys)} 条过期文本图片缓存")
             self.save_cache()
         return len(expired_keys)
+
 
 # 全局实例
 message_cache = MessageCache()

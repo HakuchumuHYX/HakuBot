@@ -6,32 +6,34 @@ PJSK 猜卡面插件
 采用消息队列模式：游戏主循环在一个协程中完成，
 on_message 监听器将消息事件放入队列，主循环通过 wait_for 实现超时。
 """
+
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 import time
 from typing import Dict, Optional, Set, Tuple
 
 from nonebot import on_command, on_message, get_driver
-from nonebot.adapters.onebot.v11 import (
-    Bot,
-    GroupMessageEvent,
-    MessageSegment,
-)
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from PIL import Image
 
-from .config import plugin_config
-from .card_data import (
+from plugins.pjsk_guess_card.config import plugin_config
+from plugins.pjsk_guess_card.card_data import (
     CardImageType,
-    load_cards, random_card, get_card_image_url, get_card_title, get_card_hint,
+    load_cards,
+    random_card,
+    get_card_image_url,
+    get_card_title,
+    get_card_hint,
 )
-from .nickname import get_cid_by_nickname
-from .image_utils import (
-    download_image, random_crop_image, image_to_bytes,
-)
-from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import image_segment
+from plugins.pjsk_guess_card.nickname import get_cid_by_nickname
+from plugins.pjsk_guess_card.image_utils import random_crop_image
+from utils.network.http import download_image
+from utils.images.formats import image_to_bytes
+from core.access import is_plugin_enabled
+from utils.onebot.media import image_segment
 
 PLUGIN_ID = "pjsk_guess_card"
 
@@ -57,7 +59,7 @@ preparing_guess_groups: Set[int] = set()
 driver = get_driver()
 
 
-@driver.on_startup
+@on_plugin_startup(driver, "pjsk_guess_card")
 async def _on_startup():
     load_cards()
     logger.info("PJSK 猜卡面插件已启动")
@@ -107,7 +109,9 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
     preparing_guess_groups.add(group_id)
     try:
         try:
-            prepare_task = asyncio.create_task(_prepare_random_card_image(group_id, 3))
+            prepare_task = runtime.spawn(
+                _prepare_random_card_image(group_id, 3), name="pjsk_guess_card"
+            )
             try:
                 card, image_type, card_image = await asyncio.wait_for(
                     asyncio.shield(prepare_task),
@@ -153,7 +157,9 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
         guessed_cids: Set[int] = set()
         end_time = time.time() + timeout
 
-        logger.info(f"[猜卡面] 群 {group_id} 游戏开始: card_id={card['id']}, timeout={timeout}s")
+        logger.info(
+            f"[猜卡面] 群 {group_id} 游戏开始: card_id={card['id']}, timeout={timeout}s"
+        )
 
         try:
             while True:
@@ -181,7 +187,9 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
 
                 # 停止关键词
                 if any(kw in text for kw in STOP_KEYWORDS):
-                    logger.info(f"[猜卡面] 群 {group_id} 手动停止 user={msg_event.user_id}")
+                    logger.info(
+                        f"[猜卡面] 群 {group_id} 手动停止 user={msg_event.user_id}"
+                    )
                     await bot.send(event, f"猜卡面已手动结束！\n正确答案：\n{title}")
                     await bot.send(event, image_segment(full_image_bytes))
                     return
@@ -207,15 +215,20 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
 
                 # 检查答案
                 if cid == card["characterId"]:
-                    logger.info(f"[猜卡面] 群 {group_id} 猜对了！ user={msg_event.user_id}, cid={cid}")
+                    logger.info(
+                        f"[猜卡面] 群 {group_id} 猜对了！ user={msg_event.user_id}, cid={cid}"
+                    )
                     await bot.send(
                         event,
-                        MessageSegment.reply(msg_event.message_id) + f"猜对了！\n{title}",
+                        MessageSegment.reply(msg_event.message_id)
+                        + f"猜对了！\n{title}",
                     )
                     await bot.send(event, image_segment(full_image_bytes))
                     return
                 else:
-                    logger.debug(f"[猜卡面] 群 {group_id} 猜错 cid={cid}, guessed={len(guessed_cids)}")
+                    logger.debug(
+                        f"[猜卡面] 群 {group_id} 猜错 cid={cid}, guessed={len(guessed_cids)}"
+                    )
 
         except Exception as e:
             logger.error(f"[猜卡面] 群 {group_id} 游戏主循环异常: {e}", exc_info=True)

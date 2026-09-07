@@ -1,0 +1,42 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+{{ font_css | safe }}
+:root { {{ theme_css | safe }} }
+* { box-sizing:border-box; }
+body { margin:0; font-family:Haku,'Noto Color Emoji',sans-serif; color:var(--text-main); }
+.sheet { width:800px; padding:24px; background:var(--canvas-bg); }
+.header,.unit { background:var(--card-bg); border:1px solid var(--card-border); border-radius:20px; padding:22px; margin-bottom:14px; }
+h1 { font-size:34px; font-weight:900; margin:0 0 10px; }
+.intro { font-size:18px; color:var(--text-sub); white-space:pre-wrap; }
+.unit h2 { font-size:22px; color:var(--accent); font-weight:700; margin:0 0 10px; }
+.unit p { font-size:20px; line-height:1.6; margin:0; white-space:pre-wrap; }
+h1,h2,p,.intro { overflow-wrap:anywhere; }
+.footer { font-size:14px; color:var(--text-muted); display:flex; justify-content:space-between; gap:12px; padding:10px 4px; }
+#source { display:none; }
+</style></head><body>
+<template id="header"><div class="header"><h1>{{ document.title }}</h1><div class="intro">{{ document.introduction }}</div></div></template>
+<template id="footer"><div class="footer"><span>{{ document.footer }}</span><span class="page-number"></span></div></template>
+<div id="source">{% for unit in units %}<div class="unit">{% if unit.title %}<h2>{{ unit.title }}</h2>{% endif %}<p>{{ unit.text }}</p></div>{% endfor %}</div>
+<script>
+window.paginateHelp = () => {
+  const source = document.querySelector('#source');
+  let sheet, body;
+  const makePage = () => {
+    sheet = document.createElement('article'); sheet.className='sheet';
+    sheet.append(document.querySelector('#header').content.cloneNode(true));
+    body=document.createElement('div'); sheet.append(body);
+    sheet.append(document.querySelector('#footer').content.cloneNode(true));
+    document.body.append(sheet);
+  };
+  makePage();
+  for (const unit of Array.from(source.children)) {
+    body.append(unit);
+    if (sheet.getBoundingClientRect().height > 2380 && body.children.length > 1) {
+      unit.remove(); makePage(); body.append(unit);
+    }
+  }
+  const pages=document.querySelectorAll('.sheet');
+  pages.forEach((p,i)=>p.querySelector('.page-number').textContent=`${i+1} / ${pages.length}`);
+  source.remove();
+};
+</script></body></html>

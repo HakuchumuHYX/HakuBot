@@ -2,6 +2,7 @@
 """
 存放所有辅助函数和检查逻辑
 """
+
 import time
 from datetime import datetime
 from typing import Tuple, Optional
@@ -10,9 +11,10 @@ from nonebot import get_bot
 from nonebot.log import logger
 
 # 导入服务和配置
-from . import db_service, plugin_config
+from plugins.pjsk_guess_song.runtime import db_service, plugin_config
+
 # 导入全局状态
-from .game_data import last_game_end_time, active_game_sessions
+from plugins.pjsk_guess_song.game_data import last_game_end_time, active_game_sessions
 
 
 def get_session_id(event: MessageEvent) -> str:
@@ -59,7 +61,9 @@ def _get_setting_for_group(event: MessageEvent, key: str, default: any) -> any:
     return getattr(plugin_config, key, default)
 
 
-async def _check_game_start_conditions(event: MessageEvent) -> Tuple[bool, Optional[str]]:
+async def _check_game_start_conditions(
+    event: MessageEvent,
+) -> Tuple[bool, Optional[str]]:
     """检查是否可以开始新游戏"""
     if not await _is_group_allowed(event):
         return False, None
@@ -83,19 +87,33 @@ async def _check_game_start_conditions(event: MessageEvent) -> Tuple[bool, Optio
     cooldown = _get_setting_for_group(event, "game_cooldown_seconds", 30)
     limit = _get_setting_for_group(event, "daily_play_limit", 15)
     debug_mode = plugin_config.debug_mode
-    is_independent_limit = _get_setting_for_group(event, "independent_daily_limit", False)
+    is_independent_limit = _get_setting_for_group(
+        event, "independent_daily_limit", False
+    )
 
-    if not debug_mode and time.time() - last_game_end_time.get(session_id, 0) < cooldown:
-        remaining_time = cooldown - (time.time() - last_game_end_time.get(session_id, 0))
-        time_display = f"{remaining_time:.3f}" if remaining_time < 1 else str(int(remaining_time))
+    if (
+        not debug_mode
+        and time.time() - last_game_end_time.get(session_id, 0) < cooldown
+    ):
+        remaining_time = cooldown - (
+            time.time() - last_game_end_time.get(session_id, 0)
+        )
+        time_display = (
+            f"{remaining_time:.3f}" if remaining_time < 1 else str(int(remaining_time))
+        )
         return False, f"嗯......休息 {time_display} 秒再玩吧......"
 
     if session_id in active_game_sessions:
         return False, "......有一个正在进行的游戏了呢。"
 
-    can_play = await db_service.can_play(get_user_id(event), limit, session_id, is_independent_limit)
+    can_play = await db_service.can_play(
+        get_user_id(event), limit, session_id, is_independent_limit
+    )
     if not debug_mode and not can_play:
         limit_type = "本群" if is_independent_limit else "你"
-        return False, f"......{limit_type}今天的游戏次数已达上限（{limit}次），请明天再来吧......"
+        return (
+            False,
+            f"......{limit_type}今天的游戏次数已达上限（{limit}次），请明天再来吧......",
+        )
 
     return True, None

@@ -3,10 +3,10 @@ import os
 from datetime import datetime
 from typing import Dict, List, Set
 
-from .config import STATS_FILE
+from plugins.group_statistics.config import STATS_FILE
 
-from ..utils.json_io import atomic_write_json
-from ..utils.tools import get_logger
+from utils.json_io import atomic_write_json
+from utils.logging import get_logger
 
 logger = get_logger("group_statistics.data_manager")
 
@@ -23,10 +23,14 @@ class GroupStatisticsData:
         # 加载统计数据
         if os.path.exists(STATS_FILE):
             try:
-                with open(STATS_FILE, 'r', encoding='utf-8') as f:
+                with open(STATS_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.group_stats = {int(k): v for k, v in data.get('group_stats', {}).items()}
-                    self.user_info = {int(k): v for k, v in data.get('user_info', {}).items()}
+                    self.group_stats = {
+                        int(k): v for k, v in data.get("group_stats", {}).items()
+                    }
+                    self.user_info = {
+                        int(k): v for k, v in data.get("user_info", {}).items()
+                    }
             except Exception as e:
                 logger.exception(f"加载统计数据失败: {e}")
 
@@ -35,8 +39,10 @@ class GroupStatisticsData:
         try:
             # 先做快照，避免写盘（可能在线程中执行）时事件循环并发修改字典
             data = {
-                'group_stats': {gid: dict(users) for gid, users in self.group_stats.items()},
-                'user_info': {gid: dict(info) for gid, info in self.user_info.items()}
+                "group_stats": {
+                    gid: dict(users) for gid, users in self.group_stats.items()
+                },
+                "user_info": {gid: dict(info) for gid, info in self.user_info.items()},
             }
             atomic_write_json(STATS_FILE, data)
         except Exception as e:

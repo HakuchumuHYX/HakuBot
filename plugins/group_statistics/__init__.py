@@ -1,3 +1,4 @@
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 
 from nonebot import get_driver, require
@@ -9,15 +10,19 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler as apscheduler
 
 # 导入管理模块
-from ..plugin_manager.enable import is_plugin_enabled
+from core.access import is_plugin_enabled
 
-from .data_manager import data_manager
-from .handlers import message_handler, stat_command, sent_handler
-from .scheduler import daily_statistics_task
+from plugins.group_statistics.data_manager import data_manager
+from plugins.group_statistics.handlers import (
+    message_handler,
+    stat_command,
+    sent_handler,
+)
+from plugins.group_statistics.scheduler import daily_statistics_task
 
 
 # 在插件加载时
-@get_driver().on_startup
+@on_plugin_startup(get_driver(), "group_statistics")
 async def init_plugin():
     """插件初始化"""
     logger.info("群聊消息统计插件已加载")
@@ -31,7 +36,7 @@ async def flush_stats():
 
 
 # 机器人关闭时保存数据
-@get_driver().on_shutdown
+@on_plugin_shutdown(get_driver(), "group_statistics")
 async def shutdown_plugin():
     """插件关闭时保存数据"""
     data_manager.save_stats()

@@ -1,7 +1,7 @@
-from . import event  # noqa: F401
-from . import matches  # noqa: F401
-from . import results  # noqa: F401
-from . import stats  # noqa: F401
-from . import admin  # noqa: F401
-from . import debug  # noqa: F401
-from . import help  # noqa: F401
+from plugins.hltv_sub.handlers import event
+from plugins.hltv_sub.handlers import matches
+from plugins.hltv_sub.handlers import results
+from plugins.hltv_sub.handlers import stats
+from plugins.hltv_sub.handlers import admin
+from plugins.hltv_sub.handlers import debug
+from plugins.hltv_sub.handlers import help

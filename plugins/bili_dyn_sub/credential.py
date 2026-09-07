@@ -43,10 +43,11 @@ from typing import Any, Mapping, Optional
 
 import aiohttp
 
-from ..utils.json_io import atomic_write_json
-from ..utils.network import get_client_session, get_effective_proxy
-from ..utils.tools import get_exc_desc, get_logger, truncate
-from .config import CREDENTIAL_FILE, plugin_config
+from utils.json_io import atomic_write_json
+from utils.network.http import get_client_session, get_effective_proxy
+from utils.logging import get_exc_desc, get_logger
+from utils.text import truncate
+from plugins.bili_dyn_sub.config import CREDENTIAL_FILE, plugin_config
 
 logger = get_logger("bili_dyn_sub.credential")
 
@@ -66,7 +67,9 @@ DEGRADED_TTL_SECONDS = 600.0  # 激活/ticket 缺失时的短有效期，10 分�
 FAILED_RETRY_SECONDS = 300.0  # 三级全失败后的重试冷却，避免每轮都重造
 MIN_REFRESH_INTERVAL_SECONDS = 60.0  # force_refresh 的最小间隔，避免风控风暴里反复重造
 SAVE_THROTTLE_SECONDS = 300.0  # Set-Cookie 回写的落盘节流
-FORCED_STREAK_RESET_SECONDS = 1800.0  # 距上次刷新超过此时长的强制刷新视为新一轮风控，重新从 L1 起
+FORCED_STREAK_RESET_SECONDS = (
+    1800.0  # 距上次刷新超过此时长的强制刷新视为新一轮风控，重新从 L1 起
+)
 LOGIN_STATUS_TTL_SECONDS = 1800.0  # 登录态校验结果的缓存有效期（30 分钟）
 LOGIN_ERROR_RETRY_SECONDS = 300.0  # 校验失败（网络抖动等）时的重试冷却，比正常 TTL 短
 
@@ -76,7 +79,17 @@ _TICKET_KEY_ID = "ec02"
 
 # 允许由响应 Set-Cookie 回写的字段（SESSDATA/bili_jct 只认配置，不接受回写）
 _MUTABLE_COOKIE_KEYS = frozenset(
-    {"buvid3", "buvid4", "b_nut", "buvid_fp", "_uuid", "b_lsid", "bili_ticket", "bili_ticket_expires", "sid"}
+    {
+        "buvid3",
+        "buvid4",
+        "b_nut",
+        "buvid_fp",
+        "_uuid",
+        "b_lsid",
+        "bili_ticket",
+        "bili_ticket_expires",
+        "sid",
+    }
 )
 
 # 网络类异常（json.JSONDecodeError 是 ValueError 子类，一并归到这里）
@@ -159,7 +172,10 @@ def gen_buvid_fp(payload: str, seed: int = 31) -> str:
 def gen_uuid_infoc() -> str:
     """生成 _uuid：形如 8-4-4-4-12 的大写十六进制段 + 5 位毫秒尾数 + "infoc" """
     alphabet = "0123456789ABCDEF"
-    parts = ["".join(random.choice(alphabet) for _ in range(size)) for size in (8, 4, 4, 4, 12)]
+    parts = [
+        "".join(random.choice(alphabet) for _ in range(size))
+        for size in (8, 4, 4, 4, 12)
+    ]
     tail = str(int(time.time() * 1000) % 100_000).ljust(5, "0")
     return f"{'-'.join(parts)}{tail}infoc"
 
@@ -203,7 +219,9 @@ def build_activate_payload(*, uuid: str, user_agent: str) -> str:
 
 def hmac_sha256_hex(key: str, message: str) -> str:
     """HMAC-SHA256 十六进制摘要（与 plugins/analysis_bilibili/sign.py 的 hmac_sha256 同法）"""
-    return hmac.new(key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.new(
+        key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
 
 
 def build_ticket_params(ts: int) -> dict[str, str]:
@@ -323,10 +341,14 @@ class CredentialManager:
                 try:
                     self._expire_at[str(key)] = float(value)
                 except (TypeError, ValueError):
-                    logger.warning(f"cookie 缓存的 expire_at[{key}]={value!r} 非法，按已过期处理")
+                    logger.warning(
+                        f"cookie 缓存的 expire_at[{key}]={value!r} 非法，按已过期处理"
+                    )
         self._source = str(raw.get("source") or "")
         self._user_agent = str(raw.get("user_agent") or "")
-        logger.debug(f"载入 cookie 缓存: source={self._source or '-'} 字段={sorted(self._cookies)}")
+        logger.debug(
+            f"载入 cookie 缓存: source={self._source or '-'} 字段={sorted(self._cookies)}"
+        )
 
     async def _save(self) -> None:
         """异步落盘（原子写放到线程里，不阻塞事件循环）。
@@ -345,7 +367,9 @@ class CredentialManager:
             await asyncio.to_thread(atomic_write_json, self._cache_file, payload)
             self._last_save_ts = time.time()
         except (OSError, TypeError, ValueError) as e:
-            logger.error(f"写入 cookie 缓存失败，本次 cookie 仅存在内存中: {get_exc_desc(e)}")
+            logger.error(
+                f"写入 cookie 缓存失败，本次 cookie 仅存在内存中: {get_exc_desc(e)}"
+            )
 
     def _schedule_save(self) -> None:
         """节流落盘：窗口内的多次回写合并成一次，无事件循环时留给下次刷新落盘"""
@@ -358,7 +382,16 @@ class CredentialManager:
         except RuntimeError:
             logger.debug("当前无事件循环，cookie 回写将在下次刷新时落盘")
             return
-        self._save_task = loop.create_task(self._save())
+        from core.lifecycle import runtime
+
+        self._save_task = runtime.spawn(
+            self._save(), name="bilibili-credential-save", shutdown="drain"
+        )
+
+    async def flush(self):
+        if self._save_task is not None and not self._save_task.done():
+            await asyncio.shield(self._save_task)
+        await self._save()
 
     # -------------------- 缓存判定 --------------------
 
@@ -381,7 +414,9 @@ class CredentialManager:
             if bili_jct:
                 result["bili_jct"] = bili_jct
             if not self._login_logged:
-                logger.info("已配置 sessdata，使用登录态取数（L0），匿名 buvid/ticket 作为补充字段一并携带")
+                logger.info(
+                    "已配置 sessdata，使用登录态取数（L0），匿名 buvid/ticket 作为补充字段一并携带"
+                )
                 self._login_logged = True
         return result
 
@@ -401,7 +436,10 @@ class CredentialManager:
                     # 与上次刷新隔得够久，算作独立的风控事件，重新从 L1 起（否则计数只增不减会永远走 L2）
                     self._forced_refresh_streak = 0
                 self._forced_refresh_streak += 1
-                if self._cookies and now - self._last_refresh_ts < MIN_REFRESH_INTERVAL_SECONDS:
+                if (
+                    self._cookies
+                    and now - self._last_refresh_ts < MIN_REFRESH_INTERVAL_SECONDS
+                ):
                     logger.debug(
                         f"距上次刷新不足 {int(MIN_REFRESH_INTERVAL_SECONDS)}s，本次沿用现有 cookie（避免风控风暴里反复重造）"
                     )
@@ -412,7 +450,9 @@ class CredentialManager:
                 logger.debug("上次 cookie 生成失败仍在冷却窗口内，本轮沿用现有 cookie")
                 return self._compose()
 
-            await self._refresh_locked(escalate=force_refresh and self._forced_refresh_streak > 1)
+            await self._refresh_locked(
+                escalate=force_refresh and self._forced_refresh_streak > 1
+            )
             return self._compose()
 
     def build_headers(self, uid: str = "") -> dict[str, str]:
@@ -448,7 +488,11 @@ class CredentialManager:
             name = str(key)
             # Morsel 的 str() 是 "name=value; Path=/" 整行，必须取 .value
             text = str(getattr(value, "value", value))
-            if not text or name not in _MUTABLE_COOKIE_KEYS or self._cookies.get(name) == text:
+            if (
+                not text
+                or name not in _MUTABLE_COOKIE_KEYS
+                or self._cookies.get(name) == text
+            ):
                 continue
             self._cookies[name] = text
             changed.append(name)
@@ -479,7 +523,9 @@ class CredentialManager:
         """
         sessdata = (plugin_config.sessdata or "").strip()
         if not sessdata:
-            status = LoginStatus(configured=False, is_login=False, checked_at=time.time())
+            status = LoginStatus(
+                configured=False, is_login=False, checked_at=time.time()
+            )
             self._login_status = status
             self._login_status_fp = ""
             return status
@@ -488,10 +534,18 @@ class CredentialManager:
         async with self._login_lock:
             # 只有「同一份 sessdata 的上一次结论」才能作为缓存 / 失败时的兜底结论
             cached = self._login_status
-            reusable = cached is not None and cached.configured and fingerprint == self._login_status_fp
+            reusable = (
+                cached is not None
+                and cached.configured
+                and fingerprint == self._login_status_fp
+            )
             previous = cached if reusable else None
             if not force and previous is not None:
-                ttl = LOGIN_ERROR_RETRY_SECONDS if previous.error else LOGIN_STATUS_TTL_SECONDS
+                ttl = (
+                    LOGIN_ERROR_RETRY_SECONDS
+                    if previous.error
+                    else LOGIN_STATUS_TTL_SECONDS
+                )
                 if time.time() - previous.checked_at < ttl:
                     return previous
 
@@ -509,7 +563,9 @@ class CredentialManager:
         """真正请求 nav 并解析结论；失败时继承 previous 的 is_login/uname"""
         fallback_login = previous.is_login if previous is not None else False
         fallback_uname = previous.uname if previous is not None else ""
-        raw, error = await self._request_raw("GET", NAV_URL, desc="nav 登录态校验", cookies=self._compose())
+        raw, error = await self._request_raw(
+            "GET", NAV_URL, desc="nav 登录态校验", cookies=self._compose()
+        )
         now = time.time()
         if raw is None:
             return LoginStatus(
@@ -535,15 +591,23 @@ class CredentialManager:
         data = data if isinstance(data, dict) else {}
         is_login = code == 0 and bool(data.get("isLogin"))
         uname = str(data.get("uname") or "").strip() if is_login else ""
-        return LoginStatus(configured=True, is_login=is_login, uname=uname, checked_at=now)
+        return LoginStatus(
+            configured=True, is_login=is_login, uname=uname, checked_at=now
+        )
 
     @staticmethod
-    def _log_login_transition(previous: Optional[LoginStatus], current: LoginStatus) -> None:
+    def _log_login_transition(
+        previous: Optional[LoginStatus], current: LoginStatus
+    ) -> None:
         """只在状态跃迁时打 info/warning，稳态降为 debug（日志纪律见设计文档 §3.5）"""
         if current.error:
             logger.warning(f"B 站{current.summary()}")
             return
-        if previous is not None and previous.verified and previous.is_login == current.is_login:
+        if (
+            previous is not None
+            and previous.verified
+            and previous.is_login == current.is_login
+        ):
             logger.debug(f"B 站登录态校验：{current.summary()}")
             return
         if current.is_login:
@@ -571,11 +635,15 @@ class CredentialManager:
         if (plugin_config.sessdata or "").strip():
             mode = f"L0 登录态{self._describe_login()}"
         elif self._source:
-            mode = {"http": "L1 纯 HTTP", "browser": "L2 Playwright"}.get(self._source, self._source)
+            mode = {"http": "L1 纯 HTTP", "browser": "L2 Playwright"}.get(
+                self._source, self._source
+            )
         else:
             mode = "未生成"
         if self._expire_at:
-            earliest = datetime.fromtimestamp(min(self._expire_at.values())).isoformat(timespec="minutes")
+            earliest = datetime.fromtimestamp(min(self._expire_at.values())).isoformat(
+                timespec="minutes"
+            )
         else:
             earliest = "-"
         return f"cookie 来源={mode} 缓存字段数={len(self._cookies)} 最早到期={earliest}"
@@ -599,8 +667,14 @@ class CredentialManager:
             self._clear_session_jar()
             await self._save()
             self._next_retry_ts = 0.0
-            suffix = f"（指纹激活或 ticket 缺失，{int(DEGRADED_TTL_SECONDS)}s 后补一次）" if degraded else ""
-            logger.info(f"已生成 B 站 cookie（{source}）: 字段={sorted(cookies)}{suffix}")
+            suffix = (
+                f"（指纹激活或 ticket 缺失，{int(DEGRADED_TTL_SECONDS)}s 后补一次）"
+                if degraded
+                else ""
+            )
+            logger.info(
+                f"已生成 B 站 cookie（{source}）: 字段={sorted(cookies)}{suffix}"
+            )
             return True
 
         self._next_retry_ts = time.time() + FAILED_RETRY_SECONDS
@@ -621,14 +695,18 @@ class CredentialManager:
         cookie 由调用方按请求显式传入，jar 里残留的上一代 buvid/ticket 会被一起发出去，
         新旧指纹混发反而更容易触发风控。
         """
-        clear_domain = getattr(get_client_session().cookie_jar, "clear_domain", None)
+        clear_domain = getattr(
+            get_client_session("bilibili").cookie_jar, "clear_domain", None
+        )
         if clear_domain is None:
             logger.debug("当前 aiohttp 的 cookie jar 不支持 clear_domain，跳过清理")
             return
         try:
             clear_domain("bilibili.com")
         except (TypeError, ValueError) as e:
-            logger.debug(f"清理 session jar 中的 bilibili cookie 失败: {get_exc_desc(e)}")
+            logger.debug(
+                f"清理 session jar 中的 bilibili cookie 失败: {get_exc_desc(e)}"
+            )
 
     def _apply(self, cookies: dict[str, str], *, degraded: bool, source: str) -> None:
         """替换当前 cookie 并按级别记 expire_at（降级结果只给短有效期）"""
@@ -639,7 +717,10 @@ class CredentialManager:
             "bili_ticket": now + TICKET_TTL_SECONDS,
         }
         if degraded:
-            expire_at = {key: min(value, now + DEGRADED_TTL_SECONDS) for key, value in expire_at.items()}
+            expire_at = {
+                key: min(value, now + DEGRADED_TTL_SECONDS)
+                for key, value in expire_at.items()
+            }
         self._expire_at = expire_at
         self._source = source
         self._user_agent = plugin_config.user_agent
@@ -656,7 +737,9 @@ class CredentialManager:
         buvid3 = str(data.get("b_3") or "").strip()
         buvid4 = str(data.get("b_4") or "").strip()
         if not buvid3:
-            logger.warning(f"finger/spi 未返回 b_3，L1 造 cookie 失败: {truncate(str(spi), 200)}")
+            logger.warning(
+                f"finger/spi 未返回 b_3，L1 造 cookie 失败: {truncate(str(spi), 200)}"
+            )
             return None
 
         uuid = gen_uuid_infoc()
@@ -680,15 +763,23 @@ class CredentialManager:
     async def _activate(self, payload: str, cookies: dict[str, str]) -> bool:
         """POST ExClimbWuzhi 激活 buvid；失败不致命（返回 False 走降级有效期）"""
         raw = await self._request_json(
-            "POST", EXCLIMB_URL, desc="ExClimbWuzhi 指纹激活", json_body={"payload": payload}, cookies=cookies
+            "POST",
+            EXCLIMB_URL,
+            desc="ExClimbWuzhi 指纹激活",
+            json_body={"payload": payload},
+            cookies=cookies,
         )
         if raw is None:
-            logger.warning("buvid 指纹激活失败，未激活的 buvid3 大概率被 -352 拒绝，稍后重试")
+            logger.warning(
+                "buvid 指纹激活失败，未激活的 buvid3 大概率被 -352 拒绝，稍后重试"
+            )
             return False
         inner = raw.get("data")
         inner_code = inner.get("code") if isinstance(inner, dict) else None
         if inner_code not in (None, 0):
-            logger.warning(f"buvid 指纹激活被拒绝: data.code={inner_code} msg={truncate(str(inner), 200)}")
+            logger.warning(
+                f"buvid 指纹激活被拒绝: data.code={inner_code} msg={truncate(str(inner), 200)}"
+            )
             return False
         logger.debug("buvid 指纹激活成功")
         return True
@@ -696,7 +787,9 @@ class CredentialManager:
     async def _fetch_ticket(self) -> Optional[tuple[str, int]]:
         """取 bili_ticket，返回 (ticket, 到期时间戳)；失败返回 None"""
         ts = int(time.time())
-        raw = await self._request_json("POST", TICKET_URL, desc="GenWebTicket", params=build_ticket_params(ts))
+        raw = await self._request_json(
+            "POST", TICKET_URL, desc="GenWebTicket", params=build_ticket_params(ts)
+        )
         if raw is None:
             logger.warning("获取 bili_ticket 失败，缺少 ticket 的 cookie 更易被风控")
             return None
@@ -704,7 +797,9 @@ class CredentialManager:
         data = data if isinstance(data, dict) else {}
         ticket = str(data.get("ticket") or "").strip()
         if not ticket:
-            logger.warning(f"GenWebTicket 响应里没有 ticket: {truncate(str(data), 200)}")
+            logger.warning(
+                f"GenWebTicket 响应里没有 ticket: {truncate(str(data), 200)}"
+            )
             return None
         try:
             created_at = int(data.get("created_at") or ts)
@@ -732,7 +827,9 @@ class CredentialManager:
             logger.warning(f"{desc} 请求失败: {error}")
             return None
         if raw.get("code") != 0:
-            logger.warning(f"{desc} 返回 code={raw.get('code')} message={raw.get('message')!r}")
+            logger.warning(
+                f"{desc} 返回 code={raw.get('code')} message={raw.get('message')!r}"
+            )
             return None
         return raw
 
@@ -759,7 +856,7 @@ class CredentialManager:
             connect=float(plugin_config.http_timeout_connect),
         )
         try:
-            async with get_client_session().request(
+            async with get_client_session("bilibili").request(
                 method,
                 url,
                 params=params,
@@ -789,27 +886,35 @@ class CredentialManager:
         try:
             from playwright.async_api import Error as PlaywrightError
 
-            from ..utils.browser import get_new_page
+            from utils.rendering.browser import browser_pool
         except ImportError as e:
             logger.warning(f"Playwright 不可用，跳过 L2 兜底: {get_exc_desc(e)}")
             return None
 
-        context_kwargs: dict[str, Any] = {"user_agent": plugin_config.user_agent, "locale": "zh-CN"}
+        context_kwargs: dict[str, Any] = {
+            "user_agent": plugin_config.user_agent,
+            "locale": "zh-CN",
+        }
         proxy = get_effective_proxy(plugin_config.proxy)
         if proxy:
             context_kwargs["proxy"] = {"server": proxy}
         url = SPACE_URL_TEMPLATE.format(uid=random.randint(1, 1000))
         logger.info(f"升级到 L2 Playwright 兜底造 cookie: {url}")
         try:
-            async with get_new_page(device_scale_factor=1, **context_kwargs) as page:
+            async with browser_pool.page(
+                device_scale_factor=1, **context_kwargs
+            ) as page:
                 await page.goto(url, timeout=_BROWSER_GOTO_TIMEOUT_MS)
                 await page.wait_for_load_state("load")
                 # 以下两个等待条件照抄 bison：分别保证 GenWebTicket 与 ExClimbWuzhi 已完成，
                 # 只 goto + load 会导出未激活的 buvid3，等于白跑浏览器
                 await page.wait_for_function(
-                    'document.cookie.includes("bili_ticket")', timeout=_BROWSER_WAIT_TIMEOUT_MS
+                    'document.cookie.includes("bili_ticket")',
+                    timeout=_BROWSER_WAIT_TIMEOUT_MS,
                 )
-                await page.wait_for_load_state("networkidle", timeout=_BROWSER_WAIT_TIMEOUT_MS)
+                await page.wait_for_load_state(
+                    "networkidle", timeout=_BROWSER_WAIT_TIMEOUT_MS
+                )
                 raw_cookies = await page.context.cookies()
         except PlaywrightError as e:
             logger.warning(f"L2 Playwright 造 cookie 失败: {get_exc_desc(e)}")
@@ -835,7 +940,9 @@ class CredentialManager:
         # 只靠 bison 的两个等待条件（bili_ticket + networkidle）并不能保证 ExClimbWuzhi 真的跑过
         # ——随机 UID 的空间页可能根本不发这个请求。实测浏览器导出的 cookie 原样打 feed/space
         # 稳定 -352，补一次 ExClimbWuzhi 激活后同一批 cookie 立刻返回 code=0（13 条动态）。
-        payload = build_activate_payload(uuid=cookies["_uuid"], user_agent=plugin_config.user_agent)
+        payload = build_activate_payload(
+            uuid=cookies["_uuid"], user_agent=plugin_config.user_agent
+        )
         activated = await self._activate(payload, cookies)
         if not activated:
             logger.warning("L2 导出的 cookie 补激活失败，可能仍会被 -352 拒绝")

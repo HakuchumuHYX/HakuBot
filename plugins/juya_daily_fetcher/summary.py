@@ -3,9 +3,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..utils.llm import LLMClientConfig, chat_completion
-from ..utils.tools import get_exc_desc, get_logger
-from .config import plugin_config
+from utils.llm.client import LLMClientConfig, chat_completion
+from utils.logging import get_exc_desc, get_logger
+from plugins.juya_daily_fetcher.config import plugin_config
 
 logger = get_logger("juya_daily_fetcher.summary")
 
@@ -45,18 +45,25 @@ def directory_prompt(directory: list[dict[str, Any]], summary_date: str) -> str:
 
 
 def _normalize_summary(raw: str) -> str:
-    summary = re.sub(r"^```(?:text|markdown)?\s*|\s*```$", "", (raw or "").strip(), flags=re.I)
+    summary = re.sub(
+        r"^```(?:text|markdown)?\s*|\s*```$", "", (raw or "").strip(), flags=re.I
+    )
     summary = re.sub(r"^(?:摘要|简短摘要)\s*[:：]\s*", "", summary).strip()
     paragraphs: list[str] = []
     for raw_paragraph in re.split(r"\n\s*\n", summary):
-        lines = [re.sub(r"[ \t\f\v]+", " ", line).strip() for line in raw_paragraph.splitlines()]
+        lines = [
+            re.sub(r"[ \t\f\v]+", " ", line).strip()
+            for line in raw_paragraph.splitlines()
+        ]
         paragraph = " ".join(line for line in lines if line).strip()
         if paragraph:
             paragraphs.append(paragraph)
     return "\n\n".join(paragraphs)
 
 
-async def summarize_directory(directory: list[dict[str, Any]], summary_date: str) -> str:
+async def summarize_directory(
+    directory: list[dict[str, Any]], summary_date: str
+) -> str:
     if not directory:
         logger.warning("目录为空，跳过导语")
         return ""

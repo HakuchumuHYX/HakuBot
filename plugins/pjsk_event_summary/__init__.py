@@ -1,3 +1,4 @@
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 from nonebot import get_driver, on_command, require
 from nonebot.log import logger
 from nonebot.adapters import Bot, Event
@@ -5,12 +6,15 @@ from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11 import Message, GroupMessageEvent
 from nonebot.exception import FinishedException
 
-from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.moesekai_hub import load_state
-from ..utils.image_utils import image_segment
-from .api import fetch_event_list, fetch_event_detail
-from .render import render_event_list_pic, render_event_detail_pic
-from . import scheduler as _scheduler  # noqa: F401
+from core.access import is_plugin_enabled
+from plugins.pjsk_event_summary.services.index import load_state
+from utils.onebot.media import image_segment
+from plugins.pjsk_event_summary.api import fetch_event_list, fetch_event_detail
+from plugins.pjsk_event_summary.render import (
+    render_event_list_pic,
+    render_event_detail_pic,
+)
+from plugins.pjsk_event_summary import scheduler as _scheduler
 
 require("nonebot_plugin_apscheduler")
 
@@ -23,11 +27,13 @@ pjsk_list = on_command("剧情列表", priority=5, block=True)
 pjsk_detail = on_command("剧情总结", priority=5, block=True)
 
 
-@get_driver().on_startup
+@on_plugin_startup(get_driver(), "pjsk_event_summary")
 async def init_plugin():
     state = load_state()
     last_success = state.get("last_success_at", "从未")
-    logger.info(f"pjsk_event_summary 插件已加载，MoeSekai-Hub 最近成功重建索引时间: {last_success}")
+    logger.info(
+        f"pjsk_event_summary 插件已加载，MoeSekai-Hub 最近成功重建索引时间: {last_success}"
+    )
 
 
 @pjsk_list.handle()
@@ -44,7 +50,9 @@ async def handle_list(bot: Bot, event: Event):
         events = await fetch_event_list(limit=20)
 
         # 传入水印
-        pic = await render_event_list_pic(events, watermark=CUSTOM_WATERMARK, global_watermark=GLOBAL_WATERMARK_TEXT)
+        pic = await render_event_list_pic(
+            events, watermark=CUSTOM_WATERMARK, global_watermark=GLOBAL_WATERMARK_TEXT
+        )
 
         await pjsk_list.finish(image_segment(pic))
 
@@ -76,7 +84,9 @@ async def handle_detail(bot: Bot, event: Event, args: Message = CommandArg()):
             await pjsk_detail.finish(result)
 
         # 传入水印
-        pic = await render_event_detail_pic(result, watermark=CUSTOM_WATERMARK, global_watermark=GLOBAL_WATERMARK_TEXT)
+        pic = await render_event_detail_pic(
+            result, watermark=CUSTOM_WATERMARK, global_watermark=GLOBAL_WATERMARK_TEXT
+        )
 
         await pjsk_detail.finish(image_segment(pic))
 

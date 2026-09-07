@@ -3,8 +3,8 @@ from nonebot.rule import regex
 from nonebot.adapters import Event, Message, Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-from .config import config
-from ..plugin_manager.enable import is_plugin_enabled
+from plugins.plus_one.config import config
+from core.access import is_plugin_enabled
 
 plus = on_message(rule=regex(""), priority=config.plus_one_priority, block=False)
 msg_dict = {}
@@ -18,16 +18,16 @@ def is_equal(msg1: Message, msg2: Message):
         file_size2 = msg2[0].data.get("file_size")
         if file_size1 is not None and file_size2 is not None:
             return file_size1 == file_size2
-        
+
         # 回退到 file 字段比较
         file1 = msg1[0].data.get("file")
         file2 = msg2[0].data.get("file")
         if file1 is not None and file2 is not None:
             return file1 == file2
-        
+
         # 无法比较则认为不相等
         return False
-    
+
     return msg1 == msg2
 
 
@@ -47,13 +47,14 @@ def contains_blocked_words(text: str) -> bool:
 
     return False
 
+
 def extract_text_from_message(msg: Message) -> str:
     """从消息对象中提取文本内容"""
     text_parts = []
     for segment in msg:
-        if segment.type == 'text':
-            text_parts.append(segment.data.get('text', ''))
-    return ''.join(text_parts)
+        if segment.type == "text":
+            text_parts.append(segment.data.get("text", ""))
+    return "".join(text_parts)
 
 
 @plus.handle()

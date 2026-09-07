@@ -13,15 +13,20 @@ from nonebot.typing import T_State
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 
 # 本地模块导入
-from .. import service
-from ..constants import NO_WAIFU_MESSAGES, HAPPY_END_MESSAGES
-from ..render import build_avatar_message, finish_with_fallback, send_with_fallback
-from ..utils import get_message_at
-from ..rules import is_plugin_enabled
+from plugins.groupmate_waifu import service
+from plugins.groupmate_waifu.constants import NO_WAIFU_MESSAGES, HAPPY_END_MESSAGES
+from plugins.groupmate_waifu.render import (
+    build_avatar_message,
+    finish_with_fallback,
+    send_with_fallback,
+)
+from utils.onebot.messages import mentioned_users
+from plugins.groupmate_waifu.rules import is_plugin_enabled
 
 # ============================================================
 # 娶群友核心功能
 # ============================================================
+
 
 async def waifu_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:
     """
@@ -31,14 +36,14 @@ async def waifu_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool
     # 检查插件是否启用
     if not is_plugin_enabled(str(event.group_id), str(event.user_id)):
         return False
-    
+
     # 检查消息格式
     msg = event.message.extract_plain_text()
-    at_list = get_message_at(event.message)
-    
+    at_list = mentioned_users(event.message)
+
     if msg != "娶群友" and not (msg.startswith("娶群友") and at_list):
         return False
-    
+
     group_id = event.group_id
     user_id = event.user_id
 
@@ -48,7 +53,7 @@ async def waifu_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool
     at = at_list[0] if at_list else None
     if at and service.is_protected(group_id, at):
         return False
-    
+
     # 将解析结果存入 state
     state["at_target"] = at
     return True
@@ -69,7 +74,9 @@ async def handle_waifu(bot: Bot, event: GroupMessageEvent, state: T_State):
 
     # 整个处理流程按群串行执行（finish 抛出 FinishedException 时锁也会正常释放）
     async with _group_locks[group_id]:
-        happy_threshold, bad_threshold, ntr_threshold = service.get_marriage_thresholds()
+        happy_threshold, bad_threshold, ntr_threshold = (
+            service.get_marriage_thresholds()
+        )
         tips = "你的群友結婚对象是、"
         rec = service.ensure_group_cp_records(group_id)
 
@@ -78,7 +85,9 @@ async def handle_waifu(bot: Bot, event: GroupMessageEvent, state: T_State):
         if existing_waifu_id and existing_waifu_id != user_id:
             # 用户已有 CP
             try:
-                member = await bot.get_group_member_info(group_id=group_id, user_id=existing_waifu_id)
+                member = await bot.get_group_member_info(
+                    group_id=group_id, user_id=existing_waifu_id
+                )
             except Exception:
                 member = None
                 # CP 已不在群内，清除记录
@@ -128,8 +137,10 @@ async def handle_waifu(bot: Bot, event: GroupMessageEvent, state: T_State):
             )
             if error_message == "TARGET_FAILED":
                 try:
-                    member = await bot.get_group_member_info(group_id=group_id, user_id=at)
-                    name = member['card'] or member['nickname']
+                    member = await bot.get_group_member_info(
+                        group_id=group_id, user_id=at
+                    )
+                    name = member["card"] or member["nickname"]
                 except Exception:
                     name = "TA"
                 await waifu.finish(f"你没能娶到 {name}！", at_sender=True)
@@ -142,7 +153,9 @@ async def handle_waifu(bot: Bot, event: GroupMessageEvent, state: T_State):
             lastmonth = event.time - service.get_last_sent_time_filter()
             waifu_ids = [
                 member["user_id"]
-                for member in service.get_marriage_pool_members(group_id, member_list, lastmonth)
+                for member in service.get_marriage_pool_members(
+                    group_id, member_list, lastmonth
+                )
             ]
 
             if waifu_ids:
@@ -160,11 +173,13 @@ async def handle_waifu(bot: Bot, event: GroupMessageEvent, state: T_State):
         # 检查目标是否已有 CP
         waifu_cp = service.get_partner(group_id, waifu_id)
         if waifu_cp:
-            member = await bot.get_group_member_info(group_id=group_id, user_id=waifu_cp)
+            member = await bot.get_group_member_info(
+                group_id=group_id, user_id=waifu_cp
+            )
             msg, fallback = await build_avatar_message(
                 "人家已经名花有主了~",
                 waifu_cp,
-                "ta的cp：" + (member['card'] or member['nickname']),
+                "ta的cp：" + (member["card"] or member["nickname"]),
             )
 
             ntr_result = service.resolve_taken_marriage_target(
@@ -175,11 +190,18 @@ async def handle_waifu(bot: Bot, event: GroupMessageEvent, state: T_State):
                 ntr_threshold,
             )
             if ntr_result == "locked":
-                await finish_with_fallback(waifu, msg + "\n本对cp已锁！", fallback + "\n本对cp已锁！", at_sender=True)
+                await finish_with_fallback(
+                    waifu,
+                    msg + "\n本对cp已锁！",
+                    fallback + "\n本对cp已锁！",
+                    at_sender=True,
+                )
             if ntr_result == "failed":
                 await finish_with_fallback(waifu, msg, fallback, at_sender=True)
             if ntr_result == "ntr":
-                await send_with_fallback(waifu, msg + "\n但是...", fallback + "\n但是...", at_sender=True)
+                await send_with_fallback(
+                    waifu, msg + "\n但是...", fallback + "\n但是...", at_sender=True
+                )
                 await asyncio.sleep(1)
 
         service.set_couple(group_id, user_id, waifu_id)

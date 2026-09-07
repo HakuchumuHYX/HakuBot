@@ -4,18 +4,16 @@ import os
 from nonebot.log import logger
 from PIL import Image
 
-from ..utils.tools import run_in_pool
-from .utils import (
+from utils.concurrency import run_in_pool
+from plugins.image_processor.utils import (
     IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
     IMAGE_PROCESSOR_MAX_GIF_BYTES,
     IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
     download_to_temp,
-    ensure_output_dir,
-    guess_ext_from_url,
     load_gif_frames,
-    safe_delete_file,
     save_gif,
 )
+from utils.files import ensure_output_dir, guess_ext_from_url, safe_delete_file
 
 
 def convert_to_supported_mode(img: Image.Image) -> Image.Image:
@@ -36,7 +34,9 @@ def get_transpose_method(direction: str):
 
 def _process_static_mirror_file(image_path: str, direction: str) -> str:
     with Image.open(image_path) as img:
-        processed_image = convert_to_supported_mode(img).transpose(get_transpose_method(direction))
+        processed_image = convert_to_supported_mode(img).transpose(
+            get_transpose_method(direction)
+        )
         output_dir = ensure_output_dir("nonebot_image_mirror")
         output_path = output_dir / f"mirror_{direction}_{os.urandom(4).hex()}.png"
         processed_image.save(output_path, "PNG")
@@ -52,7 +52,12 @@ def _process_gif_mirror_file(image_path: str, direction: str) -> str:
     processed_frames = [frame.transpose(method) for frame in frames]
     output_dir = ensure_output_dir("nonebot_image_mirror")
     output_path = output_dir / f"mirror_{direction}_{os.urandom(4).hex()}.gif"
-    save_gif(processed_frames, output_path, durations=durations, loop=int(meta.get("loop", 0)))
+    save_gif(
+        processed_frames,
+        output_path,
+        durations=durations,
+        loop=int(meta.get("loop", 0)),
+    )
     return str(output_path)
 
 
@@ -77,7 +82,11 @@ async def process_image_mirror(image_url: str, direction: str) -> str:
     try:
         logger.info(f"开始处理镜像图片: {direction}...")
         ext = guess_ext_from_url(image_url, "jpg")
-        max_bytes = IMAGE_PROCESSOR_MAX_GIF_BYTES if ext == "gif" else IMAGE_PROCESSOR_MAX_IMAGE_BYTES
+        max_bytes = (
+            IMAGE_PROCESSOR_MAX_GIF_BYTES
+            if ext == "gif"
+            else IMAGE_PROCESSOR_MAX_IMAGE_BYTES
+        )
         image_path = await download_to_temp(
             image_url,
             ext=ext,
@@ -93,7 +102,11 @@ async def process_image_mirror(image_url: str, direction: str) -> str:
         except Exception:
             is_gif = False
 
-        result_path = await process_gif_mirror(image_path, direction) if is_gif else await process_static_mirror(image_path, direction)
+        result_path = (
+            await process_gif_mirror(image_path, direction)
+            if is_gif
+            else await process_static_mirror(image_path, direction)
+        )
         return result_path if result_path and os.path.exists(result_path) else ""
     except Exception as e:
         logger.error(f"镜像处理出错: {e}")

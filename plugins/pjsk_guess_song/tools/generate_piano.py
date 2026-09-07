@@ -1,3 +1,4 @@
+from utils.json_io import atomic_write_json
 import json
 import os
 import sys
@@ -41,13 +42,16 @@ CHUNK_DURATION = 30
 
 # ================= 辅助函数 =================
 
+
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}")
 
 
 def check_system_dependencies():
     if not shutil.which("fluidsynth"):
-        log("[System] 错误: 未找到 'fluidsynth' 命令。请先安装: sudo apt install fluidsynth")
+        log(
+            "[System] 错误: 未找到 'fluidsynth' 命令。请先安装: sudo apt install fluidsynth"
+        )
         return None
 
     common_sf2_paths = [
@@ -59,7 +63,9 @@ def check_system_dependencies():
             log(f"[System] 找到 SoundFont: {path}")
             return path
 
-    log("[System] 错误: 未找到 SoundFont。请安装 fluid-soundfont-gm 或将 .sf2 放入目录。")
+    log(
+        "[System] 错误: 未找到 SoundFont。请安装 fluid-soundfont-gm 或将 .sf2 放入目录。"
+    )
     return None
 
 
@@ -73,7 +79,8 @@ def load_song_data():
 
 def get_best_vocal_bundle(song_data):
     vocals = song_data.get("vocals", [])
-    if not vocals: return None
+    if not vocals:
+        return None
     for v_type in ["sekai", "virtual_singer"]:
         for v in vocals:
             if v.get("musicVocalType") == v_type:
@@ -83,9 +90,10 @@ def get_best_vocal_bundle(song_data):
 
 # ================= 核心处理逻辑 =================
 
+
 def process_single_song_chunked(processor, model, sound_font, song):
-    song_id = song.get('id')
-    title = song.get('title', 'Unknown')
+    song_id = song.get("id")
+    title = song.get("title", "Unknown")
 
     bundle_name = get_best_vocal_bundle(song)
     if not bundle_name:
@@ -106,7 +114,8 @@ def process_single_song_chunked(processor, model, sound_font, song):
         return "skip", "Target exists"
 
     target_dir.mkdir(parents=True, exist_ok=True)
-    if song_temp_dir.exists(): shutil.rmtree(song_temp_dir)
+    if song_temp_dir.exists():
+        shutil.rmtree(song_temp_dir)
     song_temp_dir.mkdir(parents=True, exist_ok=True)
 
     log(f"[{title}] 开始处理 (ID: {song_id})...")
@@ -130,7 +139,8 @@ def process_single_song_chunked(processor, model, sound_font, song):
             chunk_y = y[start_idx:end_idx]
 
             # 跳过过短的片段
-            if len(chunk_y) < sr * 1.0: continue
+            if len(chunk_y) < sr * 1.0:
+                continue
 
             # A. 预处理
             inputs = processor(audio=chunk_y, sampling_rate=sr, return_tensors="pt")
@@ -141,16 +151,18 @@ def process_single_song_chunked(processor, model, sound_font, song):
                 generated_tokens = model.generate(
                     input_features=input_features,
                     composer="composer1",
-                    max_new_tokens=2048
+                    max_new_tokens=2048,
                 )
 
             # C. 解码
             gen_tokens_cpu = generated_tokens.cpu()
-            inputs_cpu = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+            inputs_cpu = {
+                k: v.cpu() if isinstance(v, torch.Tensor) else v
+                for k, v in inputs.items()
+            }
 
             generated_midi = processor.batch_decode(
-                token_ids=gen_tokens_cpu,
-                feature_extractor_output=inputs_cpu
+                token_ids=gen_tokens_cpu, feature_extractor_output=inputs_cpu
             )["pretty_midi_objects"][0]
 
             part_midi_path = song_temp_dir / f"part_{i}.mid"
@@ -158,15 +170,20 @@ def process_single_song_chunked(processor, model, sound_font, song):
             midi_parts.append(part_midi_path)
 
             # 简单检查一下生成的音符数
-            note_count = len(generated_midi.instruments[0].notes) if generated_midi.instruments else 0
+            note_count = (
+                len(generated_midi.instruments[0].notes)
+                if generated_midi.instruments
+                else 0
+            )
             log(f"     [Chunk {i + 1}] Saved MIDI. Notes: {note_count}")
 
         # 3. 合并 MIDI
-        if not midi_parts: return "error", "No MIDI generated"
+        if not midi_parts:
+            return "error", "No MIDI generated"
 
         log(f"  -> [Merge] Combining {len(midi_parts)} parts...")
         full_midi = pretty_midi.PrettyMIDI()
-        piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
+        piano_program = pretty_midi.instrument_name_to_program("Acoustic Grand Piano")
         full_inst = pretty_midi.Instrument(program=piano_program)
 
         for i, midi_path in enumerate(midi_parts):
@@ -179,7 +196,7 @@ def process_single_song_chunked(processor, model, sound_font, song):
                             velocity=note.velocity,
                             pitch=note.pitch,
                             start=note.start + time_offset,
-                            end=note.end + time_offset
+                            end=note.end + time_offset,
                         )
                         full_inst.notes.append(new_note)
             except Exception as e:
@@ -216,16 +233,20 @@ def process_single_song_chunked(processor, model, sound_font, song):
 
 # ================= 主程序 =================
 
+
 def main():
     print("=== PJSK Piano Generator (Fixed Version) ===")
 
     sound_font = check_system_dependencies()
-    if not sound_font: return
+    if not sound_font:
+        return
 
     log(f"Loading Model... (Device: {DEVICE})")
     try:
         processor = AutoProcessor.from_pretrained(MODEL_REPO_ID)
-        model = Pop2PianoForConditionalGeneration.from_pretrained(MODEL_REPO_ID).to(DEVICE)
+        model = Pop2PianoForConditionalGeneration.from_pretrained(MODEL_REPO_ID).to(
+            DEVICE
+        )
     except Exception as e:
         log(f"Model load failed: {e}")
         return
@@ -239,16 +260,19 @@ def main():
 
     for i, song in enumerate(songs):
         print(f"\n--- [{i + 1}/{total}] {song.get('title')} ---")
-        status, err_msg = process_single_song_chunked(processor, model, sound_font, song)
+        status, err_msg = process_single_song_chunked(
+            processor, model, sound_font, song
+        )
         stats[status] += 1
 
         if status == "error":
-            error_list.append({"id": song.get("id"), "title": song.get("title"), "error": err_msg})
+            error_list.append(
+                {"id": song.get("id"), "title": song.get("title"), "error": err_msg}
+            )
 
     log(f"Finished. Stats: {stats}")
     if error_list:
-        with open(ERROR_LOG_PATH, "w", encoding="utf-8") as f:
-            json.dump(error_list, f, indent=4, ensure_ascii=False)
+        atomic_write_json(ERROR_LOG_PATH, error_list, indent=4, ensure_ascii=False)
 
 
 if __name__ == "__main__":

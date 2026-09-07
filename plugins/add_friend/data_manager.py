@@ -54,8 +54,11 @@ class RequestDataManager:
         current_time = time.time()
 
         # 清理过期的记录
-        expired_keys = [k for k, t in self.processed_requests.items()
-                        if current_time - t > self.cache_expire_time]
+        expired_keys = [
+            k
+            for k, t in self.processed_requests.items()
+            if current_time - t > self.cache_expire_time
+        ]
         for key in expired_keys:
             del self.processed_requests[key]
 

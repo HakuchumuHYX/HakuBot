@@ -8,10 +8,10 @@ from urllib.parse import urlsplit
 import aiohttp
 from nonebot.log import logger
 
-from ..analysis import AggregatedData
-from ..config import plugin_config
-from ..exceptions import AssetDownloadError
-from .masterdata_lite import masterdata_lite
+from plugins.buaa_msm.analysis import AggregatedData
+from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.exceptions import AssetDownloadError
+from plugins.buaa_msm.services.masterdata_lite import masterdata_lite
 
 _DYNAMIC_ICON_CATEGORIES: Set[str] = {
     "material",
@@ -41,7 +41,11 @@ class RipAssetLite:
         return plugin_config.mysekai_icon_cache_dir / category / f"{item_id}.png"
 
     def _harvest_fixture_cache_path(self, fixture_id: int) -> Path:
-        return plugin_config.mysekai_icon_cache_dir / "mysekai_site_harvest_fixture" / f"{int(fixture_id)}.png"
+        return (
+            plugin_config.mysekai_icon_cache_dir
+            / "mysekai_site_harvest_fixture"
+            / f"{int(fixture_id)}.png"
+        )
 
     def get_cached_icon_path(self, category: str, item_id: int) -> Optional[str]:
         path = self._cache_path(category, int(item_id))
@@ -75,8 +79,19 @@ class RipAssetLite:
 
         candidates: List[Path] = []
         for rarity_dir in rarity_dirs:
-            candidates.append(plugin_config.data_dir / "harvest_fixture_icon" / rarity_dir / f"{asset_name}.png")
-            candidates.append(plugin_config.resource_dir / "mysekai" / "harvest_fixture_icon" / rarity_dir / f"{asset_name}.png")
+            candidates.append(
+                plugin_config.data_dir
+                / "harvest_fixture_icon"
+                / rarity_dir
+                / f"{asset_name}.png"
+            )
+            candidates.append(
+                plugin_config.resource_dir
+                / "mysekai"
+                / "harvest_fixture_icon"
+                / rarity_dir
+                / f"{asset_name}.png"
+            )
         return candidates
 
     def get_local_harvest_fixture_icon_path(self, fixture_id: int) -> Optional[str]:
@@ -138,7 +153,11 @@ class RipAssetLite:
         # Referer 使用当前配置的资产源自身，避免跨源伪装
         base = plugin_config.mysekai_icon_url_base.strip()
         parsed = urlsplit(base)
-        referer = f"{parsed.scheme}://{parsed.netloc}/" if parsed.scheme and parsed.netloc else f"{base.rstrip('/')}/"
+        referer = (
+            f"{parsed.scheme}://{parsed.netloc}/"
+            if parsed.scheme and parsed.netloc
+            else f"{base.rstrip('/')}/"
+        )
         return {
             "User-Agent": "Mozilla/5.0",
             "Referer": referer,
@@ -178,12 +197,22 @@ class RipAssetLite:
                             if resp.status == 200:
                                 return await resp.read(), errors
 
-                            errors.append(f"HTTP {resp.status} @ {url} (attempt {attempt}/{max_attempts})")
-                            if not self._is_retryable_http_status(resp.status) or attempt >= max_attempts:
+                            errors.append(
+                                f"HTTP {resp.status} @ {url} (attempt {attempt}/{max_attempts})"
+                            )
+                            if (
+                                not self._is_retryable_http_status(resp.status)
+                                or attempt >= max_attempts
+                            ):
                                 break
                     except Exception as e:
-                        errors.append(f"{type(e).__name__} @ {url}: {e} (attempt {attempt}/{max_attempts})")
-                        if not self._is_retryable_exception(e) or attempt >= max_attempts:
+                        errors.append(
+                            f"{type(e).__name__} @ {url}: {e} (attempt {attempt}/{max_attempts})"
+                        )
+                        if (
+                            not self._is_retryable_exception(e)
+                            or attempt >= max_attempts
+                        ):
                             break
 
                     if backoff > 0:
@@ -252,25 +281,31 @@ class RipAssetLite:
             cache_path.write_bytes(data)
             return str(cache_path)
 
-    async def prefetch_icons(self, items: Iterable[Tuple[str, int]]) -> Dict[Tuple[str, int], str]:
+    async def prefetch_icons(
+        self, items: Iterable[Tuple[str, int]]
+    ) -> Dict[Tuple[str, int], str]:
         """
         批量预取动态图标，返回成功缓存的本地路径映射。
         """
         wanted: Set[Tuple[str, int]] = {
-            (c, int(i))
-            for c, i in items
-            if c in _DYNAMIC_ICON_CATEGORIES
+            (c, int(i)) for c, i in items if c in _DYNAMIC_ICON_CATEGORIES
         }
         result: Dict[Tuple[str, int], str] = {}
         if not wanted or not plugin_config.mysekai_dynamic_icon_enabled:
             return result
 
-        sem = asyncio.Semaphore(max(1, int(plugin_config.mysekai_icon_prefetch_concurrency)))
+        sem = asyncio.Semaphore(
+            max(1, int(plugin_config.mysekai_icon_prefetch_concurrency))
+        )
         failed: List[Tuple[str, int]] = []
 
-        async def _one(session: aiohttp.ClientSession, category: str, item_id: int) -> None:
+        async def _one(
+            session: aiohttp.ClientSession, category: str, item_id: int
+        ) -> None:
             async with sem:
-                p = await self.get_asset_cache_path(session, category, item_id, allow_error=True)
+                p = await self.get_asset_cache_path(
+                    session, category, item_id, allow_error=True
+                )
                 if p:
                     result[(category, item_id)] = p
                 else:
@@ -286,17 +321,23 @@ class RipAssetLite:
             )
         return result
 
-    async def prefetch_harvest_fixture_icons(self, fixture_ids: Iterable[int]) -> Dict[int, str]:
+    async def prefetch_harvest_fixture_icons(
+        self, fixture_ids: Iterable[int]
+    ) -> Dict[int, str]:
         wanted: Set[int] = {int(x) for x in fixture_ids if x is not None}
         result: Dict[int, str] = {}
         if not wanted or not plugin_config.mysekai_dynamic_icon_enabled:
             return result
 
-        sem = asyncio.Semaphore(max(1, int(plugin_config.mysekai_icon_prefetch_concurrency)))
+        sem = asyncio.Semaphore(
+            max(1, int(plugin_config.mysekai_icon_prefetch_concurrency))
+        )
 
         async def _one(session: aiohttp.ClientSession, fixture_id: int) -> None:
             async with sem:
-                p = await self.get_harvest_fixture_icon_path(session, fixture_id, allow_error=True)
+                p = await self.get_harvest_fixture_icon_path(
+                    session, fixture_id, allow_error=True
+                )
                 if p:
                     result[fixture_id] = p
 
@@ -304,10 +345,14 @@ class RipAssetLite:
             await asyncio.gather(*[_one(session, fid) for fid in wanted])
 
         # 该类别不进行远程下载；这里统计“本地可用命中”（缓存 + data 静态 + resources 静态）。
-        logger.info(f"MySekai harvest fixture icon 本地可用命中: {len(result)}/{len(wanted)}")
+        logger.info(
+            f"MySekai harvest fixture icon 本地可用命中: {len(result)}/{len(wanted)}"
+        )
         return result
 
-    async def prefetch_from_analysis_data(self, analysis_data: AggregatedData) -> Dict[Tuple[str, int], str]:
+    async def prefetch_from_analysis_data(
+        self, analysis_data: AggregatedData
+    ) -> Dict[Tuple[str, int], str]:
         items: Set[Tuple[str, int]] = set()
         for summary in analysis_data.values():
             for (category, item_id_str), _ in (summary or {}).items():

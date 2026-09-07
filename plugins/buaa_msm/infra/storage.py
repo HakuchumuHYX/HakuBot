@@ -21,7 +21,7 @@ from typing import Dict
 
 from nonebot.log import logger
 
-from ..config import plugin_config
+from plugins.buaa_msm.config import plugin_config
 
 # 从配置中获取路径
 file_storage_dir: Path = plugin_config.file_storage_dir
@@ -141,7 +141,11 @@ def remove_old_user_files(user_id: str, keep_file: Path):
 
     deleted_count = 0
     for file_path in file_storage_dir.iterdir():
-        if file_path.is_file() and file_path.suffix.lower() == ".bin" and file_path != keep_file:
+        if (
+            file_path.is_file()
+            and file_path.suffix.lower() == ".bin"
+            and file_path != keep_file
+        ):
             file_user_id = extract_user_id_from_filename(file_path.name)
             if file_user_id == user_id:
                 _delete_user_file(user_id, file_path)

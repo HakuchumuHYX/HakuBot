@@ -2,8 +2,8 @@ from nonebot import get_driver
 from nonebot.plugin import PluginMetadata
 
 # 导入功能模块
-from . import send
-from . import reply
+from plugins.send_and_reply import send
+from plugins.send_and_reply import reply
 
 __plugin_meta__ = PluginMetadata(
     name="消息转发与回复插件",
@@ -14,8 +14,5 @@ __plugin_meta__ = PluginMetadata(
     ),
     type="application",
     supported_adapters={"~onebot.v11"},
-    extra={
-        "author": "Your Name",
-        "version": "1.0.0"
-    }
+    extra={"author": "Your Name", "version": "1.0.0"},
 )

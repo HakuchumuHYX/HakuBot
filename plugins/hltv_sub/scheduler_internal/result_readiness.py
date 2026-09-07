@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..models import MapStats, MatchStats, ResultInfo
+from plugins.hltv_sub.models import MapStats, MatchStats, ResultInfo
 
 
 def _is_final_round_score(score1: int, score2: int) -> bool:
@@ -37,9 +37,7 @@ def _expected_maps_from_result(result: ResultInfo) -> tuple[int, str, Optional[s
 
 def _played_maps(stats: MatchStats) -> list[MapStats]:
     return [
-        m
-        for m in (stats.maps or [])
-        if m.score_team1 != "-" and m.score_team2 != "-"
+        m for m in (stats.maps or []) if m.score_team1 != "-" and m.score_team2 != "-"
     ]
 
 
@@ -71,7 +69,11 @@ def _score_pairs_match(
 ) -> bool:
     score_pair = _score_pair(score1, score2)
     expected_pair = _score_pair(expected_score1, expected_score2)
-    return score_pair is not None and expected_pair is not None and score_pair == expected_pair
+    return (
+        score_pair is not None
+        and expected_pair is not None
+        and score_pair == expected_pair
+    )
 
 
 def _unfinished_played_maps(played_maps: list[MapStats]) -> list[str]:
@@ -104,7 +106,9 @@ def get_result_stats_push_block_reason(
     if stats is None:
         return "stats 未获取到"
 
-    expected_maps, expected_maps_reason, score_block_reason = _expected_maps_from_result(result)
+    expected_maps, expected_maps_reason, score_block_reason = (
+        _expected_maps_from_result(result)
+    )
     if score_block_reason:
         return score_block_reason
 

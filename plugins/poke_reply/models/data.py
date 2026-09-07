@@ -7,11 +7,14 @@ import uuid
 from typing import List, Dict, Tuple
 from nonebot import logger
 
-from ..config import (
-    get_group_text_path, get_group_image_dir,
-    get_group_image_list_path, DEFAULT_TEXTS
+from plugins.poke_reply.config import (
+    get_group_text_path,
+    get_group_image_dir,
+    get_group_image_list_path,
+    DEFAULT_TEXTS,
 )
-from ..utils.json_store import atomic_write_json, load_json_file
+from utils.json_io import atomic_write_json, load_json
+
 
 class TextDataManager:
     def __init__(self):
@@ -29,25 +32,33 @@ class TextDataManager:
                 return self.save_text_data(group_id)
             try:
                 current_modified = os.path.getmtime(text_file_path)
-                if (group_id in self.last_modified and
-                        current_modified == self.last_modified[group_id] and
-                        group_id in self.group_texts):
+                if (
+                    group_id in self.last_modified
+                    and current_modified == self.last_modified[group_id]
+                    and group_id in self.group_texts
+                ):
                     return True
-                with open(text_file_path, 'r', encoding='utf-8') as f:
+                with open(text_file_path, "r", encoding="utf-8") as f:
                     file_content = f.read()
                 if not file_content.strip():
-                    logger.error(f"群 {group_id} 的文本文件为空，保留当前内存数据且不覆盖文件")
+                    logger.error(
+                        f"群 {group_id} 的文本文件为空，保留当前内存数据且不覆盖文件"
+                    )
                     return False
                 loaded_data = json.loads(file_content)
                 if isinstance(loaded_data, list):
                     self.group_texts[group_id] = loaded_data
                     self.last_modified[group_id] = current_modified
                     return True
-                logger.error(f"群 {group_id} 的文本文件格式错误，保留当前内存数据且不覆盖文件")
+                logger.error(
+                    f"群 {group_id} 的文本文件格式错误，保留当前内存数据且不覆盖文件"
+                )
                 self._backup_corrupt_text_file(text_file_path, group_id)
                 return False
             except json.JSONDecodeError as e:
-                logger.error(f"群 {group_id} 的文本文件JSON解析错误: {e}，保留当前内存数据且不覆盖文件")
+                logger.error(
+                    f"群 {group_id} 的文本文件JSON解析错误: {e}，保留当前内存数据且不覆盖文件"
+                )
                 self._backup_corrupt_text_file(text_file_path, group_id)
                 return False
             except Exception as e:
@@ -76,9 +87,17 @@ class TextDataManager:
                 self.group_images[group_id] = []
                 return self.save_image_data(group_id)
 
-            result = load_json_file(image_list_path, list, default=[])
+            result = load_json(
+                image_list_path,
+                expected_type=list,
+                missing_ok=True,
+                backup_on_error=True,
+                default=[],
+            )
             if not result.success:
-                logger.error(f"群 {group_id} 的图片列表加载失败，保留当前内存数据且不覆盖文件: {result.error}")
+                logger.error(
+                    f"群 {group_id} 的图片列表加载失败，保留当前内存数据且不覆盖文件: {result.error}"
+                )
                 return False
 
             loaded_data = result.data
@@ -100,10 +119,15 @@ class TextDataManager:
             if group_id not in self.group_texts:
                 self.group_texts[group_id] = []
             text_file_path = get_group_text_path(group_id)
-            if atomic_write_json(text_file_path, self.group_texts[group_id], list):
+            try:
+                atomic_write_json(
+                    text_file_path, self.group_texts[group_id], expected_type=list
+                )
                 if os.path.exists(text_file_path):
                     self.last_modified[group_id] = os.path.getmtime(text_file_path)
                 return True
+            except (OSError, ValueError, TypeError):
+                logger.exception(f"保存群 {group_id} 文本失败")
             logger.error(f"保存群 {group_id} 的文本文件失败")
             return False
 
@@ -112,8 +136,13 @@ class TextDataManager:
             if group_id not in self.group_images:
                 self.group_images[group_id] = []
             image_list_path = get_group_image_list_path(group_id)
-            if atomic_write_json(image_list_path, self.group_images[group_id], list):
+            try:
+                atomic_write_json(
+                    image_list_path, self.group_images[group_id], expected_type=list
+                )
                 return True
+            except (OSError, ValueError, TypeError):
+                logger.exception(f"保存群 {group_id} 图片列表失败")
             logger.error(f"保存群 {group_id} 的图片列表失败")
             return False
 
@@ -145,7 +174,9 @@ class TextDataManager:
             self.group_texts[group_id] = old_texts
             return False
 
-    def add_image(self, group_id: int, image_data: bytes, file_extension: str) -> Tuple[bool, str]:
+    def add_image(
+        self, group_id: int, image_data: bytes, file_extension: str
+    ) -> Tuple[bool, str]:
         with self._lock:
             if group_id not in self.group_images:
                 if not self.load_image_data(group_id):
@@ -155,7 +186,7 @@ class TextDataManager:
             image_path = image_dir / filename
             old_images = list(self.group_images[group_id])
             try:
-                with open(image_path, 'wb') as f:
+                with open(image_path, "wb") as f:
                     f.write(image_data)
                 self.group_images[group_id] = old_images + [filename]
                 if self.save_image_data(group_id):
@@ -201,10 +232,10 @@ class TextDataManager:
         if group_id not in self.group_texts:
             if not self.load_text_data(group_id):
                 return "数据加载失败，请联系管理员喵！"
-        if (not self.group_texts[group_id] or
-                not self.is_text_list_valid(group_id)):
+        if not self.group_texts[group_id] or not self.is_text_list_valid(group_id):
             return "这个群还没有投稿内容喵，快来投稿吧！"
         import random
+
         return random.choice(self.group_texts[group_id])
 
     def get_random_image_path(self, group_id: int) -> str:
@@ -214,6 +245,7 @@ class TextDataManager:
         if not self.group_images[group_id]:
             return ""
         import random
+
         image_dir = get_group_image_dir(group_id)
         filename = random.choice(self.group_images[group_id])
         image_path = image_dir / filename
@@ -239,10 +271,14 @@ class TextDataManager:
         return len(self.group_images[group_id])
 
     def is_text_list_valid(self, group_id: int) -> bool:
-        return (group_id in self.group_texts and
-                isinstance(self.group_texts[group_id], list) and
-                (not self.group_texts[group_id] or
-                 self.group_texts[group_id][0] not in DEFAULT_TEXTS))
+        return (
+            group_id in self.group_texts
+            and isinstance(self.group_texts[group_id], list)
+            and (
+                not self.group_texts[group_id]
+                or self.group_texts[group_id][0] not in DEFAULT_TEXTS
+            )
+        )
 
     def ensure_group_data_loaded(self, group_id: int) -> bool:
         if group_id not in self.group_texts:
@@ -252,7 +288,7 @@ class TextDataManager:
             if not self.load_image_data(group_id):
                 return False
         return True
-    
+
     def get_all_group_ids(self) -> List[int]:
         text_group_ids = set(self.group_texts.keys())
         image_group_ids = set(self.group_images.keys())
@@ -263,7 +299,11 @@ class TextDataManager:
             return 0
         initial_count = len(self.group_images[group_id])
         image_dir = get_group_image_dir(group_id)
-        valid_images = [filename for filename in self.group_images[group_id] if (image_dir / filename).exists()]
+        valid_images = [
+            filename
+            for filename in self.group_images[group_id]
+            if (image_dir / filename).exists()
+        ]
         removed_count = initial_count - len(valid_images)
         if removed_count > 0:
             old_images = list(self.group_images[group_id])
@@ -274,5 +314,6 @@ class TextDataManager:
                 self.group_images[group_id] = old_images
                 return 0
         return removed_count
+
 
 data_manager = TextDataManager()

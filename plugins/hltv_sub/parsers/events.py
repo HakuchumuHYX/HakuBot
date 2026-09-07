@@ -10,8 +10,8 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 from nonebot.log import logger
 
-from ..models import EventInfo
-from .common import extract_id_from_url, format_date
+from plugins.hltv_sub.models import EventInfo
+from plugins.hltv_sub.parsers.common import extract_id_from_url, format_date
 
 
 def is_ongoing(start_date: str, end_date: str, tz) -> bool:
@@ -61,7 +61,9 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
                             title = text_elem.get_text(strip=True)
                         else:
                             first_div = name_container.find("div")
-                            if first_div and "lan-marker" not in first_div.get("class", []):
+                            if first_div and "lan-marker" not in first_div.get(
+                                "class", []
+                            ):
                                 title = first_div.get_text(strip=True)
 
                     if not title:
@@ -72,8 +74,12 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
                     start_date = ""
                     end_date = ""
                     if len(date_elems) >= 2:
-                        start_date = format_date(date_elems[0].get("data-unix", "") or "", tz)
-                        end_date = format_date(date_elems[1].get("data-unix", "") or "", tz)
+                        start_date = format_date(
+                            date_elems[0].get("data-unix", "") or "", tz
+                        )
+                        end_date = format_date(
+                            date_elems[1].get("data-unix", "") or "", tz
+                        )
 
                     if event_id and title:
                         events.append(
@@ -104,8 +110,12 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
                     start_date = ""
                     end_date = ""
                     if len(date_elems) >= 2:
-                        start_date = format_date(date_elems[0].get("data-unix", "") or "", tz)
-                        end_date = format_date(date_elems[1].get("data-unix", "") or "", tz)
+                        start_date = format_date(
+                            date_elems[0].get("data-unix", "") or "", tz
+                        )
+                        end_date = format_date(
+                            date_elems[1].get("data-unix", "") or "", tz
+                        )
 
                     if event_id and title:
                         events.append(
@@ -160,7 +170,9 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
     return events
 
 
-def parse_event_info(html: str, event_id: str, event_title: str, tz) -> EventInfo | None:
+def parse_event_info(
+    html: str, event_id: str, event_title: str, tz
+) -> EventInfo | None:
     """解析 /events/{id}/{slug} 页面"""
     soup = BeautifulSoup(html, "lxml")
     try:

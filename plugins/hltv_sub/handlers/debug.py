@@ -9,8 +9,8 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 
-from ..data_manager import data_manager
-from ..scheduler import hltv_scheduler
+from plugins.hltv_sub.data_manager import data_manager
+from plugins.hltv_sub.scheduler import hltv_scheduler
 
 
 hltv_check = on_command("hltv_check", priority=1, block=True)

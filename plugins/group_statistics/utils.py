@@ -1,8 +1,12 @@
 from typing import List, Tuple
 
-from .data_manager import data_manager
-from .config import TOP_N_USERS, MESSAGE_THRESHOLDS, DEFAULT_THRESHOLD_TEXT
-from ..utils.tools import get_logger
+from plugins.group_statistics.data_manager import data_manager
+from plugins.group_statistics.config import (
+    TOP_N_USERS,
+    MESSAGE_THRESHOLDS,
+    DEFAULT_THRESHOLD_TEXT,
+)
+from utils.logging import get_logger
 
 logger = get_logger("group_statistics.utils")
 
@@ -14,9 +18,7 @@ def get_top_users(group_id: int, top_n: int = TOP_N_USERS) -> List[Tuple[str, in
 
     # 按消息数量排序
     sorted_users = sorted(
-        data_manager.group_stats[group_id].items(),
-        key=lambda x: x[1],
-        reverse=True
+        data_manager.group_stats[group_id].items(), key=lambda x: x[1], reverse=True
     )[:top_n]
 
     # 转换为(群名片, 数量)格式
@@ -43,7 +45,9 @@ def get_additional_text(total: int) -> str:
     return DEFAULT_THRESHOLD_TEXT
 
 
-def generate_stat_message(total: int, top_users: List[Tuple[str, int]], is_daily: bool = True) -> str:
+def generate_stat_message(
+    total: int, top_users: List[Tuple[str, int]], is_daily: bool = True
+) -> str:
     """生成统计消息"""
     title = "【每日消息统计】" if is_daily else "【今日消息统计】"
     time_desc = "本日" if is_daily else "今日"

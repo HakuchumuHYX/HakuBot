@@ -1,3 +1,5 @@
+from utils.json_io import atomic_write_json
+
 # stickers/manage.py
 import json
 import re
@@ -6,13 +8,20 @@ from typing import Tuple, Optional, Dict, List
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from nonebot import get_driver
 
-from ..utils.tools import get_logger
+from utils.logging import get_logger
 
 logger = get_logger("stickers.manage")
 
-from . import send
-from .send import sticker_dir, list_json_path, load_sticker_list, folder_configs, alias_to_folder, sticker_folders, \
-    resolve_folder_name
+from plugins.stickers import send
+from plugins.stickers.send import (
+    sticker_dir,
+    list_json_path,
+    load_sticker_list,
+    folder_configs,
+    alias_to_folder,
+    sticker_folders,
+    resolve_folder_name,
+)
 
 
 def is_superuser(user_id: str) -> bool:
@@ -32,7 +41,9 @@ def is_superuser(user_id: str) -> bool:
     return False
 
 
-async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> Optional[str]:
+async def handle_manage_command(
+    message_text: str, event: GroupMessageEvent
+) -> Optional[str]:
     """
     处理管理命令
 
@@ -48,7 +59,7 @@ async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> 
         return reload_sticker_list()
 
     # 匹配 "删除 1024" 或 "删除 1024 4399"
-    delete_match = re.match(r'^删除\s+(.+)$', message_text, re.IGNORECASE)
+    delete_match = re.match(r"^删除\s+(.+)$", message_text, re.IGNORECASE)
     if delete_match:
         if not is_superuser(str(event.user_id)):
             return "权限不足，只有超级用户才能删除图片"
@@ -62,7 +73,7 @@ async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> 
 
         # 动态获取当前最大编号
         current_max_id = send.current_max_id
-        valid_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+        valid_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 
         results = []
 
@@ -97,13 +108,17 @@ async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> 
                     target_file = None
                     if potential_path.exists() and potential_path.is_file():
                         target_file = potential_path
-                    elif potential_path_upper.exists() and potential_path_upper.is_file():
+                    elif (
+                        potential_path_upper.exists() and potential_path_upper.is_file()
+                    ):
                         target_file = potential_path_upper
 
                     if target_file:
                         try:
                             target_file.unlink()  # 删除文件
-                            results.append(f"✅ 已删除 {target_id} (原位于 '{folder_name}')")
+                            results.append(
+                                f"✅ 已删除 {target_id} (原位于 '{folder_name}')"
+                            )
                             file_deleted = True
                         except Exception as e:
                             results.append(f"❌ 删除 {target_id} 失败: {e}")
@@ -120,7 +135,9 @@ async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> 
         return "\n".join(results)
 
     # 新建Gallery命令
-    new_gallery_match = re.match(r'^sticker 新建gallery\s+(\S+)$', message_text, re.IGNORECASE)
+    new_gallery_match = re.match(
+        r"^sticker 新建gallery\s+(\S+)$", message_text, re.IGNORECASE
+    )
     if new_gallery_match:
         if not is_superuser(str(event.user_id)):
             return "权限不足，只有超级用户才能新建gallery"
@@ -129,7 +146,9 @@ async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> 
         return create_new_gallery(gallery_name)
 
     # 添加别名命令
-    add_alias_match = re.match(r'^添加别名\s+(\S+)\s+to\s+(\S+)$', message_text, re.IGNORECASE)
+    add_alias_match = re.match(
+        r"^添加别名\s+(\S+)\s+to\s+(\S+)$", message_text, re.IGNORECASE
+    )
     if add_alias_match:
         if not is_superuser(str(event.user_id)):
             return "权限不足，只有超级用户才能添加别名"
@@ -139,7 +158,9 @@ async def handle_manage_command(message_text: str, event: GroupMessageEvent) -> 
         return await add_alias(alias, folder_name, str(event.user_id))
 
     # 删除别名命令
-    remove_alias_match = re.match(r'^删除别名\s+(\S+)\s+from\s+(\S+)$', message_text, re.IGNORECASE)
+    remove_alias_match = re.match(
+        r"^删除别名\s+(\S+)\s+from\s+(\S+)$", message_text, re.IGNORECASE
+    )
     if remove_alias_match:
         if not is_superuser(str(event.user_id)):
             return "权限不足，只有超级用户才能删除别名"
@@ -177,7 +198,7 @@ def create_new_gallery(gallery_name: str) -> str:
     """
     try:
         # 检查名称有效性
-        if not re.match(r'^[a-zA-Z0-9_\u4e00-\u9fa5-]+$', gallery_name):
+        if not re.match(r"^[a-zA-Z0-9_\u4e00-\u9fa5-]+$", gallery_name):
             return f"新建失败！名称 '{gallery_name}' 包含无效字符。"
         if gallery_name.lower() in ["stickers", "sticker", "表情", "表情包", "force"]:
             return f"新建失败！'{gallery_name}' 是保留关键字，请换个名称。"
@@ -203,25 +224,21 @@ def create_new_gallery(gallery_name: str) -> str:
             data = {"folders": []}
         else:
             try:
-                with open(list_json_path, 'r', encoding='utf-8') as f:
+                with open(list_json_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 if "folders" not in data or not isinstance(data["folders"], list):
                     data["folders"] = []
             except json.JSONDecodeError:
-                list_json_path.rename(list_json_path.with_suffix('.json.bak'))
+                list_json_path.rename(list_json_path.with_suffix(".json.bak"))
                 data = {"folders": []}
                 logger.warning("list.json 文件损坏，已备份并重置。")
 
         # 添加新配置
-        new_config = {
-            "name": gallery_name,
-            "aliases": []
-        }
+        new_config = {"name": gallery_name, "aliases": []}
         data["folders"].append(new_config)
 
         # 保存更新后的 list.json
-        with open(list_json_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(list_json_path, data, ensure_ascii=False, indent=2)
 
         # --- 3. 重载配置到内存 ---
         load_sticker_list()
@@ -255,7 +272,7 @@ async def add_alias(alias: str, folder_name: str, user_id: str) -> str:
         if not list_json_path.exists():
             return "添加别名失败！list.json 文件不存在"
 
-        with open(list_json_path, 'r', encoding='utf-8') as f:
+        with open(list_json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         folder_found = False
@@ -273,8 +290,7 @@ async def add_alias(alias: str, folder_name: str, user_id: str) -> str:
         if not folder_found:
             return f"添加别名失败！在 list.json 中未找到文件夹 '{actual_folder_name}'"
 
-        with open(list_json_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(list_json_path, data, ensure_ascii=False, indent=2)
 
         load_sticker_list()
 
@@ -310,7 +326,7 @@ def remove_alias(alias: str, folder_name: str) -> str:
         if not list_json_path.exists():
             return "删除别名失败！list.json 文件不存在"
 
-        with open(list_json_path, 'r', encoding='utf-8') as f:
+        with open(list_json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         folder_found = False
@@ -329,10 +345,11 @@ def remove_alias(alias: str, folder_name: str) -> str:
             return f"删除别名失败！在 list.json 中未找到文件夹 '{actual_folder_name}'"
 
         if not alias_removed:
-            return f"删除别名失败！在 '{actual_folder_name}' 的别名列表中未找到 '{alias}'"
+            return (
+                f"删除别名失败！在 '{actual_folder_name}' 的别名列表中未找到 '{alias}'"
+            )
 
-        with open(list_json_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(list_json_path, data, ensure_ascii=False, indent=2)
 
         load_sticker_list()
 

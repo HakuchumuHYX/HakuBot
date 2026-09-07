@@ -2,25 +2,29 @@
 alive_stat 运行时间追踪模块。
 负责 HakuBot 和 Autochat 的运行时间统计、持久化。
 """
+
+from utils.json_io import atomic_write_json
+from utils.paths import PluginPaths
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import config
+from plugins.alive_stat.config import config
 
-from ..utils.tools import get_logger
+from utils.logging import get_logger
 
 logger = get_logger("alive_stat.runtime")
 
 # ================= 数据目录 =================
 
-DATA_DIR = Path() / "data" / "alive_stats"
+DATA_DIR = PluginPaths("alive_stat").data
 DATA_FILE = DATA_DIR / "stats.json"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ================= 数据类 =================
+
 
 @dataclass
 class BotRuntime:
@@ -32,6 +36,7 @@ class BotRuntime:
 
 
 # ================= 格式化工具 =================
+
 
 def format_duration(td: timedelta) -> str:
     total_seconds = int(td.total_seconds())
@@ -90,8 +95,7 @@ def save_data():
         "last_save_time": now.strftime("%Y-%m-%d %H:%M:%S"),
     }
     try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
+        atomic_write_json(DATA_FILE, data, indent=4)
     except Exception as e:
         logger.exception(f"自动保存 alive 数据失败: {e}")
 
@@ -101,6 +105,7 @@ load_data()
 
 
 # ================= Runtime 获取 =================
+
 
 def get_hakubot_runtime(now: datetime) -> BotRuntime:
     current_delta = now - current_session_start

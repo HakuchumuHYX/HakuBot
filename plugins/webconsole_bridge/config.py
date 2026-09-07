@@ -1,4 +1,5 @@
 from __future__ import annotations
+from utils.paths import PluginPaths
 
 import json
 from dataclasses import dataclass
@@ -6,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-CONFIG_FILE = Path(__file__).with_name("config.json")
+CONFIG_FILE = PluginPaths("webconsole_bridge").config / "config.json"
 _ALLOWED_KEYS = {
     "enabled",
     "database_path",
@@ -27,13 +28,9 @@ def _read_probe_interval(value: Any) -> float:
     try:
         interval = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "probe_interval_seconds must be a number"
-        ) from exc
+        raise ValueError("probe_interval_seconds must be a number") from exc
     if interval < 5:
-        raise ValueError(
-            "probe_interval_seconds must be at least 5 seconds"
-        )
+        raise ValueError("probe_interval_seconds must be at least 5 seconds")
     return interval
 
 
@@ -63,9 +60,7 @@ class BridgeConfig:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-            raise ValueError(
-                f"cannot read config.json ({type(exc).__name__})"
-            ) from exc
+            raise ValueError(f"cannot read config.json ({type(exc).__name__})") from exc
         if not isinstance(raw, dict):
             raise ValueError("config.json must contain a JSON object")
         unknown = sorted(set(raw) - _ALLOWED_KEYS)

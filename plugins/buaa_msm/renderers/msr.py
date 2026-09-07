@@ -14,12 +14,24 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+from PIL import (
+    Image,
+    ImageChops,
+    ImageColor,
+    ImageDraw,
+    ImageEnhance,
+    ImageFilter,
+    ImageFont,
+)
 
-from .. import analysis
-from ..config import plugin_config
-from ..domain.constants import FIXTURE_COLORS, MAP_ORDER, SCENE_KEY_TO_NAME
-from ..resources.catalog import (
+from plugins.buaa_msm import analysis
+from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.domain.constants import (
+    FIXTURE_COLORS,
+    MAP_ORDER,
+    SCENE_KEY_TO_NAME,
+)
+from plugins.buaa_msm.resources.catalog import (
     ITEM_TEXTURES,
     RARE_ITEM,
     SCENES,
@@ -28,8 +40,8 @@ from ..resources.catalog import (
     get_icon,
     resource_dir,
 )
-from ..services.masterdata_lite import masterdata_lite
-from ..services.rip_asset_lite import rip_asset_lite
+from plugins.buaa_msm.services.masterdata_lite import masterdata_lite
+from plugins.buaa_msm.services.rip_asset_lite import rip_asset_lite
 
 ColorRGB = Tuple[int, int, int]
 ColorRGBA = Tuple[int, int, int, int]
@@ -57,7 +69,9 @@ def _rarity_level(category: str, item_id: int) -> int:
 def _get_texture_path(category: str, item_id: int) -> Optional[str]:
     # 1) 唱片保持现有逻辑：优先走封面缓存，失败时用默认 surplus 图标
     if category == "mysekai_music_record":
-        return str(resource_dir / "icon" / "Texture2D" / "item_surplus_music_record.png")
+        return str(
+            resource_dir / "icon" / "Texture2D" / "item_surplus_music_record.png"
+        )
 
     # 2) 动态 icon（已在 orchestration 阶段异步预取到本地）
     dyn = rip_asset_lite.get_cached_icon_path(category, item_id)
@@ -89,10 +103,18 @@ def _gradient_bg(size: Tuple[int, int]) -> Image.Image:
         t = y / max(h - 1, 1)
         if t < 0.5:
             tt = t / 0.5
-            c = (_lerp(top[0], mid[0], tt), _lerp(top[1], mid[1], tt), _lerp(top[2], mid[2], tt))
+            c = (
+                _lerp(top[0], mid[0], tt),
+                _lerp(top[1], mid[1], tt),
+                _lerp(top[2], mid[2], tt),
+            )
         else:
             tt = (t - 0.5) / 0.5
-            c = (_lerp(mid[0], bot[0], tt), _lerp(mid[1], bot[1], tt), _lerp(mid[2], bot[2], tt))
+            c = (
+                _lerp(mid[0], bot[0], tt),
+                _lerp(mid[1], bot[1], tt),
+                _lerp(mid[2], bot[2], tt),
+            )
         for x in range(w):
             px[x, y] = c
 
@@ -132,7 +154,9 @@ def _paste_with_shadow(
     shadow_img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     shadow_img.putalpha(alpha)
     shadow_img = shadow_img.filter(ImageFilter.GaussianBlur(radius=shadow_radius))
-    shadow_img = ImageChops.multiply(shadow_img, Image.new("RGBA", (w, h), (0, 0, 0, 90)))
+    shadow_img = ImageChops.multiply(
+        shadow_img, Image.new("RGBA", (w, h), (0, 0, 0, 90))
+    )
     dst.paste(shadow_img, (x + sx, y + sy), shadow_img)
     dst.paste(src, (x, y), src)
 
@@ -297,7 +321,9 @@ def _contains_rare_item(reward: Dict[str, Any]) -> bool:
     return False
 
 
-def _resolve_harvest_fixture_marker(fixture_id: int, grid_px: float) -> Tuple[Optional[str], int, Tuple[int, int]]:
+def _resolve_harvest_fixture_marker(
+    fixture_id: int, grid_px: float
+) -> Tuple[Optional[str], int, Tuple[int, int]]:
     """
     资源点本体材质图：
     1) 动态缓存（haruki 资产，已由 orchestration 预取）
@@ -328,8 +354,15 @@ def _resolve_harvest_fixture_marker(fixture_id: int, grid_px: float) -> Tuple[Op
 
         for rarity_dir in rarity_dirs:
             candidates = [
-                plugin_config.data_dir / "harvest_fixture_icon" / rarity_dir / f"{asset_name}.png",
-                resource_dir / "mysekai" / "harvest_fixture_icon" / rarity_dir / f"{asset_name}.png",
+                plugin_config.data_dir
+                / "harvest_fixture_icon"
+                / rarity_dir
+                / f"{asset_name}.png",
+                resource_dir
+                / "mysekai"
+                / "harvest_fixture_icon"
+                / rarity_dir
+                / f"{asset_name}.png",
             ]
             hit = next((p for p in candidates if p.exists()), None)
             if hit:
@@ -379,7 +412,9 @@ def _tile_qty_color(qty: int) -> ColorRGBA:
     return (60, 60, 60, 255)
 
 
-def _paste_icon_on_tile(tile: Image.Image, icon: Image.Image, padding: int = 4) -> Image.Image:
+def _paste_icon_on_tile(
+    tile: Image.Image, icon: Image.Image, padding: int = 4
+) -> Image.Image:
     tile = tile.copy()
     if icon.mode != "RGBA":
         icon = icon.convert("RGBA")
@@ -390,7 +425,9 @@ def _paste_icon_on_tile(tile: Image.Image, icon: Image.Image, padding: int = 4) 
     return tile
 
 
-def _apply_rarity_border(tile: Image.Image, rarity: int, *, size: int, width: int = 4) -> Image.Image:
+def _apply_rarity_border(
+    tile: Image.Image, rarity: int, *, size: int, width: int = 4
+) -> Image.Image:
     """按稀有度描边（替代光晕；线条更粗更清晰）"""
     if rarity not in (1, 2):
         return tile
@@ -441,7 +478,9 @@ def generate_msr_summary_image_bytes(
             record_qty[key] = record_qty.get(key, 0) + _safe_int(qty, 0)
 
     max_record_lines = 10
-    record_items: List[Tuple[str, int]] = sorted(record_qty.items(), key=lambda kv: (-kv[1], kv[0]))[:max_record_lines]
+    record_items: List[Tuple[str, int]] = sorted(
+        record_qty.items(), key=lambda kv: (-kv[1], kv[0])
+    )[:max_record_lines]
 
     # jacket_cache fallback
     _jc = jacket_cache or {}
@@ -532,12 +571,19 @@ def generate_msr_summary_image_bytes(
         y2 = y + 44
         if visiting_characters:
             for group_id, info in sorted(
-                visiting_characters.items(), key=lambda kv: kv[1].get("count", 0), reverse=True
+                visiting_characters.items(),
+                key=lambda kv: kv[1].get("count", 0),
+                reverse=True,
             )[:6]:
                 name = str(info.get("name", group_id))
                 count = _safe_int(info.get("count", 0))
                 suffix = "（今日已来访）" if group_id in highlight_characters else ""
-                d.text((left_x + 4, y2), f"• {name}：{count}次 {suffix}".strip(), fill=(70, 70, 70), font=font_text)
+                d.text(
+                    (left_x + 4, y2),
+                    f"• {name}：{count}次 {suffix}".strip(),
+                    fill=(70, 70, 70),
+                    font=font_text,
+                )
                 y2 += 22
 
         d.text((right_x, y + 12), "今日唱片", fill=(60, 90, 170), font=font_h2)
@@ -549,9 +595,13 @@ def generate_msr_summary_image_bytes(
             text_offset_x = 0
             if jimg is not None:
                 try:
-                    jthumb = jimg.resize((jacket_thumb_size, jacket_thumb_size), Image.Resampling.LANCZOS).convert("RGBA")
+                    jthumb = jimg.resize(
+                        (jacket_thumb_size, jacket_thumb_size), Image.Resampling.LANCZOS
+                    ).convert("RGBA")
                     # 圆角遮罩
-                    jmask = _rounded_rect_mask((jacket_thumb_size, jacket_thumb_size), 6)
+                    jmask = _rounded_rect_mask(
+                        (jacket_thumb_size, jacket_thumb_size), 6
+                    )
                     jthumb.putalpha(jmask)
                     bg.paste(jthumb, (right_x, y3), jthumb)
                     d = ImageDraw.Draw(bg)
@@ -563,13 +613,25 @@ def generate_msr_summary_image_bytes(
             text_y = y3 + (jacket_thumb_size - 16) // 2 if text_offset_x > 0 else y3 + 2
             name = analysis.get_resource_name("mysekai_music_record", str(record_id))
             line = f"• {name}：{qty}个"
-            line = _ellipsize(font_text, line, max(10, right_max_w - 60 - text_offset_x))
-            d.text((right_x + text_offset_x, text_y), line, fill=(70, 70, 70), font=font_text)
+            line = _ellipsize(
+                font_text, line, max(10, right_max_w - 60 - text_offset_x)
+            )
+            d.text(
+                (right_x + text_offset_x, text_y),
+                line,
+                fill=(70, 70, 70),
+                font=font_text,
+            )
 
             if str(record_id) in owned_music_records:
                 suffix = "（已获得）"
                 sw = _text_width(font_text, line)
-                d.text((right_x + text_offset_x + sw + 6, text_y + 1), suffix, fill=(140, 140, 140), font=font_small)
+                d.text(
+                    (right_x + text_offset_x + sw + 6, text_y + 1),
+                    suffix,
+                    fill=(140, 140, 140),
+                    font=font_small,
+                )
 
             y3 += record_row_h
 
@@ -604,7 +666,9 @@ def generate_msr_summary_image_bytes(
             thumb_rgba = thumb2.convert("RGBA")
             thumb_rgba.putalpha(mask)
             out = bg.convert("RGBA")
-            _paste_with_shadow(out, thumb_rgba, (thumb_box[0], thumb_box[1]), shadow=False)
+            _paste_with_shadow(
+                out, thumb_rgba, (thumb_box[0], thumb_box[1]), shadow=False
+            )
             bg.paste(out.convert("RGB"), (0, 0))
         else:
             d.rectangle(thumb_box, outline=(200, 200, 200), width=2)
@@ -631,7 +695,9 @@ def generate_msr_summary_image_bytes(
             icon = None
             if category == "mysekai_music_record" and str(item_id) in _jc:
                 try:
-                    icon = _jc[str(item_id)].resize((tile_sz - 8, tile_sz - 8), Image.Resampling.LANCZOS)
+                    icon = _jc[str(item_id)].resize(
+                        (tile_sz - 8, tile_sz - 8), Image.Resampling.LANCZOS
+                    )
                 except Exception:
                     icon = None
 
@@ -660,8 +726,13 @@ def generate_msr_summary_image_bytes(
             num_y = cy + 10
             d.text((num_x, num_y), str(qty), fill=num_color, font=font_num)
 
-            if category == "mysekai_music_record" and str(item_id) in owned_music_records:
-                d.text((num_x, num_y + 30), "已获得", fill=(140, 140, 140), font=font_small)
+            if (
+                category == "mysekai_music_record"
+                and str(item_id) in owned_music_records
+            ):
+                d.text(
+                    (num_x, num_y + 30), "已获得", fill=(140, 140, 140), font=font_small
+                )
 
         y += card_h + 18
 
@@ -697,7 +768,9 @@ class _DropDrawCall:
     order: int
 
 
-def _compute_small_icon_flags(drops: List[Tuple[str, int, int]]) -> Dict[Tuple[str, int], bool]:
+def _compute_small_icon_flags(
+    drops: List[Tuple[str, int, int]],
+) -> Dict[Tuple[str, int], bool]:
     """
     简化版规则：
     - 如果同点位存在 mysekai_material，则非 mysekai_material 全部 small
@@ -726,7 +799,9 @@ def stitch_images_grid_memory(images: List[Image.Image]) -> Image.Image:
 
     if len(images) >= 4:
         imgs = images[:4]
-        dst = Image.new("RGB", (max_w * 2 + border * 2 + line, max_h * 2 + border * 2 + line), blue)
+        dst = Image.new(
+            "RGB", (max_w * 2 + border * 2 + line, max_h * 2 + border * 2 + line), blue
+        )
 
         p00 = (border, border)
         p01 = (border + max_w + line, border)
@@ -815,7 +890,9 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
                 marker_drawn = False
 
                 if fixture_id > 0:
-                    marker_path, marker_size, marker_offset = _resolve_harvest_fixture_marker(fixture_id, grid_px)
+                    marker_path, marker_size, marker_offset = (
+                        _resolve_harvest_fixture_marker(fixture_id, grid_px)
+                    )
                     if marker_path and marker_size > 0:
                         try:
                             marker = get_icon(marker_path, (marker_size, marker_size))
@@ -828,7 +905,9 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
 
                 if not marker_drawn:
                     fill_rgb = _fixture_color_rgb(fixture_id)
-                    outline_rgb = (255, 0, 0) if _contains_rare_item(reward) else (0, 0, 0)
+                    outline_rgb = (
+                        (255, 0, 0) if _contains_rare_item(reward) else (0, 0, 0)
+                    )
                     r_dot = 6
                     d.ellipse(
                         (px_x - r_dot, px_y - r_dot, px_x + r_dot, px_y + r_dot),
@@ -857,8 +936,16 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
                 continue
 
             small_flags = _compute_small_icon_flags(drops)
-            large = [(c, item_id, qty) for (c, item_id, qty) in drops if not small_flags.get((c, item_id), False)]
-            small = [(c, item_id, qty) for (c, item_id, qty) in drops if small_flags.get((c, item_id), False)]
+            large = [
+                (c, item_id, qty)
+                for (c, item_id, qty) in drops
+                if not small_flags.get((c, item_id), False)
+            ]
+            small = [
+                (c, item_id, qty)
+                for (c, item_id, qty) in drops
+                if small_flags.get((c, item_id), False)
+            ]
 
             large_sz = 34
             small_sz = 24
@@ -869,7 +956,15 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
             start_x = int(px_x - total_w / 2)
             base_y = int(px_y - (large_sz + 16))
 
-            def add_call(cx: int, cy: int, category: str, item_id: int, qty: int, *, small_icon: bool):
+            def add_call(
+                cx: int,
+                cy: int,
+                category: str,
+                item_id: int,
+                qty: int,
+                *,
+                small_icon: bool,
+            ):
                 tex = _get_texture_path(category, item_id)
                 if not tex:
                     return
@@ -907,8 +1002,12 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
                     )
                 )
 
-            large_sorted = sorted(large, key=lambda t: (-_rarity_level(t[0], t[1]), -t[2], t[1]))
-            small_sorted = sorted(small, key=lambda t: (-_rarity_level(t[0], t[1]), -t[2], t[1]))
+            large_sorted = sorted(
+                large, key=lambda t: (-_rarity_level(t[0], t[1]), -t[2], t[1])
+            )
+            small_sorted = sorted(
+                small, key=lambda t: (-_rarity_level(t[0], t[1]), -t[2], t[1])
+            )
 
             large_positions: List[Tuple[int, int]] = []
             cur_x = start_x

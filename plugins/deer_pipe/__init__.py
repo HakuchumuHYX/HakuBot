@@ -8,14 +8,14 @@ from nonebot import logger
 from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 
 # 加载依赖插件
-from . import requirements as requirements
+from plugins.deer_pipe import requirements as requirements
 
 # 加载命令处理器
-from . import matchers as matchers
+from plugins.deer_pipe import matchers as matchers
 
 # 导出配置供外部使用
-from .config import config as plugin_config
-from .constants import PLUGIN_ID, PLUGIN_VERSION
+from plugins.deer_pipe.config import config as plugin_config
+from plugins.deer_pipe.constants import PLUGIN_ID, PLUGIN_VERSION
 
 __all__ = ["plugin_config", "PLUGIN_ID", "PLUGIN_VERSION"]
 

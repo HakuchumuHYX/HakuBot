@@ -5,15 +5,21 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.log import logger
 
-from .config import config
+from plugins.plus_one.config import config
 
 # 配置管理命令
 reload_config = on_command("重载复读配置", permission=SUPERUSER, priority=1, block=True)
 view_config = on_command("查看复读配置", permission=SUPERUSER, priority=1, block=True)
-add_blocked_word = on_command("添加屏蔽词", permission=SUPERUSER, priority=1, block=True)
-remove_blocked_word = on_command("移除屏蔽词", permission=SUPERUSER, priority=1, block=True)
+add_blocked_word = on_command(
+    "添加屏蔽词", permission=SUPERUSER, priority=1, block=True
+)
+remove_blocked_word = on_command(
+    "移除屏蔽词", permission=SUPERUSER, priority=1, block=True
+)
 add_black_list = on_command("添加黑名单", permission=SUPERUSER, priority=1, block=True)
-remove_black_list = on_command("移除黑名单", permission=SUPERUSER, priority=1, block=True)
+remove_black_list = on_command(
+    "移除黑名单", permission=SUPERUSER, priority=1, block=True
+)
 
 
 @reload_config.handle()

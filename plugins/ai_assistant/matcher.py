@@ -1,3 +1,5 @@
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from utils.paths import PluginPaths
 import time
 from pathlib import Path
 
@@ -16,22 +18,29 @@ from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
-from ..utils.browser import md_to_pic, read_tpl
-from ..utils.image_utils import image_segment
-from .config import plugin_config, save_config
-from .utils import extract_pure_text, parse_message_content, remove_markdown
-from .services.chat_service import call_chat_completion
-from .services.chat_harness import decide_chat_search, prepare_chat_messages
-from .services.imagen_service import call_image_generation
-from .services.search_service import (
-    build_visual_brief_from_search,
-    compile_image_prompt_from_visual_brief,
-    web_image_search_with_rewrite,
+from utils.rendering.engine import render_markdown, read_tpl
+from utils.onebot.media import image_segment
+from plugins.ai_assistant.config import plugin_config
+from plugins.ai_assistant.utils import (
+    extract_pure_text,
+    parse_message_content,
+    remove_markdown,
 )
+from plugins.ai_assistant.services.chat_service import call_chat_completion
+from plugins.ai_assistant.services.chat_harness import (
+    decide_chat_search,
+    prepare_chat_messages,
+)
+from plugins.ai_assistant.services.imagen_service import call_image_generation
+from plugins.ai_assistant.services.search.visual import build_visual_brief_from_search
+from plugins.ai_assistant.services.search.visual import (
+    compile_image_prompt_from_visual_brief,
+)
+from plugins.ai_assistant.services.search.workflow import web_image_search_with_rewrite
 
 try:
-    from ..plugin_manager.enable import is_feature_enabled
-    from ..plugin_manager.cd_manager import check_cd, update_cd
+    from core.access import is_feature_enabled
+    from core.cooldown import check_cd, update_cd
 
     MANAGER_AVAILABLE = True
 except ImportError:
@@ -41,17 +50,18 @@ except ImportError:
 PLUGIN_NAME = "ai_assistant"
 
 # 自定义 CSS 生成路径
-CUSTOM_CSS_DIR = Path("data/ai_assistant")
+CUSTOM_CSS_DIR = PluginPaths("ai_assistant").data
 CUSTOM_CSS_PATH = CUSTOM_CSS_DIR / "custom_markdown.css"
 
-@get_driver().on_startup
+
+@on_plugin_startup(get_driver(), "ai_assistant")
 async def generate_custom_css():
     """机器人启动时生成合并好的自定义 Markdown CSS"""
     try:
         # 获取基础样式
         base_css = await read_tpl("github-markdown-light.css")
         highlight_css = await read_tpl("pygments-default.css")
-        
+
         # 加上配置的背景颜色覆盖
         bg_color = plugin_config.chat.bg_color
         custom_css = f"""
@@ -65,22 +75,33 @@ html, body, .markdown-body {{
 """
         # 确保目录存在
         CUSTOM_CSS_DIR.mkdir(parents=True, exist_ok=True)
-        
+
         async with aiofiles.open(CUSTOM_CSS_PATH, "w", encoding="utf-8") as f:
             await f.write(custom_css)
-            
+
         logger.info(f"已生成自定义 Markdown 背景颜色 CSS，背景色: {bg_color}")
     except Exception as e:
         logger.error(f"生成自定义 CSS 失败: {e}")
 
+
 # 注册命令
 chat_matcher = on_command("chat", priority=5, block=True)
-chat_web_matcher = on_command("chat联网", aliases={"chat_web", "chatweb", "chat搜索"}, priority=5, block=True)
+chat_web_matcher = on_command(
+    "chat联网", aliases={"chat_web", "chatweb", "chat搜索"}, priority=5, block=True
+)
 
 draw_matcher = on_command("生图", priority=5, block=True)
-draw_web_matcher = on_command("生图联网", aliases={"生图web", "生图搜索"}, priority=5, block=True)
+draw_web_matcher = on_command(
+    "生图联网", aliases={"生图web", "生图搜索"}, priority=5, block=True
+)
 
-model_cmd = on_command("切换模型", aliases={"更改模型", "change_model"}, permission=SUPERUSER, priority=1, block=True)
+model_cmd = on_command(
+    "切换模型",
+    aliases={"更改模型", "change_model"},
+    permission=SUPERUSER,
+    priority=1,
+    block=True,
+)
 
 
 async def _enforce_group_access(
@@ -113,7 +134,9 @@ def _update_group_cd(event: MessageEvent, feature: str) -> None:
         update_cd(f"{PLUGIN_NAME}:{feature}", str(event.group_id), str(event.user_id))
 
 
-async def _render_chat_reply(reply_text: str, stat_text: str) -> MessageSegment | Message:
+async def _render_chat_reply(
+    reply_text: str, stat_text: str
+) -> MessageSegment | Message:
     watermark = plugin_config.chat.watermark
     md_content = reply_text + f"\n\n---\n*{stat_text}*"
     if watermark:
@@ -126,7 +149,7 @@ async def _render_chat_reply(reply_text: str, stat_text: str) -> MessageSegment 
 
     try:
         css_path = str(CUSTOM_CSS_PATH.absolute()) if CUSTOM_CSS_PATH.exists() else ""
-        img_bytes = await md_to_pic(md=md_content, width=800, css_path=css_path)
+        img_bytes = await render_markdown(md=md_content, width=800, css_path=css_path)
         return image_segment(img_bytes)
     except Exception as exc:
         logger.error(f"渲染 Markdown 失败: {exc}")
@@ -333,12 +356,14 @@ async def handle_change_model(args: Message = CommandArg()):
     new_model = args.extract_plain_text().strip()
     if not new_model:
         await model_cmd.finish("请提供新的模型名称。例如：切换模型 gpt-4")
-    
+
     old_model = plugin_config.chat.model
     if old_model == new_model:
         await model_cmd.finish(f"当前已经是 {new_model} 模型了。")
 
-    await model_cmd.send(f"正在尝试切换到模型: {new_model}\n正在进行连接测试，请稍候...")
+    await model_cmd.send(
+        f"正在尝试切换到模型: {new_model}\n正在进行连接测试，请稍候..."
+    )
 
     try:
         # 构造测试消息
@@ -351,11 +376,14 @@ async def handle_change_model(args: Message = CommandArg()):
 
         # 如果代码执行到这里，说明测试成功，写入配置
         plugin_config.chat.model = new_model
-        save_config(plugin_config)
+        from core.settings import update_fields
+        from plugins.ai_assistant.config import CONFIG_PATH
+
+        update_fields(CONFIG_PATH, {"chat": {"model": new_model}})
 
         # 截取简短的响应预览
         preview = reply_text[:50] + "..." if len(reply_text) > 50 else reply_text
-        preview = preview.replace('\n', ' ')
+        preview = preview.replace("\n", " ")
 
         await model_cmd.finish(
             f"✅ 模型切换成功！\n"
@@ -363,7 +391,7 @@ async def handle_change_model(args: Message = CommandArg()):
             f"新模型: {used_model}\n"
             f"测试响应: {preview}"
         )
-    
+
     except FinishedException:
         raise
 

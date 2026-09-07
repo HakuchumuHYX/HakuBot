@@ -1,20 +1,21 @@
+from utils.paths import PluginPaths
 # pjsk_guess_song/config.py
 
 import json
-from pathlib import Path
 from typing import List, Dict, Any
 from pydantic import BaseModel, Extra
 from nonebot.log import logger
-import nonebot_plugin_localstore as localstore
 
 
 # --- 1. 定义配置结构与默认值 ---
+
 
 class PluginConfig(BaseModel, extra=Extra.ignore):
     """
     PJSK 猜歌插件配置模型
     (用于 config.json)
     """
+
     answer_timeout: int = 30
     daily_play_limit: int = 15
     super_users: List[str] = []
@@ -46,17 +47,18 @@ class PluginConfig(BaseModel, extra=Extra.ignore):
 # --- 2. 定义配置文件路径 ---
 
 PLUGIN_NAME = "pjsk_guess_song"
-data_dir = localstore.get_data_dir(PLUGIN_NAME)
+data_dir = PluginPaths("pjsk_guess_song").data
 data_dir.mkdir(parents=True, exist_ok=True)
-CONFIG_FILE_PATH = data_dir / "config.json"
+CONFIG_FILE_PATH = PluginPaths("pjsk_guess_song").config / "config.json"
 
 
-# --- 3. 加载/创建配置的函数 ---
+# --- 3. 配置加载 ---
+
 
 def load_plugin_config() -> PluginConfig:
     """
     加载插件配置。
-    如果 config.json 不存在，则创建默认配置。
+    文件不存在时使用内存默认值，不写入配置文件。
     """
     if CONFIG_FILE_PATH.exists():
         logger.info(f"正在从 {CONFIG_FILE_PATH} 加载 PJSK 猜歌插件配置...")
@@ -68,14 +70,8 @@ def load_plugin_config() -> PluginConfig:
             logger.error(f"加载 config.json 失败: {e}，将使用默认配置。")
             return PluginConfig()
     else:
-        logger.info(f"未找到 config.json，正在创建默认配置文件于 {CONFIG_FILE_PATH}")
-        default_config = PluginConfig()
-        try:
-            with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
-                json.dump(default_config.dict(), f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"创建默认配置文件失败: {e}")
-        return default_config
+        logger.info(f"未找到配置文件 {CONFIG_FILE_PATH}，使用内存默认配置")
+        return PluginConfig()
 
 
 plugin_config = load_plugin_config()

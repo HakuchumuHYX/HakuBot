@@ -6,15 +6,16 @@ from dataclasses import asdict
 from typing import Optional
 import pytz
 
-from ..utils.browser import template_to_pic
+from utils.rendering.engine import render_template_image
 
-from .config import plugin_config
-from .data_source import EventInfo, MatchInfo, ResultInfo, MatchStats
+from plugins.hltv_sub.config import plugin_config
+from plugins.hltv_sub.data_source import EventInfo, MatchInfo, ResultInfo, MatchStats
 
 # 导入 UpcomingMatch 类型（用于类型提示）
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
-    from .scheduler_internal.types import UpcomingMatch
+    from plugins.hltv_sub.scheduler_internal.types import UpcomingMatch
 
 
 # 模板目录
@@ -30,15 +31,15 @@ def get_timestamp() -> str:
 async def render_events(
     ongoing_events: list[EventInfo],
     upcoming_events: list[EventInfo],
-    subscribed_ids: list[str]
+    subscribed_ids: list[str],
 ) -> bytes:
     """渲染赛事列表图片"""
-    
+
     # 转换为字典以便在模板中使用
     ongoing = [asdict(e) for e in ongoing_events]
     upcoming = [asdict(e) for e in upcoming_events]
-    
-    return await template_to_pic(
+
+    return await render_template_image(
         template_path=str(TEMPLATE_DIR),
         template_name="events.html",
         templates={
@@ -46,28 +47,26 @@ async def render_events(
             "upcoming_events": upcoming,
             "subscribed_ids": subscribed_ids,
             "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text
+            "watermark_text": plugin_config.hltv_watermark_text,
         },
         pages={
             "viewport": {"width": 650, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/"
-        }
+            "base_url": f"file://{TEMPLATE_DIR}/",
+        },
     )
 
 
 async def render_matches(
-    matches_by_event: dict[str, list[MatchInfo]],
-    live_count: int,
-    upcoming_count: int
+    matches_by_event: dict[str, list[MatchInfo]], live_count: int, upcoming_count: int
 ) -> bytes:
     """渲染比赛列表图片"""
-    
+
     # 转换数据结构
     matches_dict = {}
     for event_name, matches in matches_by_event.items():
         matches_dict[event_name] = [asdict(m) for m in matches]
-    
-    return await template_to_pic(
+
+    return await render_template_image(
         template_path=str(TEMPLATE_DIR),
         template_name="matches.html",
         templates={
@@ -75,37 +74,35 @@ async def render_matches(
             "live_count": live_count,
             "upcoming_count": upcoming_count,
             "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text
+            "watermark_text": plugin_config.hltv_watermark_text,
         },
         pages={
             "viewport": {"width": 700, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/"
-        }
+            "base_url": f"file://{TEMPLATE_DIR}/",
+        },
     )
 
 
-async def render_results(
-    results_by_event: dict[str, list[ResultInfo]]
-) -> bytes:
+async def render_results(results_by_event: dict[str, list[ResultInfo]]) -> bytes:
     """渲染结果列表图片"""
-    
+
     # 转换数据结构
     results_dict = {}
     for event_name, results in results_by_event.items():
         results_dict[event_name] = [asdict(r) for r in results]
-    
-    return await template_to_pic(
+
+    return await render_template_image(
         template_path=str(TEMPLATE_DIR),
         template_name="results.html",
         templates={
             "results_by_event": results_dict,
             "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text
+            "watermark_text": plugin_config.hltv_watermark_text,
         },
         pages={
             "viewport": {"width": 700, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/"
-        }
+            "base_url": f"file://{TEMPLATE_DIR}/",
+        },
     )
 
 
@@ -115,58 +112,24 @@ async def render_stats(stats: Optional[MatchStats]) -> bytes:
     stats_dict = None
     if stats:
         stats_dict = asdict(stats)
-        played_maps = [m for m in stats.maps if m.score_team1 != "-" and m.score_team2 != "-"]
+        played_maps = [
+            m for m in stats.maps if m.score_team1 != "-" and m.score_team2 != "-"
+        ]
         has_single_map_details = (
             len(played_maps) == 1 and played_maps[0].map_name in stats.map_stats_details
         )
         stats_dict["show_total_overview"] = not has_single_map_details
 
-    return await template_to_pic(
+    return await render_template_image(
         template_path=str(TEMPLATE_DIR),
         template_name="stats.html",
         templates={
             "stats": stats_dict,
             "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text
-        },
-        pages={
-            "viewport": {"width": 800, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/"
-        }
-    )
-
-
-async def render_help(sections: list[dict]) -> bytes:
-    """渲染帮助图片
-
-    Args:
-        sections: 帮助分组数据，格式：
-          [
-            {
-              "title": str,
-              "note": str,
-              "commands": [
-                {
-                  "name": str,
-                  "args": str,
-                  "aliases": list[str],
-                  "admin_only": bool,
-                  "superuser_only": bool
-                }
-              ]
-            }
-          ]
-    """
-    return await template_to_pic(
-        template_path=str(TEMPLATE_DIR),
-        template_name="help.html",
-        templates={
-            "sections": sections,
-            "timestamp": get_timestamp(),
             "watermark_text": plugin_config.hltv_watermark_text,
         },
         pages={
-            "viewport": {"width": 820, "height": 100},
+            "viewport": {"width": 800, "height": 100},
             "base_url": f"file://{TEMPLATE_DIR}/",
         },
     )
@@ -183,7 +146,7 @@ async def render_reminder(
     is_third_place: bool = False,
 ) -> bytes:
     """渲染比赛开始提醒图片
-    
+
     Args:
         team1: 队伍1名称
         team2: 队伍2名称
@@ -193,11 +156,11 @@ async def render_reminder(
         maps: 比赛格式（如 "3" 表示 BO3）
         is_grand_final: 是否为总决赛
         is_third_place: 是否为季军赛
-    
+
     Returns:
         渲染后的图片字节
     """
-    return await template_to_pic(
+    return await render_template_image(
         template_path=str(TEMPLATE_DIR),
         template_name="reminder.html",
         templates={
@@ -210,10 +173,10 @@ async def render_reminder(
             "is_grand_final": is_grand_final,
             "is_third_place": is_third_place,
             "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text
+            "watermark_text": plugin_config.hltv_watermark_text,
         },
         pages={
             "viewport": {"width": 550, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/"
-        }
+            "base_url": f"file://{TEMPLATE_DIR}/",
+        },
     )

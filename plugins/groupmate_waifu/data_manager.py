@@ -7,6 +7,8 @@ in `storage.py`; business code should go through `service.py` instead of
 accessing these records from handlers.
 """
 
+from utils.paths import PluginPaths
+
 import os
 import time
 from pathlib import Path
@@ -14,8 +16,8 @@ from typing import Dict, Set, Any
 
 from nonebot.log import logger
 
-from .config import Config
-from .storage import (
+from plugins.groupmate_waifu.config import Config
+from plugins.groupmate_waifu.storage import (
     _convert_keys_to_int,
     _convert_keys_to_str,
     _convert_list_values_to_set,
@@ -51,10 +53,11 @@ yinpa_CP = yinpa_HE if yinpa_CP == 0 else yinpa_CP
 
 # --- 时间计算 ---
 
+
 def _get_today_zero_timestamp() -> float:
     """获取今天零点的时间戳"""
-    timestr = time.strftime('%Y-%m-%d', time.localtime(time.time()))
-    timeArray = time.strptime(timestr, '%Y-%m-%d')
+    timestr = time.strftime("%Y-%m-%d", time.localtime(time.time()))
+    timeArray = time.strptime(timestr, "%Y-%m-%d")
     return time.mktime(timeArray)
 
 
@@ -63,7 +66,7 @@ Zero_today = _get_today_zero_timestamp()
 
 # --- 数据目录和文件路径 ---
 
-WAIFU_DATA_DIR = Path() / "data" / "waifu"
+WAIFU_DATA_DIR = PluginPaths("groupmate_waifu").data
 
 if not WAIFU_DATA_DIR.exists():
     os.makedirs(WAIFU_DATA_DIR)
@@ -85,8 +88,8 @@ _OLD_RECORD_YINPA2_FILE = WAIFU_DATA_DIR / "record_yinpa2"
 _OLD_PROTECT_LIST_FILE = WAIFU_DATA_DIR / "list_protect"
 
 
-
 # --- 数据保存 ---
+
 
 def save(file: Path, data: Any):
     """
@@ -109,14 +112,14 @@ _raw_record_waifu = _load_record(
     RECORD_WAIFU_FILE, _OLD_RECORD_WAIFU_FILE, waifu_reset, Zero_today
 )
 record_waifu: Dict[int, Set[int]] = {
-    k: set(v) if isinstance(v, list) else v 
-    for k, v in _raw_record_waifu.items()
+    k: set(v) if isinstance(v, list) else v for k, v in _raw_record_waifu.items()
 }
 
 # Locked couples are also stored bidirectionally, matching record_CP lookup style.
 record_lock: Dict[int, Dict[int, int]] = _load_record(
     RECORD_LOCK_FILE, _OLD_RECORD_LOCK_FILE, waifu_reset, Zero_today
 )
+
 
 def _discard_flat_yinpa_record(record: Dict, name: str) -> Dict:
     """检测旧的扁平格式 {user_id: count}（值为 int 而非 dict）则丢弃。
@@ -148,6 +151,7 @@ protect_list: Dict[int, Set[int]] = _load_protect_list(
 
 
 # --- 便捷保存函数 ---
+
 
 def save_record_CP():
     """保存 CP 记录"""
@@ -181,13 +185,14 @@ def save_protect_list():
 
 # --- 重置函数 ---
 
+
 def reset_all_records():
     """
     重置所有记录（由定时任务调用）
     根据 waifu_reset 配置决定重置范围
     """
     global record_CP, record_waifu, record_lock, record_yinpa1, record_yinpa2
-    
+
     if waifu_reset:
         # 完全重置
         record_CP.clear()
@@ -195,13 +200,13 @@ def reset_all_records():
         record_lock.clear()
         record_yinpa1.clear()
         record_yinpa2.clear()
-        
+
         save_record_CP()
         save_record_waifu()
         save_record_lock()
         save_record_yinpa1()
         save_record_yinpa2()
-        
+
         logger.info("娶群友记录已重置 (waifu_reset=True)")
     else:
         # 只重置单身记录和涩涩记录
@@ -210,16 +215,16 @@ def reset_all_records():
             for user_id, waifu_id in list(cp_data.items()):
                 if user_id == waifu_id:
                     users_to_remove.append((group_id, user_id))
-        
+
         for group_id, user_id in users_to_remove:
             if group_id in record_CP and user_id in record_CP[group_id]:
                 del record_CP[group_id][user_id]
-        
+
         record_yinpa1.clear()
         record_yinpa2.clear()
-        
+
         save_record_CP()
         save_record_yinpa1()
         save_record_yinpa2()
-        
+
         logger.info("娶群友记录已重置 (waifu_reset=False)")

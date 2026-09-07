@@ -1,3 +1,6 @@
+from utils.rendering.fonts import load_font_from_path
+from utils.rendering.fonts import font_path
+
 # statistics.py
 import random
 import math
@@ -6,7 +9,12 @@ from typing import Dict, List, Tuple
 from PIL import Image, ImageDraw, ImageFont
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.log import logger
-from .send import sticker_folders, count_images_in_folder, get_random_sticker, get_folder_display_info
+from plugins.stickers.send import (
+    sticker_folders,
+    count_images_in_folder,
+    get_random_sticker,
+    get_folder_display_info,
+)
 
 
 def calculate_cell_height(folder_info: Dict) -> int:
@@ -53,14 +61,22 @@ def get_max_cell_height(folder_info_list: List[Dict]) -> int:
     return max_height
 
 
-def draw_multiline_text(draw, text: str, font, max_width: int, x: int, y: int,
-                        fill: Tuple, max_lines: int = 3) -> int:
+def draw_multiline_text(
+    draw,
+    text: str,
+    font,
+    max_width: int,
+    x: int,
+    y: int,
+    fill: Tuple,
+    max_lines: int = 3,
+) -> int:
     """
     绘制多行文本，自动换行
 
     返回: 绘制的行数
     """
-    words = text.split(',')
+    words = text.split(",")
     lines = []
     current_line = []
 
@@ -69,7 +85,7 @@ def draw_multiline_text(draw, text: str, font, max_width: int, x: int, y: int,
         if not word:
             continue
 
-        test_line = ', '.join(current_line + [word])
+        test_line = ", ".join(current_line + [word])
         bbox = draw.textbbox((0, 0), test_line, font=font)
         text_width = bbox[2] - bbox[0]
 
@@ -77,7 +93,7 @@ def draw_multiline_text(draw, text: str, font, max_width: int, x: int, y: int,
             current_line.append(word)
         else:
             if current_line:
-                lines.append(', '.join(current_line))
+                lines.append(", ".join(current_line))
                 current_line = [word]
             else:
                 # 单个词就超过宽度，强制分割
@@ -88,7 +104,7 @@ def draw_multiline_text(draw, text: str, font, max_width: int, x: int, y: int,
                 break
 
     if current_line and len(lines) < max_lines:
-        lines.append(', '.join(current_line))
+        lines.append(", ".join(current_line))
 
     # 如果超过最大行数，处理最后一行
     if len(lines) > max_lines:
@@ -117,13 +133,14 @@ def draw_multiline_text(draw, text: str, font, max_width: int, x: int, y: int,
 async def render_stickers_preview() -> bytes:
     """
     异步包装器：渲染贴图预览图片
-    
+
     使用 asyncio.to_thread 将 CPU 密集型的图片渲染操作
     放入线程池执行，避免阻塞事件循环。
 
     返回: 图片的bytes数据
     """
     import asyncio
+
     return await asyncio.to_thread(_render_stickers_preview_sync)
 
 
@@ -156,24 +173,18 @@ def _render_stickers_preview_sync() -> bytes:
         img_height = rows * cell_height + (rows - 1) * spacing + 2 * padding + 110
 
         # 创建画布
-        img = Image.new('RGB', (img_width, img_height), color=(245, 247, 250))
+        img = Image.new("RGB", (img_width, img_height), color=(245, 247, 250))
         draw = ImageDraw.Draw(img)
 
         # 加载中文字体（包含 Linux Noto CJK 路径）
         _font_loaded = False
-        _font_candidates = [
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            "msyh.ttc",
-            "simhei.ttf",
-        ]
+        _font_candidates = [str(font_path())]
         for _fc in _font_candidates:
             try:
-                title_font = ImageFont.truetype(_fc, 38)
-                name_font = ImageFont.truetype(_fc, 24)
-                count_font = ImageFont.truetype(_fc, 20)
-                alias_font = ImageFont.truetype(_fc, 16)
+                title_font = load_font_from_path(_fc, 38)
+                name_font = load_font_from_path(_fc, 24)
+                count_font = load_font_from_path(_fc, 20)
+                alias_font = load_font_from_path(_fc, 16)
                 _font_loaded = True
                 break
             except:
@@ -198,7 +209,9 @@ def _render_stickers_preview_sync() -> bytes:
         stats_bbox = draw.textbbox((0, 0), stats_text, font=name_font)
         stats_width = stats_bbox[2] - stats_bbox[0]
         stats_x = (img_width - stats_width) // 2
-        draw.text((stats_x, padding + 45), stats_text, fill=(52, 152, 219), font=name_font)
+        draw.text(
+            (stats_x, padding + 45), stats_text, fill=(52, 152, 219), font=name_font
+        )
 
         # 绘制网格
         start_y = padding + 85
@@ -217,7 +230,7 @@ def _render_stickers_preview_sync() -> bytes:
                 radius=10,
                 fill=(255, 255, 255),
                 outline=(225, 232, 237),
-                width=2
+                width=2,
             )
 
             # 动态计算当前单元格的布局参数
@@ -246,8 +259,8 @@ def _render_stickers_preview_sync() -> bytes:
             if preview_path and preview_path.exists():
                 try:
                     preview_image = Image.open(preview_path)
-                    if preview_image.mode != 'RGB':
-                        preview_image = preview_image.convert('RGB')
+                    if preview_image.mode != "RGB":
+                        preview_image = preview_image.convert("RGB")
 
                     # 缩放图片以适应图片区域
                     preview_width, preview_height = preview_image.size
@@ -255,11 +268,15 @@ def _render_stickers_preview_sync() -> bytes:
                     target_width = cell_width - 20  # 保留边距
 
                     # 计算缩放比例，保持宽高比
-                    ratio = min(target_width / preview_width, target_height / preview_height)
+                    ratio = min(
+                        target_width / preview_width, target_height / preview_height
+                    )
                     new_width = int(preview_width * ratio)
                     new_height = int(preview_height * ratio)
 
-                    preview_image = preview_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    preview_image = preview_image.resize(
+                        (new_width, new_height), Image.Resampling.LANCZOS
+                    )
 
                     # 居中放置图片
                     img_x = x + (cell_width - new_width) // 2
@@ -271,14 +288,22 @@ def _render_stickers_preview_sync() -> bytes:
                     # 绘制占位符
                     placeholder_size = min(60, int(image_area_height * 0.6))
                     placeholder_x = x + (cell_width - placeholder_size) // 2
-                    placeholder_y = y + image_top_margin + (image_area_height - placeholder_size) // 2
+                    placeholder_y = (
+                        y
+                        + image_top_margin
+                        + (image_area_height - placeholder_size) // 2
+                    )
 
                     # 绘制占位符背景
                     draw.rounded_rectangle(
-                        [placeholder_x, placeholder_y, placeholder_x + placeholder_size,
-                         placeholder_y + placeholder_size],
+                        [
+                            placeholder_x,
+                            placeholder_y,
+                            placeholder_x + placeholder_size,
+                            placeholder_y + placeholder_size,
+                        ],
                         radius=8,
-                        fill=(225, 232, 237)
+                        fill=(225, 232, 237),
                     )
 
                     # 绘制文件夹图标
@@ -286,7 +311,7 @@ def _render_stickers_preview_sync() -> bytes:
                     icon_font = None
                     for _fc in _font_candidates:
                         try:
-                            icon_font = ImageFont.truetype(_fc, 14)
+                            icon_font = load_font_from_path(_fc, 14)
                             break
                         except:
                             continue
@@ -298,18 +323,30 @@ def _render_stickers_preview_sync() -> bytes:
                     text_height = text_bbox[3] - text_bbox[1]
                     text_x = placeholder_x + (placeholder_size - text_width) // 2
                     text_y = placeholder_y + (placeholder_size - text_height) // 2
-                    draw.text((text_x, text_y), folder_text, fill=(127, 140, 141), font=icon_font)
+                    draw.text(
+                        (text_x, text_y),
+                        folder_text,
+                        fill=(127, 140, 141),
+                        font=icon_font,
+                    )
             else:
                 # 绘制占位符
                 placeholder_size = min(60, int(image_area_height * 0.6))
                 placeholder_x = x + (cell_width - placeholder_size) // 2
-                placeholder_y = y + image_top_margin + (image_area_height - placeholder_size) // 2
+                placeholder_y = (
+                    y + image_top_margin + (image_area_height - placeholder_size) // 2
+                )
 
                 # 绘制占位符背景
                 draw.rounded_rectangle(
-                    [placeholder_x, placeholder_y, placeholder_x + placeholder_size, placeholder_y + placeholder_size],
+                    [
+                        placeholder_x,
+                        placeholder_y,
+                        placeholder_x + placeholder_size,
+                        placeholder_y + placeholder_size,
+                    ],
                     radius=8,
-                    fill=(225, 232, 237)
+                    fill=(225, 232, 237),
                 )
 
                 # 绘制文件夹图标
@@ -317,7 +354,7 @@ def _render_stickers_preview_sync() -> bytes:
                 icon_font = None
                 for _fc in _font_candidates:
                     try:
-                        icon_font = ImageFont.truetype(_fc, 14)
+                        icon_font = load_font_from_path(_fc, 14)
                         break
                     except:
                         continue
@@ -329,12 +366,17 @@ def _render_stickers_preview_sync() -> bytes:
                 text_height = text_bbox[3] - text_bbox[1]
                 text_x = placeholder_x + (placeholder_size - text_width) // 2
                 text_y = placeholder_y + (placeholder_size - text_height) // 2
-                draw.text((text_x, text_y), folder_text, fill=(127, 140, 141), font=icon_font)
+                draw.text(
+                    (text_x, text_y), folder_text, fill=(127, 140, 141), font=icon_font
+                )
 
             # 绘制文件夹名称
             name_y = y + image_top_margin + image_area_height + image_to_name_margin
-            folder_name_text = folder_info["name"][:12] + "..." if len(folder_info["name"]) > 12 else folder_info[
-                "name"]
+            folder_name_text = (
+                folder_info["name"][:12] + "..."
+                if len(folder_info["name"]) > 12
+                else folder_info["name"]
+            )
             name_bbox = draw.textbbox((0, 0), folder_name_text, font=name_font)
             name_width = name_bbox[2] - name_bbox[0]
 
@@ -346,7 +388,9 @@ def _render_stickers_preview_sync() -> bytes:
                 name_width = name_bbox[2] - name_bbox[0]
 
             name_x = x + (cell_width - name_width) // 2
-            draw.text((name_x, name_y), folder_name_text, fill=(44, 62, 80), font=name_font)
+            draw.text(
+                (name_x, name_y), folder_name_text, fill=(44, 62, 80), font=name_font
+            )
 
             # 绘制别名（如果有）
             aliases = folder_info.get("aliases", [])
@@ -356,11 +400,14 @@ def _render_stickers_preview_sync() -> bytes:
 
                 # 使用多行文本绘制别名
                 alias_lines = draw_multiline_text(
-                    draw, alias_text, alias_font,
+                    draw,
+                    alias_text,
+                    alias_font,
                     cell_width - 20,  # 最大宽度
-                    x + 10, alias_y,  # 位置
+                    x + 10,
+                    alias_y,  # 位置
                     (127, 140, 141),  # 颜色
-                    max_lines=3  # 最多3行
+                    max_lines=3,  # 最多3行
                 )
             else:
                 alias_lines = 0
@@ -374,11 +421,15 @@ def _render_stickers_preview_sync() -> bytes:
 
             # 根据是否有别名及别名行数调整位置
             if aliases:
-                count_y = alias_y + alias_to_count_margin + (alias_lines * 18)  # 每行约18px
+                count_y = (
+                    alias_y + alias_to_count_margin + (alias_lines * 18)
+                )  # 每行约18px
             else:
                 count_y = name_y + 30  # 没有别名时增加间距
 
-            draw.text((count_x, count_y), count_text, fill=(127, 140, 141), font=count_font)
+            draw.text(
+                (count_x, count_y), count_text, fill=(127, 140, 141), font=count_font
+            )
 
         # 绘制底部说明
         footer_text = "Data Provided by LunaBot Gallery (by @NeuraXmy) and astrbot_plugin_stickers (by @shiywhh)."
@@ -386,12 +437,15 @@ def _render_stickers_preview_sync() -> bytes:
         footer_width = footer_bbox[2] - footer_bbox[0]
         footer_x = (img_width - footer_width) // 2
         footer_y = img_height - padding - 12
-        draw.text((footer_x, footer_y), footer_text, fill=(127, 140, 141), font=count_font)
+        draw.text(
+            (footer_x, footer_y), footer_text, fill=(127, 140, 141), font=count_font
+        )
 
         # 转换为bytes
         from io import BytesIO
+
         img_bytes = BytesIO()
-        img.save(img_bytes, format='PNG', optimize=True)
+        img.save(img_bytes, format="PNG", optimize=True)
         return img_bytes.getvalue()
 
     except Exception as e:

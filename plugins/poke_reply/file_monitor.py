@@ -6,8 +6,12 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from nonebot import logger
 
-from .config import TEXT_FILES_DIR, IMAGE_FILES_DIR, get_group_image_dir
-from .models.data import data_manager
+from plugins.poke_reply.config import (
+    TEXT_FILES_DIR,
+    IMAGE_FILES_DIR,
+    get_group_image_dir,
+)
+from plugins.poke_reply.models.data import data_manager
 
 DEBOUNCE_SECONDS = 0.2
 
@@ -22,6 +26,7 @@ def discover_watch_paths():
         watch_paths.append((IMAGE_FILES_DIR, True))
     return watch_paths
 
+
 class JsonFileHandler(FileSystemEventHandler):
     """监听JSON文件变化的处理器"""
 
@@ -30,16 +35,22 @@ class JsonFileHandler(FileSystemEventHandler):
         self._last_event_time = {}
 
     def on_modified(self, event):
-        self._handle_json_path(getattr(event, "src_path", ""), getattr(event, "is_directory", False))
+        self._handle_json_path(
+            getattr(event, "src_path", ""), getattr(event, "is_directory", False)
+        )
 
     def on_created(self, event):
-        self._handle_json_path(getattr(event, "src_path", ""), getattr(event, "is_directory", False))
+        self._handle_json_path(
+            getattr(event, "src_path", ""), getattr(event, "is_directory", False)
+        )
 
     def on_moved(self, event):
-        self._handle_json_path(getattr(event, "dest_path", ""), getattr(event, "is_directory", False))
+        self._handle_json_path(
+            getattr(event, "dest_path", ""), getattr(event, "is_directory", False)
+        )
 
     def _handle_json_path(self, file_path, is_directory=False):
-        if is_directory or not file_path or not file_path.endswith('.json'):
+        if is_directory or not file_path or not file_path.endswith(".json"):
             return
         path = Path(file_path)
         if self._should_ignore_json_path(path):
@@ -48,20 +59,21 @@ class JsonFileHandler(FileSystemEventHandler):
             return
 
         filename = path.name
-        if filename.startswith('text_') and filename.endswith('.json'):
+        if filename.startswith("text_") and filename.endswith(".json"):
             try:
                 group_id = int(filename[5:-5])
             except ValueError:
                 return
 
-            from .services.text import similarity_checker
+            from plugins.poke_reply.services.text import similarity_checker
+
             similarity_checker.clear_group_cache(group_id)
 
             if self.on_modified_callback:
                 self.on_modified_callback(group_id)
             else:
                 data_manager.load_text_data(group_id)
-        elif filename.startswith('images_') and filename.endswith('.json'):
+        elif filename.startswith("images_") and filename.endswith(".json"):
             try:
                 group_id = int(filename[7:-5])
             except ValueError:
@@ -86,7 +98,7 @@ class JsonFileHandler(FileSystemEventHandler):
         """处理文件删除事件"""
         # 检查是否是图片文件被删除
         file_path = event.src_path
-        if not file_path.endswith('.json') and not os.path.isdir(file_path):
+        if not file_path.endswith(".json") and not os.path.isdir(file_path):
             # 尝试从路径中提取群号和文件名
             for group_id in data_manager.get_all_group_ids():
                 image_dir = get_group_image_dir(group_id)
@@ -94,10 +106,15 @@ class JsonFileHandler(FileSystemEventHandler):
                     # 这是某个群组的图片目录下的文件
                     filename = os.path.basename(file_path)
                     # 从图片列表中移除这个文件名
-                    if group_id in data_manager.group_images and filename in data_manager.group_images[group_id]:
+                    if (
+                        group_id in data_manager.group_images
+                        and filename in data_manager.group_images[group_id]
+                    ):
                         data_manager.group_images[group_id].remove(filename)
                         data_manager.save_image_data(group_id)
-                        logger.info(f"检测到图片文件 {filename} 被删除，已从群 {group_id} 的图片列表中移除")
+                        logger.info(
+                            f"检测到图片文件 {filename} 被删除，已从群 {group_id} 的图片列表中移除"
+                        )
                         break
 
 
@@ -115,7 +132,9 @@ class FileMonitor:
             event_handler = JsonFileHandler(on_modified_callback)
 
             for watch_path, recursive in discover_watch_paths():
-                self.observer.schedule(event_handler, path=str(watch_path), recursive=recursive)
+                self.observer.schedule(
+                    event_handler, path=str(watch_path), recursive=recursive
+                )
 
             self.observer.start()
             self.is_monitoring = True

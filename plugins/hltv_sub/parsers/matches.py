@@ -13,8 +13,8 @@ from typing import Tuple
 from bs4 import BeautifulSoup
 from nonebot.log import logger
 
-from ..models import MatchInfo, MatchTimeHint
-from .common import format_date, format_time
+from plugins.hltv_sub.models import MatchInfo, MatchTimeHint
+from plugins.hltv_sub.parsers.common import format_date, format_time
 
 
 def parse_match_time_hints(soup: BeautifulSoup, tz) -> list[MatchTimeHint]:
@@ -270,7 +270,9 @@ def _contains_third_place_marker(text: str) -> bool:
 
 def _is_third_place_match(wrapper) -> bool:
     no_info = wrapper.select_one("a.match-no-info")
-    return _contains_third_place_marker(no_info.get_text(" ", strip=True) if no_info else "")
+    return _contains_third_place_marker(
+        no_info.get_text(" ", strip=True) if no_info else ""
+    )
 
 
 def _extract_team_names_from_wrapper(wrapper) -> Tuple[str, str]:
@@ -279,7 +281,9 @@ def _extract_team_names_from_wrapper(wrapper) -> Tuple[str, str]:
 
     team_blocks = wrapper.find_all("div", class_="match-team")
     for index, block in enumerate(team_blocks):
-        name_elem = block.find("div", class_="match-teamname") or block.find("div", class_="team")
+        name_elem = block.find("div", class_="match-teamname") or block.find(
+            "div", class_="team"
+        )
         name = name_elem.get_text(strip=True) if name_elem else ""
         classes = block.get("class", [])
         if "team1" in classes:

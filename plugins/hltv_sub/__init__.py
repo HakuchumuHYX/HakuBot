@@ -2,20 +2,22 @@
 HLTV 订阅插件入口
 """
 
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+
 from nonebot import get_driver, require
 from nonebot.plugin import PluginMetadata
 
 require("nonebot_plugin_localstore")
 
-from .config import Config
-from .data_source import hltv_data
-from .scheduler import setup_scheduler
+from plugins.hltv_sub.config import Config
+from plugins.hltv_sub.data_source import hltv_data
+from plugins.hltv_sub.scheduler import setup_scheduler
 
 # 显式初始化定时任务（替代 import side-effect）
 setup_scheduler()
 
 # 导入 handlers 以注册命令（import 即注册）
-from . import handlers as _handlers  # noqa: F401,E402
+from plugins.hltv_sub import handlers as _handlers
 
 
 __plugin_meta__ = PluginMetadata(
@@ -46,7 +48,7 @@ __plugin_meta__ = PluginMetadata(
 driver = get_driver()
 
 
-@driver.on_shutdown
+@on_plugin_shutdown(driver, "hltv_sub")
 async def cleanup():
     """清理资源"""
     await hltv_data.close()

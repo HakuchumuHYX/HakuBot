@@ -1,5 +1,7 @@
 # HakuBot
 
+项目分为 `plugins/`、`core/` 和根目录 `utils/` 三层，详见 [结构说明](ARCHITECTURE.md)。插件配置集中在 `config/plugins/`，内容保持原样；公共字体、浏览器和模型集中在 `data/shared/`。帮助图片统一复用浅蓝卡片与夜间主题，全局菜单仍由手写配置维护。
+
 <div align="center">
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue?style=flat-square)

@@ -3,20 +3,17 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 
-from .manager import help_manager
-from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import image_segment
-from ..utils.tools import send_forward_msg
+from plugins.help_plugin.content import load_help_document
+from utils.onebot.help import send_help
+from utils.rendering.help import render_help
+from core.access import is_plugin_enabled
+from utils.onebot.media import image_segment
+from utils.onebot.forward import send_forward_msg
 
 driver = get_driver()
 
 help_cmd = on_command("help", aliases={"帮助", "菜单"}, priority=5, block=True)
 reload_cmd = on_command("reload_help", aliases={"重载帮助"}, priority=1, block=True)
-
-
-@driver.on_startup
-async def _():
-    await help_manager.get_help_data()
 
 
 @help_cmd.handle()
@@ -25,11 +22,10 @@ async def handle_help(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     user_id = str(event.user_id)
     if not is_plugin_enabled("help_plugin", str(event.group_id), user_id):
         return
-    
-    try:
-        img_path, links = await help_manager.get_help_data(force_update=False)
 
-        await matcher.send(image_segment(img_path))
+    try:
+        document, links = load_help_document()
+        await send_help(matcher, document)
 
         if links:
             forward_nodes = ["包含的链接如下："]
@@ -49,7 +45,8 @@ async def handle_help(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
 async def handle_reload(matcher: Matcher):
     try:
         # 记得加 await
-        await help_manager.get_help_data(force_update=True)
+        document, _ = load_help_document()
+        await render_help(document, force=True)
         await matcher.finish("帮助文本及图片缓存已强制重载！")
     except FinishedException:
         raise

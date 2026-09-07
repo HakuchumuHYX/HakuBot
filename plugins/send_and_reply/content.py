@@ -12,7 +12,8 @@ def prune_message_context(max_age_seconds=259200, max_entries=500):
 
     # 删除过期条目
     expired_ids = [
-        msg_id for msg_id, ctx in message_context.items()
+        msg_id
+        for msg_id, ctx in message_context.items()
         if now - ctx.get("timestamp", 0) > max_age_seconds
     ]
     for msg_id in expired_ids:
@@ -20,6 +21,8 @@ def prune_message_context(max_age_seconds=259200, max_entries=500):
 
     # 若仍超过上限，按 timestamp 淘汰最旧的条目
     if len(message_context) > max_entries:
-        sorted_ids = sorted(message_context, key=lambda mid: message_context[mid].get("timestamp", 0))
-        for msg_id in sorted_ids[:len(message_context) - max_entries]:
+        sorted_ids = sorted(
+            message_context, key=lambda mid: message_context[mid].get("timestamp", 0)
+        )
+        for msg_id in sorted_ids[: len(message_context) - max_entries]:
             del message_context[msg_id]

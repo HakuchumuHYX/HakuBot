@@ -5,23 +5,24 @@ groupmate_waifu/rules.py
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-from .constants import PLUGIN_NAME
+from plugins.groupmate_waifu.constants import PLUGIN_NAME
 
 # 导入外部插件管理 API
-from ..plugin_manager.enable import is_plugin_enabled as _check_plugin
-from ..plugin_manager.enable import is_feature_enabled as _check_feature
+from core.access import is_plugin_enabled as _check_plugin
+from core.access import is_feature_enabled as _check_feature
 
 
 # --- 插件/功能启用检查（内部版本，同步） ---
 
+
 def is_plugin_enabled(group_id: str, user_id: str) -> bool:
     """
     检查插件是否在指定群启用（同步版本）
-    
+
     Args:
         group_id: 群号（字符串）
         user_id: 用户 QQ 号（字符串）
-    
+
     Returns:
         是否启用
     """
@@ -31,11 +32,11 @@ def is_plugin_enabled(group_id: str, user_id: str) -> bool:
 def is_yinpa_enabled(group_id: str, user_id: str) -> bool:
     """
     检查 yinpa 功能是否在指定群启用（同步版本）
-    
+
     Args:
         group_id: 群号（字符串）
         user_id: 用户 QQ 号（字符串）
-    
+
     Returns:
         是否启用
     """
@@ -45,11 +46,11 @@ def is_yinpa_enabled(group_id: str, user_id: str) -> bool:
 def is_bye_enabled(group_id: str, user_id: str) -> bool:
     """
     检查 bye（离婚）功能是否在指定群启用（同步版本）
-    
+
     Args:
         group_id: 群号（字符串）
         user_id: 用户 QQ 号（字符串）
-    
+
     Returns:
         是否启用
     """
@@ -57,6 +58,7 @@ def is_bye_enabled(group_id: str, user_id: str) -> bool:
 
 
 # --- 规则函数（异步版本，用于 matcher rule） ---
+
 
 async def check_plugin_enabled(event: GroupMessageEvent) -> bool:
     """

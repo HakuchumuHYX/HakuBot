@@ -3,14 +3,14 @@ from typing import Optional
 
 from nonebot.log import logger
 
-from plugins.utils.llm import (
+from utils.llm.client import (
     LLMClientConfig,
     image_edit as sdk_image_edit,
     image_generation as sdk_image_generation,
 )
 
-from ..config import plugin_config
-from ..utils import parse_data_url
+from plugins.ai_assistant.config import plugin_config
+from plugins.ai_assistant.utils import parse_data_url
 
 
 _IMAGE_EXTENSIONS = {
@@ -88,8 +88,7 @@ def _build_image_request(
         prompt += (
             "\n\n[Web Search Context - Reference Only]\n"
             "以下内容仅用于补充事实和外观设定。提炼其中对画面有用的信息，"
-            "若与用户描述冲突，以用户描述为准。\n\n"
-            + extra_context.strip()
+            "若与用户描述冲突，以用户描述为准。\n\n" + extra_context.strip()
         )
 
     return prompt, images

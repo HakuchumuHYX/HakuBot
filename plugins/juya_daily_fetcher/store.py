@@ -5,10 +5,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..utils.json_io import atomic_write_json
-from ..utils.tools import get_logger
-from .config import STATE_FILE, plugin_config
-from .parser import now_iso
+from utils.json_io import atomic_write_json
+from utils.logging import get_logger
+from plugins.juya_daily_fetcher.config import STATE_FILE, plugin_config
+from plugins.juya_daily_fetcher.parser import now_iso
 
 logger = get_logger("juya_daily_fetcher.store")
 
@@ -22,7 +22,9 @@ def load_state() -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        logger.error(f"读取状态文件失败，本次以空状态运行（原文件保留待人工检查）: {exc}")
+        logger.error(
+            f"读取状态文件失败，本次以空状态运行（原文件保留待人工检查）: {exc}"
+        )
         return {}
     if not isinstance(value, dict):
         logger.error("状态文件顶层不是对象，本次以空状态运行")

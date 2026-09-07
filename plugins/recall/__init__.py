@@ -1,1 +1,1 @@
-from .self_recall import recall
+from plugins.recall.self_recall import recall

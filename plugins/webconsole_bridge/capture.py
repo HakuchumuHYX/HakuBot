@@ -14,7 +14,7 @@ from nonebot.adapters import Bot, Event
 from nonebot.matcher import Matcher, current_matcher
 from nonebot.message import run_postprocessor, run_preprocessor
 
-from .status import BridgeRuntime
+from plugins.webconsole_bridge.status import BridgeRuntime
 
 RUN_CONTEXT_STATE_KEY = "_webconsole_bridge_run_context"
 RESPONSE_API_NAMES = frozenset(
@@ -132,7 +132,9 @@ def serialize_api_value(value: Any) -> str:
     )
 
 
-def _matcher_source(matcher: Matcher) -> tuple[
+def _matcher_source(
+    matcher: Matcher,
+) -> tuple[
     str | None,
     str | None,
     str | None,
@@ -264,9 +266,7 @@ class CaptureManager:
             event_name=_event_name(event),
             group_id=_string_or_none(getattr(event, "group_id", None)),
             user_id=_string_or_none(getattr(event, "user_id", None)),
-            source_message_id=_string_or_none(
-                getattr(event, "message_id", None)
-            ),
+            source_message_id=_string_or_none(getattr(event, "message_id", None)),
             request_summary=_event_summary(event),
             request_raw=_serialize_event(event),
         )
@@ -361,9 +361,7 @@ class CaptureManager:
             return None
 
         send_count = len(context.api_calls)
-        send_success_count = sum(
-            1 for call in context.api_calls if call.success
-        )
+        send_success_count = sum(1 for call in context.api_calls if call.success)
         send_failure_count = send_count - send_success_count
 
         max_log_level = None
@@ -381,9 +379,7 @@ class CaptureManager:
             or max_log_weight >= LOG_LEVEL_WEIGHT["ERROR"]
         )
         status = "failure" if failed else "success"
-        has_full_diagnostics = failed or max_log_weight >= LOG_LEVEL_WEIGHT[
-            "WARNING"
-        ]
+        has_full_diagnostics = failed or max_log_weight >= LOG_LEVEL_WEIGHT["WARNING"]
 
         error_type = None
         error_message = None
@@ -448,9 +444,7 @@ class CaptureManager:
                     {
                         "level": "ERROR",
                         "kind": "matcher_exception",
-                        "exception_type": type(
-                            context.matcher_exception
-                        ).__name__,
+                        "exception_type": type(context.matcher_exception).__name__,
                         "exception_message": str(context.matcher_exception),
                         "traceback": context.matcher_traceback,
                     }

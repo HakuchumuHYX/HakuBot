@@ -23,4 +23,3 @@ class ProbeResult:
     @classmethod
     def failure(cls, reason: str) -> "ProbeResult":
         return cls(available=False, reason=reason)
-

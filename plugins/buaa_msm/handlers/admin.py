@@ -21,9 +21,9 @@ from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type
 
-from ..config import plugin_config
-from ..infra.storage import file_storage_dir
-from ..services.maintenance_service import (
+from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.infra.storage import file_storage_dir
+from plugins.buaa_msm.services.maintenance_service import (
     build_stats_message,
     cleanup_with_cache,
     collect_file_stats,
@@ -33,7 +33,7 @@ from ..services.maintenance_service import (
 
 # 导入定时任务插件
 require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler  # noqa: E402
+from nonebot_plugin_apscheduler import scheduler
 
 
 # ============== 定时任务 ==============
@@ -102,7 +102,13 @@ async def handle_stats_command(bot: Bot, event):
 
 
 # 文件列表：原先在 handlers/upload.py 中（SUPERUSER + 私聊）
-list_files_cmd = on_command("文件列表", rule=is_type(PrivateMessageEvent), permission=SUPERUSER, priority=5, block=True)
+list_files_cmd = on_command(
+    "文件列表",
+    rule=is_type(PrivateMessageEvent),
+    permission=SUPERUSER,
+    priority=5,
+    block=True,
+)
 
 
 @list_files_cmd.handle()
@@ -126,5 +132,3 @@ async def handle_list_files_command(bot: Bot, event: PrivateMessageEvent):
     except Exception as e:
         logger.error(f"列出文件失败: {e}")
         await list_files_cmd.finish("列出文件失败。")
-
-

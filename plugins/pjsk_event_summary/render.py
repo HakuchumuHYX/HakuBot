@@ -1,7 +1,7 @@
-from ..utils.browser import html_to_pic
+from utils.rendering.engine import render_html
 from jinja2 import Template
 from typing import List
-from .models import EventSimple, EventDetail
+from plugins.pjsk_event_summary.models import EventSimple, EventDetail
 
 # =======================
 # HTML 模板 (Dark Mode + Watermark)
@@ -192,13 +192,21 @@ DETAIL_TEMPLATE = """
 """
 
 
-async def render_event_list_pic(events: List[EventSimple], watermark: str = "", global_watermark: str = "") -> bytes:
+async def render_event_list_pic(
+    events: List[EventSimple], watermark: str = "", global_watermark: str = ""
+) -> bytes:
     template = Template(LIST_TEMPLATE)
-    html = template.render(events=events, watermark=watermark, global_watermark=global_watermark)
-    return await html_to_pic(html=html, viewport={"width": 850, "height": 1000})
+    html = template.render(
+        events=events, watermark=watermark, global_watermark=global_watermark
+    )
+    return await render_html(html=html, viewport={"width": 850, "height": 1000})
 
 
-async def render_event_detail_pic(data: EventDetail, watermark: str = "", global_watermark: str = "") -> bytes:
+async def render_event_detail_pic(
+    data: EventDetail, watermark: str = "", global_watermark: str = ""
+) -> bytes:
     template = Template(DETAIL_TEMPLATE)
-    html = template.render(data=data, watermark=watermark, global_watermark=global_watermark)
-    return await html_to_pic(html=html, viewport={"width": 750, "height": 1000}, wait=2)
+    html = template.render(
+        data=data, watermark=watermark, global_watermark=global_watermark
+    )
+    return await render_html(html=html, viewport={"width": 750, "height": 1000})

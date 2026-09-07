@@ -3,9 +3,10 @@ from nonebot.adapters import Event
 from nonebot.rule import to_me
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent
 from nonebot.log import logger
-from ..plugin_manager.enable import is_feature_enabled
+from core.access import is_feature_enabled
 
 recall = on_message(rule=to_me(), priority=10)
+
 
 @recall.handle()
 async def handle_recall(bot: Bot, event: Event):
@@ -18,7 +19,7 @@ async def handle_recall(bot: Bot, event: Event):
         return
 
     # 获取群号和用户ID
-    group_id = str(getattr(event, 'group_id', '0'))
+    group_id = str(getattr(event, "group_id", "0"))
     user_id = str(event.user_id)
 
     # 检查开关
@@ -27,13 +28,13 @@ async def handle_recall(bot: Bot, event: Event):
         return
 
     # 检查是否是回复消息
-    if not hasattr(event, 'reply') or event.reply is None:
+    if not hasattr(event, "reply") or event.reply is None:
         await recall.finish()
         return
 
     # 校验被回复的消息是否为机器人自己发送的，防止撤回他人消息
-    reply_sender = getattr(event.reply, 'sender', None)
-    reply_sender_id = getattr(reply_sender, 'user_id', None)
+    reply_sender = getattr(event.reply, "sender", None)
+    reply_sender_id = getattr(reply_sender, "user_id", None)
     if reply_sender_id is None or str(reply_sender_id) != str(bot.self_id):
         await recall.finish()
         return

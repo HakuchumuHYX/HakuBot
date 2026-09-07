@@ -19,6 +19,7 @@ from typing import Dict, Optional
 @dataclass
 class UserCache:
     """用户数据缓存"""
+
     decrypted_data: Optional[dict] = None
     parsed_maps: Optional[dict] = None
     file_path: Optional[Path] = None
@@ -26,7 +27,9 @@ class UserCache:
 
     def is_valid(self, max_age: float = 300.0) -> bool:
         """检查缓存是否有效（默认5分钟过期）"""
-        return (time.time() - self.timestamp) < max_age and self.decrypted_data is not None
+        return (
+            time.time() - self.timestamp
+        ) < max_age and self.decrypted_data is not None
 
 
 class CacheManager:
@@ -44,7 +47,9 @@ class CacheManager:
                 return cache
             return None
 
-    async def set(self, user_id: str, decrypted_data: dict, parsed_maps: dict, file_path: Path):
+    async def set(
+        self, user_id: str, decrypted_data: dict, parsed_maps: dict, file_path: Path
+    ):
         """设置用户缓存"""
         async with self._lock:
             self._user_caches[user_id] = UserCache(

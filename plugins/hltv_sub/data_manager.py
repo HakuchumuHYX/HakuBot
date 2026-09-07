@@ -1,6 +1,7 @@
 """HLTV 订阅数据管理"""
 
 from __future__ import annotations
+from utils.paths import PluginPaths
 
 import json
 import os
@@ -8,11 +9,12 @@ import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from utils.json_io import atomic_write_json
 from typing import Optional
 
 from nonebot_plugin_localstore import get_plugin_data_dir
 
-from ..utils.tools import get_logger
+from utils.logging import get_logger
 
 logger = get_logger("hltv_sub.data_manager")
 
@@ -58,7 +60,7 @@ class DataManager:
     """数据管理器"""
 
     def __init__(self):
-        self._data_dir: Path = get_plugin_data_dir()
+        self._data_dir: Path = PluginPaths("hltv_sub").data
         self._data_file: Path = self._data_dir / "subscriptions.json"
         self._backup_file: Path = self._data_dir / "subscriptions.json.bak"
         self._groups: dict[int, GroupData] = {}
@@ -165,7 +167,9 @@ class DataManager:
             canonical = [asdict(e) for e in self._global_subscriptions]
             for group in self._groups.values():
                 if [asdict(e) for e in group.subscribed_events] != canonical:
-                    group.subscribed_events = [EventSubscription(**e) for e in canonical]
+                    group.subscribed_events = [
+                        EventSubscription(**e) for e in canonical
+                    ]
                     dirty = True
 
             if dirty:
@@ -187,14 +191,9 @@ class DataManager:
                     "notified_map_results": self._notified_map_results,
                 },
             }
-            tmp_file = self._data_dir / f"{self._data_file.name}.tmp"
-            with open(tmp_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
             if self._data_file.exists():
                 shutil.copyfile(self._data_file, self._backup_file)
-            tmp_file.replace(self._data_file)
+            atomic_write_json(self._data_file, data)
 
             # 任意全量保存后，清空去重状态节流计数
             self._notified_dirty = False
@@ -226,7 +225,9 @@ class DataManager:
         """把 canonical 同步回每个群，保持文件结构兼容且便于人工查看"""
         canonical = [EventSubscription(**asdict(e)) for e in self._global_subscriptions]
         for group in self._groups.values():
-            group.subscribed_events = [EventSubscription(**asdict(e)) for e in canonical]
+            group.subscribed_events = [
+                EventSubscription(**asdict(e)) for e in canonical
+            ]
 
     def get_group(self, group_id: int) -> GroupData:
         """获取群组数据，不存在则创建"""
@@ -284,7 +285,9 @@ class DataManager:
     def unsubscribe_event_global(self, event_id: str) -> bool:
         """取消订阅赛事（全局，不依赖群）"""
         before = len(self._global_subscriptions)
-        self._global_subscriptions = [e for e in self._global_subscriptions if e.event_id != event_id]
+        self._global_subscriptions = [
+            e for e in self._global_subscriptions if e.event_id != event_id
+        ]
         removed = len(self._global_subscriptions) != before
 
         if removed:
@@ -312,7 +315,9 @@ class DataManager:
                 groups.append(group.group_id)
         return groups
 
-    def get_any_subscription_by_event(self, event_id: str) -> Optional[EventSubscription]:
+    def get_any_subscription_by_event(
+        self, event_id: str
+    ) -> Optional[EventSubscription]:
         """从全局订阅中读取某赛事元信息"""
         for event in self._global_subscriptions:
             if event.event_id == event_id:
@@ -371,7 +376,9 @@ class DataManager:
         """获取已发送单图结果的去重键集合"""
         return set(self._notified_map_results.keys())
 
-    def add_notified_map_result(self, notification_id: str, *, force: bool = False) -> None:
+    def add_notified_map_result(
+        self, notification_id: str, *, force: bool = False
+    ) -> None:
         """添加已发送单图结果的去重键"""
         self._notified_map_results[notification_id] = self._now_iso()
         self._save_notified_state_debounced(force=force)

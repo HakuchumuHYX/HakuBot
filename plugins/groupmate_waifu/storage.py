@@ -13,7 +13,7 @@ from typing import Any, Dict, Set
 
 from nonebot.log import logger
 
-from ..utils.json_io import atomic_write_json
+from utils.json_io import atomic_write_json
 
 
 def _convert_keys_to_int(data: Dict) -> Dict:
@@ -71,7 +71,7 @@ def _load_json(file: Path, default: Any = None) -> Any:
         return default
 
     try:
-        with open(file, 'r', encoding='utf-8') as f:
+        with open(file, "r", encoding="utf-8") as f:
             content = f.read().strip()
             if not content:
                 logger.info(f"{file} 为空，返回默认值。")
@@ -90,7 +90,7 @@ def _load_legacy(file: Path) -> Any:
         return None
 
     try:
-        with open(file, 'r', encoding='utf-8') as f:
+        with open(file, "r", encoding="utf-8") as f:
             content = f.read().strip()
             if not content:
                 return None

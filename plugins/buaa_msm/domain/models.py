@@ -15,6 +15,7 @@ ParsedMaps = dict[str, list]
 @dataclass(frozen=True, slots=True)
 class UserDataContext:
     """解密 + 解析后的用户上下文（用于渲染/分析）"""
+
     user_id: str
     decrypted_data: dict[str, Any]
     parsed_maps: ParsedMaps

@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Tuple, Optional
 
-from .utils import get_additional_text
-from ..utils.draw.cards import render_leaderboard_card, DARK_COLORS
+from plugins.group_statistics.utils import get_additional_text
+from utils.rendering.draw.cards import render_leaderboard_card, DARK_COLORS
 
 TZ_CN = timezone(timedelta(hours=8))
 

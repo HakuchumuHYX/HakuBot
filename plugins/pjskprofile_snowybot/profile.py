@@ -5,16 +5,14 @@ from nonebot.params import RegexGroup
 from nonebot.log import logger
 from nonebot.exception import FinishedException
 
-from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import image_segment
-from .config import plugin_config
-from .data_manager import get_binding
-from .render import render_profile
+from core.access import is_plugin_enabled
+from utils.onebot.media import image_segment
+from plugins.pjskprofile_snowybot.config import plugin_config
+from plugins.pjskprofile_snowybot.data_manager import get_binding
+from plugins.pjskprofile_snowybot.render import render_profile
 
 profile_matcher = on_regex(
-    r"^(cn|jp|en|tw|kr)?(个人信息|pjskprofile)$",
-    priority=10,
-    block=True
+    r"^(cn|jp|en|tw|kr)?(个人信息|pjskprofile)$", priority=10, block=True
 )
 
 
@@ -47,9 +45,17 @@ async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup(
     pjsk_id = get_binding(user_id, server)
 
     if not pjsk_id:
-        server_name_map = {"jp": "日服", "cn": "国服", "en": "国际服", "tw": "台服", "kr": "韩服"}
+        server_name_map = {
+            "jp": "日服",
+            "cn": "国服",
+            "en": "国际服",
+            "tw": "台服",
+            "kr": "韩服",
+        }
         display_server = server_name_map.get(server, server)
-        await profile_matcher.finish(f"❌ 你还没有绑定{display_server}的ID。\n请使用“{server}绑定+ID”进行绑定。")
+        await profile_matcher.finish(
+            f"❌ 你还没有绑定{display_server}的ID。\n请使用“{server}绑定+ID”进行绑定。"
+        )
         return
 
     target_url = construct_url(server, pjsk_id)

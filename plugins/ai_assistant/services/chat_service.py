@@ -1,11 +1,13 @@
 from typing import Optional
 
-from plugins.utils.llm import ChatResult, LLMClientConfig, chat_completion
+from utils.llm.client import ChatResult, LLMClientConfig, chat_completion
 
-from ..config import plugin_config
+from plugins.ai_assistant.config import plugin_config
 
 
-def _chat_llm_config(model: Optional[str] = None, max_tokens: Optional[int] = None) -> LLMClientConfig:
+def _chat_llm_config(
+    model: Optional[str] = None, max_tokens: Optional[int] = None
+) -> LLMClientConfig:
     rc = plugin_config.resolve("chat")
     return LLMClientConfig(
         provider=rc.provider,
@@ -14,7 +16,9 @@ def _chat_llm_config(model: Optional[str] = None, max_tokens: Optional[int] = No
         model=model or plugin_config.chat.model,
         timeout=plugin_config.timeout,
         proxy=plugin_config.proxy,
-        max_tokens=max_tokens if max_tokens is not None else plugin_config.chat.max_tokens,
+        max_tokens=max_tokens
+        if max_tokens is not None
+        else plugin_config.chat.max_tokens,
         thinking_enabled=plugin_config.chat.thinking_enabled,
         reasoning_effort=plugin_config.chat.reasoning_effort,
         extra_body=plugin_config.chat.extra_body,

@@ -11,17 +11,25 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler as apscheduler
 
-from ..utils.network import (
+from utils.network.http import (
     DEFAULT_TIMEOUT,
     INSECURE_SSL,
     HttpError,
     get_client_session,
     get_effective_proxy,
 )
-from ..utils.tools import get_exc_desc, get_logger
-from .config import ARTICLE_DIR, DEFAULT_USER_AGENT, plugin_config
-from .deliver import deliver_pending, get_group_bot_map, send_debug
-from .parser import (
+from utils.logging import get_exc_desc, get_logger
+from plugins.juya_daily_fetcher.config import (
+    ARTICLE_DIR,
+    DEFAULT_USER_AGENT,
+    plugin_config,
+)
+from plugins.juya_daily_fetcher.deliver import (
+    deliver_pending,
+    get_group_bot_map,
+    send_debug,
+)
+from plugins.juya_daily_fetcher.parser import (
     build_raw_document,
     current_seen,
     event_id_for,
@@ -29,8 +37,8 @@ from .parser import (
     parse_date,
     parse_feed,
 )
-from .render import render_document
-from .store import (
+from plugins.juya_daily_fetcher.render import render_document
+from plugins.juya_daily_fetcher.store import (
     abandon_pending,
     load_state,
     mark_pending_alerted,
@@ -41,7 +49,7 @@ from .store import (
     save_json,
     save_state,
 )
-from .summary import summarize_directory
+from plugins.juya_daily_fetcher.summary import summarize_directory
 
 logger = get_logger("juya_daily_fetcher.scheduler")
 POLL_JOB_ID = "juya_daily_fetcher_poll"
@@ -60,7 +68,9 @@ def _should_retry_feed(exc: BaseException) -> bool:
     retry=retry_if_exception(_should_retry_feed),
     reraise=True,
 )
-async def fetch_feed(feed_url: str, state: dict[str, Any]) -> tuple[str, bytes | None, dict[str, str]]:
+async def fetch_feed(
+    feed_url: str, state: dict[str, Any]
+) -> tuple[str, bytes | None, dict[str, str]]:
     headers = {
         "Accept": "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.1",
         "User-Agent": DEFAULT_USER_AGENT,
@@ -80,10 +90,14 @@ async def fetch_feed(feed_url: str, state: dict[str, Any]) -> tuple[str, bytes |
             return "not_modified", None, {}
         if response.status >= 400:
             raise HttpError(response.status, response.reason or "")
-        return "updated", await response.read(), {
-            "etag": response.headers.get("ETag", ""),
-            "last_modified": response.headers.get("Last-Modified", ""),
-        }
+        return (
+            "updated",
+            await response.read(),
+            {
+                "etag": response.headers.get("ETag", ""),
+                "last_modified": response.headers.get("Last-Modified", ""),
+            },
+        )
 
 
 async def _alert_pending_stuck(pending: dict[str, Any]) -> None:
@@ -96,6 +110,7 @@ async def _alert_pending_stuck(pending: dict[str, Any]) -> None:
     bot: Bot | None = next(iter(bots_by_group.values()), None)
     if bot is None:
         from nonebot import get_bot
+
         try:
             maybe_bot = get_bot()
         except (ValueError, KeyError):
@@ -110,19 +125,27 @@ async def _alert_pending_stuck(pending: dict[str, Any]) -> None:
     if plugin_config.debug_user_id:
         user_ids.append(plugin_config.debug_user_id)
     else:
-        user_ids.extend(str(item) for item in (getattr(bot.config, "superusers", None) or []))
+        user_ids.extend(
+            str(item) for item in (getattr(bot.config, "superusers", None) or [])
+        )
     if not user_ids:
-        logger.warning("早报投递持续失败，但未配置 debug_user_id / superusers，无法告警")
+        logger.warning(
+            "早报投递持续失败，但未配置 debug_user_id / superusers，无法告警"
+        )
         return
 
     for user_id in user_ids:
         try:
             await bot.send_private_msg(user_id=int(user_id), message=text)
         except Exception as exc:
-            logger.warning(f"向 {user_id} 发送早报投递失败告警失败: {get_exc_desc(exc)}")
+            logger.warning(
+                f"向 {user_id} 发送早报投递失败告警失败: {get_exc_desc(exc)}"
+            )
 
 
-async def _prepare_and_queue(state: dict[str, Any], items: list[dict[str, Any]], updates: list[dict[str, Any]]) -> None:
+async def _prepare_and_queue(
+    state: dict[str, Any], items: list[dict[str, Any]], updates: list[dict[str, Any]]
+) -> None:
     updates.sort(key=lambda item: parse_date(str(item["pub_date"])))
     event_id = event_id_for(updates)
     document = build_raw_document(plugin_config.feed_url, updates)
@@ -169,7 +192,9 @@ async def run_once(*, force_latest: bool = False) -> str:
     pending = state.get("pending")
     if isinstance(pending, dict):
         if pending_images_missing(pending):
-            logger.error("pending 图片已缺失，丢弃 pending 但不推进已读，下一轮将重新渲染")
+            logger.error(
+                "pending 图片已缺失，丢弃 pending 但不推进已读，下一轮将重新渲染"
+            )
             abandon_pending(state)
             state = load_state()
         else:
@@ -209,22 +234,28 @@ async def run_once(*, force_latest: bool = False) -> str:
         return "parse_failed"
 
     if not force_latest:
-        state.update({
-            "feed_url": plugin_config.feed_url,
-            "etag": headers.get("etag", state.get("etag", "")),
-            "last_modified": headers.get("last_modified", state.get("last_modified", "")),
-            "last_checked_at": now_iso(),
-        })
+        state.update(
+            {
+                "feed_url": plugin_config.feed_url,
+                "etag": headers.get("etag", state.get("etag", "")),
+                "last_modified": headers.get(
+                    "last_modified", state.get("last_modified", "")
+                ),
+                "last_checked_at": now_iso(),
+            }
+        )
 
     if force_latest:
         updates = [dict(items[0], change_kind="manual")]
     else:
         if not state.get("initialized"):
-            state.update({
-                "initialized": True,
-                "seen": current_seen(items),
-                "initialized_at": now_iso(),
-            })
+            state.update(
+                {
+                    "initialized": True,
+                    "seen": current_seen(items),
+                    "initialized_at": now_iso(),
+                }
+            )
             save_state(state)
             logger.info(f"已建立基线（{len(items)} 条），本轮不推送历史早报")
             return "initialized"

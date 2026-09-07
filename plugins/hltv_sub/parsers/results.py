@@ -9,7 +9,7 @@ import re
 from bs4 import BeautifulSoup
 from nonebot.log import logger
 
-from ..models import ResultInfo
+from plugins.hltv_sub.models import ResultInfo
 
 
 def parse_event_results(html: str, max_results: int = 20) -> list[ResultInfo]:

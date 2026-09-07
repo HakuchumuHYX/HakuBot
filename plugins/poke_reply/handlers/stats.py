@@ -3,21 +3,25 @@ from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     PrivateMessageEvent,
     MessageEvent,
-    Bot
+    Bot,
 )
 from nonebot.rule import to_me
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
 
-from ..models.data import data_manager
-from ..services import image as image_service
-from ..config import TEXT_FILES_DIR
+from plugins.poke_reply.models.data import data_manager
+from plugins.poke_reply.services import image as image_service
+from plugins.poke_reply.config import TEXT_FILES_DIR
 
 # --- 统计命令 ---
 view_text_count = on_command("查看投稿数", rule=to_me(), priority=5, block=True)
-view_all_text_count = on_command("查看所有投稿数", permission=SUPERUSER, rule=to_me(), priority=5, block=True)
+view_all_text_count = on_command(
+    "查看所有投稿数", permission=SUPERUSER, rule=to_me(), priority=5, block=True
+)
 view_content_stats = on_command("查看投稿统计", rule=to_me(), priority=5, block=True)
-clear_duplicates = on_command("清除投稿重复", permission=SUPERUSER, rule=to_me(), priority=5, block=True)
+clear_duplicates = on_command(
+    "清除投稿重复", permission=SUPERUSER, rule=to_me(), priority=5, block=True
+)
 
 
 @view_text_count.handle()
@@ -29,7 +33,9 @@ async def handle_view_text_count(event: MessageEvent):
         await view_text_count.finish("数据加载失败，无法查看文本数喵！")
     text_count = data_manager.get_text_count(group_id)
     image_count = data_manager.get_image_count(group_id)
-    await view_text_count.finish(f"当前群共有 {text_count} 条文本和 {image_count} 张图片喵！")
+    await view_text_count.finish(
+        f"当前群共有 {text_count} 条文本和 {image_count} 张图片喵！"
+    )
 
 
 @view_content_stats.handle()
@@ -78,15 +84,19 @@ async def handle_view_all_text_count(event: MessageEvent):
                     total_images += image_count
                     total_groups += 1
                     if text_count > 0 or image_count > 0:
-                        group_details.append(f"群 {group_id}: {text_count}文/{image_count}图")
+                        group_details.append(
+                            f"群 {group_id}: {text_count}文/{image_count}图"
+                        )
             except (ValueError, Exception) as e:
                 logger.warning(f"处理文件 {file_path} 时出错: {e}")
-        
+
         if total_groups == 0:
             message = "还没有任何群聊有投稿内容喵！"
         else:
             total_content = total_texts + total_images
-            message = f"共 {total_groups} 个群聊有投稿，总计 {total_content} 个内容喵！\n"
+            message = (
+                f"共 {total_groups} 个群聊有投稿，总计 {total_content} 个内容喵！\n"
+            )
             message += f"📝 文本: {total_texts} 条\n"
             message += f"🖼️  图片: {total_images} 张\n\n"
             if len(group_details) <= 10:
@@ -116,7 +126,9 @@ async def handle_clear_duplicates(bot: Bot, event: GroupMessageEvent):
         num_pairs = len(duplicates_found)
 
         # 2. 删除重复
-        removed_count = image_service.safe_remove_group_duplicates(group_id, duplicates_found)
+        removed_count = image_service.safe_remove_group_duplicates(
+            group_id, duplicates_found
+        )
 
         await clear_duplicates.finish(
             f"清理完成！\n"

@@ -7,7 +7,7 @@ from pathlib import Path
 from pydub import AudioSegment
 
 # --- 配置 ---
-JSON_PATH = 'resources/guess_song.json'
+JSON_PATH = "resources/guess_song.json"
 RESOURCES_DIR = Path("resources")
 INPUT_DIR = RESOURCES_DIR / "songs"
 
@@ -16,7 +16,7 @@ OUTPUT_DIRS = {
     "vocals": RESOURCES_DIR / "vocals_only",
     "drums": RESOURCES_DIR / "drums_only",
     "bass": RESOURCES_DIR / "bass_only",
-    "accompaniment": RESOURCES_DIR / "accompaniment"
+    "accompaniment": RESOURCES_DIR / "accompaniment",
 }
 
 MODEL_NAME = "htdemucs"
@@ -43,42 +43,45 @@ def get_target_bundles():
         print(f"错误: 找不到 {JSON_PATH}")
         sys.exit(1)
 
-    with open(JSON_PATH, 'r', encoding='utf-8') as f:
+    with open(JSON_PATH, "r", encoding="utf-8") as f:
         songs = json.load(f)
 
     targets = []
 
     print(f"正在筛选最佳版本...")
     for song in songs:
-        vocals = song.get('vocals', [])
-        if not vocals: continue
+        vocals = song.get("vocals", [])
+        if not vocals:
+            continue
 
         # 筛选策略: Sekai > VS/Original > First
         chosen_vocal = None
         for v in vocals:
-            if v.get('musicVocalType') == 'sekai':
+            if v.get("musicVocalType") == "sekai":
                 chosen_vocal = v
                 break
         if not chosen_vocal:
             for v in vocals:
-                ctype = v.get('musicVocalType')
-                if ctype == 'virtual_singer' or ctype == 'original_song':
+                ctype = v.get("musicVocalType")
+                if ctype == "virtual_singer" or ctype == "original_song":
                     chosen_vocal = v
                     break
         if not chosen_vocal and vocals:
             chosen_vocal = vocals[0]
 
         if chosen_vocal:
-            bundle_name = chosen_vocal.get('vocalAssetbundleName')
+            bundle_name = chosen_vocal.get("vocalAssetbundleName")
             src_path = INPUT_DIR / bundle_name / f"{bundle_name}.mp3"
             if src_path.exists():
                 # 只有未处理的才加入列表
                 if not is_processed(bundle_name):
-                    targets.append({
-                        'title': song.get('title'),
-                        'bundle': bundle_name,
-                        'path': src_path
-                    })
+                    targets.append(
+                        {
+                            "title": song.get("title"),
+                            "bundle": bundle_name,
+                            "path": src_path,
+                        }
+                    )
 
     print(f"筛选完成！待处理: {len(targets)} 首")
     return targets
@@ -110,7 +113,7 @@ def mix_and_move(bundle_name):
         mappings = {
             "vocals.mp3": OUTPUT_DIRS["vocals"],
             "drums.mp3": OUTPUT_DIRS["drums"],
-            "bass.mp3": OUTPUT_DIRS["bass"]
+            "bass.mp3": OUTPUT_DIRS["bass"],
         }
         for fname, dest_dir in mappings.items():
             src = base_dir / fname
@@ -124,17 +127,23 @@ def mix_and_move(bundle_name):
 def process_batch(batch_targets):
     """处理一批歌曲"""
     # 提取所有文件路径
-    input_paths = [str(t['path']) for t in batch_targets]
+    input_paths = [str(t["path"]) for t in batch_targets]
 
     # 构建一个包含多个文件的命令
     cmd = [
-              sys.executable, "-m", "demucs",
-              "-n", MODEL_NAME,
-              "--segment", "5",  # 保持显存优化
-              "--mp3",
-              "--mp3-bitrate", "128",
-              "-o", "temp_demucs"
-          ] + input_paths  # <--- 关键：一次传入多个文件
+        sys.executable,
+        "-m",
+        "demucs",
+        "-n",
+        MODEL_NAME,
+        "--segment",
+        "5",  # 保持显存优化
+        "--mp3",
+        "--mp3-bitrate",
+        "128",
+        "-o",
+        "temp_demucs",
+    ] + input_paths  # <--- 关键：一次传入多个文件
 
     print(f"\n>>> 正在启动 Demucs 处理本批次 ({len(input_paths)} 首)...")
     try:
@@ -144,7 +153,7 @@ def process_batch(batch_targets):
         # Demucs 处理完这批后，逐个进行后处理（移动、合成）
         print(">>> 正在进行后处理 (合成伴奏/移动文件)...")
         for t in batch_targets:
-            mix_and_move(t['bundle'])
+            mix_and_move(t["bundle"])
 
         # 清理临时目录 (防止堆积)
         if Path("temp_demucs").exists():
@@ -168,7 +177,7 @@ def main():
 
     # 分批处理
     for i in range(0, total, BATCH_SIZE):
-        batch = all_targets[i: i + BATCH_SIZE]
+        batch = all_targets[i : i + BATCH_SIZE]
         print(f"\n=== 批次进度: {i + 1}-{min(i + BATCH_SIZE, total)} / {total} ===")
         process_batch(batch)
 

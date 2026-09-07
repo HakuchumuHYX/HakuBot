@@ -6,16 +6,22 @@
 """
 
 from __future__ import annotations
+from utils.json_io import atomic_write_json
 
 import json
 from typing import Dict, Optional
 
 from nonebot import get_driver, on_command
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, PrivateMessageEvent
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    GroupMessageEvent,
+    Message,
+    PrivateMessageEvent,
+)
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
-from ..config import plugin_config
+from plugins.buaa_msm.config import plugin_config
 
 
 class BindManager:
@@ -53,8 +59,9 @@ class BindManager:
     def _save(self) -> bool:
         """保存绑定数据"""
         try:
-            with open(plugin_config.bind_data_file, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
+            atomic_write_json(
+                plugin_config.bind_data_file, self._data, ensure_ascii=False, indent=2
+            )
             logger.debug("绑定数据已保存")
             return True
         except Exception as e:
@@ -115,7 +122,9 @@ bind_cmd = on_command("buaa绑定", priority=5, block=True)
 
 
 @bind_cmd.handle()
-async def handle_bind_command(bot: Bot, event: PrivateMessageEvent, args: Message = CommandArg()):
+async def handle_bind_command(
+    bot: Bot, event: PrivateMessageEvent, args: Message = CommandArg()
+):
     bind_content = args.extract_plain_text().strip()
 
     if not bind_content:
@@ -127,9 +136,13 @@ async def handle_bind_command(bot: Bot, event: PrivateMessageEvent, args: Messag
 
     if bind_manager.set(user_id, bind_content):
         if old_content:
-            await bind_cmd.finish(f"绑定成功！\n已更新绑定内容：\n原内容：{old_content}\n新内容：{bind_content}")
+            await bind_cmd.finish(
+                f"绑定成功！\n已更新绑定内容：\n原内容：{old_content}\n新内容：{bind_content}"
+            )
         else:
-            await bind_cmd.finish(f"绑定成功！\nQQ：{user_id}\n绑定内容：{bind_content}")
+            await bind_cmd.finish(
+                f"绑定成功！\nQQ：{user_id}\n绑定内容：{bind_content}"
+            )
     else:
         await bind_cmd.finish("绑定失败，数据保存出错，请稍后重试")
 
@@ -195,6 +208,7 @@ async def handle_view_all_command(bot: Bot, event: PrivateMessageEvent):
 # NoneBot 会跳过事件类型与参数注解不匹配的 handler：
 # 群聊事件走这里，私聊事件走上面的业务 handler。
 
+
 @bind_cmd.handle()
 async def handle_group_bind(bot: Bot, event: GroupMessageEvent):
     await bind_cmd.finish("该指令仅在私聊中可用")
@@ -213,6 +227,3 @@ async def handle_group_unbind(bot: Bot, event: GroupMessageEvent):
 @view_all_binds.handle()
 async def handle_group_view_all(bot: Bot, event: GroupMessageEvent):
     await view_all_binds.finish("该指令仅在私聊中可用")
-
-
-

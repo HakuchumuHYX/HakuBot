@@ -9,7 +9,10 @@ dependencies = [
     "nonebot-adapter-onebot>=2.4.6",
     # NoneBot 插件
     "nonebot-plugin-apscheduler",
-    "nonebot-plugin-htmlrender",
+    "markdown",
+    "pymdown-extensions",
+    "python-markdown-math",
+    "pygments",
     "nonebot-plugin-localstore",
     "nonebot-plugin-send-anything-anywhere",
     "nonebot-plugin-session",

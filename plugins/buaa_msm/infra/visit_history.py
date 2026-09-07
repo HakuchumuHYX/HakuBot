@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from nonebot.log import logger
 
-from ..config import plugin_config
+from plugins.buaa_msm.config import plugin_config
 
 
 visit_history_file = plugin_config.visit_history_file
@@ -48,7 +48,9 @@ class VisitHistoryManager:
         """保存访问历史到文件"""
         try:
             visit_history_file.parent.mkdir(parents=True, exist_ok=True)
-            visit_history_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            visit_history_file.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         except Exception as e:
             logger.error(f"保存访问历史失败: {e}")
 

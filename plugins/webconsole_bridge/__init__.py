@@ -1,15 +1,16 @@
 from __future__ import annotations
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 
 from nonebot import get_driver
 from nonebot.plugin import PluginMetadata
 from loguru import logger
 
-from .config import BridgeConfig
-from .capture import register_capture_hooks
-from .capture import capture_manager
-from .diagnostics import DiagnosticCapture
-from .persistence import PersistenceWriter
-from .status import (
+from plugins.webconsole_bridge.config import BridgeConfig
+from plugins.webconsole_bridge.capture import register_capture_hooks
+from plugins.webconsole_bridge.capture import capture_manager
+from plugins.webconsole_bridge.diagnostics import DiagnosticCapture
+from plugins.webconsole_bridge.persistence import PersistenceWriter
+from plugins.webconsole_bridge.status import (
     BridgeRuntime,
     bot_status_manager,
     register_bot_status_hooks,
@@ -52,13 +53,13 @@ except ValueError:
 if driver is not None:
     register_bot_status_hooks(driver, bridge_runtime)
 
-    @driver.on_startup
+    @on_plugin_startup(driver, "webconsole_bridge")
     async def _start_webconsole_bridge() -> None:
         await bridge_runtime.start()
         diagnostic_capture.start()
         await bot_status_manager.start()
 
-    @driver.on_shutdown
+    @on_plugin_shutdown(driver, "webconsole_bridge")
     async def _stop_webconsole_bridge() -> None:
         await bot_status_manager.stop()
         diagnostic_capture.stop()

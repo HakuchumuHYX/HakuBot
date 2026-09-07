@@ -73,7 +73,9 @@ class HLTVHttpClient:
         self._min_delay = min_delay
         self._proxy_list = proxy_list or []
         self._impersonate = impersonate
-        self._flaresolverr_url = flaresolverr_url.rstrip("/") if flaresolverr_url else ""
+        self._flaresolverr_url = (
+            flaresolverr_url.rstrip("/") if flaresolverr_url else ""
+        )
         self._session: Optional[AsyncSession] = None
 
         # 代理轮换状态（失败退避 + 冷却）
@@ -157,9 +159,7 @@ class HLTVHttpClient:
                 html = solution.get("response", "")
                 status_code = solution.get("status", 200)
                 final_url = solution.get("url", url)
-                logger.info(
-                    f"[HLTV] FlareSolverr 成功: {url} status={status_code}"
-                )
+                logger.info(f"[HLTV] FlareSolverr 成功: {url} status={status_code}")
                 return FetchResult(
                     text=html if html else None,
                     status_code=status_code,
@@ -189,11 +189,15 @@ class HLTVHttpClient:
                 # 添加随机延迟（重试时）
                 if attempt > 0:
                     delay = self._min_delay + (attempt * 2) + random.uniform(0, 2)
-                    logger.info(f"[HLTV] 重试 {attempt + 1}/{max_retries}，延迟 {delay:.1f}s...")
+                    logger.info(
+                        f"[HLTV] 重试 {attempt + 1}/{max_retries}，延迟 {delay:.1f}s..."
+                    )
                     await asyncio.sleep(delay)
 
                 proxy = self._pick_proxy()
-                logger.info(f"[HLTV] 正在请求: {url} (proxy={proxy or 'direct'}, impersonate={self._impersonate})")
+                logger.info(
+                    f"[HLTV] 正在请求: {url} (proxy={proxy or 'direct'}, impersonate={self._impersonate})"
+                )
 
                 response = await session.get(
                     url,
@@ -216,15 +220,21 @@ class HLTVHttpClient:
                 if response.status_code == 403:
                     consecutive_403 += 1
                     self._mark_proxy_failure(proxy)
-                    logger.warning(f"[HLTV] 403 Forbidden: {url} (proxy={proxy or 'direct'}, attempt={attempt + 1})")
+                    logger.warning(
+                        f"[HLTV] 403 Forbidden: {url} (proxy={proxy or 'direct'}, attempt={attempt + 1})"
+                    )
 
                     # 连续 403 达到 2 次且配置了 FlareSolverr，尝试回退
                     if consecutive_403 >= 2 and self._flaresolverr_url:
-                        logger.info(f"[HLTV] 连续 {consecutive_403} 次 403，尝试 FlareSolverr 回退...")
+                        logger.info(
+                            f"[HLTV] 连续 {consecutive_403} 次 403，尝试 FlareSolverr 回退..."
+                        )
                         fs_result = await self._fetch_via_flaresolverr(url)
                         if fs_result.text:
                             return fs_result
-                        logger.warning(f"[HLTV] FlareSolverr 回退失败: {fs_result.error}")
+                        logger.warning(
+                            f"[HLTV] FlareSolverr 回退失败: {fs_result.error}"
+                        )
 
                     continue
 

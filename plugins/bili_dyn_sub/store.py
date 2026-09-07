@@ -20,9 +20,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from ..utils.json_io import atomic_write_json
-from ..utils.tools import get_logger
-from .config import STATE_FILE, plugin_config
+from utils.json_io import atomic_write_json
+from utils.logging import get_logger
+from plugins.bili_dyn_sub.config import STATE_FILE, plugin_config
 
 logger = get_logger("bili_dyn_sub.store")
 
@@ -54,7 +54,9 @@ def dyn_id_to_int(dyn_id: Any) -> Optional[int]:
         return None
 
 
-def _normalize_int_list(raw: Any, allowed: Optional[frozenset[int]] = None) -> list[int]:
+def _normalize_int_list(
+    raw: Any, allowed: Optional[frozenset[int]] = None
+) -> list[int]:
     """归一化整数列表：丢弃非数字与不在 allowed 内的项，去重后升序"""
     if not isinstance(raw, (list, tuple, set)):
         return []
@@ -103,7 +105,9 @@ class Store:
             with open(self._state_file, "r", encoding="utf-8") as f:
                 raw = json.load(f)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
-            logger.error(f"读取状态文件失败，本次以空状态运行（原文件保留待人工检查）: {e}")
+            logger.error(
+                f"读取状态文件失败，本次以空状态运行（原文件保留待人工检查）: {e}"
+            )
             return
 
         if not isinstance(raw, dict):
@@ -171,11 +175,18 @@ class Store:
         """
         return {
             "subscriptions": {
-                uid: {**item, "groups": list(item["groups"]), "categories": list(item["categories"])}
+                uid: {
+                    **item,
+                    "groups": list(item["groups"]),
+                    "categories": list(item["categories"]),
+                }
                 for uid, item in self._subscriptions.items()
             },
             "seen": {
-                uid: {"cursor": entry.get("cursor", 0), "ids": list(entry.get("ids") or [])}
+                uid: {
+                    "cursor": entry.get("cursor", 0),
+                    "ids": list(entry.get("ids") or []),
+                }
                 for uid, entry in self._seen.items()
             },
             "last_success": dict(self._last_success),
@@ -251,7 +262,9 @@ class Store:
         self.save()
         return True
 
-    def list_subscriptions(self, group_id: Optional[int] = None) -> list[dict[str, Any]]:
+    def list_subscriptions(
+        self, group_id: Optional[int] = None
+    ) -> list[dict[str, Any]]:
         """列出订阅；传 group_id 只列该群的，不传则全量。返回副本，调用方可安全修改"""
         wanted = dyn_id_to_int(group_id) if group_id is not None else None
         result: list[dict[str, Any]] = []
@@ -300,7 +313,9 @@ class Store:
         uid = str(uid)
         limit = _config_int("seen_ids_max", _FALLBACK_SEEN_IDS_MAX)
         # 去重后按 id 数值升序（与 mark_seen 的「新的在尾部」一致），超限只留最新的
-        str_ids = sorted(dict.fromkeys(str(i) for i in ids), key=_seen_sort_key)[-limit:]
+        str_ids = sorted(dict.fromkeys(str(i) for i in ids), key=_seen_sort_key)[
+            -limit:
+        ]
         numeric = [v for v in (dyn_id_to_int(i) for i in str_ids) if v is not None]
         # 显式取全量 max，避免置顶动态把游标压低
         final_cursor = max([dyn_id_to_int(cursor) or 0, *numeric, 0])
@@ -340,7 +355,9 @@ class Store:
         value = dyn_id_to_int(dyn_id)
         if value is None:
             # 非纯数字 id 只入 ids，不动游标，避免污染判新条件
-            logger.warning(f"动态 id 非纯数字，仅记录到 seen_ids: uid={uid} id={dyn_id!r}")
+            logger.warning(
+                f"动态 id 非纯数字，仅记录到 seen_ids: uid={uid} id={dyn_id!r}"
+            )
         else:
             entry["cursor"] = max(dyn_id_to_int(entry.get("cursor")) or 0, value)
 
@@ -364,7 +381,9 @@ class Store:
         返回被裁掉的记录数（截断的 id 数 + 清除的 uid 状态数）。
         """
         limit = _config_int("seen_ids_max", _FALLBACK_SEEN_IDS_MAX)
-        retention_days = _config_int("seen_retention_days", _FALLBACK_SEEN_RETENTION_DAYS)
+        retention_days = _config_int(
+            "seen_retention_days", _FALLBACK_SEEN_RETENTION_DAYS
+        )
         cutoff = datetime.now() - timedelta(days=retention_days)
 
         trimmed_ids = 0
@@ -378,7 +397,9 @@ class Store:
                     try:
                         stale = datetime.fromisoformat(last) < cutoff
                     except ValueError:
-                        logger.warning(f"last_success 时间格式非法，按过期处理: uid={uid} value={last!r}")
+                        logger.warning(
+                            f"last_success 时间格式非法，按过期处理: uid={uid} value={last!r}"
+                        )
                 if stale:
                     self._seen.pop(uid, None)
                     self._last_success.pop(uid, None)
@@ -398,7 +419,9 @@ class Store:
         removed = trimmed_ids + len(dropped_uids)
         if removed:
             self.save()
-            logger.info(f"裁剪去重状态: 截断 {trimmed_ids} 条 id，清除 {len(dropped_uids)} 个失效 UID 状态")
+            logger.info(
+                f"裁剪去重状态: 截断 {trimmed_ids} 条 id，清除 {len(dropped_uids)} 个失效 UID 状态"
+            )
         return removed
 
 

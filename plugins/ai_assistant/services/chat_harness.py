@@ -6,8 +6,9 @@ import re
 
 from nonebot.log import logger
 
-from ..config import plugin_config
-from .search_service import format_chat_evidence_pack, web_chat_search_with_rewrite
+from plugins.ai_assistant.config import plugin_config
+from plugins.ai_assistant.services.search.evidence import format_chat_evidence_pack
+from plugins.ai_assistant.services.search.workflow import web_chat_search_with_rewrite
 
 
 SearchRunner = Callable[[str, str], Awaitable[Tuple[List[str], List[dict]]]]
@@ -59,7 +60,11 @@ def build_runtime_context(
     now: Optional[datetime] = None,
     timezone_name: Optional[str] = None,
 ) -> str:
-    tz_name = timezone_name or getattr(plugin_config.chat, "runtime_timezone", "Asia/Shanghai") or "Asia/Shanghai"
+    tz_name = (
+        timezone_name
+        or getattr(plugin_config.chat, "runtime_timezone", "Asia/Shanghai")
+        or "Asia/Shanghai"
+    )
     try:
         tz = ZoneInfo(tz_name)
     except ZoneInfoNotFoundError:
@@ -90,7 +95,9 @@ def extract_search_text(content_list: list) -> str:
     return " ".join(texts).strip()
 
 
-def decide_chat_search(content_list: list, *, force_search: bool = False) -> ChatSearchDecision:
+def decide_chat_search(
+    content_list: list, *, force_search: bool = False
+) -> ChatSearchDecision:
     search_text = extract_search_text(content_list)
     if not search_text:
         return ChatSearchDecision("none", "", "no_search_text")
@@ -101,7 +108,9 @@ def decide_chat_search(content_list: list, *, force_search: bool = False) -> Cha
     if not bool(getattr(plugin_config.search, "auto_search_enabled", True)):
         return ChatSearchDecision("none", search_text, "auto_search_disabled")
 
-    auto_mode = (getattr(plugin_config.search, "auto_search_mode", "smart") or "smart").lower()
+    auto_mode = (
+        getattr(plugin_config.search, "auto_search_mode", "smart") or "smart"
+    ).lower()
     if auto_mode == "off":
         return ChatSearchDecision("none", search_text, "auto_search_off")
     if auto_mode == "always":
@@ -173,12 +182,16 @@ def build_chat_messages(
     return messages
 
 
-async def _default_search_runner(search_text: str, mode: str) -> Tuple[List[str], List[dict]]:
+async def _default_search_runner(
+    search_text: str, mode: str
+) -> Tuple[List[str], List[dict]]:
     search_cfg = plugin_config.search
     if mode == "quick":
         return await web_chat_search_with_rewrite(
             search_text,
-            max_results=int(getattr(search_cfg, "auto_search_quick_max_results", 3) or 3),
+            max_results=int(
+                getattr(search_cfg, "auto_search_quick_max_results", 3) or 3
+            ),
             search_depth="basic",
             include_raw_content=False,
         )
@@ -207,11 +220,16 @@ async def prepare_chat_messages(
             queries, search_payloads = await runner(decision.search_text, decision.mode)
             max_chars = None
             if decision.mode == "quick":
-                max_chars = int(getattr(plugin_config.search, "auto_search_context_max_chars", 3000) or 3000)
+                max_chars = int(
+                    getattr(plugin_config.search, "auto_search_context_max_chars", 3000)
+                    or 3000
+                )
             evidence = evidence_formatter(search_payloads, max_chars=max_chars)
         except Exception as e:
             search_error = str(e)
-            logger.warning(f"自动联网检索失败: mode={decision.mode} text={decision.search_text!r} err={e}")
+            logger.warning(
+                f"自动联网检索失败: mode={decision.mode} text={decision.search_text!r} err={e}"
+            )
 
     messages = build_chat_messages(
         content_list,

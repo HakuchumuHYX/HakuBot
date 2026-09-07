@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from nonebot.adapters.onebot.v11 import Bot
 
-from .data_manager import data_manager
+from plugins.hltv_sub.data_manager import data_manager
 
 
 def is_group_enabled(group_id: int) -> bool:
@@ -21,7 +21,9 @@ async def check_permission(bot: Bot, group_id: int, user_id: int) -> bool:
         return True
 
     try:
-        member_info = await bot.get_group_member_info(group_id=group_id, user_id=user_id)
+        member_info = await bot.get_group_member_info(
+            group_id=group_id, user_id=user_id
+        )
         return member_info.get("role") in ("owner", "admin")
     except Exception:
         return False

@@ -5,21 +5,38 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.log import logger
 
-from .config import COMMAND_PRIORITY, FRIEND_APPROVED_MESSAGE, AUTO_APPROVE_GROUPS, load_auto_approve_groups, \
-    save_auto_approve_groups
-from .data_manager import request_manager
+from plugins.add_friend.config import (
+    COMMAND_PRIORITY,
+    FRIEND_APPROVED_MESSAGE,
+    AUTO_APPROVE_GROUPS,
+    load_auto_approve_groups,
+    save_auto_approve_groups,
+)
+from plugins.add_friend.data_manager import request_manager
 
 # SUPERUSER 处理好友请求的命令
-approve_friend = on_command("同意好友", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True)
-reject_friend = on_command("拒绝好友", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True)
+approve_friend = on_command(
+    "同意好友", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
+)
+reject_friend = on_command(
+    "拒绝好友", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
+)
 # 配置管理命令
-list_groups = on_command("查看白名单群组", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True)
-add_group = on_command("添加白名单群组", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True)
-remove_group = on_command("移除白名单群组", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True)
+list_groups = on_command(
+    "查看白名单群组", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
+)
+add_group = on_command(
+    "添加白名单群组", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
+)
+remove_group = on_command(
+    "移除白名单群组", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
+)
 
 
 @approve_friend.handle()
-async def approve_friend_handler(matcher: Matcher, bot: Bot, args: Message = CommandArg()):
+async def approve_friend_handler(
+    matcher: Matcher, bot: Bot, args: Message = CommandArg()
+):
     """处理同意好友命令"""
     user_id_str = args.extract_plain_text().strip()
     if not user_id_str:
@@ -29,7 +46,9 @@ async def approve_friend_handler(matcher: Matcher, bot: Bot, args: Message = Com
     logger.info(f"当前待处理请求: {request_manager.get_all_pending_requests()}")
 
     if not request_manager.has_pending_request(user_id_str):
-        await matcher.finish(f"未找到QQ号 {user_id_str} 的好友申请记录。请确认QQ号是否正确，或该申请已被处理。")
+        await matcher.finish(
+            f"未找到QQ号 {user_id_str} 的好友申请记录。请确认QQ号是否正确，或该申请已被处理。"
+        )
 
     try:
         request_data = request_manager.get_request(user_id_str)
@@ -39,8 +58,7 @@ async def approve_friend_handler(matcher: Matcher, bot: Bot, args: Message = Com
         # 发送同意后的消息（可选）
         try:
             await bot.send_private_msg(
-                user_id=request_data["user_id"],
-                message=FRIEND_APPROVED_MESSAGE
+                user_id=request_data["user_id"], message=FRIEND_APPROVED_MESSAGE
             )
         except Exception:
             logger.warning("无法发送欢迎消息给新好友")
@@ -57,7 +75,9 @@ async def approve_friend_handler(matcher: Matcher, bot: Bot, args: Message = Com
 
 
 @reject_friend.handle()
-async def reject_friend_handler(matcher: Matcher, bot: Bot, args: Message = CommandArg()):
+async def reject_friend_handler(
+    matcher: Matcher, bot: Bot, args: Message = CommandArg()
+):
     """处理拒绝好友命令"""
     user_id_str = args.extract_plain_text().strip()
     if not user_id_str:
@@ -67,7 +87,9 @@ async def reject_friend_handler(matcher: Matcher, bot: Bot, args: Message = Comm
     logger.info(f"当前待处理请求: {request_manager.get_all_pending_requests()}")
 
     if not request_manager.has_pending_request(user_id_str):
-        await matcher.finish(f"未找到QQ号 {user_id_str} 的好友申请记录。请确认QQ号是否正确，或该申请已被处理。")
+        await matcher.finish(
+            f"未找到QQ号 {user_id_str} 的好友申请记录。请确认QQ号是否正确，或该申请已被处理。"
+        )
 
     try:
         request_data = request_manager.get_request(user_id_str)
@@ -114,7 +136,8 @@ async def add_group_handler(matcher: Matcher, args: Message = CommandArg()):
     current_groups.add(group_id)
     if save_auto_approve_groups(current_groups):
         # 更新内存中的配置
-        from .config import AUTO_APPROVE_GROUPS
+        from plugins.add_friend.config import AUTO_APPROVE_GROUPS
+
         AUTO_APPROVE_GROUPS.clear()
         AUTO_APPROVE_GROUPS.update(current_groups)
         await matcher.send(f"已添加群组 {group_id} 到白名单")
@@ -137,7 +160,8 @@ async def remove_group_handler(matcher: Matcher, args: Message = CommandArg()):
     current_groups.remove(group_id)
     if save_auto_approve_groups(current_groups):
         # 更新内存中的配置
-        from .config import AUTO_APPROVE_GROUPS
+        from plugins.add_friend.config import AUTO_APPROVE_GROUPS
+
         AUTO_APPROVE_GROUPS.clear()
         AUTO_APPROVE_GROUPS.update(current_groups)
         await matcher.send(f"已从白名单移除群组 {group_id}")

@@ -6,6 +6,7 @@ BUAA MSM 插件统一配置文件（纯运行配置）。
 """
 
 from __future__ import annotations
+from utils.paths import PluginPaths
 
 import json
 import os
@@ -23,6 +24,7 @@ import nonebot_plugin_localstore as store
 
 class CleanupConfig(BaseModel):
     """清理任务配置"""
+
     morning_hour: int = 5
     morning_minute: int = 0
     afternoon_hour: int = 17
@@ -31,6 +33,7 @@ class CleanupConfig(BaseModel):
 
 class TimeConfig(BaseModel):
     """时间段配置"""
+
     morning_start: int = 5
     afternoon_start: int = 17
 
@@ -41,19 +44,23 @@ class PluginConfig:
     def __init__(self) -> None:
         # 路径配置
         self.plugin_dir: Path = Path(__file__).parent
-        self.data_dir: Path = store.get_plugin_data_dir()
+        self.data_dir: Path = PluginPaths("buaa_msm").data
         self.file_storage_dir: Path = self.data_dir / "msmdata"
         self.resource_dir: Path = self.plugin_dir / "resources"
         self.visit_history_file: Path = self.data_dir / "visit_history.json"
         self.bind_data_file: Path = self.plugin_dir / "bind.json"
-        self.user_latest_files_index_file: Path = self.data_dir / "user_latest_files.json"
-        self.local_config_file: Path = self.plugin_dir / "config.json"
+        self.user_latest_files_index_file: Path = (
+            self.data_dir / "user_latest_files.json"
+        )
+        self.local_config_file: Path = PluginPaths("buaa_msm").config / "config.json"
 
         # 本地 JSON 配置（若缺失则回退默认值）
         local_cfg = self._load_local_json_config()
 
         # 外部数据路径（优先级：环境变量 > config.json > 默认值）
-        default_master_data_dir = str(self.plugin_dir / "../../../haruki-sekai-master/master")
+        default_master_data_dir = str(
+            self.plugin_dir / "../../../haruki-sekai-master/master"
+        )
         json_master_data_dir = self._as_str(
             self._deep_get(local_cfg, ("master_data_dir",), default_master_data_dir),
             default_master_data_dir,
@@ -88,7 +95,9 @@ class PluginConfig:
             True,
         )
         self.mysekai_icon_url_base: str = self._as_str(
-            self._deep_get(local_cfg, ("mysekai_icon", "url_base"), self.asset_url_base),
+            self._deep_get(
+                local_cfg, ("mysekai_icon", "url_base"), self.asset_url_base
+            ),
             self.asset_url_base,
         )
         self.mysekai_icon_server: str = self._as_str(
@@ -157,7 +166,7 @@ class PluginConfig:
         )
 
     def _load_local_json_config(self) -> dict[str, Any]:
-        """加载 plugins/buaa_msm/config.json（可选）"""
+        """加载 config/plugins/buaa_msm/config.json（可选）。"""
         if not self.local_config_file.exists():
             logger.info("BUAA_MSM 未发现本地 config.json，使用默认值/环境变量。")
             return {}
@@ -165,16 +174,22 @@ class PluginConfig:
         try:
             data = json.loads(self.local_config_file.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
-                logger.warning("BUAA_MSM config.json 顶层不是对象，已忽略并回退默认值。")
+                logger.warning(
+                    "BUAA_MSM config.json 顶层不是对象，已忽略并回退默认值。"
+                )
                 return {}
             logger.info("BUAA_MSM 已加载本地 config.json。")
             return data
         except Exception as e:
-            logger.warning(f"BUAA_MSM 读取 config.json 失败，已回退默认值: {type(e).__name__}")
+            logger.warning(
+                f"BUAA_MSM 读取 config.json 失败，已回退默认值: {type(e).__name__}"
+            )
             return {}
 
     @staticmethod
-    def _deep_get(data: dict[str, Any], keys: Sequence[str], default: Any = None) -> Any:
+    def _deep_get(
+        data: dict[str, Any], keys: Sequence[str], default: Any = None
+    ) -> Any:
         cur: Any = data
         for key in keys:
             if not isinstance(cur, dict):
@@ -224,6 +239,7 @@ class PluginConfig:
     @staticmethod
     def _mask_url_origin(url: str) -> str:
         from urllib.parse import urlsplit
+
         try:
             parsed = urlsplit(str(url))
             if parsed.scheme and parsed.netloc:

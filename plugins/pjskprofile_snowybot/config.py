@@ -1,9 +1,10 @@
+from utils.paths import PluginPaths
 import json
 from pathlib import Path
 from pydantic import BaseModel
 from nonebot.log import logger
 
-CONFIG_FILE_PATH = Path(__file__).parent / "config.json"
+CONFIG_FILE_PATH = PluginPaths("pjskprofile_snowybot").config / "config.json"
 
 
 class ConfigModel(BaseModel):

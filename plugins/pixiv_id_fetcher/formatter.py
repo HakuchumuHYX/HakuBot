@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
-from .models import PixivIllust, PixivPage
+from plugins.pixiv_id_fetcher.models import PixivIllust, PixivPage
 
 
 _PID_PATTERN = re.compile(
@@ -70,24 +70,19 @@ def build_link_fallback_contents(
         contents.append(f"作品链接：{illust.web_url}")
         return contents
 
-    contents.extend(
-        f"第 {page.index + 1} 页：{page.url}"
-        for page in pages
-    )
+    contents.extend(f"第 {page.index + 1} 页：{page.url}" for page in pages)
     if truncated:
         contents.append(f"仅列出前 {len(pages)} / {illust.page_count} 页")
     return contents
 
 
 def detect_image_ext(data: bytes, fallback: str) -> str:
-    if data.startswith(b"\xff\xd8\xff"):
-        return "jpg"
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "png"
-    if data.startswith((b"GIF87a", b"GIF89a")):
-        return "gif"
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "webp"
+    from utils.images.formats import detect_format
+
+    try:
+        return detect_format(data)
+    except ValueError:
+        pass
 
     fallback = fallback.lower().lstrip(".")
     return fallback if fallback in {"jpg", "jpeg", "png", "gif", "webp"} else "jpg"

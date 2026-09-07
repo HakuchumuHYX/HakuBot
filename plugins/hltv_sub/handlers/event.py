@@ -10,15 +10,17 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
-from ...utils.image_utils import image_segment
-from ..data_manager import EventSubscription, data_manager
-from ..data_source import hltv_data
-from ..permissions import check_permission, is_group_enabled
-from ..render import render_events
+from utils.onebot.media import image_segment
+from plugins.hltv_sub.data_manager import EventSubscription, data_manager
+from plugins.hltv_sub.data_source import hltv_data
+from plugins.hltv_sub.permissions import check_permission, is_group_enabled
+from plugins.hltv_sub.render import render_events
 
 
 # event列表命令
-event_list = on_command("event列表", aliases={"赛事列表", "events"}, priority=5, block=True)
+event_list = on_command(
+    "event列表", aliases={"赛事列表", "events"}, priority=5, block=True
+)
 
 
 @event_list.handle()
@@ -53,11 +55,15 @@ async def handle_event_list(bot: Bot, event: GroupMessageEvent):
 
 
 # event订阅命令
-event_subscribe = on_command("event订阅", aliases={"订阅赛事", "subscribe"}, priority=5, block=True)
+event_subscribe = on_command(
+    "event订阅", aliases={"订阅赛事", "subscribe"}, priority=5, block=True
+)
 
 
 @event_subscribe.handle()
-async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
+async def handle_event_subscribe(
+    bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()
+):
     group_id = event.group_id
     user_id = event.user_id
 
@@ -105,7 +111,7 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
                 await event_subscribe.finish(f"已经订阅了赛事 #{event_id}")
                 return
 
-            from ..scheduler import hltv_scheduler
+            from plugins.hltv_sub.scheduler import hltv_scheduler
 
             # 进行中赛事先标记已有结果，避免订阅后立刻推历史结果
             if event_info.is_ongoing:
@@ -130,7 +136,7 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
                 await event_subscribe.finish(f"已经订阅了赛事 #{event_id}")
                 return
 
-            from ..scheduler import hltv_scheduler
+            from plugins.hltv_sub.scheduler import hltv_scheduler
 
             hltv_scheduler.ensure_event_job_state(event_id)
             hltv_scheduler.refresh_wakeup_jobs()
@@ -145,11 +151,15 @@ async def handle_event_subscribe(bot: Bot, event: GroupMessageEvent, args: Messa
 
 
 # event取消订阅命令
-event_unsubscribe = on_command("event取消订阅", aliases={"取消订阅赛事", "unsubscribe"}, priority=5, block=True)
+event_unsubscribe = on_command(
+    "event取消订阅", aliases={"取消订阅赛事", "unsubscribe"}, priority=5, block=True
+)
 
 
 @event_unsubscribe.handle()
-async def handle_event_unsubscribe(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
+async def handle_event_unsubscribe(
+    bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()
+):
     group_id = event.group_id
     user_id = event.user_id
 
@@ -166,7 +176,7 @@ async def handle_event_unsubscribe(bot: Bot, event: GroupMessageEvent, args: Mes
         return
 
     if data_manager.unsubscribe_event_global(event_id):
-        from ..scheduler import hltv_scheduler
+        from plugins.hltv_sub.scheduler import hltv_scheduler
 
         hltv_scheduler.ensure_job_state()
         hltv_scheduler.refresh_wakeup_jobs()
@@ -176,7 +186,9 @@ async def handle_event_unsubscribe(bot: Bot, event: GroupMessageEvent, args: Mes
 
 
 # 我的订阅命令
-my_subscriptions = on_command("我的订阅", aliases={"订阅列表", "mysub"}, priority=5, block=True)
+my_subscriptions = on_command(
+    "我的订阅", aliases={"订阅列表", "mysub"}, priority=5, block=True
+)
 
 
 @my_subscriptions.handle()
@@ -188,7 +200,9 @@ async def handle_my_subscriptions(bot: Bot, event: GroupMessageEvent):
 
     subscriptions = data_manager.get_subscribed_events(group_id)
     if not subscriptions:
-        await my_subscriptions.finish("当前没有订阅任何赛事\n使用 event列表 查看可订阅的赛事")
+        await my_subscriptions.finish(
+            "当前没有订阅任何赛事\n使用 event列表 查看可订阅的赛事"
+        )
         return
 
     msg = "📋 已订阅的赛事：\n"

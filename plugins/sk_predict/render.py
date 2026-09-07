@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import Any, Optional
 
-from ..utils.draw.plot import (
+from utils.rendering.draw.plot import (
     Canvas,
     FillBg,
     HSplit,
@@ -49,17 +49,19 @@ def build_event_meta(event_info: dict[str, Any], latest_data: dict[str, Any]) ->
     end_at = parse_event_ms(int(event_info["end_at"]))
     updated_at = format_time_text(parse_iso_datetime(latest_data["updated_at"]))
     return (
-        f'Event {event_info["event_id"]}\n'
+        f"Event {event_info['event_id']}\n"
         f"活动时间：{start_at.strftime('%m-%d %H:%M')} ~ {end_at.strftime('%m-%d %H:%M')}\n"
         f"数据更新时间：{updated_at}"
     )
 
 
 def build_footer(latest_data: dict[str, Any]) -> str:
-    return f'状态：{latest_data.get("status", "unknown")}｜来源：Moesekai | pjsk.moe'
+    return f"状态：{latest_data.get('status', 'unknown')}｜来源：Moesekai | pjsk.moe"
 
 
-async def render_prediction_card(event_info: dict[str, Any], latest_data: dict[str, Any]) -> bytes:
+async def render_prediction_card(
+    event_info: dict[str, Any], latest_data: dict[str, Any]
+) -> bytes:
     colors = {
         "canvas_bg": (228, 245, 255, 255),
         "card_bg": (243, 251, 255, 255),
@@ -73,13 +75,27 @@ async def render_prediction_card(event_info: dict[str, Any], latest_data: dict[s
         "accent": (49, 130, 206, 255),
     }
 
-    title_style = TextStyle(font="SourceHanSansCN-Heavy", size=40, color=colors["text_main"])
-    subtitle_style = TextStyle(font="SourceHanSansCN-Bold", size=24, color=colors["accent"])
-    meta_style = TextStyle(font="SourceHanSansCN-Regular", size=18, color=colors["text_sub"])
-    table_head_style = TextStyle(font="SourceHanSansCN-Bold", size=18, color=colors["text_main"])
-    table_cell_style = TextStyle(font="SourceHanSansCN-Regular", size=19, color=colors["text_main"])
-    footer_style = TextStyle(font="SourceHanSansCN-Regular", size=16, color=colors["text_sub"])
-    watermark_style = TextStyle(font="SourceHanSansCN-Regular", size=14, color=colors["text_muted"])
+    title_style = TextStyle(
+        font="SourceHanSansCN-Heavy", size=40, color=colors["text_main"]
+    )
+    subtitle_style = TextStyle(
+        font="SourceHanSansCN-Bold", size=24, color=colors["accent"]
+    )
+    meta_style = TextStyle(
+        font="SourceHanSansCN-Regular", size=18, color=colors["text_sub"]
+    )
+    table_head_style = TextStyle(
+        font="SourceHanSansCN-Bold", size=18, color=colors["text_main"]
+    )
+    table_cell_style = TextStyle(
+        font="SourceHanSansCN-Regular", size=19, color=colors["text_main"]
+    )
+    footer_style = TextStyle(
+        font="SourceHanSansCN-Regular", size=16, color=colors["text_sub"]
+    )
+    watermark_style = TextStyle(
+        font="SourceHanSansCN-Regular", size=14, color=colors["text_muted"]
+    )
 
     width = 920
     outer_margin = 26
@@ -91,12 +107,19 @@ async def render_prediction_card(event_info: dict[str, Any], latest_data: dict[s
 
     sections: list = []
     sections.append(
-        TextBox(event_info["name"], style=title_style, wrap=True, use_real_line_count=True)
+        TextBox(
+            event_info["name"], style=title_style, wrap=True, use_real_line_count=True
+        )
         .set_w(content_w)
         .set_padding(0)
     )
     sections.append(
-        TextBox(build_event_meta(event_info, latest_data), style=meta_style, wrap=True, use_real_line_count=True)
+        TextBox(
+            build_event_meta(event_info, latest_data),
+            style=meta_style,
+            wrap=True,
+            use_real_line_count=True,
+        )
         .set_w(content_w)
         .set_padding(0)
     )
@@ -117,14 +140,24 @@ async def render_prediction_card(event_info: dict[str, Any], latest_data: dict[s
         bg = colors["table_header_bg"] if is_header else colors["row_bg"]
 
         cols = [
-            TextBox(rank_text, style=style, wrap=False, overflow="shrink").set_padding(0).set_content_align("c"),
-            TextBox(score_text, style=style, wrap=False, overflow="shrink").set_padding(0).set_content_align("r"),
-            TextBox(prediction_text, style=style, wrap=False, overflow="shrink").set_padding(0).set_content_align("r"),
-            TextBox(delta_text, style=style, wrap=False, overflow="shrink").set_padding(0).set_content_align("r"),
+            TextBox(rank_text, style=style, wrap=False, overflow="shrink")
+            .set_padding(0)
+            .set_content_align("c"),
+            TextBox(score_text, style=style, wrap=False, overflow="shrink")
+            .set_padding(0)
+            .set_content_align("r"),
+            TextBox(prediction_text, style=style, wrap=False, overflow="shrink")
+            .set_padding(0)
+            .set_content_align("r"),
+            TextBox(delta_text, style=style, wrap=False, overflow="shrink")
+            .set_padding(0)
+            .set_content_align("r"),
         ]
 
         return (
-            HSplit(items=cols, sep=inner_sep, item_size_mode="expand", ratios=col_ratios)
+            HSplit(
+                items=cols, sep=inner_sep, item_size_mode="expand", ratios=col_ratios
+            )
             .set_w(content_w)
             .set_padding((18, 12 if is_header else 10))
             .set_bg(RoundRectBg(fill=bg, radius=16))
@@ -157,7 +190,12 @@ async def render_prediction_card(event_info: dict[str, Any], latest_data: dict[s
     )
     sections.append(Spacer(1, 18))
     sections.append(
-        TextBox(build_footer(latest_data), style=footer_style, wrap=True, use_real_line_count=True)
+        TextBox(
+            build_footer(latest_data),
+            style=footer_style,
+            wrap=True,
+            use_real_line_count=True,
+        )
         .set_w(content_w)
         .set_padding(0)
     )
@@ -174,7 +212,14 @@ async def render_prediction_card(event_info: dict[str, Any], latest_data: dict[s
         .set_w(width - outer_margin * 2)
         .set_padding((card_padding_x, card_padding_y))
         .set_margin(outer_margin)
-        .set_bg(RoundRectBg(fill=colors["card_bg"], radius=26, stroke=colors["card_border"], stroke_width=2))
+        .set_bg(
+            RoundRectBg(
+                fill=colors["card_bg"],
+                radius=26,
+                stroke=colors["card_border"],
+                stroke_width=2,
+            )
+        )
     )
 
     canvas = Canvas(w=width, h=None, bg=FillBg(colors["canvas_bg"]))

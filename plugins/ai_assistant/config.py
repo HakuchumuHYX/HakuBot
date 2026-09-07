@@ -1,3 +1,6 @@
+from core.settings import load_config as read_config_model
+from utils.json_io import atomic_write_json
+from utils.paths import PluginPaths
 from pathlib import Path
 from typing import Any, Optional
 import json
@@ -54,7 +57,7 @@ class ChatConfig(StrictBaseModel):
 class ImageConfig(StrictBaseModel):
     model: str = "gpt-image-2"
     size: Optional[str] = None
-    quality: Optional[str] = None # standard, hd, medium
+    quality: Optional[str] = None  # standard, hd, medium
     # Images API 没有 system 角色；该文本会作为中性默认指令放在用户需求之前
     prompt_prefix: str = (
         "请根据用户需求生成或编辑图片，准确遵循用户明确指定的主体、构图、文字、"
@@ -130,6 +133,7 @@ class SearchConfig(StrictBaseModel):
 
 class ResolvedProviderConfig:
     """resolve() 返回的连接参数集合，供 service 层直接使用。"""
+
     __slots__ = ("provider", "api_key", "base_url")
 
     def __init__(self, provider: str, api_key: str, base_url: str):
@@ -187,23 +191,12 @@ class PluginConfig(StrictBaseModel):
 
 
 CURRENT_PATH = Path(__file__).parent
-CONFIG_PATH = CURRENT_PATH / "config.json"
+CONFIG_PATH = PluginPaths("ai_assistant").config / "config.json"
 
 
 def load_config() -> PluginConfig:
-    if not CONFIG_PATH.exists():
-        raise FileNotFoundError(f"配置文件未找到: {CONFIG_PATH}")
-
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    return PluginConfig.model_validate(data)
-
-
-def save_config(config: PluginConfig):
-    """保存配置到文件"""
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(config.model_dump(), f, indent=4, ensure_ascii=False)
+    config = read_config_model("ai_assistant", PluginConfig)
+    return config
 
 
 plugin_config = load_config()

@@ -42,7 +42,9 @@ class SetuClient:
 
         return client_kwargs
 
-    async def _request_json(self, url: str, *, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _request_json(
+        self, url: str, *, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         client_kwargs = self._build_client_kwargs()
         try:
             async with httpx.AsyncClient(**client_kwargs) as client:

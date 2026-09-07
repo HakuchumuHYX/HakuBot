@@ -28,10 +28,11 @@ from typing import Any, Optional
 
 import aiohttp
 
-from ..utils.network import get_client_session, get_effective_proxy
-from ..utils.tools import get_exc_desc, get_logger, truncate
-from .config import plugin_config
-from .credential import credential_manager
+from utils.network.http import get_client_session, get_effective_proxy
+from utils.logging import get_exc_desc, get_logger
+from utils.text import truncate
+from plugins.bili_dyn_sub.config import plugin_config
+from plugins.bili_dyn_sub.credential import credential_manager
 
 logger = get_logger("bili_dyn_sub.api")
 
@@ -53,10 +54,10 @@ DM_IMG_LIST = "[]"
 DM_IMG_INTER = '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}'
 # dm_img_str / dm_cover_img_str 在 web 端是 WebGL 版本号与渲染器名的 base64 去尾 2 字符。
 # 这里的渲染器名与 credential.py 指纹 payload 的 6bc5 字段保持一致，避免自相矛盾的指纹。
-_FAKE_WEBGL_RENDERER = (
-    "Google Inc. (Intel)~ANGLE (Intel, Intel(R) UHD Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"
-)
-DM_COVER_IMG_STR = base64.b64encode(_FAKE_WEBGL_RENDERER.encode("utf-8")).decode("ascii")[:-2]
+_FAKE_WEBGL_RENDERER = "Google Inc. (Intel)~ANGLE (Intel, Intel(R) UHD Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"
+DM_COVER_IMG_STR = base64.b64encode(_FAKE_WEBGL_RENDERER.encode("utf-8")).decode(
+    "ascii"
+)[:-2]
 # dm_img_str 取随机 2 字符（web 端为 base64 去尾后的短串，长度不参与校验）
 _DM_IMG_STR_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
@@ -158,7 +159,9 @@ def build_feed_params(uid: str, *, offset: str = "") -> dict[str, str]:
     return params
 
 
-_SIGN_MODULE_PATH = Path(__file__).resolve().parent.parent / "analysis_bilibili" / "sign.py"
+_SIGN_MODULE_PATH = (
+    Path(__file__).resolve().parent.parent / "analysis_bilibili" / "sign.py"
+)
 _sign_module: Optional[ModuleType] = None
 
 
@@ -174,7 +177,9 @@ def _load_sign_module() -> Optional[ModuleType]:
     global _sign_module
     if _sign_module is not None:
         return _sign_module
-    spec = importlib.util.spec_from_file_location("bili_dyn_sub_wbi_sign", _SIGN_MODULE_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "bili_dyn_sub_wbi_sign", _SIGN_MODULE_PATH
+    )
     if spec is None or spec.loader is None:
         logger.warning(f"无法定位 wbi 签名模块 {_SIGN_MODULE_PATH}，本次不签名")
         return None
@@ -255,7 +260,7 @@ async def fetch_space_feed(
         logger.debug(f"UID {uid} 本次取数没有可用 cookie，大概率会被 -352 拒绝")
 
     try:
-        async with get_client_session().get(
+        async with get_client_session("bilibili").get(
             FEED_SPACE_URL,
             params=params,
             headers=headers,
@@ -269,7 +274,9 @@ async def fetch_space_feed(
                 credential_manager.update_from_response(resp.cookies)
             body = await resp.text()
     except _NET_ERRORS as e:
-        raise BiliNetworkError(f"请求 feed/space 失败: {get_exc_desc(e)}", uid=uid) from e
+        raise BiliNetworkError(
+            f"请求 feed/space 失败: {get_exc_desc(e)}", uid=uid
+        ) from e
 
     _check_http_status(uid, status, body)
     raw = _load_json(uid, status, body)
@@ -285,11 +292,17 @@ def _check_http_status(uid: str, status: int, body: str) -> None:
         return
     if status == 412:
         raise BiliIpBlockedError(
-            "IP 被 B 站风控（换 cookie 无效，需配置 proxy）", uid=uid, http_status=status
+            "IP 被 B 站风控（换 cookie 无效，需配置 proxy）",
+            uid=uid,
+            http_status=status,
         )
     if status in _TRANSIENT_HTTP_STATUS:
         raise BiliNetworkError("B 站暂时性错误响应", uid=uid, http_status=status)
-    raise BiliApiError(f"意外的 HTTP 状态，响应片段: {truncate(body, 200)}", uid=uid, http_status=status)
+    raise BiliApiError(
+        f"意外的 HTTP 状态，响应片段: {truncate(body, 200)}",
+        uid=uid,
+        http_status=status,
+    )
 
 
 def _load_json(uid: str, status: int, body: str) -> dict[str, Any]:
@@ -303,7 +316,9 @@ def _load_json(uid: str, status: int, body: str) -> dict[str, Any]:
             http_status=status,
         ) from e
     if not isinstance(raw, dict):
-        raise BiliApiError(f"响应顶层不是对象: {truncate(body, 200)}", uid=uid, http_status=status)
+        raise BiliApiError(
+            f"响应顶层不是对象: {truncate(body, 200)}", uid=uid, http_status=status
+        )
     return raw
 
 
@@ -315,11 +330,17 @@ def _dispatch_feed_payload(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
     if code == -352:
         raise BiliRiskControlError(f"触发风控: {message}", uid=uid, code=-352)
     if code == -101:
-        raise BiliAuthError(f"登录态失效，请重新配置 sessdata: {message}", uid=uid, code=-101)
+        raise BiliAuthError(
+            f"登录态失效，请重新配置 sessdata: {message}", uid=uid, code=-101
+        )
     if code == -403:
         raise BiliSignError(f"签名/权限校验失败（wbi）: {message}", uid=uid, code=-403)
     if code != 0:
-        raise BiliApiError(f"取数失败: {message}", uid=uid, code=code if isinstance(code, int) else None)
+        raise BiliApiError(
+            f"取数失败: {message}",
+            uid=uid,
+            code=code if isinstance(code, int) else None,
+        )
 
     data = raw.get("data")
     if not isinstance(data, dict):
@@ -330,11 +351,15 @@ def _dispatch_feed_payload(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
     voucher = data.get("v_voucher") or raw.get("v_voucher")
     if voucher:
         raise BiliCaptchaError(
-            f"需要人机验证（v_voucher={truncate(str(voucher), 64)}），本轮放弃", uid=uid, code=0
+            f"需要人机验证（v_voucher={truncate(str(voucher), 64)}），本轮放弃",
+            uid=uid,
+            code=0,
         )
     items = data.get("items")
     if items is not None and not isinstance(items, list):
-        raise BiliApiError(f"data.items 类型异常: {type(items).__name__}", uid=uid, code=0)
+        raise BiliApiError(
+            f"data.items 类型异常: {type(items).__name__}", uid=uid, code=0
+        )
 
     count = len(items) if isinstance(items, list) else 0
     logger.debug(f"UID {uid} 取数成功: {count} 条动态 has_more={data.get('has_more')}")
@@ -348,7 +373,7 @@ async def fetch_user_name(uid: str) -> Optional[str]:
     """取 UP 昵称（订阅命令回显用）。走直播开放接口，无风控、无需 cookie；失败返回 None"""
     uid = str(uid).strip()
     try:
-        async with get_client_session().get(
+        async with get_client_session("bilibili").get(
             LIVE_USER_INFO_URL,
             params={"uid": uid},
             headers=credential_manager.build_headers(),

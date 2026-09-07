@@ -34,7 +34,7 @@ files = {
     "64": "./icon/Texture2D/item_mineral_9.png",
     "65": "./icon/Texture2D/item_mineral_10.png",
     "_7": "./icon/Texture2D/item_blueprint_fragment.png",
-     "118": "./icon/Texture2D/mdl_non1001_before_sapling1_118.png",
+    "118": "./icon/Texture2D/mdl_non1001_before_sapling1_118.png",
     "119": "./icon/Texture2D/mdl_non1001_before_sapling1_119.png",
     "120": "./icon/Texture2D/mdl_non1001_before_sapling1_120.png",
     "121": "./icon/Texture2D/mdl_non1001_before_sapling1_121.png",
@@ -53,7 +53,7 @@ files = {
     "481": "./icon/Texture2D/mdl_non1001_before_sprout1_481.png",
     "482": "./icon/Texture2D/mdl_non1001_before_sprout1_482.png",
     "483": "./icon/Texture2D/mdl_non1001_before_sprout1_483.png",
-    "_music": "./icon/Texture2D/item_surplus_music_record.png"
+    "_music": "./icon/Texture2D/item_surplus_music_record.png",
 }.values()
 
 files = [f.replace("./icon/Texture2D/", "") for f in files]

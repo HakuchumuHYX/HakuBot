@@ -21,9 +21,9 @@ from typing import Dict, List, Tuple
 
 from nonebot.log import logger
 
-from ..infra.cache import cache_manager
-from ..infra.storage import clear_user_latest_files, file_storage_dir
-from ..infra.visit_history import visit_history_manager
+from plugins.buaa_msm.infra.cache import cache_manager
+from plugins.buaa_msm.infra.storage import clear_user_latest_files, file_storage_dir
+from plugins.buaa_msm.infra.visit_history import visit_history_manager
 
 
 def cleanup_all_files() -> int:
@@ -99,7 +99,7 @@ def collect_file_stats() -> FileStats:
     dir_count = 0
     user_files: Dict[str, int] = {}
 
-    from ..infra.storage import extract_user_id_from_filename  # 局部导入避免循环
+    from plugins.buaa_msm.infra.storage import extract_user_id_from_filename
 
     for item in items:
         try:
@@ -140,7 +140,15 @@ def build_stats_message(stats: FileStats) -> str:
     构造管理员“文件统计”消息文本。
     """
     size_str = format_file_size(stats.total_size_bytes)
-    user_stats = "\n".join([f"  - {uid}: {cnt} 个 .bin 文件" for uid, cnt in stats.user_bin_counts.items()]) or "  - （无）"
+    user_stats = (
+        "\n".join(
+            [
+                f"  - {uid}: {cnt} 个 .bin 文件"
+                for uid, cnt in stats.user_bin_counts.items()
+            ]
+        )
+        or "  - （无）"
+    )
 
     return (
         "文件统计信息:\n"

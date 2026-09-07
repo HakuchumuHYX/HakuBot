@@ -9,14 +9,16 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 
-from ...utils.image_utils import image_segment
-from ..data_manager import data_manager
-from ..data_source import hltv_data
-from ..permissions import is_group_enabled
-from ..render import render_results
+from utils.onebot.media import image_segment
+from plugins.hltv_sub.data_manager import data_manager
+from plugins.hltv_sub.data_source import hltv_data
+from plugins.hltv_sub.permissions import is_group_enabled
+from plugins.hltv_sub.render import render_results
 
 
-results_list = on_command("results列表", aliases={"结果列表", "results"}, priority=5, block=True)
+results_list = on_command(
+    "results列表", aliases={"结果列表", "results"}, priority=5, block=True
+)
 
 
 @results_list.handle()
@@ -36,7 +38,10 @@ async def handle_results_list(bot: Bot, event: GroupMessageEvent):
     try:
         results_by_event = {}
 
-        for sub in sorted(subscriptions, key=lambda x: int(x.event_id) if x.event_id.isdigit() else x.event_id):
+        for sub in sorted(
+            subscriptions,
+            key=lambda x: int(x.event_id) if x.event_id.isdigit() else x.event_id,
+        ):
             results = await hltv_data.get_event_results(sub.event_id)
             if results:
                 event_key = f"#{sub.event_id} {sub.event_title}"

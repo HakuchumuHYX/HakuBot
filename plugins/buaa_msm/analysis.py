@@ -19,14 +19,14 @@ from typing import Any
 
 from nonebot.log import logger
 
-from .domain.constants import (
+from plugins.buaa_msm.domain.constants import (
     CHARACTER_NAMES,
     MAP_ORDER,
     MAP_TITLE_CN,
     RESOURCE_NAME_CN,
 )
-from .config import plugin_config
-from .services.masterdata_lite import masterdata_lite
+from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.services.masterdata_lite import masterdata_lite
 
 # ============== 类型别名 ==============
 
@@ -106,14 +106,15 @@ def aggregate_materials(parsed_maps: dict[str, list]) -> AggregatedData:
 # ============== 来访角色统计 ==============
 
 
-def get_visiting_group_counts(decrypted_data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def get_visiting_group_counts(
+    decrypted_data: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
     """获取来访角色统计（仅单人组合）"""
     final_group_counts: dict[str, dict[str, Any]] = {}
 
     try:
-        char_visit_list = (
-            decrypted_data.get("userMysekaiGateCharacterVisit", {})
-            .get("userMysekaiGateCharacters", [])
+        char_visit_list = decrypted_data.get("userMysekaiGateCharacterVisit", {}).get(
+            "userMysekaiGateCharacters", []
         )
 
         group_id_to_name = masterdata_lite.build_group_id_to_char_name(CHARACTER_NAMES)
@@ -141,9 +142,8 @@ def parse_owned_music_records(decrypted_data: dict[str, Any]) -> set[str]:
     """解析已拥有的唱片"""
     owned_ids: set[str] = set()
     try:
-        record_list = (
-            decrypted_data.get("updatedResources", {})
-            .get("userMysekaiMusicRecords", [])
+        record_list = decrypted_data.get("updatedResources", {}).get(
+            "userMysekaiMusicRecords", []
         )
         for record in record_list:
             record_id = record.get("mysekaiMusicRecordId")

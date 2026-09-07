@@ -9,7 +9,7 @@ from typing import Set
 # ==================== 图片文件配置 ====================
 
 # 支持的图片扩展名
-IMAGE_EXTENSIONS: Set[str] = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 
 
 # ==================== 哈希算法配置 ====================

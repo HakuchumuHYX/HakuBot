@@ -1,35 +1,56 @@
 from typing import List, Union
 from nonebot import on_command, on_message
-from nonebot.adapters.onebot.v11 import Message, MessageSegment, Bot, Event, MessageEvent, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import (
+    Message,
+    MessageSegment,
+    Bot,
+    Event,
+    MessageEvent,
+    GroupMessageEvent,
+)
 from nonebot.adapters.onebot.v11.helpers import extract_image_urls
 from nonebot.params import CommandArg
 from nonebot.typing import T_State
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
 
-from .core import search_image
-from .config import config
-from ..utils.tools import get_logger, send_forward_msg, TempFilePath
-from ..utils.network import download_image
-from ..utils.image_utils import image_segment
-from . import twitter  # noqa: F401
+from plugins.lunabot_imgexp.core import search_image
+from plugins.lunabot_imgexp.config import config
+from utils.logging import get_logger
+from utils.onebot.forward import send_forward_msg
+from utils.files import TemporaryPath
+from utils.network.http import download_image
+from utils.onebot.media import image_segment
+from plugins.lunabot_imgexp import twitter
 
 try:
-    from ..plugin_manager.enable import is_feature_enabled
-    from ..plugin_manager.cd_manager import check_cd, update_cd
+    from core.access import is_feature_enabled
+    from core.cooldown import check_cd, update_cd
+
     MANAGER_AVAILABLE = True
 except ImportError:
-    logger = get_logger("ImgExp") # logger 在 try 块前定义可能更好，但这里为了保持 diff 简洁
+    logger = get_logger(
+        "ImgExp"
+    )  # logger 在 try 块前定义可能更好，但这里为了保持 diff 简洁
     logger.warning("未找到 plugin_manager 插件，将跳过管理功能检查。")
     MANAGER_AVAILABLE = False
 
 PLUGIN_NAME = "lunabot_imgexp"
 logger = get_logger("ImgExp")
 
-imgexp = on_command("搜图", aliases={"以图搜图", "imgexp", "search"}, priority=5, block=True)
+imgexp = on_command(
+    "搜图", aliases={"以图搜图", "imgexp", "search"}, priority=5, block=True
+)
+
 
 @imgexp.handle()
-async def _(bot: Bot, event: MessageEvent, state: T_State, matcher: Matcher, arg: Message = CommandArg()):
+async def _(
+    bot: Bot,
+    event: MessageEvent,
+    state: T_State,
+    matcher: Matcher,
+    arg: Message = CommandArg(),
+):
     if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
         group_id = str(event.group_id)
         user_id = str(event.user_id)
@@ -42,18 +63,21 @@ async def _(bot: Bot, event: MessageEvent, state: T_State, matcher: Matcher, arg
         cd_key = f"{PLUGIN_NAME}:search"
         cd_remain = check_cd(cd_key, group_id, user_id)
         if cd_remain > 0:
-            await imgexp.finish(f"搜图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
+            await imgexp.finish(
+                f"搜图功能冷却中，请等待 {cd_remain} 秒", at_sender=True
+            )
 
     # 尝试从参数中提取图片
     img_urls = extract_image_urls(arg)
     if img_urls:
         state["img_urls"] = img_urls
-    
+
     # 如果参数中没有图片，检查是否是回复消息
     if not state.get("img_urls") and event.reply:
         img_urls = extract_image_urls(event.reply.message)
         if img_urls:
             state["img_urls"] = img_urls
+
 
 @imgexp.got("img_urls", prompt="请发送图片")
 async def _(bot: Bot, event: MessageEvent, state: T_State):
@@ -61,7 +85,7 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
     # 如果在 got 阶段用户发送的是包含图片的 Message，这里 img_urls 可能是 Message 对象，需要再次提取
     if isinstance(img_urls, Message):
         img_urls = extract_image_urls(img_urls)
-    
+
     if not img_urls:
         await imgexp.finish("没有检测到图片，请重新发送命令。")
 
@@ -72,20 +96,20 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
         try:
             # 获取图片大小，这里简单用 Content-Length 头判断可能不准，或者直接下载后判断
             # search_image 内部会下载并处理，这里主要做个大致检查或直接传 URL
-            
+
             # 为了获取 img_size，我们可以先 HEAD 请求一下，或者直接传 0 让 core 下载
             # core.py 中 search_image 的 img_size 主要是为了限制过大图片，但如果直接传 URL 给 SauceNAO/GoogleLens，
             # 它们通常自己处理。这里我们假设不预先检查大小，或者在 core.py 完善下载逻辑。
             # 目前 core.py 的 search_image 接受 img_url 和 img_size
-            
+
             # 搜索图片
             res_img, results = await search_image(url)
-            
+
             # 发送结果图片
             # 使用临时文件保存图片，避免 Base64 过大导致 WebSocket 超时
-            with TempFilePath(ext="png") as tmp_path:
-                res_img.save(tmp_path, format='PNG')
-                
+            with TemporaryPath(ext="png") as tmp_path:
+                res_img.save(tmp_path, format="PNG")
+
                 # 构建合并转发消息列表
                 forward_messages = [image_segment(tmp_path)]
 
@@ -94,7 +118,9 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
                 for result in results:
                     # 错误信息也单独成条
                     if result.error:
-                        forward_messages.append(f"来自 {result.source} 的结果:\n{result.error}".strip())
+                        forward_messages.append(
+                            f"来自 {result.source} 的结果:\n{result.error}".strip()
+                        )
                         continue
 
                     # 没有结果则跳过（不发送“未找到结果”文字，避免刷屏）
@@ -104,22 +130,37 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
                     # 每个 item 独立成条
                     for i, item in enumerate(result.results):
                         title_str = f"[{item.title}]\n" if item.title else ""
-                        sim_str = f"({item.similarity:.1f}%)\n" if item.similarity is not None else ""
+                        sim_str = (
+                            f"({item.similarity:.1f}%)\n"
+                            if item.similarity is not None
+                            else ""
+                        )
                         # GoogleLens 的结果可能带来源站点（item.source）
-                        from_str = f"From {item.source}\n" if getattr(item, "source", None) else ""
+                        from_str = (
+                            f"From {item.source}\n"
+                            if getattr(item, "source", None)
+                            else ""
+                        )
                         forward_messages.append(
                             f"来自 {result.source} 的结果 #{i + 1}\n{from_str}{title_str}{sim_str}{item.url}".strip()
                         )
 
-                await send_forward_msg(bot, event, forward_messages)
+                await send_forward_msg(bot, event, items=forward_messages)
 
             # 发送成功后再更新 CD（仅群聊，多张图只扣一次）
-            if not cd_updated and MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
-                update_cd(f"{PLUGIN_NAME}:search", str(event.group_id), str(event.user_id))
+            if (
+                not cd_updated
+                and MANAGER_AVAILABLE
+                and isinstance(event, GroupMessageEvent)
+            ):
+                update_cd(
+                    f"{PLUGIN_NAME}:search", str(event.group_id), str(event.user_id)
+                )
                 cd_updated = True
 
         except Exception as e:
             logger.error(f"搜图失败: {e}")
             import traceback
+
             traceback.print_exc()
             await imgexp.send(f"搜图失败: {e}")

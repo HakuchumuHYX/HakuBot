@@ -2,24 +2,33 @@ import time
 import logging
 from nonebot import on_command, get_driver
 from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import Bot, PrivateMessageEvent, GroupMessageEvent, Message
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    PrivateMessageEvent,
+    GroupMessageEvent,
+    Message,
+)
 from nonebot.params import CommandArg
 from nonebot.rule import to_me
 from nonebot.log import logger
 
 # 导入共享上下文
-from .content import message_context, prune_message_context
-from ..plugin_manager.enable import *
+from plugins.send_and_reply.content import message_context, prune_message_context
+from core.access import (
+    get_status_override,
+    get_plugin_feature_keys,
+    sync_feature_statuses,
+    is_plugin_enabled,
+    set_plugin_status,
+    is_feature_enabled,
+    set_feature_status,
+)
+
 # 获取配置中的超级用户列表
 superusers = get_driver().config.superusers
 
 # 创建命令处理器，需要@机器人触发
-send_to_superuser = on_command(
-    "send",
-    rule=to_me(),
-    priority=10,
-    block=True
-)
+send_to_superuser = on_command("send", rule=to_me(), priority=10, block=True)
 
 
 async def get_user_info(bot: Bot, user_id: str) -> str:
@@ -60,7 +69,11 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
     # 额外检查：确保消息是@机器人的
     if isinstance(event, GroupMessageEvent):
         original_message = event.original_message
-        at_segments = [seg for seg in original_message if seg.type == "at" and seg.data.get("qq") == str(bot.self_id)]
+        at_segments = [
+            seg
+            for seg in original_message
+            if seg.type == "at" and seg.data.get("qq") == str(bot.self_id)
+        ]
 
         if not at_segments:
             return
@@ -69,7 +82,9 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
     text = arg.extract_plain_text().strip()
 
     if not text:
-        await send_to_superuser.finish("请提供要发送的文本内容，格式：@机器人 send 你要发送的内容")
+        await send_to_superuser.finish(
+            "请提供要发送的文本内容，格式：@机器人 send 你要发送的内容"
+        )
 
     # 获取发送者的用户ID
     user_id = event.get_user_id()
@@ -79,7 +94,7 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
     context_info = {
         "user_id": user_id,
         "user_info": user_info,
-        "timestamp": time.time()
+        "timestamp": time.time(),
     }
 
     # 如果是群消息，添加群信息
@@ -114,19 +129,22 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
         try:
             superuser_id_int = int(superuser_id)
             result = await bot.send_private_msg(
-                user_id=superuser_id_int,
-                message=full_message
+                user_id=superuser_id_int, message=full_message
             )
 
             # 存储消息上下文，用于回复功能
-            if hasattr(result, 'message_id'):
+            if hasattr(result, "message_id"):
                 message_id = result.message_id
                 message_context[message_id] = context_info
-                logger.info(f"存储消息上下文成功，消息ID: {message_id}, 用户ID: {user_id}")
-            elif isinstance(result, dict) and 'message_id' in result:
-                message_id = result['message_id']
+                logger.info(
+                    f"存储消息上下文成功，消息ID: {message_id}, 用户ID: {user_id}"
+                )
+            elif isinstance(result, dict) and "message_id" in result:
+                message_id = result["message_id"]
                 message_context[message_id] = context_info
-                logger.info(f"存储消息上下文成功，消息ID: {message_id}, 用户ID: {user_id}")
+                logger.info(
+                    f"存储消息上下文成功，消息ID: {message_id}, 用户ID: {user_id}"
+                )
             else:
                 logger.warning(f"无法获取消息ID，结果类型: {type(result)}")
 

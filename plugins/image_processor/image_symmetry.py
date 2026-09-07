@@ -4,18 +4,16 @@ import os
 from nonebot.log import logger
 from PIL import Image
 
-from ..utils.tools import run_in_pool
-from .utils import (
+from utils.concurrency import run_in_pool
+from plugins.image_processor.utils import (
     IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
     IMAGE_PROCESSOR_MAX_GIF_BYTES,
     IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
     download_to_temp,
-    ensure_output_dir,
-    guess_ext_from_url,
     load_gif_frames,
-    safe_delete_file,
     save_gif,
 )
+from utils.files import ensure_output_dir, guess_ext_from_url, safe_delete_file
 
 
 def convert_to_supported_mode(img: Image.Image) -> Image.Image:
@@ -37,7 +35,9 @@ def _left_symmetry_image(img: Image.Image) -> Image.Image:
     left = img.crop((0, 0, keep_w, height))
     result.paste(left, (0, 0))
     if mirror_w > 0:
-        mirrored = left.transpose(Image.FLIP_LEFT_RIGHT).crop((keep_w - mirror_w, 0, keep_w, height))
+        mirrored = left.transpose(Image.FLIP_LEFT_RIGHT).crop(
+            (keep_w - mirror_w, 0, keep_w, height)
+        )
         result.paste(mirrored, (keep_w, 0))
     return result
 
@@ -65,7 +65,9 @@ def _top_symmetry_image(img: Image.Image) -> Image.Image:
     top = img.crop((0, 0, width, keep_h))
     result.paste(top, (0, 0))
     if mirror_h > 0:
-        mirrored = top.transpose(Image.FLIP_TOP_BOTTOM).crop((0, keep_h - mirror_h, width, keep_h))
+        mirrored = top.transpose(Image.FLIP_TOP_BOTTOM).crop(
+            (0, keep_h - mirror_h, width, keep_h)
+        )
         result.paste(mirrored, (0, keep_h))
     return result
 
@@ -97,12 +99,16 @@ def _center_symmetry_image(img: Image.Image) -> Image.Image:
     result.paste(top_left, (0, 0))
 
     if mirror_w > 0:
-        top_right = top_left.transpose(Image.FLIP_LEFT_RIGHT).crop((keep_w - mirror_w, 0, keep_w, keep_h))
+        top_right = top_left.transpose(Image.FLIP_LEFT_RIGHT).crop(
+            (keep_w - mirror_w, 0, keep_w, keep_h)
+        )
         result.paste(top_right, (keep_w, 0))
 
     if mirror_h > 0:
         top_band = result.crop((0, 0, width, keep_h))
-        bottom_band = top_band.transpose(Image.FLIP_TOP_BOTTOM).crop((0, keep_h - mirror_h, width, keep_h))
+        bottom_band = top_band.transpose(Image.FLIP_TOP_BOTTOM).crop(
+            (0, keep_h - mirror_h, width, keep_h)
+        )
         result.paste(bottom_band, (0, keep_h))
 
     return result
@@ -173,7 +179,12 @@ def _process_gif_symmetry_file(image_path: str, symmetry_type: str) -> str:
     processed_frames = [_symmetry_image(frame, symmetry_type) for frame in frames]
     output_dir = ensure_output_dir("nonebot_image_symmetry")
     output_path = output_dir / f"symmetry_{symmetry_type}_{os.urandom(4).hex()}.gif"
-    save_gif(processed_frames, output_path, durations=durations, loop=int(meta.get("loop", 0)))
+    save_gif(
+        processed_frames,
+        output_path,
+        durations=durations,
+        loop=int(meta.get("loop", 0)),
+    )
     logger.info(f"GIF对称处理完成: {len(processed_frames)}帧, 保存到 {output_path}")
     return str(output_path)
 
@@ -199,7 +210,11 @@ async def process_image_symmetry(image_url: str, symmetry_type: str) -> str:
     try:
         logger.info(f"开始处理对称图片: {symmetry_type}, URL: {image_url[:100]}...")
         ext = guess_ext_from_url(image_url, "jpg")
-        max_bytes = IMAGE_PROCESSOR_MAX_GIF_BYTES if ext == "gif" else IMAGE_PROCESSOR_MAX_IMAGE_BYTES
+        max_bytes = (
+            IMAGE_PROCESSOR_MAX_GIF_BYTES
+            if ext == "gif"
+            else IMAGE_PROCESSOR_MAX_IMAGE_BYTES
+        )
         image_path = await download_to_temp(
             image_url,
             ext=ext,
@@ -218,10 +233,14 @@ async def process_image_symmetry(image_url: str, symmetry_type: str) -> str:
         if is_gif:
             result_path = await process_gif_symmetry(image_path, symmetry_type)
         else:
-            result_path = await run_in_pool(_process_static_symmetry_file, image_path, symmetry_type)
+            result_path = await run_in_pool(
+                _process_static_symmetry_file, image_path, symmetry_type
+            )
 
         if result_path and os.path.exists(result_path):
-            logger.info(f"对称处理成功: {result_path}, 大小: {os.path.getsize(result_path)}")
+            logger.info(
+                f"对称处理成功: {result_path}, 大小: {os.path.getsize(result_path)}"
+            )
             return result_path
         logger.error("对称处理失败: 未生成有效输出文件")
         return ""

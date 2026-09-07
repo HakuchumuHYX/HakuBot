@@ -5,11 +5,15 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.log import logger
 
-from .config_manager import load_config, save_config
+from plugins.daily_message.config_manager import load_config, save_config
 
 # 配置管理命令
-list_schedules = on_command("查看定时任务", permission=SUPERUSER, priority=1, block=True)
-reload_schedules = on_command("重载定时任务", permission=SUPERUSER, priority=1, block=True)
+list_schedules = on_command(
+    "查看定时任务", permission=SUPERUSER, priority=1, block=True
+)
+reload_schedules = on_command(
+    "重载定时任务", permission=SUPERUSER, priority=1, block=True
+)
 
 
 @list_schedules.handle()
@@ -36,7 +40,8 @@ async def reload_schedules_handler(matcher: Matcher):
     """重新加载定时任务配置"""
     try:
         # 直接从 __init__ 模块导入，避免循环导入
-        from . import reload_schedule_config
+        from plugins.daily_message.handlers import reload_schedule_config
+
         reload_schedule_config()
         await matcher.send("已重新加载定时任务配置")
     except Exception as e:

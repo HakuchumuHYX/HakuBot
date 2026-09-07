@@ -1,12 +1,13 @@
+from utils.paths import PluginPaths
 import json
 from pathlib import Path
 from pydantic import BaseModel
 from nonebot.log import logger
-import nonebot_plugin_localstore as localstore
 
 
 class PluginConfig(BaseModel, extra="ignore"):
     """猜卡面插件配置"""
+
     asset_base_url: str = "https://xxx/jp-assets/startapp/"
     masterdata_path: str = ""  # 留空则自动使用 haruki-sekai-master/master/
     guess_timeout: int = 60  # 猜测超时（秒）
@@ -16,13 +17,13 @@ class PluginConfig(BaseModel, extra="ignore"):
 
 PLUGIN_NAME = "pjsk_guess_card"
 PLUGIN_DIR = Path(__file__).parent
-data_dir = localstore.get_data_dir(PLUGIN_NAME)
+data_dir = PluginPaths("pjsk_guess_card").data
 data_dir.mkdir(parents=True, exist_ok=True)
-CONFIG_FILE_PATH = PLUGIN_DIR / "config.json"
+CONFIG_FILE_PATH = PluginPaths("pjsk_guess_card").config / "config.json"
 
 
 def load_plugin_config() -> PluginConfig:
-    """加载插件配置，不存在则创建默认配置"""
+    """加载插件配置，文件不存在时使用内存默认值。"""
     if CONFIG_FILE_PATH.exists():
         logger.info(f"正在从 {CONFIG_FILE_PATH} 加载猜卡面插件配置...")
         try:
@@ -33,14 +34,8 @@ def load_plugin_config() -> PluginConfig:
             logger.error(f"加载 config.json 失败: {e}，将使用默认配置。")
             return PluginConfig()
     else:
-        logger.info(f"未找到 config.json，正在创建默认配置文件于 {CONFIG_FILE_PATH}")
-        default_config = PluginConfig()
-        try:
-            with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
-                json.dump(default_config.dict(), f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"创建默认配置文件失败: {e}")
-        return default_config
+        logger.info(f"未找到配置文件 {CONFIG_FILE_PATH}，使用内存默认配置")
+        return PluginConfig()
 
 
 plugin_config = load_plugin_config()

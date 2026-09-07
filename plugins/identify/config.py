@@ -1,3 +1,4 @@
+from utils.paths import PluginPaths
 from pathlib import Path
 
 # 插件根目录
@@ -7,7 +8,7 @@ PLUGIN_DIR = Path(__file__).parent
 RESOURCES_DIR = PLUGIN_DIR / "resources"
 
 # 数据文件目录
-DATA_DIR = PLUGIN_DIR / "data"
+DATA_DIR = PluginPaths("identify").data
 DAILY_RECORDS_FILE = DATA_DIR / "daily_records.json"
 
 # 确保目录存在

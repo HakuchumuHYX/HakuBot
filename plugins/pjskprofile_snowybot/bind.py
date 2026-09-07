@@ -6,8 +6,9 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from typing import Tuple, Optional
 
-from ..plugin_manager.enable import is_plugin_enabled
-from .data_manager import update_binding
+from core.access import is_plugin_enabled
+from plugins.pjskprofile_snowybot.data_manager import update_binding
+
 bind_matcher = on_regex(r"^(cn|jp|en|tw|kr)?\s*绑定\s*(\d+)$", priority=10, block=True)
 
 
@@ -34,12 +35,17 @@ async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup(
 
         if success:
             server_name_map = {
-                "jp": "日服", "cn": "国服", "en": "国际服",
-                "tw": "台服", "kr": "韩服"
+                "jp": "日服",
+                "cn": "国服",
+                "en": "国际服",
+                "tw": "台服",
+                "kr": "韩服",
             }
             display_server = server_name_map.get(server, server)
 
-            await bind_matcher.finish(f"✅ 绑定成功！\n服务器: {display_server}\nID: {pjsk_id}")
+            await bind_matcher.finish(
+                f"✅ 绑定成功！\n服务器: {display_server}\nID: {pjsk_id}"
+            )
         else:
             await bind_matcher.finish("❌ 绑定失败，发生未知错误。")
 

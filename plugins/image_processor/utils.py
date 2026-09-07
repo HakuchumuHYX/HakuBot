@@ -1,3 +1,5 @@
+from utils.network.http import download_to_file
+from utils.files import safe_delete_file, guess_ext_from_url
 import asyncio
 import os
 import tempfile
@@ -9,55 +11,26 @@ import aiohttp
 from PIL import Image, ImageSequence
 from nonebot.log import logger
 
-from ..utils.network import INSECURE_SSL, get_client_session, get_effective_proxy
+from utils.network.http import INSECURE_SSL, get_client_session, get_effective_proxy
 
-IMAGE_PROCESSOR_MAX_IMAGE_BYTES = int(os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
-IMAGE_PROCESSOR_MAX_GIF_BYTES = int(os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_GIF_BYTES", str(50 * 1024 * 1024)))
-IMAGE_PROCESSOR_MAX_VIDEO_BYTES = int(os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_VIDEO_BYTES", str(200 * 1024 * 1024)))
-IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT = float(os.getenv("HAKUBOT_IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT", "60"))
-IMAGE_PROCESSOR_VIDEO_DOWNLOAD_TIMEOUT = float(os.getenv("HAKUBOT_IMAGE_PROCESSOR_VIDEO_DOWNLOAD_TIMEOUT", "180"))
-GIF_MIN_DURATION_MS = int(os.getenv("HAKUBOT_IMAGE_PROCESSOR_GIF_MIN_DURATION_MS", "20"))
-
-
-async def safe_delete_file(file_path: str | Path | None, max_retries: int = 3) -> bool:
-    if not file_path:
-        return True
-
-    path = Path(file_path)
-    for i in range(max_retries):
-        try:
-            if path.exists():
-                path.unlink()
-            return True
-        except PermissionError as e:
-            if i < max_retries - 1:
-                await asyncio.sleep(0.1)
-            else:
-                logger.warning(f"删除文件失败: {path}: {e}")
-                return False
-        except Exception as e:
-            logger.warning(f"删除文件失败: {path}: {e}")
-            return False
-    return False
-
-
-async def cleanup_files(*paths: str | Path | None) -> None:
-    for path in paths:
-        await safe_delete_file(path)
-
-
-def ensure_output_dir(name: str) -> Path:
-    output_dir = Path(tempfile.gettempdir()) / name
-    output_dir.mkdir(parents=True, exist_ok=True)
-    return output_dir
-
-
-def guess_ext_from_url(url: str, default: str = "tmp") -> str:
-    path = urlparse(url).path
-    suffix = Path(path).suffix.lower().lstrip(".")
-    if suffix and len(suffix) <= 8:
-        return suffix
-    return default.lstrip(".") or "tmp"
+IMAGE_PROCESSOR_MAX_IMAGE_BYTES = int(
+    os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_IMAGE_BYTES", str(20 * 1024 * 1024))
+)
+IMAGE_PROCESSOR_MAX_GIF_BYTES = int(
+    os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_GIF_BYTES", str(50 * 1024 * 1024))
+)
+IMAGE_PROCESSOR_MAX_VIDEO_BYTES = int(
+    os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_VIDEO_BYTES", str(200 * 1024 * 1024))
+)
+IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT = float(
+    os.getenv("HAKUBOT_IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT", "60")
+)
+IMAGE_PROCESSOR_VIDEO_DOWNLOAD_TIMEOUT = float(
+    os.getenv("HAKUBOT_IMAGE_PROCESSOR_VIDEO_DOWNLOAD_TIMEOUT", "180")
+)
+GIF_MIN_DURATION_MS = int(
+    os.getenv("HAKUBOT_IMAGE_PROCESSOR_GIF_MIN_DURATION_MS", "20")
+)
 
 
 async def download_to_temp(
@@ -72,40 +45,23 @@ async def download_to_temp(
     allowed_statuses: Iterable[int] = (200, 206),
 ) -> str:
     suffix = ext.lstrip(".") or guess_ext_from_url(url)
-    fd, temp_path = tempfile.mkstemp(prefix=f"{prefix}_{os.urandom(4).hex()}_", suffix=f".{suffix}")
-    os.close(fd)
-    path = Path(temp_path)
-    timeout = aiohttp.ClientTimeout(total=timeout_total, connect=min(30, timeout_total), sock_read=timeout_total)
-    proxy = get_effective_proxy(proxy)
-
+    descriptor, filename = tempfile.mkstemp(prefix=prefix + "_", suffix="." + suffix)
+    os.close(descriptor)
+    path = Path(filename)
     try:
-        async with get_client_session().get(
+        await download_to_file(
             url,
+            path,
+            max_bytes=max_bytes,
+            timeout=timeout_total,
             headers=headers,
             proxy=proxy,
-            timeout=timeout,
-            verify_ssl=not INSECURE_SSL,
-        ) as response:
-            if response.status not in set(allowed_statuses):
-                raise Exception(f"下载失败: HTTP {response.status}")
-
-            content_length = response.headers.get("Content-Length")
-            if content_length and content_length.isdigit() and int(content_length) > max_bytes:
-                raise Exception(f"文件过大: {int(content_length)} bytes > {max_bytes} bytes")
-
-            downloaded = 0
-            with open(path, "wb") as f:
-                async for chunk in response.content.iter_chunked(1024 * 512):
-                    if not chunk:
-                        continue
-                    downloaded += len(chunk)
-                    if downloaded > max_bytes:
-                        raise Exception(f"文件过大: 已下载 {downloaded} bytes > {max_bytes} bytes")
-                    f.write(chunk)
-
+            allowed_statuses=allowed_statuses,
+            attempts=1,
+        )
         return str(path)
-    except Exception:
-        await safe_delete_file(path)
+    except BaseException:
+        path.unlink(missing_ok=True)
         raise
 
 
@@ -118,7 +74,9 @@ def _normalize_durations(durations: list[int], frame_count: int) -> list[int]:
     return normalized[:frame_count]
 
 
-def load_gif_frames(image_path: str | Path) -> tuple[list[Image.Image], list[int], dict]:
+def load_gif_frames(
+    image_path: str | Path,
+) -> tuple[list[Image.Image], list[int], dict]:
     frames: list[Image.Image] = []
     durations: list[int] = []
     meta: dict = {}
@@ -127,7 +85,9 @@ def load_gif_frames(image_path: str | Path) -> tuple[list[Image.Image], list[int
         meta["loop"] = int(img.info.get("loop", 0) or 0)
         default_duration = int(img.info.get("duration", 100) or 100)
         for frame in ImageSequence.Iterator(img):
-            durations.append(int(frame.info.get("duration", default_duration) or default_duration))
+            durations.append(
+                int(frame.info.get("duration", default_duration) or default_duration)
+            )
             frames.append(frame.convert("RGBA").copy())
 
     return frames, _normalize_durations(durations, len(frames)), meta
@@ -219,7 +179,9 @@ def save_gif(
     return True
 
 
-def _round_durations(values: list[float], target_total: float, min_duration_ms: int) -> list[int]:
+def _round_durations(
+    values: list[float], target_total: float, min_duration_ms: int
+) -> list[int]:
     rounded = [max(min_duration_ms, int(round(v))) for v in values]
     diff = int(round(target_total)) - sum(rounded)
 
@@ -258,7 +220,9 @@ def retime_frames_for_speed(
     raw_durations = [d / speed for d in source_durations]
 
     if min(raw_durations) >= min_duration_ms:
-        return [frame.copy() for frame in frames], _round_durations(raw_durations, sum(raw_durations), min_duration_ms)
+        return [frame.copy() for frame in frames], _round_durations(
+            raw_durations, sum(raw_durations), min_duration_ms
+        )
 
     original_total = sum(source_durations)
     target_total = max(float(min_duration_ms), original_total / speed)
@@ -276,12 +240,17 @@ def retime_frames_for_speed(
         source_time = (i * target_total / target_frame_count) * speed
         source_time = min(source_time, original_total - 1)
         source_index = 0
-        while source_index < len(cumulative) - 1 and source_time >= cumulative[source_index]:
+        while (
+            source_index < len(cumulative) - 1
+            and source_time >= cumulative[source_index]
+        ):
             source_index += 1
         sampled_frames.append(frames[source_index].copy())
 
     base_duration = target_total / target_frame_count
-    sampled_durations = _round_durations([base_duration] * target_frame_count, target_total, min_duration_ms)
+    sampled_durations = _round_durations(
+        [base_duration] * target_frame_count, target_total, min_duration_ms
+    )
     return sampled_frames, sampled_durations
 
 

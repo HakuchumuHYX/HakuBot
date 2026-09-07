@@ -1,10 +1,11 @@
 """角色昵称映射模块"""
+
 import json
 from pathlib import Path
 from typing import Optional, Dict, List
 from nonebot.log import logger
 
-from .config import data_dir
+from plugins.pjsk_guess_card.config import data_dir
 
 NICKNAMES_FILE = data_dir / "nicknames.json"
 

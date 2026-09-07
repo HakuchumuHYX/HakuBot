@@ -8,16 +8,16 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from .handlers.bind import bind_manager
+from plugins.buaa_msm.handlers.bind import bind_manager
 
 
 def make_filename_safe(filename: str) -> str:
     """确保文件名安全，移除或替换非法字符"""
     unsafe_chars = r'[<>:"/\\|?*\x00-\x1f]'
-    safe_name = re.sub(unsafe_chars, '_', filename)
-    safe_name = safe_name.strip('. ')
+    safe_name = re.sub(unsafe_chars, "_", filename)
+    safe_name = safe_name.strip(". ")
     if not safe_name:
-        safe_name = 'unnamed'
+        safe_name = "unnamed"
     if len(safe_name) > 200:
         safe_name = safe_name[:200]
     return safe_name

@@ -2,13 +2,15 @@
 alive_stat 配置加载模块。
 从 config.json 读取敏感配置，如果文件不存在则使用空默认值。
 """
+
+from utils.paths import PluginPaths
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 PLUGIN_DIR = Path(__file__).parent
-CONFIG_FILE = PLUGIN_DIR / "config.json"
+CONFIG_FILE = PluginPaths("alive_stat").config / "config.json"
 
 
 @dataclass

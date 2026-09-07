@@ -9,8 +9,11 @@ from typing import Optional
 
 import pytz
 
-from ..data_manager import data_manager
-from .constants import EVENT_STATE, UPCOMING_WINDOW_HOURS
+from plugins.hltv_sub.data_manager import data_manager
+from plugins.hltv_sub.scheduler_internal.constants import (
+    EVENT_STATE,
+    UPCOMING_WINDOW_HOURS,
+)
 
 
 def parse_mmdd(tz: pytz.BaseTzInfo, mmdd: str, end_of_day: bool) -> Optional[datetime]:
@@ -35,7 +38,9 @@ def parse_mmdd(tz: pytz.BaseTzInfo, mmdd: str, end_of_day: bool) -> Optional[dat
         return None
 
 
-def get_event_state(tz: pytz.BaseTzInfo, end_grace_days: int, event_id: str) -> EVENT_STATE:
+def get_event_state(
+    tz: pytz.BaseTzInfo, end_grace_days: int, event_id: str
+) -> EVENT_STATE:
     sub = data_manager.get_any_subscription_by_event(event_id)
     if not sub or not sub.start_date or not sub.end_date:
         return "UNKNOWN"

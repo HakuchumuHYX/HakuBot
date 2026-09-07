@@ -2,6 +2,8 @@
 """
 存放核心的游戏会话管理逻辑和答案处理器
 """
+
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 import time
 from pathlib import Path
@@ -10,14 +12,27 @@ from nonebot import on_message, get_bot
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
-from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment, Bot, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import (
+    Message,
+    MessageEvent,
+    MessageSegment,
+    Bot,
+    GroupMessageEvent,
+)
 
 # 导入服务和配置
-from . import plugin_config, db_service
+from plugins.pjsk_guess_song.runtime import plugin_config, db_service
+
 # 导入全局状态
-from .game_data import active_game_sessions, last_game_end_time
+from plugins.pjsk_guess_song.game_data import active_game_sessions, last_game_end_time
+
 # 导入辅助函数
-from .utils import get_session_id, get_user_id, get_user_name, _get_setting_for_group
+from plugins.pjsk_guess_song.utils import (
+    get_session_id,
+    get_user_id,
+    get_user_name,
+    _get_setting_for_group,
+)
 
 
 async def _end_game_session(session_id: str, reason_msg: str):
@@ -31,13 +46,21 @@ async def _end_game_session(session_id: str, reason_msg: str):
     try:
         current_task = asyncio.current_task()
 
-        main_timeout_task = game_data.get('timeout_task')
-        if main_timeout_task and not main_timeout_task.done() and main_timeout_task is not current_task:
+        main_timeout_task = game_data.get("timeout_task")
+        if (
+            main_timeout_task
+            and not main_timeout_task.done()
+            and main_timeout_task is not current_task
+        ):
             main_timeout_task.cancel()
             logger.debug(f"已取消游戏 {session_id} 的主要超时任务。")
 
-        bonus_timeout_task = game_data.get('bonus_task')
-        if bonus_timeout_task and not bonus_timeout_task.done() and bonus_timeout_task is not current_task:
+        bonus_timeout_task = game_data.get("bonus_task")
+        if (
+            bonus_timeout_task
+            and not bonus_timeout_task.done()
+            and bonus_timeout_task is not current_task
+        ):
             bonus_timeout_task.cancel()
             logger.debug(f"已取消游戏 {session_id} 的奖励时间任务。")
     except Exception as e:
@@ -45,42 +68,44 @@ async def _end_game_session(session_id: str, reason_msg: str):
 
     last_game_end_time[session_id] = time.time()
 
-    correct_players = game_data.get('correct_players', {})
+    correct_players = game_data.get("correct_players", {})
 
     try:
-        score_to_add = game_data.get('score', 1)
-        start_event = game_data.get('start_event')
+        score_to_add = game_data.get("score", 1)
+        start_event = game_data.get("start_event")
 
         # 仅在群聊中且有玩家答对时记录分数
         if isinstance(start_event, GroupMessageEvent) and correct_players:
             group_id = str(start_event.group_id)
             score_tasks = []
             for user_id, player_info in correct_players.items():
-                user_name = player_info.get('name', user_id)
+                user_name = player_info.get("name", user_id)
                 score_tasks.append(
                     db_service.add_score(user_id, group_id, score_to_add, user_name)
                 )
 
             if score_tasks:
                 await asyncio.gather(*score_tasks)
-                logger.info(f"已为群 {group_id} 的 {len(score_tasks)} 名玩家记录 {score_to_add} 分。")
+                logger.info(
+                    f"已为群 {group_id} 的 {len(score_tasks)} 名玩家记录 {score_to_add} 分。"
+                )
     except Exception as e:
         logger.error(f"记录分数时出错: {e}", exc_info=True)
 
     if correct_players:
-        winner_names = "、".join(player['name'] for player in correct_players.values())
+        winner_names = "、".join(player["name"] for player in correct_players.values())
         summary_text = f"{reason_msg}\n本轮答对的玩家有：\n{winner_names}"
     else:
         summary_text = f"{reason_msg} 好像......没有人答对......"
 
     try:
         # 从 game_data 中恢复 bot 和 event
-        bot = get_bot(game_data['bot_id'])
-        event = game_data['start_event']
+        bot = get_bot(game_data["bot_id"])
+        event = game_data["start_event"]
 
         await bot.send(event, summary_text)
         # 发送答案
-        await bot.send(event, game_data['answer_reveal_messages'])
+        await bot.send(event, game_data["answer_reveal_messages"])
     except Exception as e:
         logger.error(f"发送游戏结果失败: {e}")
 
@@ -103,11 +128,11 @@ async def _game_timeout_task(session_id: str, timeout: int):
 
 
 async def _run_game_session(
-        bot: Bot,
-        event: MessageEvent,
-        game_data: Dict,
-        intro_messages: Message,
-        answer_reveal_messages: Message
+    bot: Bot,
+    event: MessageEvent,
+    game_data: Dict,
+    intro_messages: Message,
+    answer_reveal_messages: Message,
 ):
     session_id = get_session_id(event)
     debug_mode = plugin_config.debug_mode
@@ -128,21 +153,23 @@ async def _run_game_session(
             return
 
         # 2. (核心) 设置全局游戏状态
-        game_data['answer_reveal_messages'] = answer_reveal_messages
-        game_data['correct_players'] = {}
-        game_data['first_correct_answer_time'] = 0
-        game_data['guessed_users'] = set()  # (这个字段似乎未被使用，但保留它)
+        game_data["answer_reveal_messages"] = answer_reveal_messages
+        game_data["correct_players"] = {}
+        game_data["first_correct_answer_time"] = 0
+        game_data["guessed_users"] = set()  # (这个字段似乎未被使用，但保留它)
 
-        game_data['user_guess_counts'] = {}
+        game_data["user_guess_counts"] = {}
 
-        game_data['start_event'] = event  # 存储初始 event 用于后续发送消息
-        game_data['bot_id'] = bot.self_id  # 存储 bot self_id
-        game_data['type'] = 'game'  # 标记为游戏会话
+        game_data["start_event"] = event  # 存储初始 event 用于后续发送消息
+        game_data["bot_id"] = bot.self_id  # 存储 bot self_id
+        game_data["type"] = "game"  # 标记为游戏会话
 
         active_game_sessions[session_id] = game_data
 
-        timeout_task = asyncio.create_task(_game_timeout_task(session_id, timeout_seconds))
-        active_game_sessions[session_id]['timeout_task'] = timeout_task
+        timeout_task = runtime.spawn(
+            _game_timeout_task(session_id, timeout_seconds), name="pjsk_guess_song"
+        )
+        active_game_sessions[session_id]["timeout_task"] = timeout_task
 
     except Exception as e:
         logger.error(f"发送消息失败: {e}. 游戏中断。", exc_info=True)
@@ -155,7 +182,9 @@ answer_handler = on_message(priority=5, block=False)
 
 
 @answer_handler.handle()
-async def handle_game_answer(bot: Bot, event: MessageEvent, state: T_State, matcher: Matcher):
+async def handle_game_answer(
+    bot: Bot, event: MessageEvent, state: T_State, matcher: Matcher
+):
     session_id = get_session_id(event)
     answer_text = event.get_plaintext().strip()
 
@@ -174,7 +203,7 @@ async def handle_game_answer(bot: Bot, event: MessageEvent, state: T_State, matc
     max_guess_attempts = _get_setting_for_group(event, "max_guess_attempts", 10)
 
     # 1. 获取该用户的个人猜测次数
-    user_count = game_data.get('user_guess_counts', {}).get(user_id, 0)
+    user_count = game_data.get("user_guess_counts", {}).get(user_id, 0)
 
     # 2. 检查该用户的个人次数是否已达上限
     if max_guess_attempts > 0 and user_count >= max_guess_attempts:
@@ -183,33 +212,41 @@ async def handle_game_answer(bot: Bot, event: MessageEvent, state: T_State, matc
         return
 
     # 3. 为该用户增加一次猜测次数
-    game_data['user_guess_counts'][user_id] = user_count + 1
+    game_data["user_guess_counts"][user_id] = user_count + 1
 
     is_correct = False
     try:
         answer_num = int(answer_text)
         if 1 <= answer_num <= game_data.get("num_options", 12):
-            if answer_num == game_data['correct_answer_num']:
+            if answer_num == game_data["correct_answer_num"]:
                 is_correct = True
     except ValueError:
         pass
 
     if is_correct:
         # 答对了，且在该用户的次数限制内
-        if user_id not in game_data['correct_players']:
-            game_data['correct_players'][user_id] = {'name': user_name}
-            is_first_correct_answer = (game_data['first_correct_answer_time'] == 0)
+        if user_id not in game_data["correct_players"]:
+            game_data["correct_players"][user_id] = {"name": user_name}
+            is_first_correct_answer = game_data["first_correct_answer_time"] == 0
             if is_first_correct_answer:
-                game_data['first_correct_answer_time'] = time.time()
-                end_game_early = _get_setting_for_group(event, "end_game_after_bonus_time", True)
-                bonus_time = _get_setting_for_group(event, "bonus_time_after_first_answer", 5)
+                game_data["first_correct_answer_time"] = time.time()
+                end_game_early = _get_setting_for_group(
+                    event, "end_game_after_bonus_time", True
+                )
+                bonus_time = _get_setting_for_group(
+                    event, "bonus_time_after_first_answer", 5
+                )
 
                 if end_game_early and bonus_time > 0:
+
                     async def _bonus_time_end_task(sid, delay):
                         await asyncio.sleep(delay)
                         if sid in active_game_sessions:
                             logger.info(f"游戏 {sid} 奖励时间到，提前结束。")
                             await _end_game_session(sid, "奖励时间到！")
 
-                    bonus_task = asyncio.create_task(_bonus_time_end_task(session_id, bonus_time))
-                    game_data['bonus_task'] = bonus_task
+                    bonus_task = runtime.spawn(
+                        _bonus_time_end_task(session_id, bonus_time),
+                        name="pjsk_guess_song",
+                    )
+                    game_data["bonus_task"] = bonus_task

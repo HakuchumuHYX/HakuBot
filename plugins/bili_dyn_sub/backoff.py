@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass, replace
 from typing import Literal, Optional
 
-from ..utils.tools import get_logger
+from utils.logging import get_logger
 
 logger = get_logger("bili_dyn_sub.backoff")
 
@@ -55,7 +55,9 @@ class BackoffState:
     refresh_count: int = 0  # 已因 352 强制刷新 cookie 的次数，上限 MAX_REFRESH_COUNT
     backoff_until: Optional[float] = None  # 退避截止时间戳；None 表示当前不在退避
     last_error: str = ""  # 最近一次错误标记；等于 ERROR_IP_BLOCK 时代表 IP 被风控
-    last_log_key: str = ""  # 最近一次已打过 warning 的 error_key，用于日志纪律（§3.5 末）
+    last_log_key: str = (
+        ""  # 最近一次已打过 warning 的 error_key，用于日志纪律（§3.5 末）
+    )
 
 
 class BackoffManager:
@@ -128,11 +130,20 @@ class BackoffManager:
         state = self._states.get(key)
         if state is None:
             return
-        if state.fail_count or state.refresh_count or state.backoff_until or state.last_error:
-            logger.info(f"UID {key} 取数恢复正常（此前失败 {state.fail_count} 次，最近错误: {state.last_error or '-'}）")
+        if (
+            state.fail_count
+            or state.refresh_count
+            or state.backoff_until
+            or state.last_error
+        ):
+            logger.info(
+                f"UID {key} 取数恢复正常（此前失败 {state.fail_count} 次，最近错误: {state.last_error or '-'}）"
+            )
         self._states[key] = BackoffState()
 
-    def on_risk_control(self, uid: object, reason: str, now: Optional[float] = None) -> RiskAction:
+    def on_risk_control(
+        self, uid: object, reason: str, now: Optional[float] = None
+    ) -> RiskAction:
         """
         352 风控：前 MAX_REFRESH_COUNT 次返回 "refresh_cookie"（调用方应强制刷新 cookie 后重试），
         达到刷新上限后进入 5min × 2ⁿ 指数退避（上限 1h）并返回 "backoff"
@@ -152,27 +163,39 @@ class BackoffManager:
         step = max(0, state.fail_count - MAX_REFRESH_COUNT - 1)
         delay = min(RISK_BACKOFF_BASE_SECONDS * (2**step), RISK_BACKOFF_MAX_SECONDS)
         self._enter_backoff(state, delay, current)
-        logger.debug(f"UID {self._key(uid)} 刷新 cookie 仍风控（{reason}），退避 {int(delay)}s")
+        logger.debug(
+            f"UID {self._key(uid)} 刷新 cookie 仍风控（{reason}），退避 {int(delay)}s"
+        )
         return ACTION_BACKOFF
 
-    def on_ip_block(self, uid: object, reason: str, now: Optional[float] = None) -> None:
+    def on_ip_block(
+        self, uid: object, reason: str, now: Optional[float] = None
+    ) -> None:
         """HTTP 412：IP 层风控，换 cookie 无效，30min × 2ⁿ 退避（上限 4h）并标记 last_error"""
         current = time.time() if now is None else now
         state = self._state(uid)
         state.fail_count += 1
         state.last_error = ERROR_IP_BLOCK
         step = max(0, state.fail_count - 1)
-        delay = min(IP_BLOCK_BACKOFF_BASE_SECONDS * (2**step), IP_BLOCK_BACKOFF_MAX_SECONDS)
+        delay = min(
+            IP_BLOCK_BACKOFF_BASE_SECONDS * (2**step), IP_BLOCK_BACKOFF_MAX_SECONDS
+        )
         self._enter_backoff(state, delay, current)
-        logger.debug(f"UID {self._key(uid)} 命中 IP 层风控（{reason}），退避 {int(delay)}s")
+        logger.debug(
+            f"UID {self._key(uid)} 命中 IP 层风控（{reason}），退避 {int(delay)}s"
+        )
 
-    def on_network_error(self, uid: object, reason: str, now: Optional[float] = None) -> None:
+    def on_network_error(
+        self, uid: object, reason: str, now: Optional[float] = None
+    ) -> None:
         """网络错误：短退避，且不计入 refresh_count / fail_count（不是风控，不该升级）"""
         current = time.time() if now is None else now
         state = self._state(uid)
         state.last_error = f"{ERROR_NETWORK_PREFIX}{reason}"
         self._enter_backoff(state, NETWORK_BACKOFF_SECONDS, current)
-        logger.debug(f"UID {self._key(uid)} 网络错误（{reason}），退避 {int(NETWORK_BACKOFF_SECONDS)}s")
+        logger.debug(
+            f"UID {self._key(uid)} 网络错误（{reason}），退避 {int(NETWORK_BACKOFF_SECONDS)}s"
+        )
 
     # ---------- 日志纪律 ----------
 

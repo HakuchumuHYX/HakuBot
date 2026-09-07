@@ -5,10 +5,10 @@ from nonebot.adapters.onebot.v11 import Bot, Event, PrivateMessageEvent
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
-from ..utils.tools import get_exc_desc, get_logger
-from .config import Config, plugin_config
-from . import scheduler as _scheduler  # noqa: F401
-from .scheduler import run_debug
+from utils.logging import get_exc_desc, get_logger
+from plugins.juya_daily_fetcher.config import Config, plugin_config
+from plugins.juya_daily_fetcher import scheduler as _scheduler
+from plugins.juya_daily_fetcher.scheduler import run_debug
 
 logger = get_logger("juya_daily_fetcher")
 

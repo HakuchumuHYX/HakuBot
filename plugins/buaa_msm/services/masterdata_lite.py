@@ -15,7 +15,7 @@ from typing import Any
 
 from nonebot.log import logger
 
-from ..config import plugin_config
+from plugins.buaa_msm.config import plugin_config
 
 _CATEGORY_MASTERDATA_FILE: dict[str, str] = {
     "material": "materials.json",
@@ -75,7 +75,9 @@ class MasterDataLite:
             logger.warning(f"MasterDataLite 读取失败 {path}: {e}")
             return []
 
-    def _build_id_index(self, category: str, filename: str) -> dict[int, dict[str, Any]]:
+    def _build_id_index(
+        self, category: str, filename: str
+    ) -> dict[int, dict[str, Any]]:
         cache_key = (category, filename)
         if cache_key in self._index_cache:
             return self._index_cache[cache_key]
@@ -105,7 +107,11 @@ class MasterDataLite:
         item = self.get_item_by_id(category, item_id)
         if not item:
             return None
-        for key in ("iconAssetbundleName", "assetbundleName", "thumbnailAssetbundleName"):
+        for key in (
+            "iconAssetbundleName",
+            "assetbundleName",
+            "thumbnailAssetbundleName",
+        ):
             val = item.get(key)
             if val:
                 return str(val)

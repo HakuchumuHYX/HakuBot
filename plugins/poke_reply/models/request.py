@@ -2,8 +2,9 @@ import hashlib
 import time
 from typing import Dict, List, Optional
 from nonebot import logger
-from ..config import DELETE_REQUESTS_FILE
-from ..utils.json_store import atomic_write_json, load_json_file
+from plugins.poke_reply.config import DELETE_REQUESTS_FILE
+from utils.json_io import atomic_write_json, load_json
+
 
 class DeleteRequestManager:
     def __init__(self):
@@ -24,7 +25,13 @@ class DeleteRequestManager:
     def load_requests(self):
         try:
             if self.requests_file.exists():
-                result = load_json_file(self.requests_file, dict, default={})
+                result = load_json(
+                    self.requests_file,
+                    expected_type=dict,
+                    missing_ok=True,
+                    backup_on_error=True,
+                    default={},
+                )
                 self.requests_data = result.data
                 if not result.success:
                     logger.error(f"加载删除申请失败: {result.error}")
@@ -36,13 +43,24 @@ class DeleteRequestManager:
 
     def save_requests(self):
         try:
-            atomic_write_json(self.requests_file, self.requests_data, dict)
+            atomic_write_json(
+                self.requests_file, self.requests_data, expected_type=dict
+            )
         except Exception as e:
             logger.error(f"保存删除申请失败: {e}")
 
-    def add_request(self, group_id: int, message_id: int, requester_id: int,
-                    content: str, message_type: str, filenames: Optional[List[str]] = None) -> str:
-        request_id = hashlib.md5(f"{group_id}_{message_id}_{time.time()}".encode()).hexdigest()[:8]
+    def add_request(
+        self,
+        group_id: int,
+        message_id: int,
+        requester_id: int,
+        content: str,
+        message_type: str,
+        filenames: Optional[List[str]] = None,
+    ) -> str:
+        request_id = hashlib.md5(
+            f"{group_id}_{message_id}_{time.time()}".encode()
+        ).hexdigest()[:8]
         content_preview = content[:200] + "..." if len(content) > 200 else content
         self.requests_data[request_id] = {
             "request_id": request_id,
@@ -57,7 +75,7 @@ class DeleteRequestManager:
             "status": "pending",
             "request_time": time.time(),
             "process_time": None,
-            "processor_id": None
+            "processor_id": None,
         }
         self.save_requests()
         return request_id
@@ -71,18 +89,22 @@ class DeleteRequestManager:
         return []
 
     def get_pending_requests(self) -> List[dict]:
-        return [req for req in self.requests_data.values() if req["status"] == "pending"]
+        return [
+            req for req in self.requests_data.values() if req["status"] == "pending"
+        ]
 
     def get_request(self, request_id: str) -> Optional[dict]:
         return self.requests_data.get(request_id)
 
     def update_request(self, request_id: str, status: str, processor_id: int) -> bool:
         if request_id in self.requests_data:
-            self.requests_data[request_id].update({
-                "status": status,
-                "process_time": time.time(),
-                "processor_id": processor_id
-            })
+            self.requests_data[request_id].update(
+                {
+                    "status": status,
+                    "process_time": time.time(),
+                    "processor_id": processor_id,
+                }
+            )
             self.save_requests()
             return True
         return False
@@ -98,8 +120,10 @@ class DeleteRequestManager:
         current_time = now if now is not None else time.time()
         expired_keys = []
         for key, record in self.requests_data.items():
-            if (record["status"] != "pending" and
-                    current_time - record.get("process_time", 0) > 86400):  # 24小时
+            if (
+                record["status"] != "pending"
+                and current_time - record.get("process_time", 0) > 86400
+            ):  # 24小时
                 expired_keys.append(key)
         for key in expired_keys:
             del self.requests_data[key]
@@ -107,5 +131,6 @@ class DeleteRequestManager:
             logger.info(f"清理了 {len(expired_keys)} 个过期的删除申请")
             self.save_requests()
         return len(expired_keys)
+
 
 delete_request_manager = DeleteRequestManager()

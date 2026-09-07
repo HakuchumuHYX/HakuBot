@@ -6,6 +6,7 @@ MSR 分析服务（完整编排）：
 """
 
 from __future__ import annotations
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 
 import asyncio
 import io
@@ -15,19 +16,24 @@ import aiohttp
 from PIL import Image
 from nonebot.exception import FinishedException
 from nonebot.log import logger
-from ...utils.image_utils import image_segment
+from utils.onebot.media import image_segment
 
-from .. import analysis
-from ..config import plugin_config
-from ..domain.models import UserDataContext
-from ..exceptions import AssetDownloadError, DataLoadError, RenderError, SendError
-from ..infra.visit_history import get_duplicate_chars_for_latest
-from ..renderers.msr import (
+from plugins.buaa_msm import analysis
+from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.domain.models import UserDataContext
+from plugins.buaa_msm.exceptions import (
+    AssetDownloadError,
+    DataLoadError,
+    RenderError,
+    SendError,
+)
+from plugins.buaa_msm.infra.visit_history import get_duplicate_chars_for_latest
+from plugins.buaa_msm.renderers.msr import (
     generate_msr_map_image_bytes,
     generate_msr_summary_image_bytes,
 )
-from .rip_asset_lite import rip_asset_lite
-from .user_data_service import get_user_context
+from plugins.buaa_msm.services.rip_asset_lite import rip_asset_lite
+from plugins.buaa_msm.services.user_data_service import get_user_context
 
 SendFunc = Callable[[str], Any]
 
@@ -58,7 +64,9 @@ async def _fetch_jacket_images(
     if not url_map:
         return result
 
-    total_timeout = float(timeout if timeout is not None else plugin_config.jacket_download_timeout)
+    total_timeout = float(
+        timeout if timeout is not None else plugin_config.jacket_download_timeout
+    )
     retries = max(0, int(plugin_config.jacket_download_retries))
     backoff = max(0.0, float(plugin_config.jacket_retry_backoff_seconds))
     concurrency = max(1, int(plugin_config.jacket_download_concurrency))
@@ -73,18 +81,27 @@ async def _fetch_jacket_images(
         async with sem:
             for attempt in range(1, max_attempts + 1):
                 try:
-                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=total_timeout)) as resp:
+                    async with session.get(
+                        url, timeout=aiohttp.ClientTimeout(total=total_timeout)
+                    ) as resp:
                         if resp.status == 200:
                             data = await resp.read()
                             img = Image.open(io.BytesIO(data)).convert("RGBA")
                             result[record_id] = img
                             return
 
-                        logger.debug(f"封面下载失败 [{record_id}]: HTTP {resp.status} (attempt {attempt}/{max_attempts})")
-                        if not _is_retryable_http_status(resp.status) or attempt >= max_attempts:
+                        logger.debug(
+                            f"封面下载失败 [{record_id}]: HTTP {resp.status} (attempt {attempt}/{max_attempts})"
+                        )
+                        if (
+                            not _is_retryable_http_status(resp.status)
+                            or attempt >= max_attempts
+                        ):
                             return
                 except Exception as e:
-                    logger.debug(f"封面下载失败 [{record_id}]: {e} (attempt {attempt}/{max_attempts})")
+                    logger.debug(
+                        f"封面下载失败 [{record_id}]: {e} (attempt {attempt}/{max_attempts})"
+                    )
                     if not _is_retryable_exception(e) or attempt >= max_attempts:
                         return
 
@@ -172,7 +189,7 @@ async def _execute_msr_analysis(
     # 并行触发渲染
     await send_func("正在生成统计图与位置图...")
 
-    summary_task = asyncio.create_task(
+    summary_task = runtime.spawn(
         asyncio.to_thread(
             generate_msr_summary_image_bytes,
             analysis_data=analysis_data,
@@ -180,16 +197,20 @@ async def _execute_msr_analysis(
             owned_music_records=owned_music_records,
             highlight_characters=highlight_characters,
             jacket_cache=jacket_cache,
-        )
+        ),
+        name="buaa_msm",
     )
-    map_task = asyncio.create_task(
-        asyncio.to_thread(generate_msr_map_image_bytes, parsed_maps=parsed_maps)
+    map_task = runtime.spawn(
+        asyncio.to_thread(generate_msr_map_image_bytes, parsed_maps=parsed_maps),
+        name="buaa_msm",
     )
 
     # 发送顺序保持稳定：先 summary 后 map
     try:
         summary_bytes = await summary_task
-        await bot.send_private_msg(user_id=event_user_id, message=image_segment(summary_bytes))
+        await bot.send_private_msg(
+            user_id=event_user_id, message=image_segment(summary_bytes)
+        )
         sent_any = True
     except FinishedException:
         raise
@@ -204,7 +225,9 @@ async def _execute_msr_analysis(
 
     try:
         map_bytes = await map_task
-        await bot.send_private_msg(user_id=event_user_id, message=image_segment(map_bytes))
+        await bot.send_private_msg(
+            user_id=event_user_id, message=image_segment(map_bytes)
+        )
         sent_any = True
     except FinishedException:
         raise
@@ -233,7 +256,9 @@ async def _execute_msr_analysis(
 # ============== 对外接口 ==============
 
 
-async def run_msr(*, bot: Any, user_id: str, event_user_id: int, send_func: SendFunc) -> bool:
+async def run_msr(
+    *, bot: Any, user_id: str, event_user_id: int, send_func: SendFunc
+) -> bool:
     """
     MSR 完整流程：获取用户上下文 → 执行分析渲染 → 发送结果。
     供 handlers 直接调用。

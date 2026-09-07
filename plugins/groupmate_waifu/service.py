@@ -8,7 +8,7 @@ this layer owns state mutation, config access, and pure decision logic.
 
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from .data_manager import (
+from plugins.groupmate_waifu.data_manager import (
     HE,
     BE,
     NTR,
@@ -216,11 +216,15 @@ def get_yinpa_record_rows(
     return rows
 
 
-def get_yinpa_actor_record_rows(group_id: int, member_list: Iterable[Dict[str, Any]]) -> List[Tuple[str, int]]:
+def get_yinpa_actor_record_rows(
+    group_id: int, member_list: Iterable[Dict[str, Any]]
+) -> List[Tuple[str, int]]:
     return get_yinpa_record_rows(group_id, member_list, record_yinpa1)
 
 
-def get_yinpa_target_record_rows(group_id: int, member_list: Iterable[Dict[str, Any]]) -> List[Tuple[str, int]]:
+def get_yinpa_target_record_rows(
+    group_id: int, member_list: Iterable[Dict[str, Any]]
+) -> List[Tuple[str, int]]:
     return get_yinpa_record_rows(group_id, member_list, record_yinpa2)
 
 
@@ -282,7 +286,8 @@ def get_marriage_pool_members(
     cp_records = record_CP.get(group_id, {})
     rule_out = get_protected_users(group_id) | set(cp_records.keys())
     return [
-        member for member in member_list
+        member
+        for member in member_list
         if member["user_id"] not in rule_out
         and member["last_sent_time"] > last_sent_after
     ]
@@ -296,7 +301,8 @@ def get_yinpa_pool_members(
 ) -> List[Dict[str, Any]]:
     protect_set = get_protected_users(group_id)
     return [
-        member for member in member_list
+        member
+        for member in member_list
         if member["user_id"] not in protect_set
         and member["last_sent_time"] > last_sent_after
         and (excluded_user_id is None or member["user_id"] != excluded_user_id)

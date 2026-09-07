@@ -14,9 +14,12 @@ from typing import Awaitable, Callable
 from nonebot.log import logger
 from nonebot_plugin_apscheduler import scheduler
 
-from ..data_manager import data_manager
-from .constants import UPCOMING_WINDOW_HOURS, WAKEUP_JOB_PREFIX
-from .state import get_event_state, parse_mmdd
+from plugins.hltv_sub.data_manager import data_manager
+from plugins.hltv_sub.scheduler_internal.constants import (
+    UPCOMING_WINDOW_HOURS,
+    WAKEUP_JOB_PREFIX,
+)
+from plugins.hltv_sub.scheduler_internal.state import get_event_state, parse_mmdd
 
 
 def wakeup_job_id(event_id: str) -> str:

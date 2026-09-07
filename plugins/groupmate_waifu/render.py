@@ -5,6 +5,8 @@ This module owns image generation, avatar message composition, and fallback
 send/finish behavior. It should not mutate plugin state.
 """
 
+from utils.rendering.fonts import load_font_from_path
+
 import io
 from typing import Iterable, Mapping, Sequence, Tuple
 
@@ -13,9 +15,9 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.log import logger
 from pil_utils import BuildImage, Text2Image
 
-from ..utils.image_utils import image_segment
-from ..utils.tools import ForwardItem
-from .utils import download_user_img
+from utils.onebot.media import image_segment
+from utils.onebot.forward import ForwardItem
+from plugins.groupmate_waifu.utils import download_user_img
 
 
 async def user_img(user_id: int) -> bytes:
@@ -80,7 +82,7 @@ def text_to_png(msg: str) -> io.BytesIO:
 
             font_path = "msyh.ttc"
             try:
-                font = ImageFont.truetype(font_path, 50)
+                font = load_font_from_path(font_path, 50)
             except IOError:
                 logger.warning(f"找不到字体 {font_path}，使用默认字体。")
                 font = ImageFont.load_default()
@@ -115,9 +117,13 @@ def render_protect_list(names: Iterable[str]) -> MessageSegment:
     return image_from_text("保护名单为：\n" + "\n".join(names))
 
 
-def render_member_pool(title: str, members: Sequence[Mapping], limit: int = 80) -> MessageSegment:
+def render_member_pool(
+    title: str, members: Sequence[Mapping], limit: int = 80
+) -> MessageSegment:
     msg = f"{title}：\n——————————————\n"
-    msg += "\n".join((member["card"] or member["nickname"]) for member in members[:limit])
+    msg += "\n".join(
+        (member["card"] or member["nickname"]) for member in members[:limit]
+    )
     return image_from_text(msg)
 
 
@@ -130,7 +136,9 @@ def make_forward_node(name: str, uin: int, content) -> ForwardItem:
     return ForwardItem(content=content, name=name, uin=uin)
 
 
-def render_yinpa_record(title: str, rows: Iterable[Tuple[str, int]], action: str) -> MessageSegment:
+def render_yinpa_record(
+    title: str, rows: Iterable[Tuple[str, int]], action: str
+) -> MessageSegment:
     msg = "\n".join(
         f"[align=left]{nickname}[/align][align=right]{action} {times} 次[/align]"
         for nickname, times in rows
@@ -154,10 +162,11 @@ def bbcode_to_png(msg: str, spacing: int = 10) -> io.BytesIO:
 
     except Exception as e:
         logger.error(f"bbcode_to_png error: {e}")
-        clean_msg = (msg
-            .replace("[align=left]", "")
+        clean_msg = (
+            msg.replace("[align=left]", "")
             .replace("[/align]", "")
-            .replace("[align=right]", ""))
+            .replace("[align=right]", "")
+        )
         return text_to_png(clean_msg)
 
     return output

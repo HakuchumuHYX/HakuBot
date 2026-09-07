@@ -15,8 +15,8 @@ from nonebot.plugin import PluginMetadata
 from nonebot.plugin.on import on_command
 from nonebot.permission import SUPERUSER
 
-from .config import Config
-from .constants import PLUGIN_NAME
+from plugins.groupmate_waifu.config import Config
+from plugins.groupmate_waifu.constants import PLUGIN_NAME
 
 
 # --- 插件元数据 ---
@@ -40,7 +40,7 @@ __plugin_meta__ = PluginMetadata(
     extra={
         "author": "HakuBot",
         "version": "2.0.0",
-    }
+    },
 )
 
 
@@ -49,7 +49,7 @@ __plugin_meta__ = PluginMetadata(
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-from .service import reset_records
+from plugins.groupmate_waifu.service import reset_records
 
 # 注册定时任务
 scheduler.add_job(reset_records, "cron", hour=0, misfire_grace_time=120)
@@ -65,4 +65,4 @@ async def handle_reset_command():
 
 
 # Importing handlers registers all NoneBot matchers via module side effects.
-from . import handlers
+from plugins.groupmate_waifu import handlers

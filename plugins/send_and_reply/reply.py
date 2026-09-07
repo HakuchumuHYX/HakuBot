@@ -6,7 +6,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
 
 # 导入共享上下文
-from .content import message_context
+from plugins.send_and_reply.content import message_context
 
 # 获取配置中的超级用户列表
 superusers = get_driver().config.superusers
@@ -23,10 +23,12 @@ async def get_user_info(bot: Bot, user_id: str) -> str:
 
 
 reply_message = on_message(
-    rule=lambda event: isinstance(event, PrivateMessageEvent) and event.get_user_id() in superusers,
+    rule=lambda event: (
+        isinstance(event, PrivateMessageEvent) and event.get_user_id() in superusers
+    ),
     permission=SUPERUSER,
     priority=1,
-    block=False
+    block=False,
 )
 
 
@@ -46,7 +48,9 @@ async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
 
     # 检查回复的消息是否在我们的上下文中
     if replied_msg_id not in message_context:
-        logger.warning(f"回复的消息ID {replied_msg_id} 不在上下文中，可用的上下文键: {list(message_context.keys())}")
+        logger.warning(
+            f"回复的消息ID {replied_msg_id} 不在上下文中，可用的上下文键: {list(message_context.keys())}"
+        )
         return
 
     context = message_context[replied_msg_id]
@@ -55,7 +59,9 @@ async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
     superuser_id = event.get_user_id()
     superuser_info = await get_user_info(bot, superuser_id)
 
-    logger.info(f"找到消息上下文: 用户 {user_id}, 原消息来自 {'群聊' if 'group_id' in context else '私聊'}")
+    logger.info(
+        f"找到消息上下文: 用户 {user_id}, 原消息来自 {'群聊' if 'group_id' in context else '私聊'}"
+    )
 
     # 获取回复内容
     reply_content = event.get_plaintext().strip()
@@ -82,8 +88,7 @@ async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
         else:
             # 发送私聊回复
             await bot.send_private_msg(
-                user_id=int(user_id),
-                message=reply_message_content
+                user_id=int(user_id), message=reply_message_content
             )
             # 回复完成，从上下文中移除该条目
             message_context.pop(replied_msg_id, None)

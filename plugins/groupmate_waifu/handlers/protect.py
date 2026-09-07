@@ -4,11 +4,11 @@ from nonebot.adapters.onebot.v11 import GROUP_ADMIN, GROUP_OWNER, Bot, GroupMess
 from nonebot.permission import SUPERUSER
 from nonebot.plugin.on import on_command
 
-from .. import service
-from ..render import render_protect_list
-from ..rules import check_plugin_enabled
-from ..utils import get_message_at
-from ...utils.common import create_exact_command_rule
+from plugins.groupmate_waifu import service
+from plugins.groupmate_waifu.render import render_protect_list
+from plugins.groupmate_waifu.rules import check_plugin_enabled
+from utils.onebot.messages import mentioned_users
+from utils.onebot.rules import create_exact_command_rule
 
 
 protect = on_command(
@@ -23,18 +23,24 @@ protect = on_command(
 async def handle_protect(bot: Bot, event: GroupMessageEvent):
     permission = SUPERUSER | GROUP_ADMIN | GROUP_OWNER
     group_id = event.group_id
-    at = get_message_at(event.message)
+    at = mentioned_users(event.message)
 
     if not at:
         service.protect_users(group_id, [event.user_id])
         await protect.finish("保护成功！", at_sender=True)
     elif await permission(bot, event):
         service.protect_users(group_id, at)
-        namelist = "\n".join([
-            (member["card"] or member["nickname"])
-            for user_id in at
-            if (member := await bot.get_group_member_info(group_id=group_id, user_id=user_id))
-        ])
+        namelist = "\n".join(
+            [
+                (member["card"] or member["nickname"])
+                for user_id in at
+                if (
+                    member := await bot.get_group_member_info(
+                        group_id=group_id, user_id=user_id
+                    )
+                )
+            ]
+        )
         await protect.finish(f"保护成功！\n保护名单为：\n{namelist}", at_sender=True)
     else:
         await protect.finish("保护失败。你无法为其他人设置保护。", at_sender=True)
@@ -52,7 +58,7 @@ unprotect = on_command(
 async def handle_unprotect(bot: Bot, event: GroupMessageEvent):
     permission = SUPERUSER | GROUP_ADMIN | GROUP_OWNER
     group_id = event.group_id
-    at = get_message_at(event.message)
+    at = mentioned_users(event.message)
 
     if not at:
         removed_users = service.unprotect_users(group_id, [event.user_id])
@@ -64,12 +70,20 @@ async def handle_unprotect(bot: Bot, event: GroupMessageEvent):
         valid_at = service.unprotect_users(group_id, at)
         if not valid_at:
             await unprotect.finish("保护名单内不存在指定成员。", at_sender=True)
-        namelist = "\n".join([
-            (member["card"] or member["nickname"])
-            for user_id in valid_at
-            if (member := await bot.get_group_member_info(group_id=group_id, user_id=user_id))
-        ])
-        await unprotect.finish(f"解除保护成功！\n解除保护名单为：\n{namelist}", at_sender=True)
+        namelist = "\n".join(
+            [
+                (member["card"] or member["nickname"])
+                for user_id in valid_at
+                if (
+                    member := await bot.get_group_member_info(
+                        group_id=group_id, user_id=user_id
+                    )
+                )
+            ]
+        )
+        await unprotect.finish(
+            f"解除保护成功！\n解除保护名单为：\n{namelist}", at_sender=True
+        )
     else:
         await unprotect.finish("解除保护失败。你无法为其他人解除保护。", at_sender=True)
 
@@ -93,6 +107,10 @@ async def handle_show_protect(bot: Bot, event: GroupMessageEvent):
     names = [
         (member["card"] or member["nickname"])
         for user_id in protect_set
-        if (member := await bot.get_group_member_info(group_id=group_id, user_id=user_id))
+        if (
+            member := await bot.get_group_member_info(
+                group_id=group_id, user_id=user_id
+            )
+        )
     ]
     await show_protect.finish(render_protect_list(names))

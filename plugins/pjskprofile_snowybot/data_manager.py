@@ -1,3 +1,5 @@
+from utils.json_io import atomic_write_json
+from utils.paths import PluginPaths
 import json
 from pathlib import Path
 from typing import Dict, Optional
@@ -9,7 +11,7 @@ DATA_FILE = "pjsk_bindings.json"
 
 def get_data_file() -> Path:
     """获取数据文件路径"""
-    return store.get_plugin_data_file(DATA_FILE)
+    return PluginPaths("pjskprofile_snowybot").data / DATA_FILE
 
 
 def load_data() -> Dict[str, Dict[str, str]]:
@@ -33,8 +35,7 @@ def save_data(data: Dict[str, Dict[str, str]]):
     """保存绑定数据"""
     file_path = get_data_file()
     try:
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        atomic_write_json(file_path, data, indent=4, ensure_ascii=False)
     except Exception as e:
         logger.error(f"保存 PJSK 绑定数据失败: {e}")
 

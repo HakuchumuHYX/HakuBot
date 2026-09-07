@@ -2,26 +2,46 @@
 """
 存放帮助等其他指令
 """
+
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 import json
 from pathlib import Path
 from nonebot import on_command
 from nonebot.log import logger
-from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, Bot, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,
+    MessageSegment,
+    Bot,
+    GroupMessageEvent,
+)
 
-from .. import image_service, cache_service, resources_dir
-from ..tools.get_aliases import fetch_all_aliases
-from ..utils import _is_group_allowed
-from ...plugin_manager.enable import *
-from ...utils.common import create_exact_command_rule
-from ...utils.image_utils import image_segment
+from plugins.pjsk_guess_song.runtime import (
+    image_service,
+    cache_service,
+    resources_dir,
+    game_service,
+)
+from plugins.pjsk_guess_song.help_content import build_help_document
+from utils.onebot.help import send_help
+from plugins.pjsk_guess_song.tools.get_aliases import fetch_all_aliases
+from plugins.pjsk_guess_song.utils import _is_group_allowed
+from core.access import (
+    get_status_override,
+    get_plugin_feature_keys,
+    sync_feature_statuses,
+    is_plugin_enabled,
+    set_plugin_status,
+    is_feature_enabled,
+    set_feature_status,
+)
+from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.media import image_segment
 
 # --- 帮助 ---
-show_guess_song_help = on_command("猜歌帮助",
-                                  priority=10,
-                                  block=True,
-                                  rule=create_exact_command_rule("猜歌帮助")
-                                  )
+show_guess_song_help = on_command(
+    "猜歌帮助", priority=10, block=True, rule=create_exact_command_rule("猜歌帮助")
+)
 
 
 @show_guess_song_help.handle()
@@ -34,20 +54,13 @@ async def _(bot: Bot, event: MessageEvent):
     if not await _is_group_allowed(event):
         return
 
-    img_path = await image_service.draw_help_image()
-    if img_path:
-        img_p = Path(img_path)
-        await show_guess_song_help.send(image_segment(img_p))
-    else:
-        await show_guess_song_help.send("生成帮助图片时出错。")
+    await send_help(show_guess_song_help, build_help_document(game_service))
 
 
 # --- 资源版本 ---
-show_resource_version = on_command("猜歌资源",
-                                   priority=10,
-                                   block=True,
-                                   rule=create_exact_command_rule("猜歌资源")
-                                   )
+show_resource_version = on_command(
+    "猜歌资源", priority=10, block=True, rule=create_exact_command_rule("猜歌资源")
+)
 
 
 @show_resource_version.handle()
@@ -67,11 +80,13 @@ async def _(bot: Bot, event: MessageEvent):
         "acc_count": len(cache_service.available_accompaniment_songs),
         "vocal_count": len(cache_service.available_vocals_songs),
         "bass_count": len(cache_service.available_bass_songs),
-        "drums_count": len(cache_service.available_drums_songs)
+        "drums_count": len(cache_service.available_drums_songs),
     }
 
     # 2. 读取外部数据版本
-    target_json_path = Path("..") / "haruki-sekai-master" / "versions" / "current_version.json"
+    target_json_path = (
+        Path("..") / "haruki-sekai-master" / "versions" / "current_version.json"
+    )
 
     external_version_info = "未知 (文件未找到)"
 
@@ -81,34 +96,38 @@ async def _(bot: Bot, event: MessageEvent):
         found_path = target_json_path
     else:
         # 回退逻辑：尝试相对路径
-        relative_path = Path("..") / "haruki-sekai-master" / "versions" / "current_version.json"
+        relative_path = (
+            Path("..") / "haruki-sekai-master" / "versions" / "current_version.json"
+        )
         if relative_path.exists():
             found_path = relative_path
 
     if found_path:
         try:
-            with open(found_path, 'r', encoding='utf-8') as f:
+            with open(found_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                external_version_info = data.get('dataVersion', '未知 (字段缺失)')
+                external_version_info = data.get("dataVersion", "未知 (字段缺失)")
         except Exception as e:
             external_version_info = f"读取错误: {e}"
 
     # 3. 生成图片并发送
-    img_path = await image_service.draw_resource_version_image(stats, external_version_info)
+    img_path = await image_service.draw_resource_version_image(
+        stats, external_version_info
+    )
 
     if img_path:
         img_p = Path(img_path)
         await show_resource_version.finish(image_segment(img_p))
     else:
-        await show_resource_version.finish(f"生成图片失败，请检查日志。\nDataVersion: {external_version_info}")
+        await show_resource_version.finish(
+            f"生成图片失败，请检查日志。\nDataVersion: {external_version_info}"
+        )
 
 
 # --- 获取别名 ---
-fetch_aliases_cmd = on_command("获取别名",
-                               priority=10,
-                               block=True,
-                               rule=create_exact_command_rule("获取别名")
-                               )
+fetch_aliases_cmd = on_command(
+    "获取别名", priority=10, block=True, rule=create_exact_command_rule("获取别名")
+)
 
 # 简单的运行锁，防止重复触发
 _alias_task_running = False
@@ -157,4 +176,4 @@ async def _(bot: Bot, event: MessageEvent):
         finally:
             _alias_task_running = False
 
-    asyncio.create_task(_run_fetch())
+    runtime.spawn(_run_fetch(), name="pjsk_guess_song")

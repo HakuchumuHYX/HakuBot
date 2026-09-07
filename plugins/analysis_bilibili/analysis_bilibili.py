@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, urlencode, urlparse
 from aiohttp import ClientSession
 
-from .ExpiringCache import ExpiringCache
-from .sign import get_query, get_ticket
+from plugins.analysis_bilibili.ExpiringCache import ExpiringCache
+from plugins.analysis_bilibili.sign import get_query, get_ticket
 
 # analysis_stat : {group_id: ExpiringCache}
 analysis_stat: Dict[int, ExpiringCache] = {}
@@ -100,9 +100,7 @@ def extract_share_url(text: str) -> str:
         found = _find_share_url(data)
         if found:
             return found
-    short = re.search(
-        r"https?://(?:b23\.tv|bili(?:22|23|33|2233)\.cn)/\w+", raw, re.I
-    )
+    short = re.search(r"https?://(?:b23\.tv|bili(?:22|23|33|2233)\.cn)/\w+", raw, re.I)
     if short:
         return short.group(0)
     return ""
@@ -149,7 +147,9 @@ async def _signed_view_url(params: dict) -> str:
         query = await get_query(dict(params))
         return f"{VIEW_API}?{query}"
     except Exception as e:
-        nonebot.logger.debug(f"analysis_bilibili wbi 签名失败，改用未签名 wbi/view: {e!r}")
+        nonebot.logger.debug(
+            f"analysis_bilibili wbi 签名失败，改用未签名 wbi/view: {e!r}"
+        )
         return f"{VIEW_API}?{urlencode(params)}"
 
 
@@ -465,9 +465,9 @@ async def live_detail(url: str, session: ClientSession) -> Tuple[List[str], str]
 
         if "room_info" in res:
             room = res["room_info"]
-            uname = (
-                (res.get("anchor_info") or {}).get("base_info") or {}
-            ).get("uname") or await _live_uname(session, room.get("uid"))
+            uname = ((res.get("anchor_info") or {}).get("base_info") or {}).get(
+                "uname"
+            ) or await _live_uname(session, room.get("uid"))
             cover_src = room.get("cover") or ""
             watched = ((res.get("watched_show") or {}).get("text_large")) or ""
             lock_status = room.get("lock_status")
@@ -492,7 +492,9 @@ async def live_detail(url: str, session: ClientSession) -> Tuple[List[str], str]
         if analysis_display_image or "live" in analysis_display_image_list:
             has_image = True
 
-        cover = resize_image(cover_src, is_cover=True) if has_image and cover_src else ""
+        cover = (
+            resize_image(cover_src, is_cover=True) if has_image and cover_src else ""
+        )
         vurl = f"https://live.bilibili.com/{room_id}\n"
         if lock_status:
             if lock_time:

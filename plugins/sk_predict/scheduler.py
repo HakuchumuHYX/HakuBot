@@ -5,7 +5,7 @@ import time
 from nonebot import require
 from nonebot.log import logger
 
-from .config import DATA_DIR, FILE_CLEAN_SECONDS
+from plugins.sk_predict.config import DATA_DIR, FILE_CLEAN_SECONDS
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler

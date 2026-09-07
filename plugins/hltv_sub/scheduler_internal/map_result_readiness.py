@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from ..models import MapStats, MatchStats
-from .result_readiness import (
+from plugins.hltv_sub.models import MapStats, MatchStats
+from plugins.hltv_sub.scheduler_internal.result_readiness import (
     has_complete_map_details,
     is_final_round_score,
     score_pair,
 )
-from .types import CompletedMapResult
+from plugins.hltv_sub.scheduler_internal.types import CompletedMapResult
 
 
 def _maps_needed_to_win(bo_maps: int) -> int:

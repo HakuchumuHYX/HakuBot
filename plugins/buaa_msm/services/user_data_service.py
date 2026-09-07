@@ -18,11 +18,11 @@ from typing import Any, Dict, Optional
 
 from nonebot.log import logger
 
-from ..domain.models import UserDataContext, UserDataResult
-from ..infra.cache import cache_manager
-from ..infra.decryptor import decrypt_and_save, load_decrypted_json
-from ..infra.storage import file_storage_dir, user_latest_files
-from ..parsers.map_parser import parse_map
+from plugins.buaa_msm.domain.models import UserDataContext, UserDataResult
+from plugins.buaa_msm.infra.cache import cache_manager
+from plugins.buaa_msm.infra.decryptor import decrypt_and_save, load_decrypted_json
+from plugins.buaa_msm.infra.storage import file_storage_dir, user_latest_files
+from plugins.buaa_msm.parsers.map_parser import parse_map
 
 
 async def get_user_context(user_id: str) -> UserDataResult:
@@ -41,14 +41,21 @@ async def get_user_context(user_id: str) -> UserDataResult:
 
     # file exists?
     if user_id not in user_latest_files:
-        return UserDataResult(ok=False, error="您还没有上传过文件，请先使用 'buaa上传文件' 命令。")
+        return UserDataResult(
+            ok=False, error="您还没有上传过文件，请先使用 'buaa上传文件' 命令。"
+        )
 
     latest_file_path = user_latest_files[user_id]
     if not latest_file_path.exists():
-        return UserDataResult(ok=False, error="您的最新文件不存在，可能已被清理，请重新上传文件。")
+        return UserDataResult(
+            ok=False, error="您的最新文件不存在，可能已被清理，请重新上传文件。"
+        )
 
     if latest_file_path.suffix.lower() != ".bin":
-        return UserDataResult(ok=False, error="您上传的文件不是 .bin 格式，请上传正确的 mysekai 包体文件。")
+        return UserDataResult(
+            ok=False,
+            error="您上传的文件不是 .bin 格式，请上传正确的 mysekai 包体文件。",
+        )
 
     user_output_dir = file_storage_dir / f"output_{user_id}"
     user_output_dir.mkdir(parents=True, exist_ok=True)
@@ -72,7 +79,9 @@ async def get_user_context(user_id: str) -> UserDataResult:
             json_output_path=json_output_file,
         )
         if decrypted_data is None:
-            return UserDataResult(ok=False, error="文件解密失败，请检查文件格式是否正确。")
+            return UserDataResult(
+                ok=False, error="文件解密失败，请检查文件格式是否正确。"
+            )
 
     # parse maps
     parsed_maps = parse_map(decrypted_data)

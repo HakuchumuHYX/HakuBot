@@ -5,8 +5,8 @@ from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..utils.draw.painter import LinearGradient, Painter
-from ..utils.draw.plot import (
+from utils.rendering.draw.painter import LinearGradient, Painter
+from utils.rendering.draw.plot import (
     Canvas,
     FillBg,
     HSplit,
@@ -19,8 +19,8 @@ from ..utils.draw.plot import (
 )
 
 if TYPE_CHECKING:
-    from .runtime import BotRuntime
-    from .collector import ServerStatus, ProcessInfo, NetworkResult
+    from plugins.alive_stat.runtime import BotRuntime
+    from plugins.alive_stat.collector import ServerStatus, ProcessInfo, NetworkResult
 
 # ================= 资源配置 =================
 PLUGIN_DIR = Path(__file__).parent
@@ -122,15 +122,16 @@ def _bar_color(theme: Theme, percent: float) -> tuple[int, int, int, int]:
 def _format_bytes(b: int) -> str:
     if b < 1024:
         return f"{b}B"
-    elif b < 1024 ** 2:
+    elif b < 1024**2:
         return f"{b / 1024:.1f}K"
-    elif b < 1024 ** 3:
-        return f"{b / 1024 ** 2:.1f}M"
+    elif b < 1024**3:
+        return f"{b / 1024**2:.1f}M"
     else:
-        return f"{b / 1024 ** 3:.1f}G"
+        return f"{b / 1024**3:.1f}G"
 
 
 # ================= Section: 标题 =================
+
 
 def _section_label(text: str, theme: Theme, font: str, w: int) -> TextBox:
     style = TextStyle(font=font, size=18, color=theme.text_muted)
@@ -144,6 +145,7 @@ def _section_label(text: str, theme: Theme, font: str, w: int) -> TextBox:
 
 # ================= Section: Bot Runtime =================
 
+
 def _build_runtime_block(
     rt: "BotRuntime", theme: Theme, font: str, width: int
 ) -> VSplit:
@@ -154,38 +156,83 @@ def _build_runtime_block(
 
     items = [
         TextBox(rt.name, style=name_style, wrap=False)
-        .set_w(width).set_content_align("l").set_padding(0),
+        .set_w(width)
+        .set_content_align("l")
+        .set_padding(0),
         Spacer(1, 8),
         # Session
         TextBox("Session", style=label_style, wrap=False)
-        .set_w(width).set_content_align("l").set_padding(0),
-        TextBox(rt.session_time, style=value_style, wrap=True, line_count=2,
-                line_sep=2, overflow="shrink", use_real_line_count=True)
-        .set_w(width).set_content_align("l").set_padding(0),
-        TextBox(f"Since {rt.session_since}", style=since_style, wrap=False, overflow="shrink")
-        .set_w(width).set_content_align("l").set_padding(0),
+        .set_w(width)
+        .set_content_align("l")
+        .set_padding(0),
+        TextBox(
+            rt.session_time,
+            style=value_style,
+            wrap=True,
+            line_count=2,
+            line_sep=2,
+            overflow="shrink",
+            use_real_line_count=True,
+        )
+        .set_w(width)
+        .set_content_align("l")
+        .set_padding(0),
+        TextBox(
+            f"Since {rt.session_since}",
+            style=since_style,
+            wrap=False,
+            overflow="shrink",
+        )
+        .set_w(width)
+        .set_content_align("l")
+        .set_padding(0),
         Spacer(1, 14),
         # Total
         TextBox("Total", style=label_style, wrap=False)
-        .set_w(width).set_content_align("l").set_padding(0),
-        TextBox(rt.total_time, style=value_style, wrap=True, line_count=2,
-                line_sep=2, overflow="shrink", use_real_line_count=True)
-        .set_w(width).set_content_align("l").set_padding(0),
-        TextBox(f"Since {rt.total_since}", style=since_style, wrap=False, overflow="shrink")
-        .set_w(width).set_content_align("l").set_padding(0),
+        .set_w(width)
+        .set_content_align("l")
+        .set_padding(0),
+        TextBox(
+            rt.total_time,
+            style=value_style,
+            wrap=True,
+            line_count=2,
+            line_sep=2,
+            overflow="shrink",
+            use_real_line_count=True,
+        )
+        .set_w(width)
+        .set_content_align("l")
+        .set_padding(0),
+        TextBox(
+            f"Since {rt.total_since}", style=since_style, wrap=False, overflow="shrink"
+        )
+        .set_w(width)
+        .set_content_align("l")
+        .set_padding(0),
     ]
 
     return (
         VSplit(items=items, sep=0, item_size_mode="fixed", item_align="l")
         .set_w(width)
         .set_padding((18, 16))
-        .set_bg(RoundRectBg(fill=theme.block_bg, radius=18, stroke=theme.block_border, stroke_width=2))
+        .set_bg(
+            RoundRectBg(
+                fill=theme.block_bg,
+                radius=18,
+                stroke=theme.block_border,
+                stroke_width=2,
+            )
+        )
     )
 
 
 def _build_runtime_section(
-    hakubot: "BotRuntime", autochat: "BotRuntime",
-    theme: Theme, font: str, content_w: int
+    hakubot: "BotRuntime",
+    autochat: "BotRuntime",
+    theme: Theme,
+    font: str,
+    content_w: int,
 ) -> VSplit:
     block_sep = 16
     block_w = (content_w - block_sep) // 2
@@ -194,22 +241,34 @@ def _build_runtime_section(
     auto_block = _build_runtime_block(autochat, theme, font, block_w)
 
     row = (
-        HSplit(items=[haku_block, auto_block], sep=block_sep,
-               item_size_mode="fixed", item_align="t")
-        .set_w(content_w).set_padding(0)
+        HSplit(
+            items=[haku_block, auto_block],
+            sep=block_sep,
+            item_size_mode="fixed",
+            item_align="t",
+        )
+        .set_w(content_w)
+        .set_padding(0)
     )
 
     return (
-        VSplit(items=[
-            _section_label("── Bot Runtime ──", theme, font, content_w),
-            Spacer(1, 12),
-            row,
-        ], sep=0, item_size_mode="fixed", item_align="l")
-        .set_w(content_w).set_padding(0)
+        VSplit(
+            items=[
+                _section_label("── Bot Runtime ──", theme, font, content_w),
+                Spacer(1, 12),
+                row,
+            ],
+            sep=0,
+            item_size_mode="fixed",
+            item_align="l",
+        )
+        .set_w(content_w)
+        .set_padding(0)
     )
 
 
 # ================= Section: Server Info =================
+
 
 def _build_server_info_section(
     server: "ServerStatus", theme: Theme, font: str, content_w: int
@@ -227,29 +286,50 @@ def _build_server_info_section(
         Spacer(1, 10),
         TextBox(
             f"{server.hostname}  |  Uptime: {server.uptime}",
-            style=info_style, wrap=False, overflow="shrink"
-        ).set_w(content_w).set_content_align("l").set_padding(0),
+            style=info_style,
+            wrap=False,
+            overflow="shrink",
+        )
+        .set_w(content_w)
+        .set_content_align("l")
+        .set_padding(0),
         Spacer(1, 6),
         TextBox(
             f"CPU: {cpu_model} ({server.cpu_cores} cores)",
-            style=muted_style, wrap=True, line_count=2, line_sep=2,
-            overflow="shrink", use_real_line_count=True
-        ).set_w(content_w).set_content_align("l").set_padding(0),
+            style=muted_style,
+            wrap=True,
+            line_count=2,
+            line_sep=2,
+            overflow="shrink",
+            use_real_line_count=True,
+        )
+        .set_w(content_w)
+        .set_content_align("l")
+        .set_padding(0),
     ]
 
     return (
         VSplit(items=items, sep=0, item_size_mode="fixed", item_align="l")
-        .set_w(content_w).set_padding(0)
+        .set_w(content_w)
+        .set_padding(0)
     )
 
 
 # ================= Section: Resources (with progress bars) =================
 
+
 class _ProgressBarWidget(Widget):
     """自定义进度条 Widget，用 Painter 直接绘制圆角矩形。"""
 
-    def __init__(self, percent: float, bar_bg: tuple, bar_fill: tuple,
-                 width: int, height: int = 18, radius: int = 9):
+    def __init__(
+        self,
+        percent: float,
+        bar_bg: tuple,
+        bar_fill: tuple,
+        width: int,
+        height: int = 18,
+        radius: int = 9,
+    ):
         super().__init__()
         self._percent = max(0.0, min(100.0, percent))
         self._bar_bg = bar_bg
@@ -267,16 +347,24 @@ class _ProgressBarWidget(Widget):
         w, h = self._bar_w, self._bar_h
         r = self._radius
         # 背景
-        p.roundrect((0, 0), (w, h), fill=self._bar_bg, radius=r, stroke=None, stroke_width=0)
+        p.roundrect(
+            (0, 0), (w, h), fill=self._bar_bg, radius=r, stroke=None, stroke_width=0
+        )
         # 填充
         fill_w = max(int(w * self._percent / 100.0), r * 2) if self._percent > 0 else 0
         if fill_w > 0:
-            p.roundrect((0, 0), (fill_w, h), fill=self._bar_fill, radius=r, stroke=None, stroke_width=0)
+            p.roundrect(
+                (0, 0),
+                (fill_w, h),
+                fill=self._bar_fill,
+                radius=r,
+                stroke=None,
+                stroke_width=0,
+            )
 
 
 def _build_resource_row(
-    label: str, percent: float, detail: str,
-    theme: Theme, font: str, content_w: int
+    label: str, percent: float, detail: str, theme: Theme, font: str, content_w: int
 ) -> HSplit:
     label_style = TextStyle(font=font, size=16, color=theme.text_sub)
     pct_style = TextStyle(font=font, size=16, color=theme.text_main)
@@ -288,21 +376,30 @@ def _build_resource_row(
     bar_w = content_w - label_w - pct_w - detail_w - 30  # 30 for gaps
 
     bar_color = _bar_color(theme, percent)
-    bar = _ProgressBarWidget(percent, theme.bar_bg, bar_color, width=max(bar_w, 80), height=16, radius=8)
+    bar = _ProgressBarWidget(
+        percent, theme.bar_bg, bar_color, width=max(bar_w, 80), height=16, radius=8
+    )
 
     items = [
         TextBox(label, style=label_style, wrap=False)
-        .set_w(label_w).set_content_align("l").set_padding(0),
+        .set_w(label_w)
+        .set_content_align("l")
+        .set_padding(0),
         bar,
         TextBox(f"{percent:.1f}%", style=pct_style, wrap=False)
-        .set_w(pct_w).set_content_align("r").set_padding(0),
+        .set_w(pct_w)
+        .set_content_align("r")
+        .set_padding(0),
         TextBox(detail, style=detail_style, wrap=False, overflow="shrink")
-        .set_w(detail_w).set_content_align("r").set_padding(0),
+        .set_w(detail_w)
+        .set_content_align("r")
+        .set_padding(0),
     ]
 
     return (
         HSplit(items=items, sep=8, item_size_mode="fixed", item_align="c")
-        .set_w(content_w).set_padding(0)
+        .set_w(content_w)
+        .set_padding(0)
     )
 
 
@@ -312,42 +409,69 @@ def _build_resources_section(
     res = server.resources
 
     cpu_row = _build_resource_row(
-        "CPU", res.cpu_percent, "",
-        theme, font, content_w,
+        "CPU",
+        res.cpu_percent,
+        "",
+        theme,
+        font,
+        content_w,
     )
     mem_detail = f"{_format_bytes(res.mem_used)}/{_format_bytes(res.mem_total)}"
     mem_row = _build_resource_row(
-        "Mem", res.mem_percent, mem_detail,
-        theme, font, content_w,
+        "Mem",
+        res.mem_percent,
+        mem_detail,
+        theme,
+        font,
+        content_w,
     )
-    swap_detail = f"{_format_bytes(res.swap_used)}/{_format_bytes(res.swap_total)}" if res.swap_total > 0 else "N/A"
+    swap_detail = (
+        f"{_format_bytes(res.swap_used)}/{_format_bytes(res.swap_total)}"
+        if res.swap_total > 0
+        else "N/A"
+    )
     swap_row = _build_resource_row(
-        "Swap", res.swap_percent if res.swap_total > 0 else 0, swap_detail,
-        theme, font, content_w,
+        "Swap",
+        res.swap_percent if res.swap_total > 0 else 0,
+        swap_detail,
+        theme,
+        font,
+        content_w,
     )
     disk_detail = f"{_format_bytes(res.disk_used)}/{_format_bytes(res.disk_total)}"
     disk_row = _build_resource_row(
-        "Disk", res.disk_percent, disk_detail,
-        theme, font, content_w,
+        "Disk",
+        res.disk_percent,
+        disk_detail,
+        theme,
+        font,
+        content_w,
     )
 
     return (
-        VSplit(items=[
-            _section_label("── Resources ──", theme, font, content_w),
-            Spacer(1, 10),
-            cpu_row,
-            Spacer(1, 10),
-            mem_row,
-            Spacer(1, 10),
-            swap_row,
-            Spacer(1, 10),
-            disk_row,
-        ], sep=0, item_size_mode="fixed", item_align="l")
-        .set_w(content_w).set_padding(0)
+        VSplit(
+            items=[
+                _section_label("── Resources ──", theme, font, content_w),
+                Spacer(1, 10),
+                cpu_row,
+                Spacer(1, 10),
+                mem_row,
+                Spacer(1, 10),
+                swap_row,
+                Spacer(1, 10),
+                disk_row,
+            ],
+            sep=0,
+            item_size_mode="fixed",
+            item_align="l",
+        )
+        .set_w(content_w)
+        .set_padding(0)
     )
 
 
 # ================= Section: Processes =================
+
 
 def _build_process_row(
     proc: "ProcessInfo", theme: Theme, font: str, content_w: int
@@ -368,18 +492,27 @@ def _build_process_row(
 
     items = [
         TextBox("●", style=dot_style, wrap=False)
-        .set_w(20).set_content_align("c").set_padding(0),
+        .set_w(20)
+        .set_content_align("c")
+        .set_padding(0),
         TextBox(proc.name, style=name_style, wrap=False, overflow="shrink")
-        .set_w(name_w).set_content_align("l").set_padding(0),
+        .set_w(name_w)
+        .set_content_align("l")
+        .set_padding(0),
         TextBox(status_text, style=status_style, wrap=False)
-        .set_w(status_w).set_content_align("l").set_padding(0),
+        .set_w(status_w)
+        .set_content_align("l")
+        .set_padding(0),
         TextBox(mem_text, style=mem_style, wrap=False)
-        .set_w(mem_w).set_content_align("r").set_padding(0),
+        .set_w(mem_w)
+        .set_content_align("r")
+        .set_padding(0),
     ]
 
     return (
         HSplit(items=items, sep=6, item_size_mode="fixed", item_align="c")
-        .set_w(content_w).set_padding(0)
+        .set_w(content_w)
+        .set_padding(0)
     )
 
 
@@ -397,11 +530,13 @@ def _build_processes_section(
 
     return (
         VSplit(items=items, sep=0, item_size_mode="fixed", item_align="l")
-        .set_w(content_w).set_padding(0)
+        .set_w(content_w)
+        .set_padding(0)
     )
 
 
 # ================= Section: Network =================
+
 
 def _build_network_section(
     server: "ServerStatus", theme: Theme, font: str, content_w: int
@@ -419,17 +554,26 @@ def _build_network_section(
     info_style = TextStyle(font=font, size=16, color=theme.text_sub)
 
     return (
-        VSplit(items=[
-            _section_label("── Network ──", theme, font, content_w),
-            Spacer(1, 10),
-            TextBox(net_text, style=info_style, wrap=False, overflow="shrink")
-            .set_w(content_w).set_content_align("l").set_padding(0),
-        ], sep=0, item_size_mode="fixed", item_align="l")
-        .set_w(content_w).set_padding(0)
+        VSplit(
+            items=[
+                _section_label("── Network ──", theme, font, content_w),
+                Spacer(1, 10),
+                TextBox(net_text, style=info_style, wrap=False, overflow="shrink")
+                .set_w(content_w)
+                .set_content_align("l")
+                .set_padding(0),
+            ],
+            sep=0,
+            item_size_mode="fixed",
+            item_align="l",
+        )
+        .set_w(content_w)
+        .set_padding(0)
     )
 
 
 # ================= 主绘图函数 =================
+
 
 async def draw_alive_card(
     hakubot_runtime: "BotRuntime",
@@ -456,20 +600,27 @@ async def draw_alive_card(
 
     header_items = [
         TextBox("HakuBot Server Status", style=title_style, wrap=False)
-        .set_w(content_w).set_content_align("l").set_padding(0),
+        .set_w(content_w)
+        .set_content_align("l")
+        .set_padding(0),
     ]
     if generated_line:
         header_items.append(
             TextBox(generated_line, style=subtitle_style, wrap=False, overflow="shrink")
-            .set_w(content_w).set_content_align("l").set_padding(0)
+            .set_w(content_w)
+            .set_content_align("l")
+            .set_padding(0)
         )
     header = (
         VSplit(items=header_items, sep=6, item_size_mode="fixed", item_align="l")
-        .set_w(content_w).set_padding(0)
+        .set_w(content_w)
+        .set_padding(0)
     )
 
     # ---- Sections ----
-    runtime_sec = _build_runtime_section(hakubot_runtime, autochat_runtime, theme, font, content_w)
+    runtime_sec = _build_runtime_section(
+        hakubot_runtime, autochat_runtime, theme, font, content_w
+    )
     server_sec = _build_server_info_section(server, theme, font, content_w)
     resources_sec = _build_resources_section(server, theme, font, content_w)
     processes_sec = _build_processes_section(server, theme, font, content_w)
@@ -481,11 +632,14 @@ async def draw_alive_card(
     if brand_line:
         footer_items.append(
             TextBox(brand_line, style=watermark_style, wrap=False, overflow="shrink")
-            .set_w(content_w).set_content_align("r").set_padding(0)
+            .set_w(content_w)
+            .set_content_align("r")
+            .set_padding(0)
         )
     footer = (
         VSplit(items=footer_items, sep=0, item_size_mode="fixed", item_align="r")
-        .set_w(content_w).set_padding(0)
+        .set_w(content_w)
+        .set_padding(0)
     )
 
     # ---- Compose card ----
@@ -510,29 +664,43 @@ async def draw_alive_card(
         .set_w(width - outer_margin * 2)
         .set_padding((card_padding, card_padding))
         .set_margin(outer_margin)
-        .set_bg(RoundRectBg(fill=theme.card_bg, radius=28, stroke=theme.card_border, stroke_width=2))
+        .set_bg(
+            RoundRectBg(
+                fill=theme.card_bg, radius=28, stroke=theme.card_border, stroke_width=2
+            )
+        )
     )
 
     # ---- Canvas ----
     canvas_bg = FillBg(
         LinearGradient(
-            theme.canvas_g1, theme.canvas_g2,
-            (0.0, 0.0), (1.0, 1.0),
+            theme.canvas_g1,
+            theme.canvas_g2,
+            (0.0, 0.0),
+            (1.0, 1.0),
             method="seperate",
         )
     )
-    canvas = Canvas(w=width, h=None, bg=canvas_bg).set_items([card]).set_content_align("c")
+    canvas = (
+        Canvas(w=width, h=None, bg=canvas_bg).set_items([card]).set_content_align("c")
+    )
 
     def _decorations(widget, p):
         p.roundrect(
-            (outer_margin - 10, outer_margin - 10), (180, 120),
+            (outer_margin - 10, outer_margin - 10),
+            (180, 120),
             fill=(theme.accent[0], theme.accent[1], theme.accent[2], 28),
-            radius=60, stroke=None, stroke_width=0,
+            radius=60,
+            stroke=None,
+            stroke_width=0,
         )
         p.roundrect(
-            (p.w - 220, p.h - 160), (200, 140),
+            (p.w - 220, p.h - 160),
+            (200, 140),
             fill=(theme.accent[0], theme.accent[1], theme.accent[2], 22),
-            radius=70, stroke=None, stroke_width=0,
+            radius=70,
+            stroke=None,
+            stroke_width=0,
         )
 
     canvas.add_draw_func(_decorations)

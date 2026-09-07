@@ -1,17 +1,16 @@
 import asyncio
 from nonebot.log import logger
 
-from ..utils.browser import get_new_page
-from .config import plugin_config
+from utils.rendering.browser import browser_pool
+from plugins.pjskprofile_snowybot.config import plugin_config
 
 
 async def render_profile(url: str) -> bytes:
     """
     访问 URL，隐藏原有页脚，动态获取页面定义的 --theme-color 并注入自定义水印，最后截图
     """
-    async with get_new_page(
-        viewport={"width": 1080, "height": 1920},
-        device_scale_factor=2
+    async with browser_pool.page(
+        viewport={"width": 1080, "height": 1920}, device_scale_factor=2
     ) as page:
         try:
             logger.info(f"正在加载 PJSK 页面: {url}")

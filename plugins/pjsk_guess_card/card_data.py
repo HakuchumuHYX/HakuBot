@@ -1,4 +1,5 @@
 """卡牌数据加载与管理模块"""
+
 import json
 import random
 from pathlib import Path
@@ -6,7 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Literal, Optional, Tuple
 from nonebot.log import logger
 
-from .config import plugin_config
+from plugins.pjsk_guess_card.config import plugin_config
 
 
 # 可用卡牌列表（已过滤）
@@ -15,7 +16,9 @@ _available_cards: List[Dict] = []
 CardImageType = Literal["normal", "after_training"]
 
 # masterdata 路径
-MASTERDATA_DIR = Path(__file__).parent.parent.parent.parent / "haruki-sekai-master" / "master"
+MASTERDATA_DIR = (
+    Path(__file__).parent.parent.parent.parent / "haruki-sekai-master" / "master"
+)
 
 
 def _has_after_training(card: Dict) -> bool:
@@ -48,7 +51,11 @@ def load_cards():
         now_ts = datetime.now().timestamp() * 1000
         for card in all_cards:
             # 只保留已发布的 3星/4星/生日卡
-            if card["cardRarityType"] not in ("rarity_3", "rarity_4", "rarity_birthday"):
+            if card["cardRarityType"] not in (
+                "rarity_3",
+                "rarity_4",
+                "rarity_birthday",
+            ):
                 continue
             if card["releaseAt"] > now_ts:
                 continue
@@ -83,7 +90,7 @@ def get_card_image_url(card: Dict, image_type: CardImageType) -> str:
 
 def get_card_title(card: Dict, image_type: CardImageType) -> str:
     """获取卡面的显示标题"""
-    from .nickname import get_character_name_by_id
+    from plugins.pjsk_guess_card.nickname import get_character_name_by_id
 
     title = f"【{card['id']}】"
     rarity = card["cardRarityType"]
@@ -108,16 +115,36 @@ def get_card_hint(card: Dict, used_hints: set) -> Optional[str]:
     获取一个未使用过的提示，返回提示文本。
     如果没有更多提示，返回 None。
     """
-    from .nickname import get_character_name_by_id
+    from plugins.pjsk_guess_card.nickname import get_character_name_by_id
 
     # 角色ID -> 团名映射
     CID_UNIT_MAP = {
-        1: "ln", 2: "ln", 3: "ln", 4: "ln",
-        5: "mmj", 6: "mmj", 7: "mmj", 8: "mmj",
-        9: "vbs", 10: "vbs", 11: "vbs", 12: "vbs",
-        13: "ws", 14: "ws", 15: "ws", 16: "ws",
-        17: "25时", 18: "25时", 19: "25时", 20: "25时",
-        21: "vs", 22: "vs", 23: "vs", 24: "vs", 25: "vs", 26: "vs",
+        1: "ln",
+        2: "ln",
+        3: "ln",
+        4: "ln",
+        5: "mmj",
+        6: "mmj",
+        7: "mmj",
+        8: "mmj",
+        9: "vbs",
+        10: "vbs",
+        11: "vbs",
+        12: "vbs",
+        13: "ws",
+        14: "ws",
+        15: "ws",
+        16: "ws",
+        17: "25时",
+        18: "25时",
+        19: "25时",
+        20: "25时",
+        21: "vs",
+        22: "vs",
+        23: "vs",
+        24: "vs",
+        25: "vs",
+        26: "vs",
     }
 
     hint_types = ["title", "rarity_and_attr", "unit"]
@@ -132,11 +159,18 @@ def get_card_hint(card: Dict, used_hints: set) -> Optional[str]:
         return f"提示：标题为「{card['prefix']}」"
     elif hint == "rarity_and_attr":
         rarity = card["cardRarityType"]
-        rarity_text = {"rarity_3": "3星", "rarity_4": "4星", "rarity_birthday": "生日卡"}.get(rarity, "?")
+        rarity_text = {
+            "rarity_3": "3星",
+            "rarity_4": "4星",
+            "rarity_birthday": "生日卡",
+        }.get(rarity, "?")
         attr = card.get("attr", "")
         attr_text = {
-            "cool": "蓝星", "happy": "橙心", "mysterious": "紫月",
-            "cute": "粉花", "pure": "绿草"
+            "cool": "蓝星",
+            "happy": "橙心",
+            "mysterious": "紫月",
+            "cute": "粉花",
+            "pure": "绿草",
         }.get(attr, attr)
         return f"提示：{rarity_text} & {attr_text}"
     elif hint == "unit":

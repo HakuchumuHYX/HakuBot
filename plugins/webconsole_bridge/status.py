@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -12,9 +13,9 @@ from nonebot.adapters import Bot, Event
 from nonebot.adapters.onebot.v11 import HeartbeatMetaEvent
 from nonebot.message import event_postprocessor
 
-from .config import BridgeConfig
-from .database import probe_storage
-from .models import BridgeState, ProbeResult
+from plugins.webconsole_bridge.config import BridgeConfig
+from plugins.webconsole_bridge.database import probe_storage
+from plugins.webconsole_bridge.models import BridgeState, ProbeResult
 
 ProbeFunction = Callable[[BridgeConfig], Awaitable[ProbeResult]]
 LogFunction = Callable[[str, str], None]
@@ -60,9 +61,8 @@ class BridgeRuntime:
 
         self._stop_event.clear()
         await self.check_now(initial=True)
-        self._probe_task = asyncio.create_task(
-            self._probe_loop(),
-            name="webconsole-bridge-probe",
+        self._probe_task = runtime.spawn(
+            self._probe_loop(), name="webconsole-bridge-probe"
         )
 
     async def stop(self) -> None:
@@ -93,8 +93,7 @@ class BridgeRuntime:
                 except Exception as exc:
                     self.state = BridgeState.DISABLED_UNAVAILABLE
                     self.last_unavailable_reason = (
-                        "persistence startup failed: "
-                        f"{type(exc).__name__}: {exc}"
+                        f"persistence startup failed: {type(exc).__name__}: {exc}"
                     )
                     if initial or previous is BridgeState.AVAILABLE:
                         self._emit_log(
@@ -308,9 +307,8 @@ class BotStatusManager:
 
     async def start(self) -> None:
         self._stop_event.clear()
-        self._collector_task = asyncio.create_task(
-            self._collector_loop(),
-            name="webconsole-collector-heartbeat",
+        self._collector_task = runtime.spawn(
+            self._collector_loop(), name="webconsole-collector-heartbeat"
         )
 
     async def stop(self) -> None:

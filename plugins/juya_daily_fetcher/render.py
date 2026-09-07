@@ -5,19 +5,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ..utils.browser import template_to_pic
-from .config import ARTICLE_DIR, TEMPLATE_DIR
+from utils.rendering.engine import render_template_image
+from utils.rendering.fonts import font_path
+from plugins.juya_daily_fetcher.config import ARTICLE_DIR, TEMPLATE_DIR
 
 ARTICLES_PER_PAGE = 5
-FONT_NAMES = {
-    "regular": "SourceHanSansCN-Regular.ttf",
-    "bold": "SourceHanSansCN-Bold.ttf",
-    "heavy": "SourceHanSansCN-Heavy.ttf",
-}
-FONT_DIRS = (
-    Path("data/utils/fonts"),
-    Path("data/lunabot_imgexp/fonts"),
-)
 
 
 def _escape(value: Any) -> str:
@@ -33,29 +25,21 @@ def _inline_text(text: Any) -> str:
     return _escape(text).replace("\n", "<br>")
 
 
-def _font_dir() -> Path:
-    for base in FONT_DIRS:
-        if (base / FONT_NAMES["regular"]).is_file():
-            return base.resolve()
-    raise RuntimeError(
-        "未找到思源黑体，请确认 data/utils/fonts 或 data/lunabot_imgexp/fonts 下存在 SourceHanSansCN-*.ttf"
-    )
-
-
 def _font_uris() -> dict[str, str]:
-    font_dir = _font_dir()
     return {
-        "font_regular": (font_dir / FONT_NAMES["regular"]).as_uri(),
-        "font_bold": (font_dir / FONT_NAMES["bold"]).as_uri(),
-        "font_heavy": (font_dir / FONT_NAMES["heavy"]).as_uri(),
+        "font_regular": font_path("Regular").as_uri(),
+        "font_bold": font_path("Bold").as_uri(),
+        "font_heavy": font_path("Heavy").as_uri(),
     }
 
 
 def _links_html(block: dict[str, Any]) -> str:
     links = block.get("links") if isinstance(block.get("links"), list) else []
     valid = [
-        link for link in links
-        if isinstance(link, dict) and re.match(r"^https?://", str(link.get("url") or ""), flags=re.I)
+        link
+        for link in links
+        if isinstance(link, dict)
+        and re.match(r"^https?://", str(link.get("url") or ""), flags=re.I)
     ]
     if not valid:
         return ""
@@ -106,14 +90,22 @@ def _block_html(block: dict[str, Any], index: str) -> str:
 
 
 def _directory_html(issues: list[dict[str, Any]]) -> str:
-    parts = ['<div class="directory-page"><div class="directory-kicker">目录 / CONTENTS</div>']
+    parts = [
+        '<div class="directory-page"><div class="directory-kicker">目录 / CONTENTS</div>'
+    ]
     for issue_index, issue in enumerate(issues):
-        categories = issue.get("categories") if isinstance(issue.get("categories"), list) else []
+        categories = (
+            issue.get("categories") if isinstance(issue.get("categories"), list) else []
+        )
         if len(issues) > 1:
-            heading = issue.get("title") or issue.get("date") or f"第 {issue_index + 1} 期"
+            heading = (
+                issue.get("title") or issue.get("date") or f"第 {issue_index + 1} 期"
+            )
             parts.append(f'<div class="directory-issue">{_escape(heading)}</div>')
         for category in categories:
-            items = category.get("items") if isinstance(category.get("items"), list) else []
+            items = (
+                category.get("items") if isinstance(category.get("items"), list) else []
+            )
             if not items:
                 continue
             item_markup = []
@@ -129,7 +121,7 @@ def _directory_html(issues: list[dict[str, Any]]) -> str:
             parts.append(
                 '<section class="directory-section">'
                 '<div class="directory-section-heading">'
-                f'<h2>{_escape(category.get("category") or "其他")}</h2>'
+                f"<h2>{_escape(category.get('category') or '其他')}</h2>"
                 '<div class="section-line"></div></div>'
                 f'<div class="directory-list">{"".join(item_markup)}</div>'
                 "</section>"
@@ -159,7 +151,9 @@ def _article_html(article: dict[str, Any], index: int) -> str:
 
 
 def _article_page_html(articles: list[dict[str, Any]], offset: int) -> str:
-    body = "\n".join(_article_html(article, offset + index) for index, article in enumerate(articles))
+    body = "\n".join(
+        _article_html(article, offset + index) for index, article in enumerate(articles)
+    )
     return f'<div class="article-page">{body}</div>'
 
 
@@ -177,7 +171,7 @@ def _header_html(data: dict[str, Any], page: int, total_pages: int) -> str:
     return (
         '<section class="article-header">'
         '<div class="article-kicker">橘鸦 AI 早报</div>'
-        f'<h1>{_escape(data.get("title") or first.get("title") or "原文更新")}</h1>'
+        f"<h1>{_escape(data.get('title') or first.get('title') or '原文更新')}</h1>"
         f'<div class="article-meta"><span>发布时间：{_escape(first.get("pub_date") or "")}</span></div>'
         '<div class="article-rule"><span></span></div>'
         "</section>"
@@ -185,8 +179,12 @@ def _header_html(data: dict[str, Any], page: int, total_pages: int) -> str:
 
 
 async def render_document(document: dict[str, Any], event_id: str) -> list[Path]:
-    directory = document.get("directory") if isinstance(document.get("directory"), list) else []
-    articles = document.get("articles") if isinstance(document.get("articles"), list) else []
+    directory = (
+        document.get("directory") if isinstance(document.get("directory"), list) else []
+    )
+    articles = (
+        document.get("articles") if isinstance(document.get("articles"), list) else []
+    )
     if not directory or not articles:
         raise RuntimeError("早报文档缺少目录或正文")
 
@@ -201,9 +199,9 @@ async def render_document(document: dict[str, Any], event_id: str) -> list[Path]
             content = _directory_html(directory)
         else:
             offset = (page_number - 2) * ARTICLES_PER_PAGE
-            page_articles = articles[offset:offset + ARTICLES_PER_PAGE]
+            page_articles = articles[offset : offset + ARTICLES_PER_PAGE]
             content = _article_page_html(page_articles, offset)
-        image_bytes = await template_to_pic(
+        image_bytes = await render_template_image(
             template_path=template_dir,
             template_name="article-template.html",
             templates={

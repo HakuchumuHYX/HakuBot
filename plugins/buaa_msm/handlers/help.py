@@ -12,7 +12,7 @@ from typing import List
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.log import logger
-from ...utils.tools import send_forward_msg
+from utils.onebot.forward import send_forward_msg
 
 # 群聊帮助文本
 GROUP_HELP_TEXT = """该功能由于技术原因，仅在**私聊**中使用，请**添加ATRI好友**发送"buaamshelp"查看完整帮助文档。
@@ -78,5 +78,3 @@ async def handle_group_help(bot: Bot, event: GroupMessageEvent):
         await help_cmd.send(GROUP_HELP_TEXT)
 
     await help_cmd.finish()
-
-

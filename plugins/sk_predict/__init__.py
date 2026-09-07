@@ -1,15 +1,26 @@
 from __future__ import annotations
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot, Event
+from nonebot.adapters.onebot.v11 import (
+    Message,
+    MessageSegment,
+    GroupMessageEvent,
+    Bot,
+    Event,
+)
 from nonebot.params import CommandArg
 from nonebot.log import logger
 
-from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import image_segment
-from .service import get_cache_file, is_cache_valid, read_cache_age_text, refresh_prediction_cache
+from core.access import is_plugin_enabled
+from utils.onebot.media import image_segment
+from plugins.sk_predict.service import (
+    get_cache_file,
+    is_cache_valid,
+    read_cache_age_text,
+    refresh_prediction_cache,
+)
 
-from . import scheduler as _scheduler  # noqa: F401
+from plugins.sk_predict import scheduler as _scheduler
 
 
 cn_shot_cmd = on_command("cnsk预测", priority=5, block=True)
@@ -61,10 +72,18 @@ async def handle_predict_command(
 
 
 @cn_shot_cmd.handle()
-async def handle_cn_predict_command(bot: Bot, event: Event, args: Message = CommandArg()):
-    await handle_predict_command(cn_shot_cmd, event, args, region="cn", region_name="CN")
+async def handle_cn_predict_command(
+    bot: Bot, event: Event, args: Message = CommandArg()
+):
+    await handle_predict_command(
+        cn_shot_cmd, event, args, region="cn", region_name="CN"
+    )
 
 
 @jp_shot_cmd.handle()
-async def handle_jp_predict_command(bot: Bot, event: Event, args: Message = CommandArg()):
-    await handle_predict_command(jp_shot_cmd, event, args, region="jp", region_name="JP")
+async def handle_jp_predict_command(
+    bot: Bot, event: Event, args: Message = CommandArg()
+):
+    await handle_predict_command(
+        jp_shot_cmd, event, args, region="jp", region_name="JP"
+    )

@@ -12,7 +12,12 @@ from zipfile import ZipFile
 import httpx
 from PIL import Image
 
-from .models import PixivIllust, PixivPage, UgoiraFrame, UgoiraMetadata
+from plugins.pixiv_id_fetcher.models import (
+    PixivIllust,
+    PixivPage,
+    UgoiraFrame,
+    UgoiraMetadata,
+)
 
 
 OAUTH_URL = "https://oauth.secure.pixiv.net/auth/token"
@@ -165,7 +170,9 @@ class PixivClient:
             self._access_token_expires_at = time.time() + expires_in
             return token
 
-    async def fetch_illust(self, pid: int, *, send_original: bool = False) -> PixivIllust:
+    async def fetch_illust(
+        self, pid: int, *, send_original: bool = False
+    ) -> PixivIllust:
         token = await self._ensure_access_token()
         resp = await self._request_with_proxy_compat(
             "GET",
@@ -174,7 +181,9 @@ class PixivClient:
             headers={"Authorization": f"Bearer {token}"},
         )
 
-        self._raise_for_status(resp, not_found_message="作品不存在、已删除或当前账号无权限查看")
+        self._raise_for_status(
+            resp, not_found_message="作品不存在、已删除或当前账号无权限查看"
+        )
 
         payload = resp.json()
         item = payload.get("illust")
@@ -191,7 +200,9 @@ class PixivClient:
             params={"illust_id": pid},
             headers={"Authorization": f"Bearer {token}"},
         )
-        self._raise_for_status(resp, not_found_message="动图元数据不存在或当前账号无权限查看")
+        self._raise_for_status(
+            resp, not_found_message="动图元数据不存在或当前账号无权限查看"
+        )
         return self.parse_ugoira_metadata(resp.json())
 
     async def download_image(self, url: str, *, max_bytes: int) -> bytes:
@@ -307,7 +318,9 @@ class PixivClient:
         except Exception as e:
             raise PixivClientError(f"转换合并转发图片失败: {e}") from e
 
-    def _parse_illust(self, item: Dict[str, Any], *, send_original: bool) -> PixivIllust:
+    def _parse_illust(
+        self, item: Dict[str, Any], *, send_original: bool
+    ) -> PixivIllust:
         pid = int(item.get("id") or 0)
         title = str(item.get("title") or "")
         user = item.get("user") if isinstance(item.get("user"), dict) else {}
@@ -325,7 +338,9 @@ class PixivClient:
                     continue
                 image_urls = page.get("image_urls")
                 if isinstance(image_urls, dict):
-                    pages.append(self._build_page(index, image_urls, send_original=send_original))
+                    pages.append(
+                        self._build_page(index, image_urls, send_original=send_original)
+                    )
         else:
             image_urls = item.get("image_urls")
             meta_single = item.get("meta_single_page")
@@ -333,7 +348,9 @@ class PixivClient:
                 image_urls = {**(image_urls if isinstance(image_urls, dict) else {})}
                 image_urls["original"] = meta_single.get("original_image_url")
             if isinstance(image_urls, dict):
-                pages.append(self._build_page(0, image_urls, send_original=send_original))
+                pages.append(
+                    self._build_page(0, image_urls, send_original=send_original)
+                )
 
         return PixivIllust(
             pid=pid,
@@ -347,7 +364,9 @@ class PixivClient:
             illust_type=illust_type,
         )
 
-    def _build_page(self, index: int, image_urls: Dict[str, Any], *, send_original: bool) -> PixivPage:
+    def _build_page(
+        self, index: int, image_urls: Dict[str, Any], *, send_original: bool
+    ) -> PixivPage:
         original_url = str(image_urls.get("original") or "")
         regular_url = str(
             image_urls.get("large")

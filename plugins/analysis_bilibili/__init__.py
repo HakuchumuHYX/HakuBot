@@ -5,23 +5,18 @@ from nonebot import on_regex, logger, require, on_message
 from nonebot.adapters import Event
 from nonebot.rule import Rule
 from nonebot.plugin import PluginMetadata
-from .analysis_bilibili import (
+from plugins.analysis_bilibili.analysis_bilibili import (
     config,
     b23_extract,
     bili_keyword,
     search_bili_by_title,
     extract_share_url,
 )
-from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import prepare_image_source
+from core.access import is_plugin_enabled
+from utils.onebot.media import prepare_image_source
 
 require("nonebot_plugin_saa")
-from nonebot_plugin_saa import (  # noqa: E402
-    MessageFactory,
-    MessageSegmentFactory,
-    Text,
-    Image,
-)
+from nonebot_plugin_saa import MessageFactory, MessageSegmentFactory, Text, Image
 
 __plugin_meta__ = PluginMetadata(
     name="analysis_bilibili",

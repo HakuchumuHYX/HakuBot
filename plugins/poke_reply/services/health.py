@@ -3,7 +3,7 @@ from pathlib import Path
 
 from nonebot import logger
 
-from ..config import IMAGE_FILES_DIR, TEXT_FILES_DIR
+from plugins.poke_reply.config import IMAGE_FILES_DIR, TEXT_FILES_DIR
 
 
 def scan_poke_reply_data_health():
@@ -55,10 +55,12 @@ def scan_poke_reply_data_health():
             group_dir = IMAGE_FILES_DIR / f"group_{group_id}"
             for filename in data:
                 if not (group_dir / str(filename)).exists():
-                    report["image_lists"]["missing_refs"].append({
-                        "group_id": group_id,
-                        "filename": str(filename),
-                    })
+                    report["image_lists"]["missing_refs"].append(
+                        {
+                            "group_id": group_id,
+                            "filename": str(filename),
+                        }
+                    )
         except Exception:
             report["image_lists"]["invalid"].append(str(image_list_path))
 
@@ -95,7 +97,7 @@ def _extract_group_id(path: Path, prefix: str):
     if not stem.startswith(prefix):
         return None
     try:
-        group_id = int(stem[len(prefix):])
+        group_id = int(stem[len(prefix) :])
     except ValueError:
         return None
     return group_id if group_id > 0 else None

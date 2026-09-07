@@ -7,7 +7,7 @@
   "转发自 {昵称}:"、"来源: B站 {昵称}"、"转发详情：" / "详情: " 两行链接、配图分组顺序）；
 - `utils/image.py`：`_check_image_square` / `is_pics_mergable` / `pic_merge` 的九宫格判据与拼接坐标；
 - `post/abstract_post.py`：`bison_use_pic=True` 时把整段文字转成图片卡片的流程
-  （bison 走 htmlrender 的 `text_to_pic`，本仓 `plugins/utils/browser.py` 的模板与其完全一致，
+  （bison 走 htmlrender 的 `render_text`，本仓 `utils/rendering/engine.py` 的模板与其完全一致，
   故渲染产物在同一 viewport(500) / device_scale_factor(2) 下像素等价）。
 
 生效的 bison 配置（用户未改任何环境变量，即默认值）：
@@ -28,12 +28,13 @@ from nonebot.adapters.onebot.v11 import MessageSegment
 from PIL import Image
 from PIL.Image import Image as PILImage
 
-from ..utils.browser import text_to_pic
-from ..utils.image_utils import image_segment
-from ..utils.network import HttpError, download_bytes
-from ..utils.tools import get_exc_desc, get_logger, run_in_pool
-from .config import plugin_config
-from .parser import DELETED_SOURCE_TIPS, ParsedDynamic
+from utils.rendering.engine import render_text
+from utils.onebot.media import image_segment
+from utils.network.http import HttpError, download_bytes
+from utils.logging import get_exc_desc, get_logger
+from utils.concurrency import run_in_pool
+from plugins.bili_dyn_sub.config import plugin_config
+from plugins.bili_dyn_sub.parser import DELETED_SOURCE_TIPS, ParsedDynamic
 
 logger = get_logger("bili_dyn_sub.render")
 
@@ -48,7 +49,13 @@ DEFAULT_TRUNCATE_LENGTH = 500
 #: 渲染产物最小字节数（设计文档 §5.3：空白图 / 半截图必须被拦下）
 MIN_IMAGE_BYTES = 4096
 #: 图片下载 / 解码可预期的异常（下载失败只跳过合并，不影响整体推送）
-_PIC_ERRORS = (HttpError, aiohttp.ClientError, asyncio.TimeoutError, OSError, ValueError)
+_PIC_ERRORS = (
+    HttpError,
+    aiohttp.ClientError,
+    asyncio.TimeoutError,
+    OSError,
+    ValueError,
+)
 
 
 # ---------------------------------------------------------------- 文字模板
@@ -58,7 +65,9 @@ def _truncate_length() -> int:
     """正文截断长度；配置缺失 / 非法时回落到 bison 的 500"""
     limit = getattr(plugin_config, "text_truncate_length", DEFAULT_TRUNCATE_LENGTH)
     if not isinstance(limit, int) or limit <= 0:
-        logger.warning(f"text_truncate_length 非法（{limit!r}），按 {DEFAULT_TRUNCATE_LENGTH} 处理")
+        logger.warning(
+            f"text_truncate_length 非法（{limit!r}），按 {DEFAULT_TRUNCATE_LENGTH} 处理"
+        )
         return DEFAULT_TRUNCATE_LENGTH
     return limit
 
@@ -133,9 +142,9 @@ async def render_text_image(text: str) -> bytes:
     if not text.strip():
         raise ValueError("待渲染文本为空，拒绝生成空白图")
 
-    data = await text_to_pic(text)
+    data = await render_text(text)
     if not isinstance(data, (bytes, bytearray)):
-        raise ValueError(f"text_to_pic 返回类型异常: {type(data).__name__}")
+        raise ValueError(f"render_text 返回类型异常: {type(data).__name__}")
     data = bytes(data)
     if len(data) < MIN_IMAGE_BYTES:
         raise ValueError(f"文字卡片产物过小（{len(data)} 字节），疑似空白图")
@@ -179,7 +188,9 @@ def _compose_grid(
             if source.mode != "RGB":
                 # PIL 的 paste 本会隐式转换，这里显式处理以避免带 alpha 的图存 JPEG 报错
                 source = source.convert("RGB")
-            target.paste(source, (x_coord[x], y_coord[y], x_coord[x + 1], y_coord[y + 1]))
+            target.paste(
+                source, (x_coord[x], y_coord[y], x_coord[x + 1], y_coord[y + 1])
+            )
     buffer = BytesIO()
     target.save(buffer, "JPEG")
     return buffer.getvalue()
@@ -207,7 +218,9 @@ async def merge_pics(pic_urls: list[str]) -> list[Union[bytes, str]]:
             data = await download_bytes(pics[index], proxy=plugin_config.proxy)
             image = await run_in_pool(_open_image, data)
         except _PIC_ERRORS as e:
-            logger.warning(f"配图下载/解码失败，放弃合并: {pics[index]} ({get_exc_desc(e)})")
+            logger.warning(
+                f"配图下载/解码失败，放弃合并: {pics[index]} ({get_exc_desc(e)})"
+            )
             return None
         loaded[index] = image
         return image
@@ -269,7 +282,9 @@ async def merge_pics(pic_urls: list[str]) -> list[Union[bytes, str]]:
         logger.warning(f"配图拼接失败，退回原图列表: {get_exc_desc(e)}")
         return list(pics)
 
-    logger.info(f"触发图片合并：{matrix[0]}×{matrix[1]}，合并 {matrix[0] * matrix[1]} 张")
+    logger.info(
+        f"触发图片合并：{matrix[0]}×{matrix[1]}，合并 {matrix[0] * matrix[1]} 张"
+    )
     rest: list[Union[bytes, str]] = list(pics[matrix[0] * matrix[1] :])
     rest.insert(0, merged)
     return rest
@@ -304,7 +319,9 @@ async def build_messages(parsed: ParsedDynamic) -> list[MessageSegment]:
         card = await render_text_image(text)
     except Exception as e:
         # 渲染链路（Playwright / 模板 / PIL 校验）任意环节失败都降级，不能因此漏推
-        logger.error(f"动态 {parsed.dyn_id} 文字卡片渲染失败，降级为纯文本: {get_exc_desc(e)}")
+        logger.error(
+            f"动态 {parsed.dyn_id} 文字卡片渲染失败，降级为纯文本: {get_exc_desc(e)}"
+        )
         segments.append(MessageSegment.text(text))
     else:
         segments.append(image_segment(card))

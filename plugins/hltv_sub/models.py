@@ -11,6 +11,7 @@ from typing import Dict, List
 @dataclass
 class EventInfo:
     """赛事信息"""
+
     id: str
     title: str
     start_date: str
@@ -24,6 +25,7 @@ class EventInfo:
 @dataclass
 class MatchInfo:
     """比赛信息（用于渲染/提醒：保持过滤 TBD 的语义）"""
+
     id: str
     date: str
     time: str
@@ -47,6 +49,7 @@ class MatchTimeHint:
     - 不过滤 TBD
     - 只提供 scheduler 需要的“时间/是否 LIVE/是否 TBD”等信息
     """
+
     match_id: str
     date: str
     time: str
@@ -57,6 +60,7 @@ class MatchTimeHint:
 @dataclass
 class ResultInfo:
     """结果信息"""
+
     id: str
     date: str
     team1: str
@@ -69,6 +73,7 @@ class ResultInfo:
 @dataclass
 class MapStats:
     """地图数据"""
+
     map_name: str
     pick_by: str  # team1, team2, or decider
     score_team1: str
@@ -79,6 +84,7 @@ class MapStats:
 @dataclass
 class PlayerStats:
     """选手数据"""
+
     id: str
     nickname: str
     team: str  # team1 or team2
@@ -93,6 +99,7 @@ class PlayerStats:
 @dataclass
 class MatchStats:
     """比赛详细数据"""
+
     match_id: str
     team1: str
     team2: str
@@ -101,6 +108,8 @@ class MatchStats:
     status: str
     maps: list[MapStats]
     players: list[PlayerStats]  # 总数据
-    map_stats_details: Dict[str, List[PlayerStats]] = field(default_factory=dict)  # 单图详细数据 {map_name: players}
+    map_stats_details: Dict[str, List[PlayerStats]] = field(
+        default_factory=dict
+    )  # 单图详细数据 {map_name: players}
     vetos: list[str] = field(default_factory=list)
     event: str = ""

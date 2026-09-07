@@ -9,6 +9,7 @@ scheduler 启动/注册逻辑
 """
 
 from __future__ import annotations
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 
 import asyncio
 import random
@@ -19,10 +20,14 @@ from nonebot.log import logger
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-from ..config import plugin_config
-from ..data_manager import data_manager
-from .constants import DAILY_MAINTENANCE_JOB_ID, DEFAULT_INTERVAL_MINUTES, event_job_id
-from .core import HLTVScheduler
+from plugins.hltv_sub.config import plugin_config
+from plugins.hltv_sub.data_manager import data_manager
+from plugins.hltv_sub.scheduler_internal.constants import (
+    DAILY_MAINTENANCE_JOB_ID,
+    DEFAULT_INTERVAL_MINUTES,
+    event_job_id,
+)
+from plugins.hltv_sub.scheduler_internal.core import HLTVScheduler
 
 hltv_scheduler = HLTVScheduler()
 
@@ -174,8 +179,8 @@ def setup_scheduler() -> None:
 
     async def _on_startup():
         logger.info("[HLTV Scheduler] 多赛事定时任务已启动")
-        asyncio.create_task(_delayed_init())
+        runtime.spawn(_delayed_init(), name="hltv_sub")
 
-    driver.on_startup(_on_startup)
+    on_plugin_startup(driver, "hltv_sub")(_on_startup)
 
     _SCHEDULER_SETUP_DONE = True

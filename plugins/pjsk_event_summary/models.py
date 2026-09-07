@@ -1,12 +1,14 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
+
 class Chapter(BaseModel):
     chapter_no: int
     title_jp: str
     title_cn: str
     summary_cn: str
     image_url: str
+
 
 class EventDetail(BaseModel):
     event_id: int
@@ -17,6 +19,7 @@ class EventDetail(BaseModel):
     summary_cn: Optional[str] = ""
     cover_image_url: Optional[str] = ""
     chapters: List[Chapter] = Field(default_factory=list)
+
 
 class EventSimple(BaseModel):
     event_id: int

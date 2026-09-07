@@ -11,6 +11,7 @@
 """
 
 from __future__ import annotations
+from utils.paths import PluginPaths
 
 import os
 import shutil
@@ -28,14 +29,17 @@ from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type
 
-from ..config import plugin_config
-from ..data_rename import generate_target_filename
-from ..infra.decryptor import decrypt_and_save
-from ..infra.cache import cache_manager
-from ..infra.storage import remove_old_user_files, update_user_latest_file
-from ..infra.visit_history import record_character_visit
-from ..services.msr_service import run_msr
-from ..services.processing_guard import is_processing, set_processing
+from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.data_rename import generate_target_filename
+from plugins.buaa_msm.infra.decryptor import decrypt_and_save
+from plugins.buaa_msm.infra.cache import cache_manager
+from plugins.buaa_msm.infra.storage import (
+    remove_old_user_files,
+    update_user_latest_file,
+)
+from plugins.buaa_msm.infra.visit_history import record_character_visit
+from plugins.buaa_msm.services.msr_service import run_msr
+from plugins.buaa_msm.services.processing_guard import is_processing, set_processing
 
 # 从配置获取路径
 file_storage_dir = plugin_config.file_storage_dir
@@ -48,7 +52,11 @@ def _cleanup_expired_waiting(now: float | None = None) -> None:
     """清理过期的上传等待态"""
     current = now if now is not None else time.time()
     ttl = max(1, int(plugin_config.upload_wait_timeout_seconds))
-    expired_users = [uid for uid, entered_at in waiting_for_file.items() if current - entered_at > ttl]
+    expired_users = [
+        uid
+        for uid, entered_at in waiting_for_file.items()
+        if current - entered_at > ttl
+    ]
     for uid in expired_users:
         waiting_for_file.pop(uid, None)
 
@@ -64,7 +72,9 @@ async def handle_upload_command(bot: Bot, event: PrivateMessageEvent):
     _cleanup_expired_waiting()
     user_id = str(event.user_id)
     waiting_for_file[user_id] = time.time()
-    await upload_cmd.finish("已准备好接收文件，请直接发送您要上传的文件。如需取消，请发送'取消'。")
+    await upload_cmd.finish(
+        "已准备好接收文件，请直接发送您要上传的文件。如需取消，请发送'取消'。"
+    )
 
 
 # 群聊提示（挂在同一 matcher 上，群聊事件走此 handler）
@@ -111,7 +121,11 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent):
 
         # 获取文件URL
         file_url_result = await bot.get_file(file_id=file_id)
-        file_url = file_url_result.get("url", "") if isinstance(file_url_result, dict) else file_url_result
+        file_url = (
+            file_url_result.get("url", "")
+            if isinstance(file_url_result, dict)
+            else file_url_result
+        )
 
         if not file_url:
             await file_handler.send("无法获取文件路径，请重试。")
@@ -125,7 +139,9 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent):
         target_filename = generate_target_filename(file_name, user_id)
 
         # 保存文件（内部执行冲突去重）
-        saved_file_path, unique_filename = await save_file(file_url, target_filename, user_id)
+        saved_file_path, unique_filename = await save_file(
+            file_url, target_filename, user_id
+        )
 
         # 移除等待状态
         waiting_for_file.pop(user_id, None)
@@ -137,14 +153,18 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent):
         # 使缓存失效
         await cache_manager.invalidate(user_id)
 
-        await file_handler.send(f"文件上传成功！\n文件名：{unique_filename}\n正在进行预解密，请稍候...")
+        await file_handler.send(
+            f"文件上传成功！\n文件名：{unique_filename}\n正在进行预解密，请稍候..."
+        )
 
         # 预解密
         user_output_dir = file_storage_dir / f"output_{user_id}"
         user_output_dir.mkdir(parents=True, exist_ok=True)
         json_output_file = user_output_dir / f"{saved_file_path.stem}_decrypted.json"
 
-        decrypted_data = decrypt_and_save(bin_file_path=saved_file_path, json_output_path=json_output_file)
+        decrypted_data = decrypt_and_save(
+            bin_file_path=saved_file_path, json_output_path=json_output_file
+        )
 
         if decrypted_data:
             # 记录来访角色
@@ -152,29 +172,43 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent):
 
             try:
                 import nonebot_plugin_localstore as store
-                display_path = saved_file_path.relative_to(store.get_plugin_data_dir())
+
+                display_path = saved_file_path.relative_to(PluginPaths("buaa_msm").data)
             except (ValueError, Exception):
                 display_path = saved_file_path
 
-            await file_handler.send(f"文件预解密成功！\n保存位置：{display_path}\n正在自动生成分析结果...")
+            await file_handler.send(
+                f"文件预解密成功！\n保存位置：{display_path}\n正在自动生成分析结果..."
+            )
 
             # 自动执行 MSR 分析
             try:
                 if await is_processing(user_id):
-                    await file_handler.send("您有其他请求正在处理中，跳过自动分析。您可以稍后手动使用 'buaamsr' 命令。")
+                    await file_handler.send(
+                        "您有其他请求正在处理中，跳过自动分析。您可以稍后手动使用 'buaamsr' 命令。"
+                    )
                 else:
                     await set_processing(user_id, True)
                     try:
-                        await run_msr(bot=bot, user_id=user_id, event_user_id=event.user_id, send_func=file_handler.send)
+                        await run_msr(
+                            bot=bot,
+                            user_id=user_id,
+                            event_user_id=event.user_id,
+                            send_func=file_handler.send,
+                        )
                     finally:
                         await set_processing(user_id, False)
             except FinishedException:
                 raise
             except Exception as e:
                 logger.error(f"自动执行 MSR 分析失败: {e}")
-                await file_handler.send(f"自动分析失败: {str(e)}\n您可以稍后手动使用 'buaamsr' 重新生成分析结果。")
+                await file_handler.send(
+                    f"自动分析失败: {str(e)}\n您可以稍后手动使用 'buaamsr' 重新生成分析结果。"
+                )
         else:
-            await file_handler.send("文件上传成功，但预解密失败！\n请检查文件是否为正确的 .bin 文件，然后重新上传。")
+            await file_handler.send(
+                "文件上传成功，但预解密失败！\n请检查文件是否为正确的 .bin 文件，然后重新上传。"
+            )
 
     except FinishedException:
         raise
@@ -187,7 +221,9 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent):
 def _record_visiting_characters(user_id: str, decrypted_data: dict):
     """记录来访角色"""
     try:
-        char_visit_list = decrypted_data.get("userMysekaiGateCharacterVisit", {}).get("userMysekaiGateCharacters", [])
+        char_visit_list = decrypted_data.get("userMysekaiGateCharacterVisit", {}).get(
+            "userMysekaiGateCharacters", []
+        )
         char_ids = []
         for char in char_visit_list:
             gid = char.get("mysekaiGameCharacterUnitGroupId")
@@ -203,7 +239,9 @@ def _record_visiting_characters(user_id: str, decrypted_data: dict):
 
 # ============== 取消命令 ==============
 
-cancel_cmd = on_command("取消", rule=is_type(PrivateMessageEvent), priority=5, block=True)
+cancel_cmd = on_command(
+    "取消", rule=is_type(PrivateMessageEvent), priority=5, block=True
+)
 
 
 @cancel_cmd.handle()
@@ -217,6 +255,7 @@ async def handle_cancel_command(bot: Bot, event: PrivateMessageEvent):
 
 
 # ============== 文件保存工具函数 ==============
+
 
 async def save_file(file_path: str, filename: str, user_id: str) -> Tuple[Path, str]:
     """
@@ -249,7 +288,9 @@ async def save_file(file_path: str, filename: str, user_id: str) -> Tuple[Path, 
     else:
         await copy_local_file(file_path, destination_path)
 
-    logger.info(f"用户 {user_id} 上传文件: {unique_filename}，保存至 {destination_path}")
+    logger.info(
+        f"用户 {user_id} 上传文件: {unique_filename}，保存至 {destination_path}"
+    )
     return destination_path, unique_filename
 
 
@@ -278,5 +319,3 @@ async def copy_local_file(source_path: str, destination_path: Path):
         raise Exception(f"源文件不存在: {decoded_path}")
 
     shutil.copy2(source_file, destination_path)
-
-

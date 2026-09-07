@@ -10,10 +10,12 @@ from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 # - 「取消」：buaa_msm（私聊上传取消）与 stickers（清理确认取消）两个插件
 #   各自合理地使用了同名命令，运行时按 rule/priority 正常分流。
 # 未列入白名单的命令若出现重复注册，仍会正常告警。
-_KNOWN_DUP_COMMANDS = frozenset({
-    # 跨插件同名命令（buaa_msm / stickers）
-    "取消",
-})
+_KNOWN_DUP_COMMANDS = frozenset(
+    {
+        # 跨插件同名命令（buaa_msm / stickers）
+        "取消",
+    }
+)
 
 _DUP_RULE_RE = re.compile(r'^Duplicated prefix rule "\.?(.+)"$')
 
@@ -50,13 +52,18 @@ if __name__ == "__main__":
 
     driver = nonebot.get_driver()
     driver.register_adapter(ONEBOT_V11Adapter)
+    from core.bootstrap import configure
+
+    configure(driver)
 
     nonebot.load_builtin_plugins("echo")
 
     # 预加载关键插件，避免 require() 时因模块已被 import 但未注册为插件而报错
     nonebot.load_plugin("nonebot_plugin_localstore")
-    nonebot.load_plugin("nonebot_plugin_htmlrender")
 
     nonebot.load_from_toml("pyproject.toml")
+    from core.bootstrap import finalize
+
+    finalize(driver)
 
     nonebot.run()

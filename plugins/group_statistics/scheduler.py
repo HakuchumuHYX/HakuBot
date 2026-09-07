@@ -5,13 +5,17 @@ from nonebot import get_bot
 from nonebot_plugin_apscheduler import scheduler
 
 # 导入管理模块
-from ..plugin_manager.enable import is_plugin_enabled
+from core.access import is_plugin_enabled
 
-from .data_manager import data_manager
-from .utils import get_total_messages, get_top_users, reset_daily_stats
-from .render import render_daily_stat_image
-from ..utils.tools import get_logger
-from ..utils.image_utils import image_segment
+from plugins.group_statistics.data_manager import data_manager
+from plugins.group_statistics.utils import (
+    get_total_messages,
+    get_top_users,
+    reset_daily_stats,
+)
+from plugins.group_statistics.render import render_daily_stat_image
+from utils.logging import get_logger
+from utils.onebot.media import image_segment
 
 logger = get_logger("group_statistics.scheduler")
 

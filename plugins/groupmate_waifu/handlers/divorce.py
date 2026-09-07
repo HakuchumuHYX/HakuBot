@@ -6,10 +6,10 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.plugin.on import on_command
 from nonebot.typing import T_State
 
-from .. import service
-from ..constants import BYE_MESSAGES, PLUGIN_NAME
-from ..rules import is_bye_enabled, is_plugin_enabled
-from ...plugin_manager.cd_manager import check_cd, update_cd
+from plugins.groupmate_waifu import service
+from plugins.groupmate_waifu.constants import BYE_MESSAGES, PLUGIN_NAME
+from plugins.groupmate_waifu.rules import is_bye_enabled, is_plugin_enabled
+from core.cooldown import check_cd, update_cd
 
 
 async def bye_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:

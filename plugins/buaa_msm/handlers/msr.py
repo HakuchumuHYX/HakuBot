@@ -8,13 +8,18 @@ MSR 命令入口（私聊/群聊）：
 from __future__ import annotations
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, PrivateMessageEvent
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    GroupMessageEvent,
+    Message,
+    PrivateMessageEvent,
+)
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
-from ..services.msr_service import run_msr
-from ..services.processing_guard import is_processing, set_processing
+from plugins.buaa_msm.services.msr_service import run_msr
+from plugins.buaa_msm.services.processing_guard import is_processing, set_processing
 
 
 # 同一命令只注册一个 matcher，私聊/群聊由按事件类型分流的 handler 处理（避免 Duplicated prefix rule 警告）
@@ -26,7 +31,9 @@ msr_cmd = on_command(
 
 
 @msr_cmd.handle()
-async def handle_msr_command(bot: Bot, event: PrivateMessageEvent, args: Message = CommandArg()):
+async def handle_msr_command(
+    bot: Bot, event: PrivateMessageEvent, args: Message = CommandArg()
+):
     user_id = str(event.user_id)
 
     if await is_processing(user_id):
@@ -36,7 +43,12 @@ async def handle_msr_command(bot: Bot, event: PrivateMessageEvent, args: Message
     await set_processing(user_id, True)
     try:
         await msr_cmd.send("正在生成分析结果，请稍候...")
-        await run_msr(bot=bot, user_id=user_id, event_user_id=event.user_id, send_func=msr_cmd.send)
+        await run_msr(
+            bot=bot,
+            user_id=user_id,
+            event_user_id=event.user_id,
+            send_func=msr_cmd.send,
+        )
     except FinishedException:
         raise
     except Exception as e:

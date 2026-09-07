@@ -16,19 +16,19 @@ import pytz
 from bs4 import BeautifulSoup
 from nonebot.log import logger
 
-from .config import plugin_config
-from .http_client import FetchResult, HLTVHttpClient
-from .models import (
+from plugins.hltv_sub.config import plugin_config
+from plugins.hltv_sub.http_client import FetchResult, HLTVHttpClient
+from plugins.hltv_sub.models import (
     EventInfo,
     MatchInfo,
     MatchStats,
     MatchTimeHint,
     ResultInfo,
 )
-from .parsers.events import parse_big_events, parse_event_info
-from .parsers.matches import parse_event_matches_with_hints
-from .parsers.results import parse_event_results
-from .parsers.stats import parse_match_stats
+from plugins.hltv_sub.parsers.events import parse_big_events, parse_event_info
+from plugins.hltv_sub.parsers.matches import parse_event_matches_with_hints
+from plugins.hltv_sub.parsers.results import parse_event_results
+from plugins.hltv_sub.parsers.stats import parse_match_stats
 
 
 @dataclass
@@ -68,7 +68,9 @@ class HLTVDataSource:
             return []
         return parse_big_events(html, self._tz)
 
-    async def get_event_info(self, event_id: str, event_title: str = "") -> Optional[EventInfo]:
+    async def get_event_info(
+        self, event_id: str, event_title: str = ""
+    ) -> Optional[EventInfo]:
         """获取赛事详细信息"""
         title_slug = event_title.lower().replace(" ", "-") if event_title else "event"
         url = f"{self.BASE_URL}/events/{event_id}/{title_slug}"
@@ -77,7 +79,9 @@ class HLTVDataSource:
         if not html:
             return None
 
-        return parse_event_info(html, event_id=event_id, event_title=event_title, tz=self._tz)
+        return parse_event_info(
+            html, event_id=event_id, event_title=event_title, tz=self._tz
+        )
 
     def _analyze_matches_meta(
         self, event_id: str, fetch_result: FetchResult, soup: Optional[BeautifulSoup]
@@ -87,7 +91,11 @@ class HLTVDataSource:
         title = soup.title.get_text(strip=True) if soup and soup.title else ""
 
         wrappers = soup.find_all("div", class_="match-wrapper") if soup else []
-        links = soup.find_all("a", href=lambda x: bool(x and "/matches/" in x)) if soup else []
+        links = (
+            soup.find_all("a", href=lambda x: bool(x and "/matches/" in x))
+            if soup
+            else []
+        )
         text = soup.get_text(" ", strip=True).lower() if soup else ""
 
         meta = EventMatchesMeta(
@@ -170,7 +178,9 @@ class HLTVDataSource:
         - matches：过滤 TBD（用于渲染/提醒）
         - hints：不过滤 TBD（用于 scheduler 自适应轮询）
         """
-        matches, hints, _ = await self.get_event_matches_with_hints_and_meta(event_id, days=days)
+        matches, hints, _ = await self.get_event_matches_with_hints_and_meta(
+            event_id, days=days
+        )
         return matches, hints
 
     async def get_event_matches_health(self, event_id: str) -> EventMatchesMeta:
@@ -183,7 +193,9 @@ class HLTVDataSource:
         matches, _ = await self.get_event_matches_with_hints(event_id, days=days)
         return matches
 
-    async def get_event_matches_for_display(self, event_id: str, days: int = 7) -> list[MatchInfo]:
+    async def get_event_matches_for_display(
+        self, event_id: str, days: int = 7
+    ) -> list[MatchInfo]:
         """获取赛事的比赛列表（允许单边 TBD 用于展示）"""
         matches, _, _ = await self.get_event_matches_with_hints_and_meta(
             event_id,

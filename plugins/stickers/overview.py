@@ -1,3 +1,6 @@
+from utils.rendering.fonts import load_font_from_path
+from utils.rendering.fonts import font_path
+
 # stickers/overview.py
 import math
 import asyncio
@@ -18,11 +21,19 @@ from nonebot.log import logger
 from nonebot.exception import FinishedException
 
 # 导入模块而非变量，确保获取最新值
-from .send import sticker_folders, resolve_folder_name, get_all_images_in_folder
-from .config import IMAGE_EXTENSIONS, OVERVIEW_BATCH_SIZE, MAX_CANVAS_PIXELS
-from . import send
-from ..plugin_manager.enable import is_plugin_enabled
-from ..utils.image_utils import image_segment
+from plugins.stickers.send import (
+    sticker_folders,
+    resolve_folder_name,
+    get_all_images_in_folder,
+)
+from plugins.stickers.config import (
+    IMAGE_EXTENSIONS,
+    OVERVIEW_BATCH_SIZE,
+    MAX_CANVAS_PIXELS,
+)
+from plugins.stickers import send
+from core.access import is_plugin_enabled
+from utils.onebot.media import image_segment
 
 # === 字体缓存 ===
 _font_cache: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
@@ -33,7 +44,7 @@ def get_cached_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
     key = (font_name, size)
     if key not in _font_cache:
         try:
-            _font_cache[key] = ImageFont.truetype(font_name, size)
+            _font_cache[key] = load_font_from_path(font_name, size)
         except:
             pass
     return _font_cache.get(key)
@@ -42,16 +53,7 @@ def get_cached_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
 def load_fonts(font_size: int) -> Tuple[ImageFont.FreeTypeFont, ImageFont.FreeTypeFont]:
     """加载标题和正文字体"""
     # 尝试加载中文字体（包含 Linux 路径）
-    font_candidates = [
-        # Linux (Noto CJK)
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        # Windows
-        "msyh.ttc",
-        "simhei.ttf",
-        "Arial Unicode.ttf",
-    ]
+    font_candidates = [str(font_path())]
     for font_name in font_candidates:
         title_font = get_cached_font(font_name, 32)
         text_font = get_cached_font(font_name, font_size)
@@ -62,30 +64,32 @@ def load_fonts(font_size: int) -> Tuple[ImageFont.FreeTypeFont, ImageFont.FreeTy
 
 
 # === 并行图片加载 ===
-def load_and_resize_single(args: Tuple[Path, int, int]) -> Tuple[Path, Optional[Image.Image]]:
+def load_and_resize_single(
+    args: Tuple[Path, int, int],
+) -> Tuple[Path, Optional[Image.Image]]:
     """加载并缩放单张图片（用于线程池）"""
     file_path, thumb_size, resample_mode = args
     try:
         with Image.open(file_path) as src_img:
             # GIF 只取第一帧
-            if hasattr(src_img, 'is_animated') and src_img.is_animated:
+            if hasattr(src_img, "is_animated") and src_img.is_animated:
                 src_img.seek(0)
-            
+
             # 转换为 RGB
-            if src_img.mode not in ('RGB', 'RGBA'):
-                src_img = src_img.convert('RGB')
-            elif src_img.mode == 'RGBA':
+            if src_img.mode not in ("RGB", "RGBA"):
+                src_img = src_img.convert("RGB")
+            elif src_img.mode == "RGBA":
                 # RGBA 需要处理透明背景
-                background = Image.new('RGB', src_img.size, (255, 255, 255))
+                background = Image.new("RGB", src_img.size, (255, 255, 255))
                 background.paste(src_img, mask=src_img.split()[3])
                 src_img = background
-            
+
             # 计算缩放
             src_w, src_h = src_img.size
             ratio = min(thumb_size / src_w, thumb_size / src_h)
             new_w = int(src_w * ratio)
             new_h = int(src_h * ratio)
-            
+
             # 缩放图片
             resized = src_img.resize((new_w, new_h), resample_mode)
             return (file_path, resized.copy())  # copy() 确保图片数据独立
@@ -95,9 +99,15 @@ def load_and_resize_single(args: Tuple[Path, int, int]) -> Tuple[Path, Optional[
 
 
 # 注册命令
-view_all_matcher = on_command("看所有", aliases={"查看所有", "view all"}, priority=5, block=True)
-view_single_matcher = on_command("sticker", aliases={"看表情", "No.", "NO", "查看", "no", "no."}, priority=5,
-                                 block=False)
+view_all_matcher = on_command(
+    "看所有", aliases={"查看所有", "view all"}, priority=5, block=True
+)
+view_single_matcher = on_command(
+    "sticker",
+    aliases={"看表情", "No.", "NO", "查看", "no", "no."},
+    priority=5,
+    block=False,
+)
 
 
 def get_sort_key(file_path: Path):
@@ -122,7 +132,12 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
     id_list = arg_text.split()
 
     # 兼容旧逻辑：如果只有一个参数且是保留关键字，直接返回（交给其他 matcher 处理）
-    if len(id_list) == 1 and id_list[0].lower() in ["stickers", "sticker", "表情", "表情包"]:
+    if len(id_list) == 1 and id_list[0].lower() in [
+        "stickers",
+        "sticker",
+        "表情",
+        "表情包",
+    ]:
         return
 
     # 上限检查
@@ -153,7 +168,9 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
             if current_max_id == 0:
                 error_msgs.append(f"图库为空，无法查看编号 {target_id}")
             else:
-                error_msgs.append(f"找不到编号 {target_id} (当前最大: {current_max_id})")
+                error_msgs.append(
+                    f"找不到编号 {target_id} (当前最大: {current_max_id})"
+                )
             continue
 
         # 3. 查找文件
@@ -231,14 +248,20 @@ async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()
 
     total_count = len(image_files)
 
-    batches = [image_files[i:i + OVERVIEW_BATCH_SIZE] for i in range(0, total_count, OVERVIEW_BATCH_SIZE)]
+    batches = [
+        image_files[i : i + OVERVIEW_BATCH_SIZE]
+        for i in range(0, total_count, OVERVIEW_BATCH_SIZE)
+    ]
     total_pages = len(batches)
 
     if total_pages > 1:
         await view_all_matcher.send(
-            f"文件夹 '{actual_folder_name}' 共 {total_count} 张图片，将分为 {total_pages} 张概览图发送，请稍候...")
+            f"文件夹 '{actual_folder_name}' 共 {total_count} 张图片，将分为 {total_pages} 张概览图发送，请稍候..."
+        )
     else:
-        await view_all_matcher.send(f"正在生成 '{actual_folder_name}' 的概览，共 {total_count} 张图片，请稍候...")
+        await view_all_matcher.send(
+            f"正在生成 '{actual_folder_name}' 的概览，共 {total_count} 张图片，请稍候..."
+        )
 
     try:
         for i, batch in enumerate(batches):
@@ -251,14 +274,16 @@ async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()
                 batch,
                 actual_folder_name,
                 page_num if is_multi_page else None,
-                total_pages if is_multi_page else None
+                total_pages if is_multi_page else None,
             )
 
             if img_bytes:
                 # 发送图片
                 msg = image_segment(img_bytes)
                 if is_multi_page:
-                    msg += MessageSegment.text(f"\nPart {page_num}/{total_pages} ({len(batch)} items)")
+                    msg += MessageSegment.text(
+                        f"\nPart {page_num}/{total_pages} ({len(batch)} items)"
+                    )
 
                 await view_all_matcher.send(msg)
             else:
@@ -271,8 +296,12 @@ async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()
         await view_all_matcher.finish(f"生成概览图时发生未知错误: {e}")
 
 
-def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
-                                 page_num: Optional[int] = None, total_pages: Optional[int] = None) -> Optional[bytes]:
+def render_gallery_overview_sync(
+    image_files: List[Path],
+    folder_name: str,
+    page_num: Optional[int] = None,
+    total_pages: Optional[int] = None,
+) -> Optional[bytes]:
     """
     同步绘图函数 (CPU密集型，使用线程池并行加载图片)
     """
@@ -328,17 +357,19 @@ def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
     # === 2. 并行加载所有图片 ===
     # 根据图片数量动态调整线程数
     max_workers = min(16, max(4, total // 50))
-    
+
     load_args = [(fp, thumb_size, resample_mode) for fp in image_files]
-    
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         results = list(executor.map(load_and_resize_single, load_args))
-    
+
     # 构建 path -> resized_image 的映射
-    loaded_images: Dict[Path, Optional[Image.Image]] = {path: img for path, img in results}
+    loaded_images: Dict[Path, Optional[Image.Image]] = {
+        path: img for path, img in results
+    }
 
     # === 3. 初始化画布 ===
-    canvas = Image.new('RGB', (canvas_w, canvas_h), color=(245, 247, 250))
+    canvas = Image.new("RGB", (canvas_w, canvas_h), color=(245, 247, 250))
     draw = ImageDraw.Draw(canvas)
 
     # 加载字体（使用缓存）
@@ -360,7 +391,7 @@ def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
         y = header_height + padding + row * cell_h
 
         resized_img = loaded_images.get(file_path)
-        
+
         if resized_img:
             # 计算居中位置
             paste_x = x + (thumb_size - resized_img.width) // 2
@@ -389,5 +420,5 @@ def render_gallery_overview_sync(image_files: List[Path], folder_name: str,
 
     # === 5. 输出 ===
     output = BytesIO()
-    canvas.save(output, format='JPEG', quality=85, optimize=True)
+    canvas.save(output, format="JPEG", quality=85, optimize=True)
     return output.getvalue()

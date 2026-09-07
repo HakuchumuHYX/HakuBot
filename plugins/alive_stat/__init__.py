@@ -2,6 +2,8 @@
 HakuBot alive_stat — 统一处理 alive 命令。
 显示 HakuBot + autochat 运行时间、服务器状态、进程监控、网络连通性。
 """
+
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 from datetime import datetime
 
 from nonebot import on_command, require, get_driver
@@ -9,17 +11,27 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-from .runtime import save_data, get_hakubot_runtime, get_autochat_runtime, BotRuntime
-from .collector import collect_server_status, ServerStatus, ProcessInfo, NetworkResult
-from . import drawer
+from plugins.alive_stat.runtime import (
+    save_data,
+    get_hakubot_runtime,
+    get_autochat_runtime,
+    BotRuntime,
+)
+from plugins.alive_stat.collector import (
+    collect_server_status,
+    ServerStatus,
+    ProcessInfo,
+    NetworkResult,
+)
+from plugins.alive_stat import drawer
 
-from ..utils.tools import get_logger
-from ..utils.image_utils import image_segment
+from utils.logging import get_logger
+from utils.onebot.media import image_segment
 
 logger = get_logger("alive_stat")
 
 try:
-    from ..plugin_manager.enable import is_plugin_enabled  # type: ignore
+    from core.access import is_plugin_enabled
 except Exception:
     is_plugin_enabled = None  # type: ignore
 
@@ -36,7 +48,7 @@ if _driver is not None:
 
     scheduler.scheduled_job("interval", minutes=5, id="save_alive_stats")(save_data)
 
-    @_driver.on_shutdown
+    @on_plugin_shutdown(_driver, "alive_stat")
     async def _():
         save_data()
 

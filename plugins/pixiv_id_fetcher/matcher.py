@@ -1,4 +1,6 @@
 from __future__ import annotations
+from utils.paths import PluginPaths
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 
 import asyncio
 import time
@@ -6,7 +8,13 @@ from pathlib import Path
 from typing import List, Optional
 
 from nonebot import get_driver, on_command, require
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    GroupMessageEvent,
+    Message,
+    MessageEvent,
+    MessageSegment,
+)
 from nonebot.adapters.onebot.v11.exception import ActionFailed, NetworkError
 from nonebot.exception import FinishedException
 from nonebot.log import logger
@@ -15,11 +23,12 @@ from nonebot.params import CommandArg
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as localstore
 
-from ..utils.image_utils import image_segment
-from ..utils.tools import ForwardSendError, ForwardStatus, run_in_pool, send_forward_msg
-from .client import PixivClient, PixivClientError
-from .config import config
-from .formatter import (
+from utils.onebot.media import image_segment
+from utils.onebot.forward import ForwardSendError, ForwardStatus, send_forward_msg
+from utils.concurrency import run_in_pool
+from plugins.pixiv_id_fetcher.client import PixivClient, PixivClientError
+from plugins.pixiv_id_fetcher.config import config
+from plugins.pixiv_id_fetcher.formatter import (
     PixivPolicy,
     build_forward_contents,
     build_info_text,
@@ -31,11 +40,11 @@ from .formatter import (
     select_pages,
     should_use_forward,
 )
-from .models import PixivIllust, PixivPage
+from plugins.pixiv_id_fetcher.models import PixivIllust, PixivPage
 
 try:
-    from ..plugin_manager.cd_manager import check_cd, update_cd
-    from ..plugin_manager.enable import is_plugin_enabled
+    from core.cooldown import check_cd, update_cd
+    from core.access import is_plugin_enabled
 
     MANAGER_AVAILABLE = True
 except Exception:
@@ -79,7 +88,9 @@ _pixiv_cache_clean_task: Optional[asyncio.Task] = None
 
 async def _cleanup_pixiv_cache_once() -> None:
     """Remove cache files older than PIXIV_CACHE_TTL_DAYS in pixiv_id_fetcher cache dir."""
-    cache_dir = localstore.get_plugin_cache_file("_cache_dir_placeholder").parent
+    cache_dir = (
+        PluginPaths("pixiv_id_fetcher").cache / "_cache_dir_placeholder"
+    ).parent
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     expire_before = time.time() - PIXIV_CACHE_TTL_DAYS * 24 * 60 * 60
@@ -101,7 +112,7 @@ async def _cleanup_pixiv_cache_once() -> None:
         logger.info(f"[pixiv_id_fetcher] cache cleanup removed {removed} files")
 
 
-@get_driver().on_startup
+@on_plugin_startup(get_driver(), "pixiv_id_fetcher")
 async def _start_pixiv_cache_cleaner():
     global _pixiv_cache_clean_task
 
@@ -117,12 +128,14 @@ async def _start_pixiv_cache_cleaner():
             try:
                 await _cleanup_pixiv_cache_once()
             except Exception as e:
-                logger.exception(f"[pixiv_id_fetcher] scheduled cache cleanup failed: {e}")
+                logger.exception(
+                    f"[pixiv_id_fetcher] scheduled cache cleanup failed: {e}"
+                )
 
-    _pixiv_cache_clean_task = asyncio.create_task(_loop())
+    _pixiv_cache_clean_task = runtime.spawn(_loop(), name="pixiv_id_fetcher")
 
 
-@get_driver().on_shutdown
+@on_plugin_shutdown(get_driver(), "pixiv_id_fetcher")
 async def _stop_pixiv_cache_cleaner():
     global _pixiv_cache_clean_task
     if _pixiv_cache_clean_task:
@@ -131,15 +144,21 @@ async def _stop_pixiv_cache_cleaner():
 
 
 def _cache_path(illust: PixivIllust, page: PixivPage) -> Path:
-    return localstore.get_plugin_cache_file(f"pixiv_{illust.pid}_p{page.index}.{page.ext}")
+    return (
+        PluginPaths("pixiv_id_fetcher").cache
+        / f"pixiv_{illust.pid}_p{page.index}.{page.ext}"
+    )
 
 
 def _cache_path_with_ext(illust: PixivIllust, page: PixivPage, ext: str) -> Path:
-    return localstore.get_plugin_cache_file(f"pixiv_{illust.pid}_p{page.index}.{ext}")
+    return (
+        PluginPaths("pixiv_id_fetcher").cache
+        / f"pixiv_{illust.pid}_p{page.index}.{ext}"
+    )
 
 
 def _ugoira_cache_path(illust: PixivIllust) -> Path:
-    return localstore.get_plugin_cache_file(f"pixiv_{illust.pid}_ugoira.gif")
+    return PluginPaths("pixiv_id_fetcher").cache / f"pixiv_{illust.pid}_ugoira.gif"
 
 
 async def _download_page(
@@ -159,7 +178,9 @@ async def _download_page(
             return image_segment(path)
         data = path.read_bytes()
         ext = detect_image_ext(data, path.suffix.lstrip(".") or page.ext)
-        data, ext = await run_in_pool(_get_client().normalize_static_image_for_forward, data, ext)
+        data, ext = await run_in_pool(
+            _get_client().normalize_static_image_for_forward, data, ext
+        )
         path = _cache_path_with_ext(illust, page, ext)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
@@ -171,7 +192,9 @@ async def _download_page(
     )
     ext = detect_image_ext(data, page.ext)
     if normalize_for_forward:
-        data, ext = await run_in_pool(_get_client().normalize_static_image_for_forward, data, ext)
+        data, ext = await run_in_pool(
+            _get_client().normalize_static_image_for_forward, data, ext
+        )
     path = _cache_path_with_ext(illust, page, ext)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
@@ -248,7 +271,9 @@ async def _send_forward(
 
     messages = build_forward_contents(illust, images)
     if truncated:
-        messages.append(Message(f"多页作品，仅发送前 {len(pages)} / {illust.page_count} 页"))
+        messages.append(
+            Message(f"多页作品，仅发送前 {len(pages)} / {illust.page_count} 页")
+        )
 
     return await _send_forward_contents(bot, event, messages, pid=illust.pid)
 
@@ -264,7 +289,7 @@ async def _send_forward_contents(
         status = await send_forward_msg(
             bot,
             event,
-            messages,
+            items=messages,
             timeout=60.0,
             fallback_on_action_failed=False,
         )
@@ -285,7 +310,7 @@ async def _send_link_fallback(
         status = await send_forward_msg(
             bot,
             event,
-            contents,
+            items=contents,
             timeout=60.0,
             fallback_on_action_failed=False,
         )
@@ -318,7 +343,9 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
 
             remaining = check_cd(PLUGIN_ID, group_id, user_id)
             if remaining > 0:
-                await pixiv_cmd.finish(f"功能冷却中，请等待 {remaining} 秒", at_sender=True)
+                await pixiv_cmd.finish(
+                    f"功能冷却中，请等待 {remaining} 秒", at_sender=True
+                )
 
     pid = parse_pid(args.extract_plain_text())
     if pid is None:
@@ -346,7 +373,9 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
             if not illust.is_ugoira and not illust.pages:
                 await pixiv_cmd.finish("没有找到可发送的图片")
 
-            pages, truncated = select_pages(illust, int(config.get("max_pages", 9) or 9))
+            pages, truncated = select_pages(
+                illust, int(config.get("max_pages", 9) or 9)
+            )
 
             if should_use_forward(illust):
                 image_sent = await _send_forward(
@@ -382,7 +411,9 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     except FinishedException:
         raise
     except PixivClientError as e:
-        logger.warning(f"[pixiv_id_fetcher] request failed pid={pid} kind={e.kind}: {e}")
+        logger.warning(
+            f"[pixiv_id_fetcher] request failed pid={pid} kind={e.kind}: {e}"
+        )
         await pixiv_cmd.finish(describe_client_error(e.kind))
     except Exception as e:
         logger.exception(f"[pixiv_id_fetcher] unexpected error pid={pid}: {e}")

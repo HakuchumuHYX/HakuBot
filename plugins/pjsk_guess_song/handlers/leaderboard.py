@@ -3,24 +3,31 @@
 (新文件)
 存放排行榜指令
 """
+
 from pathlib import Path
 from nonebot import on_command
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.exception import FinishedException
-from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment, Bot, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,
+    MessageSegment,
+    Bot,
+    GroupMessageEvent,
+)
 
-from .. import db_service, image_service
-from ...plugin_manager.enable import is_plugin_enabled
-from ...utils.common import create_exact_command_rule
-from ...utils.image_utils import image_segment
+from plugins.pjsk_guess_song.runtime import db_service, image_service
+from core.access import is_plugin_enabled
+from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.media import image_segment
 
-leaderboard_handler = on_command("群聊猜歌排行",
-                                 aliases={"猜歌排行", "pjsk排行"},
-                                 priority=10,
-                                 block=True,
-                                 rule=create_exact_command_rule("群聊猜歌排行", {"猜歌排行", "pjsk排行"})
-                                 )
+leaderboard_handler = on_command(
+    "群聊猜歌排行",
+    aliases={"猜歌排行", "pjsk排行"},
+    priority=10,
+    block=True,
+    rule=create_exact_command_rule("群聊猜歌排行", {"猜歌排行", "pjsk排行"}),
+)
 
 
 @leaderboard_handler.handle()
@@ -45,19 +52,23 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
 
         try:
             group_info = await bot.get_group_info(group_id=event.group_id)
-            group_name = group_info.get('group_name', f"群 {group_id}")
+            group_name = group_info.get("group_name", f"群 {group_id}")
         except Exception:
             group_name = f"群 {group_id}"
 
-        img_path = await image_service.draw_leaderboard_image(group_name, leaderboard_data)
+        img_path = await image_service.draw_leaderboard_image(
+            group_name, leaderboard_data
+        )
 
         if img_path:
             img_p = Path(img_path)
             await matcher.send(image_segment(img_p))
         else:
             # 绘图失败，回退到文本
-            await matcher.send("...排行榜图片生成失败，即将发送文本版：\n" + \
-                               _format_leaderboard_text(group_name, leaderboard_data))
+            await matcher.send(
+                "...排行榜图片生成失败，即将发送文本版：\n"
+                + _format_leaderboard_text(group_name, leaderboard_data)
+            )
 
     except FinishedException:
         # 忽略 FinishedException，这是正常的结束流程

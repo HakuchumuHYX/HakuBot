@@ -5,17 +5,16 @@ from pathlib import Path
 from nonebot.log import logger
 from PIL import Image
 
-from ..utils.tools import run_in_pool
-from .utils import (
+from utils.concurrency import run_in_pool
+from plugins.image_processor.utils import (
     IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
     IMAGE_PROCESSOR_MAX_GIF_BYTES,
     download_to_temp,
-    ensure_output_dir,
     load_gif_frames,
     retime_frames_for_speed,
-    safe_delete_file,
     save_gif,
 )
+from utils.files import ensure_output_dir, safe_delete_file
 
 
 def _change_gif_speed_file(image_path: str, speed_factor: float) -> str:
@@ -28,7 +27,9 @@ def _change_gif_speed_file(image_path: str, speed_factor: float) -> str:
     output_dir = ensure_output_dir("nonebot_gif_speed")
     output_path = output_dir / f"speed_{speed_factor}x_{os.urandom(4).hex()}.gif"
 
-    if not save_gif(new_frames, output_path, durations=new_durations, loop=int(meta.get("loop", 0))):
+    if not save_gif(
+        new_frames, output_path, durations=new_durations, loop=int(meta.get("loop", 0))
+    ):
         raise Exception("GIF保存失败")
 
     logger.info(
@@ -76,14 +77,20 @@ def change_gif_speed_alternative(image_url: str, speed_factor: float) -> str:
             for frame in getattr(img, "n_frames", []) and range(img.n_frames) or []:
                 img.seek(frame)
                 frames.append(img.convert("RGBA").copy())
-                durations.append(int(img.info.get("duration", default_duration) or default_duration))
+                durations.append(
+                    int(img.info.get("duration", default_duration) or default_duration)
+                )
 
         if not frames:
             raise Exception("没有成功提取到任何帧")
 
-        new_frames, new_durations = retime_frames_for_speed(frames, durations, speed_factor)
+        new_frames, new_durations = retime_frames_for_speed(
+            frames, durations, speed_factor
+        )
         output_dir = ensure_output_dir("nonebot_gif_speed")
-        output_path = output_dir / f"speed_alt_{speed_factor}x_{os.urandom(4).hex()}.gif"
+        output_path = (
+            output_dir / f"speed_alt_{speed_factor}x_{os.urandom(4).hex()}.gif"
+        )
         save_gif(new_frames, output_path, durations=new_durations, loop=loop)
         return str(output_path)
     except Exception as e:

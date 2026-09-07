@@ -8,9 +8,9 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.exception import FinishedException
 
-from ..data_manager import data_manager
-from ..permissions import check_permission
-from ..scheduler import hltv_scheduler
+from plugins.hltv_sub.data_manager import data_manager
+from plugins.hltv_sub.permissions import check_permission
+from plugins.hltv_sub.scheduler import hltv_scheduler
 
 
 hltv_toggle = on_command(

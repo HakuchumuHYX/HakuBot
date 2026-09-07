@@ -11,18 +11,16 @@ import numpy as np
 from PIL import Image
 from nonebot.log import logger
 
-from ..utils.tools import run_in_pool
-from .utils import (
+from utils.concurrency import run_in_pool
+from plugins.image_processor.utils import (
     IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
     IMAGE_PROCESSOR_MAX_GIF_BYTES,
     IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
-    cleanup_files,
     download_to_temp,
-    ensure_output_dir,
     load_gif_frames,
-    safe_delete_file,
     save_gif,
 )
+from utils.files import cleanup_files, ensure_output_dir, safe_delete_file
 
 # ========= 可调参数（面向“贴纸/表情包 + 纯色背景 + 文字”） =========
 # 角落采样块大小（像素）
@@ -60,10 +58,14 @@ MAX_FOREGROUND_RATIO = 0.98
 
 # GIF 抠图限制，避免逐帧 rembg 拖垮 bot
 CUTOUT_GIF_MAX_FRAMES = int(os.getenv("HAKUBOT_CUTOUT_GIF_MAX_FRAMES", "80"))
-CUTOUT_GIF_REMBG_MAX_FRAMES = int(os.getenv("HAKUBOT_CUTOUT_GIF_REMBG_MAX_FRAMES", "12"))
+CUTOUT_GIF_REMBG_MAX_FRAMES = int(
+    os.getenv("HAKUBOT_CUTOUT_GIF_REMBG_MAX_FRAMES", "12")
+)
 
 # 已有透明图快速返回阈值
-EXISTING_ALPHA_TRANSPARENT_RATIO = float(os.getenv("HAKUBOT_CUTOUT_EXISTING_ALPHA_RATIO", "0.01"))
+EXISTING_ALPHA_TRANSPARENT_RATIO = float(
+    os.getenv("HAKUBOT_CUTOUT_EXISTING_ALPHA_RATIO", "0.01")
+)
 
 # rembg 输入可选放大（提升细节保留）；设置为 1 表示禁用
 REMBG_UPSCALE = 2
@@ -73,7 +75,9 @@ REMBG_UPSCALE_MAX_SIDE = 1600
 # - 对二次元/线稿类图片，isnet-anime 往往比 isnet-general-use 更稳
 # - 纯色背景贴纸通常会走 solid-bg，不太依赖 rembg
 REMBG_MODEL_PRIMARY = os.getenv("HAKUBOT_REMBG_MODEL", "isnet-anime").strip().lower()
-REMBG_MODEL_FALLBACK = os.getenv("HAKUBOT_REMBG_MODEL_FALLBACK", "isnet-general-use").strip().lower()
+REMBG_MODEL_FALLBACK = (
+    os.getenv("HAKUBOT_REMBG_MODEL_FALLBACK", "isnet-general-use").strip().lower()
+)
 
 # rembg 推理设备选择：
 # - auto: 有 CUDAExecutionProvider 就用 GPU，否则 CPU
@@ -125,7 +129,9 @@ def _select_onnx_providers() -> list[str]:
     return ["CPUExecutionProvider"]
 
 
-async def download_image(url: str, *, max_bytes: int = IMAGE_PROCESSOR_MAX_IMAGE_BYTES) -> str:
+async def download_image(
+    url: str, *, max_bytes: int = IMAGE_PROCESSOR_MAX_IMAGE_BYTES
+) -> str:
     """下载图片到临时目录"""
     return await download_to_temp(
         url,
@@ -244,9 +250,7 @@ def _mask_to_rgba(img_bgr: np.ndarray, fg_mask: np.ndarray) -> np.ndarray:
     # 形态学：连接细笔画、填小洞
     kernel = np.ones((3, 3), np.uint8)
     if MORPH_CLOSE_ITERS > 0:
-        fg = cv2.morphologyEx(
-            fg, cv2.MORPH_CLOSE, kernel, iterations=MORPH_CLOSE_ITERS
-        )
+        fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, kernel, iterations=MORPH_CLOSE_ITERS)
     if MORPH_DILATE_ITERS > 0:
         fg = cv2.dilate(fg, kernel, iterations=MORPH_DILATE_ITERS)
 
@@ -324,7 +328,14 @@ def _remove_background_lineart_sync(image_path: str) -> str:
         mask = np.zeros((h + 2, w + 2), np.uint8)
 
         # 多个种子点，提高鲁棒性
-        seeds = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1), (w // 2, 0), (w // 2, h - 1)]
+        seeds = [
+            (0, 0),
+            (w - 1, 0),
+            (0, h - 1),
+            (w - 1, h - 1),
+            (w // 2, 0),
+            (w // 2, h - 1),
+        ]
         for x, y in seeds:
             if free[y, x] == 255:
                 cv2.floodFill(free, mask, (x, y), 0)
@@ -376,7 +387,9 @@ def _remove_background_solid_bg_sync(image_path: str) -> str:
         edge_kernel = np.ones((3, 3), np.uint8)
         edge_barrier = edges
         if EDGE_BARRIER_ITERS and EDGE_BARRIER_ITERS > 0:
-            edge_barrier = cv2.dilate(edge_barrier, edge_kernel, iterations=EDGE_BARRIER_ITERS)
+            edge_barrier = cv2.dilate(
+                edge_barrier, edge_kernel, iterations=EDGE_BARRIER_ITERS
+            )
         edge_barrier = (edge_barrier > 0).astype(np.uint8)
 
         lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
@@ -558,7 +571,12 @@ def _remove_background_opencv_sync(image_path: str) -> str:
         fgd_model = np.zeros((1, 65), np.float64)
 
         height, width = img_rgb.shape[:2]
-        rect = (int(width * 0.08), int(height * 0.08), int(width * 0.84), int(height * 0.84))
+        rect = (
+            int(width * 0.08),
+            int(height * 0.08),
+            int(width * 0.84),
+            int(height * 0.84),
+        )
 
         cv2.grabCut(img_rgb, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
 
@@ -604,7 +622,9 @@ def _remove_background_simple_sync(image_path: str) -> str:
         )
 
         white_threshold = 235
-        white_mask = (r > white_threshold) & (g > white_threshold) & (b > white_threshold)
+        white_mask = (
+            (r > white_threshold) & (g > white_threshold) & (b > white_threshold)
+        )
 
         gray = cv2.cvtColor(img_array[:, :, :3], cv2.COLOR_RGB2GRAY)
         edges = cv2.Canny(gray, 50, 150)
@@ -696,19 +716,27 @@ async def remove_background_gif(image_path: str) -> str:
         if not source_frames:
             raise Exception("没有成功读取的帧")
         if len(source_frames) > CUTOUT_GIF_MAX_FRAMES:
-            raise Exception(f"GIF帧数过多: {len(source_frames)} > {CUTOUT_GIF_MAX_FRAMES}")
+            raise Exception(
+                f"GIF帧数过多: {len(source_frames)} > {CUTOUT_GIF_MAX_FRAMES}"
+            )
 
         allow_rembg = len(source_frames) <= CUTOUT_GIF_REMBG_MAX_FRAMES
         frames: list[Image.Image] = []
 
         for frame_rgba in source_frames:
-            temp_frame_path = os.path.join(tempfile.gettempdir(), f"temp_frame_{os.urandom(4).hex()}.png")
+            temp_frame_path = os.path.join(
+                tempfile.gettempdir(), f"temp_frame_{os.urandom(4).hex()}.png"
+            )
             processed_frame_path = ""
             try:
                 await run_in_pool(frame_rgba.save, temp_frame_path, "PNG")
-                processed_frame_path = await remove_background_file(temp_frame_path, allow_rembg=allow_rembg)
+                processed_frame_path = await remove_background_file(
+                    temp_frame_path, allow_rembg=allow_rembg
+                )
                 if processed_frame_path and os.path.exists(processed_frame_path):
-                    frames.append(await run_in_pool(_load_frame_rgba, processed_frame_path))
+                    frames.append(
+                        await run_in_pool(_load_frame_rgba, processed_frame_path)
+                    )
             finally:
                 await cleanup_files(temp_frame_path, processed_frame_path)
 
@@ -718,7 +746,11 @@ async def remove_background_gif(image_path: str) -> str:
         output_dir = ensure_output_dir("nonebot_image_cutout")
         output_path = output_dir / f"cutout_gif_{os.urandom(4).hex()}.gif"
         await run_in_pool(
-            save_gif, frames, output_path, durations=durations[: len(frames)], loop=int(meta.get("loop", 0))
+            save_gif,
+            frames,
+            output_path,
+            durations=durations[: len(frames)],
+            loop=int(meta.get("loop", 0)),
         )
         return str(output_path)
 
@@ -731,7 +763,9 @@ async def remove_background(image_url: str) -> str:
     """主抠图函数 - 支持静态图片和 GIF"""
     image_path = ""
     try:
-        image_path = await download_image(image_url, max_bytes=IMAGE_PROCESSOR_MAX_GIF_BYTES)
+        image_path = await download_image(
+            image_url, max_bytes=IMAGE_PROCESSOR_MAX_GIF_BYTES
+        )
 
         # 是否为 GIF
         is_gif = False

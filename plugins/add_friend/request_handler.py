@@ -3,10 +3,15 @@ from nonebot.adapters.onebot.v11 import Bot, FriendRequestEvent
 from nonebot.log import logger
 import time
 
-from .config import AUTO_APPROVE_GROUPS, WELCOME_MESSAGE, REQUEST_NOTIFICATION_TEMPLATE, REJECT_MESSAGE, \
-    MANUAL_REVIEW
-from .data_manager import request_manager
-from .utils import extract_group_candidates, create_request_data
+from plugins.add_friend.config import (
+    AUTO_APPROVE_GROUPS,
+    WELCOME_MESSAGE,
+    REQUEST_NOTIFICATION_TEMPLATE,
+    REJECT_MESSAGE,
+    MANUAL_REVIEW,
+)
+from plugins.add_friend.data_manager import request_manager
+from plugins.add_friend.utils import extract_group_candidates, create_request_data
 
 # 注册好友请求处理器
 friend_request = on_request(priority=1, block=True)
@@ -30,7 +35,9 @@ async def handle_friend_request(bot: Bot, event: FriendRequestEvent):
     request_key = f"{user_id}_{flag}"
 
     # 清理过期的缓存
-    expired_keys = [k for k, t in processed_requests.items() if current_time - t > CACHE_EXPIRE_TIME]
+    expired_keys = [
+        k for k, t in processed_requests.items() if current_time - t > CACHE_EXPIRE_TIME
+    ]
     for key in expired_keys:
         del processed_requests[key]
 
@@ -46,7 +53,9 @@ async def handle_friend_request(bot: Bot, event: FriendRequestEvent):
     group_candidates = extract_group_candidates(comment)
     matched_groups = group_candidates & AUTO_APPROVE_GROUPS
 
-    logger.info(f"收到好友请求: 用户{user_id}, 验证信息: {comment}, 候选群号: {group_candidates or '无'}")
+    logger.info(
+        f"收到好友请求: 用户{user_id}, 验证信息: {comment}, 候选群号: {group_candidates or '无'}"
+    )
 
     if matched_groups:
         # 候选群号与白名单有交集，自动同意
@@ -76,16 +85,18 @@ async def process_auto_approve(bot: Bot, user_id: int, flag: str):
         logger.error(f"自动同意好友请求失败: {e}")
 
 
-async def process_manual_review(bot: Bot, user_id: int, comment: str, from_group, flag: str):
+async def process_manual_review(
+    bot: Bot, user_id: int, comment: str, from_group, flag: str
+):
     """人工审核模式：记录好友请求并通知超管手动处理"""
     # 记录到待处理列表，供 /同意好友 /拒绝好友 命令使用
-    request_manager.add_request(str(user_id), create_request_data(user_id, comment, from_group, flag))
+    request_manager.add_request(
+        str(user_id), create_request_data(user_id, comment, from_group, flag)
+    )
 
     # 格式化通知消息并逐个发送给超管
     notification = REQUEST_NOTIFICATION_TEMPLATE.format(
-        user_id=user_id,
-        group=from_group or "未知",
-        comment=comment or "无"
+        user_id=user_id, group=from_group or "未知", comment=comment or "无"
     )
     superusers = get_driver().config.superusers
     if not superusers:
@@ -107,6 +118,7 @@ async def process_reject_request(bot: Bot, user_id: int, flag: str):
 
         # 等待一小段时间，确保好友请求已被处理
         import asyncio
+
         await asyncio.sleep(1)
 
         # 尝试发送拒绝消息（注意：对方可能设置了不允许陌生人消息）

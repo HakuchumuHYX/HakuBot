@@ -6,11 +6,31 @@ from urllib.parse import quote
 from PIL import Image
 from PicImageSearch import Network, SauceNAO
 
-from .config import config
-from ..utils.tools import get_logger
-from ..utils.network import DEFAULT_TIMEOUT, download_image, get_client_session, get_effective_proxy
-from ..utils.draw.painter import *
-from ..utils.draw.plot import *
+from plugins.lunabot_imgexp.config import config
+from utils.logging import get_logger
+from utils.network.http import (
+    DEFAULT_TIMEOUT,
+    download_image,
+    get_client_session,
+    get_effective_proxy,
+)
+from utils.rendering.draw.painter import DEFAULT_BOLD_FONT, LinearGradient, RED
+from utils.rendering.draw.plot import (
+    Canvas,
+    DEFAULT_FONT,
+    FillBg,
+    Frame,
+    HSplit,
+    ImageBox,
+    Painter,
+    RoundRectBg,
+    Spacer,
+    TextBox,
+    TextStyle,
+    VSplit,
+    get_font,
+    get_text_size,
+)
 
 logger = get_logger("ImgExp")
 
@@ -65,7 +85,9 @@ async def _with_timeout(coro, source: str, timeout_sec: int = 120) -> ImageSearc
         return await asyncio.wait_for(coro, timeout=timeout_sec)
     except asyncio.TimeoutError:
         logger.warning(f"{source} 搜索超时: {timeout_sec}s")
-        return ImageSearchResult(source=source, results=[], error=f"搜索超时({timeout_sec}s)")
+        return ImageSearchResult(
+            source=source, results=[], error=f"搜索超时({timeout_sec}s)"
+        )
     except Exception as e:
         logger.warning(f"{source} 搜索失败: {e}")
         return ImageSearchResult(source=source, results=[], error=f"搜索失败: {e}")
@@ -95,7 +117,9 @@ async def search_saucenao(
             if item.similarity >= min_similarity and item.url and item.thumbnail
         ]
 
-        thumbnails = await download_batch_thumbnails([item.thumbnail for item in results])
+        thumbnails = await download_batch_thumbnails(
+            [item.thumbnail for item in results]
+        )
         items = [
             ImageSearchResultItem(
                 title=item.title,
@@ -114,8 +138,6 @@ async def search_saucenao(
         return ImageSearchResult(source="SauceNAO", results=[], error=f"搜索失败: {e}")
 
 
-
-
 async def search_googlelens(
     img_url: str,
     limit: int = 10,
@@ -128,12 +150,12 @@ async def search_googlelens(
         serp_apikey = config.get("serp_apikey")
         if not serp_apikey:
             logger.warning("未配置 SerpApi Key，跳过 GoogleLens 搜索")
-            return ImageSearchResult(source="GoogleLens", results=[], error="未配置 SerpApi Key")
+            return ImageSearchResult(
+                source="GoogleLens", results=[], error="未配置 SerpApi Key"
+            )
 
         img_url_encoded = quote(img_url, safe="")
-        serp_url = (
-            f"https://serpapi.com/search.json?engine=google_lens&url={img_url_encoded}&api_key={serp_apikey}"
-        )
+        serp_url = f"https://serpapi.com/search.json?engine=google_lens&url={img_url_encoded}&api_key={serp_apikey}"
 
         proxy = get_effective_proxy(config.get("proxy"))
         async with get_client_session().get(
@@ -143,14 +165,18 @@ async def search_googlelens(
         ) as response:
             if response.status != 200:
                 error_text = await response.text()
-                raise Exception(f"HTTP {response.status} {response.reason}: {error_text}")
+                raise Exception(
+                    f"HTTP {response.status} {response.reason}: {error_text}"
+                )
 
             data = await response.json()
             if "error" in data:
                 raise Exception(f"SerpApi Error: {data['error']}")
 
             results = data.get("visual_matches", [])
-            results = [item for item in results if item.get("title") and item.get("link")][:limit]
+            results = [
+                item for item in results if item.get("title") and item.get("link")
+            ][:limit]
 
             source_icon_urls = [item.get("source_icon") for item in results]
             source_icons = await download_batch_thumbnails(source_icon_urls)
@@ -166,7 +192,9 @@ async def search_googlelens(
                     source_icon=source_icon,
                     thumbnail=thumbnail,
                 )
-                for item, source_icon, thumbnail in zip(results, source_icons, thumbnails)
+                for item, source_icon, thumbnail in zip(
+                    results, source_icons, thumbnails
+                )
             ]
 
             logger.info(f"从 GoogleLens 搜索到 {len(items)} 个结果")
@@ -174,7 +202,9 @@ async def search_googlelens(
 
     except Exception as e:
         logger.warning(f"从 GoogleLens 搜索图片 {img_url} 失败: {e}")
-        return ImageSearchResult(source="GoogleLens", results=[], error=f"搜索失败: {e}")
+        return ImageSearchResult(
+            source="GoogleLens", results=[], error=f"搜索失败: {e}"
+        )
 
 
 async def search_image(
@@ -196,7 +226,9 @@ async def search_image(
 
     # Drawing Logic
     bg = FillBg(
-        LinearGradient(c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1))
+        LinearGradient(
+            c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1)
+        )
     )
     item_bg = RoundRectBg((255, 255, 255, 125), 10, blurglass=True)
     text_color1 = (50, 50, 50, 255)
@@ -214,10 +246,18 @@ async def search_image(
             .set_item_align("l")
         ):
             for result in results:
-                with VSplit().set_sep(16).set_padding(16).set_content_align("l").set_item_align("l"):
+                with (
+                    VSplit()
+                    .set_sep(16)
+                    .set_padding(16)
+                    .set_content_align("l")
+                    .set_item_align("l")
+                ):
                     TextBox(
                         f"来自 {result.source} 的结果",
-                        style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=text_color1),
+                        style=TextStyle(
+                            font=DEFAULT_BOLD_FONT, size=35, color=text_color1
+                        ),
                     )
                     if result.error:
                         TextBox(
@@ -229,7 +269,9 @@ async def search_image(
                         if not result.results:
                             TextBox(
                                 "未找到结果",
-                                style=TextStyle(font=DEFAULT_FONT, size=32, color=text_color2),
+                                style=TextStyle(
+                                    font=DEFAULT_FONT, size=32, color=text_color2
+                                ),
                             ).set_margin(32)
                         else:
                             result_container = (
@@ -242,22 +284,42 @@ async def search_image(
                             )
                             with result_container:
                                 for i, item in enumerate(result.results):
-                                    with HSplit().set_sep(8).set_item_align("l").set_content_align("l"):
+                                    with (
+                                        HSplit()
+                                        .set_sep(8)
+                                        .set_item_align("l")
+                                        .set_content_align("l")
+                                    ):
                                         if item.thumbnail:
                                             size = 150
-                                            frame = Frame().set_margin(32).set_content_align("c").set_size(
-                                                (size, size)
+                                            frame = (
+                                                Frame()
+                                                .set_margin(32)
+                                                .set_content_align("c")
+                                                .set_size((size, size))
                                             )
                                             with frame:
                                                 thumb_copy = item.thumbnail.copy()
                                                 thumb_copy.thumbnail((size, size))
                                                 ImageBox(thumb_copy)
-                                        with VSplit().set_sep(12).set_item_align("l").set_content_align("l"):
-                                            with HSplit().set_sep(6).set_item_align("l").set_content_align("l"):
+                                        with (
+                                            VSplit()
+                                            .set_sep(12)
+                                            .set_item_align("l")
+                                            .set_content_align("l")
+                                        ):
+                                            with (
+                                                HSplit()
+                                                .set_sep(6)
+                                                .set_item_align("l")
+                                                .set_content_align("l")
+                                            ):
                                                 TextBox(
                                                     f"#{i + 1}",
                                                     style=TextStyle(
-                                                        font=DEFAULT_BOLD_FONT, size=32, color=text_color1
+                                                        font=DEFAULT_BOLD_FONT,
+                                                        size=32,
+                                                        color=text_color1,
                                                     ),
                                                 )
                                                 Spacer(w=8)
@@ -265,30 +327,41 @@ async def search_image(
                                                     TextBox(
                                                         f"From {item.source}",
                                                         style=TextStyle(
-                                                            font=DEFAULT_FONT, size=24, color=text_color2
+                                                            font=DEFAULT_FONT,
+                                                            size=24,
+                                                            color=text_color2,
                                                         ),
                                                     )
                                                 if item.source_icon:
-                                                    ImageBox(item.source_icon, size=(None, 24)).set_offset((0, 4))
+                                                    ImageBox(
+                                                        item.source_icon,
+                                                        size=(None, 24),
+                                                    ).set_offset((0, 4))
                                                 if item.similarity is not None:
                                                     TextBox(
                                                         f"相似度: {item.similarity:.2f}%",
                                                         style=TextStyle(
-                                                            font=DEFAULT_FONT, size=24, color=text_color2
+                                                            font=DEFAULT_FONT,
+                                                            size=24,
+                                                            color=text_color2,
                                                         ),
                                                     )
                                             if item.title:
                                                 TextBox(
                                                     item.title,
                                                     style=TextStyle(
-                                                        font=DEFAULT_BOLD_FONT, size=28, color=text_color1
+                                                        font=DEFAULT_BOLD_FONT,
+                                                        size=28,
+                                                        color=text_color1,
                                                     ),
                                                 ).set_w(w)
                                             if item.url:
                                                 TextBox(
                                                     item.url,
                                                     style=TextStyle(
-                                                        font=DEFAULT_FONT, size=24, color=text_color2
+                                                        font=DEFAULT_FONT,
+                                                        size=24,
+                                                        color=text_color2,
                                                     ),
                                                 ).set_w(w)
 

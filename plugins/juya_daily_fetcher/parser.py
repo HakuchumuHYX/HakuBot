@@ -15,10 +15,38 @@ class FeedTextParser(HTMLParser):
     """Turn RSS HTML into fallback readable plain text."""
 
     _BLOCK_TAGS = {
-        "address", "article", "aside", "blockquote", "br", "div", "dl",
-        "dt", "dd", "fieldset", "figcaption", "figure", "footer", "form",
-        "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main",
-        "nav", "ol", "p", "pre", "section", "table", "tr", "ul",
+        "address",
+        "article",
+        "aside",
+        "blockquote",
+        "br",
+        "div",
+        "dl",
+        "dt",
+        "dd",
+        "fieldset",
+        "figcaption",
+        "figure",
+        "footer",
+        "form",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "hr",
+        "li",
+        "main",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "section",
+        "table",
+        "tr",
+        "ul",
     }
 
     def __init__(self) -> None:
@@ -78,7 +106,15 @@ class RawArticleParser(HTMLParser):
 
     _SKIP_TAGS = {"script", "style", "noscript", "template", "svg", "iframe", "form"}
     _HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
-    _BLOCK_TAGS = _HEADING_TAGS | {"p", "blockquote", "pre", "li", "div", "section", "article"}
+    _BLOCK_TAGS = _HEADING_TAGS | {
+        "p",
+        "blockquote",
+        "pre",
+        "li",
+        "div",
+        "section",
+        "article",
+    }
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -192,7 +228,9 @@ class RawArticleParser(HTMLParser):
         return self.blocks
 
 
-def parse_article_blocks(content_html: str, fallback_text: str = "") -> list[dict[str, Any]]:
+def parse_article_blocks(
+    content_html: str, fallback_text: str = ""
+) -> list[dict[str, Any]]:
     parser = RawArticleParser()
     parser.feed(content_html or "")
     parser.close()
@@ -207,7 +245,7 @@ def _numbered_text(value: str) -> tuple[int | None, str]:
     match = re.search(r"(?:^|\s)[#＃]\s*(\d+)\s*$", text)
     if not match:
         return None, text
-    return int(match.group(1)), text[:match.start()].strip()
+    return int(match.group(1)), text[: match.start()].strip()
 
 
 def _is_related_links_label(value: str) -> bool:
@@ -268,10 +306,12 @@ def parse_clean_issue(
                 number, title = _numbered_text(text)
                 if title:
                     items = current_directory["items"]
-                    items.append({
-                        "number": number if number is not None else len(items) + 1,
-                        "title": title,
-                    })
+                    items.append(
+                        {
+                            "number": number if number is not None else len(items) + 1,
+                            "title": title,
+                        }
+                    )
             elif block_type == "divider":
                 phase = "body"
             elif block_type == "heading" and level == 2:
@@ -412,26 +452,32 @@ def build_raw_document(feed_url: str, updates: list[dict[str, Any]]) -> dict[str
         issue_title = str(item.get("title", ""))
         issue_link = str(item.get("link", ""))
         issue_directory, issue_articles = parse_clean_issue(content_html, content_text)
-        directory.append({
-            "title": issue_title,
-            "date": issue_date,
-            "categories": issue_directory,
-        })
+        directory.append(
+            {
+                "title": issue_title,
+                "date": issue_date,
+                "categories": issue_directory,
+            }
+        )
         for article in issue_articles:
-            article.update({
-                "issue_title": issue_title,
-                "issue_date": issue_date,
-                "issue_url": issue_link,
-                "pub_date": str(item.get("pub_date", "")),
-            })
+            article.update(
+                {
+                    "issue_title": issue_title,
+                    "issue_date": issue_date,
+                    "issue_url": issue_link,
+                    "pub_date": str(item.get("pub_date", "")),
+                }
+            )
             articles.append(article)
-        raw_articles.append({
-            "title": issue_title,
-            "link": issue_link,
-            "pub_date": str(item.get("pub_date", "")),
-            "date": issue_date,
-            "raw_html": content_html,
-        })
+        raw_articles.append(
+            {
+                "title": issue_title,
+                "link": issue_link,
+                "pub_date": str(item.get("pub_date", "")),
+                "date": issue_date,
+                "raw_html": content_html,
+            }
+        )
     first_date = directory[0]["date"]
     title = f"橘鸦 AI 早报｜{first_date}"
     if len(directory) > 1:

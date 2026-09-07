@@ -1,3 +1,5 @@
+from utils.images.formats import to_rgb
+from utils.onebot.messages import find_forward_id, normalize_message_segments
 import base64
 import io
 import httpx
@@ -5,7 +7,7 @@ import re
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from PIL import Image, ImageOps
-from .config import plugin_config
+from plugins.ai_assistant.config import plugin_config
 
 
 ImagePurpose = Literal["chat", "generation"]
@@ -15,15 +17,6 @@ _SUPPORTED_IMAGE_FORMATS = {
     "PNG": ("image/png", "PNG"),
     "WEBP": ("image/webp", "WEBP"),
 }
-
-
-def _to_jpeg_rgb(image: Image.Image) -> Image.Image:
-    """Convert an image to RGB while compositing transparency onto white."""
-    if image.mode in ("RGBA", "LA") or "transparency" in image.info:
-        rgba = image.convert("RGBA")
-        background = Image.new("RGBA", rgba.size, "white")
-        return Image.alpha_composite(background, rgba).convert("RGB")
-    return image.convert("RGB")
 
 
 def _prepare_image_data(
@@ -39,7 +32,11 @@ def _prepare_image_data(
         image = ImageOps.exif_transpose(source)
 
         needs_resize = max_size > 0 and max(image.size) > max_size
-        if preserve_format and not needs_resize and source_format in _SUPPORTED_IMAGE_FORMATS:
+        if (
+            preserve_format
+            and not needs_resize
+            and source_format in _SUPPORTED_IMAGE_FORMATS
+        ):
             mime_type, _ = _SUPPORTED_IMAGE_FORMATS[source_format]
             return raw, mime_type
 
@@ -54,7 +51,7 @@ def _prepare_image_data(
             output_format = "JPEG"
 
         if output_format == "JPEG":
-            image = _to_jpeg_rgb(image)
+            image = to_rgb(image)
 
         save_options: dict[str, Any] = {}
         if output_format == "JPEG":
@@ -96,49 +93,6 @@ async def download_image_as_data_url(
     return f"data:{mime_type};base64,{encoded}"
 
 
-def find_forward_id(message: Message) -> Optional[str]:
-    """从消息段中提取合并转发 id。"""
-    for segment in message:
-        if segment.type == "forward":
-            forward_id = segment.data.get("id")
-            if forward_id:
-                return str(forward_id)
-    return None
-
-
-def _segment_to_dict(segment: Any) -> Optional[Dict[str, Any]]:
-    if isinstance(segment, MessageSegment):
-        return {"type": segment.type, "data": dict(segment.data)}
-    if isinstance(segment, dict):
-        if "type" in segment:
-            return segment
-    if isinstance(segment, str) and segment:
-        return {"type": "text", "data": {"text": segment}}
-    return None
-
-
-def normalize_message_segments(content: Any) -> List[Dict[str, Any]]:
-    """兼容 OneBot 返回的 str/dict/list/Message/MessageSegment 消息内容。"""
-    if content is None:
-        return []
-    if isinstance(content, str):
-        return [{"type": "text", "data": {"text": content}}] if content else []
-    if isinstance(content, MessageSegment):
-        segment = _segment_to_dict(content)
-        return [segment] if segment else []
-    if isinstance(content, Message):
-        return [seg for item in content if (seg := _segment_to_dict(item))]
-    if isinstance(content, dict):
-        segment = _segment_to_dict(content)
-        return [segment] if segment else []
-    if isinstance(content, list):
-        segments: List[Dict[str, Any]] = []
-        for item in content:
-            segments.extend(normalize_message_segments(item))
-        return segments
-    return []
-
-
 def _get_value(obj: Any, key: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(key, default)
@@ -171,7 +125,9 @@ def _format_forward_sender(node: Dict[str, Any]) -> str:
     return "未知用户"
 
 
-def _text_from_segment(segment: Dict[str, Any], image_index: Optional[int] = None) -> str:
+def _text_from_segment(
+    segment: Dict[str, Any], image_index: Optional[int] = None
+) -> str:
     seg_type = segment.get("type")
     data = segment.get("data") or {}
 
@@ -199,7 +155,9 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
 
     max_nodes = max(1, int(getattr(plugin_config.chat, "forward_max_nodes", 50) or 50))
     max_images = max(0, int(getattr(plugin_config.chat, "forward_max_images", 8) or 0))
-    max_text_chars = max(500, int(getattr(plugin_config.chat, "forward_max_text_chars", 6000) or 6000))
+    max_text_chars = max(
+        500, int(getattr(plugin_config.chat, "forward_max_text_chars", 6000) or 6000)
+    )
     include_images = bool(getattr(plugin_config.chat, "forward_include_images", True))
 
     lines = ["【用户回复的合并转发聊天记录】"]
@@ -225,10 +183,12 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
                 if include_images and image_url and len(image_parts) < max_images:
                     try:
                         b64_img = await download_image_as_data_url(image_url)
-                        image_parts.append({
-                            "type": "image_url",
-                            "image_url": {"url": b64_img},
-                        })
+                        image_parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": b64_img},
+                            }
+                        )
                     except Exception:
                         pass
 
@@ -241,14 +201,18 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
 
         current_text = "\n".join(lines)
         if len(current_text) >= max_text_chars:
-            lines[-1] = lines[-1][: max(0, len(lines[-1]) - (len(current_text) - max_text_chars))]
+            lines[-1] = lines[-1][
+                : max(0, len(lines[-1]) - (len(current_text) - max_text_chars))
+            ]
             lines.append("...[合并转发内容过长，已截断]")
             break
 
     if len(nodes) > max_nodes:
         lines.append(f"...[仅展开前 {max_nodes} 条合并转发节点]")
     if image_count > len(image_parts):
-        lines.append(f"...[合并转发内共有 {image_count} 张图片，已传入 {len(image_parts)} 张]")
+        lines.append(
+            f"...[合并转发内共有 {image_count} 张图片，已传入 {len(image_parts)} 张]"
+        )
 
     text_part = {"type": "text", "text": "\n".join(lines).strip()}
     return [text_part] + image_parts
@@ -269,7 +233,9 @@ async def parse_message_content(
     elif len(params) == 3:
         bot, event, args = params
     else:
-        raise TypeError("parse_message_content expects (event, args) or (bot, event, args)")
+        raise TypeError(
+            "parse_message_content expects (event, args) or (bot, event, args)"
+        )
 
     content_list = []
 
@@ -280,7 +246,9 @@ async def parse_message_content(
         if include_forward and bot:
             forward_id = find_forward_id(reply_msg)
             if forward_id:
-                content_list.extend(await parse_forward_message_content(bot, forward_id))
+                content_list.extend(
+                    await parse_forward_message_content(bot, forward_id)
+                )
                 handled_forward = True
 
         if not handled_forward:
@@ -296,10 +264,9 @@ async def parse_message_content(
                             url,
                             purpose=image_purpose,
                         )
-                        content_list.append({
-                            "type": "image_url",
-                            "image_url": {"url": b64_img}
-                        })
+                        content_list.append(
+                            {"type": "image_url", "image_url": {"url": b64_img}}
+                        )
 
     # 2. 处理当前消息的参数 (Args)
     for seg in args:
@@ -314,10 +281,9 @@ async def parse_message_content(
                     url,
                     purpose=image_purpose,
                 )
-                content_list.append({
-                    "type": "image_url",
-                    "image_url": {"url": b64_img}
-                })
+                content_list.append(
+                    {"type": "image_url", "image_url": {"url": b64_img}}
+                )
 
     return content_list
 
@@ -336,22 +302,22 @@ def remove_markdown(text: str) -> str:
         return ""
 
     # 1. 移除加粗/斜体 (**text**, *text*, __text__, _text_)
-    text = re.sub(r'\*\*|__|\*|_', '', text)
+    text = re.sub(r"\*\*|__|\*|_", "", text)
 
     # 2. 移除标题标记 (# Title)
-    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
 
     # 3. 移除链接格式 ([text](url))
-    text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)
+    text = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", text)
 
     # 4. 移除图片格式 (![alt](url))
-    text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
+    text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
 
     # 5. 移除代码块反引号 (```, `)
-    text = re.sub(r'`', '', text)
+    text = re.sub(r"`", "", text)
 
     # 6. 移除引用符号 (>)
-    text = re.sub(r'^>\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^>\s*", "", text, flags=re.MULTILINE)
 
     # 7. 去除多余的首尾空白
     return text.strip()

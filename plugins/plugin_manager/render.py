@@ -4,25 +4,31 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import Sequence
 
-from ..utils.draw.plot import (
+from utils.rendering.draw.plot import (
     Canvas,
     FillBg,
     Frame,
     HSplit,
-    LinearGradient,
     RoundRectBg,
     Spacer,
     TextBox,
     TextStyle,
     VSplit,
-    WHITE,
 )
-from ..utils.draw.painter import DEFAULT_BOLD_FONT, DEFAULT_FONT, Painter, get_font, get_text_size
+from utils.rendering.draw.painter import LinearGradient, WHITE
+from utils.rendering.draw.painter import (
+    DEFAULT_BOLD_FONT,
+    DEFAULT_FONT,
+    Painter,
+    get_font,
+    get_text_size,
+)
 
 
 @dataclass(slots=True)
 class PluginStatusRow:
     """A single display row: parent plugin or sub-feature."""
+
     name: str
     plugin_id: str
     enabled: bool
@@ -32,6 +38,7 @@ class PluginStatusRow:
 @dataclass(slots=True)
 class PluginStatusGroup:
     """A card representing a parent plugin with optional child feature rows."""
+
     parent: PluginStatusRow
     children: list[PluginStatusRow]
 
@@ -108,18 +115,24 @@ def _plugin_row(row: PluginStatusRow, left_width: int) -> HSplit:
             if indent:
                 with HSplit(sep=6, item_align="l").set_content_align("l"):
                     Spacer(w=indent, h=1)
-                    TextBox(row.name, style=name_style, wrap=True, use_real_line_count=True).set_w(
-                        max(10, left_width - indent)
-                    )
+                    TextBox(
+                        row.name, style=name_style, wrap=True, use_real_line_count=True
+                    ).set_w(max(10, left_width - indent))
             else:
-                TextBox(row.name, style=name_style, wrap=True, use_real_line_count=True).set_w(left_width)
+                TextBox(
+                    row.name, style=name_style, wrap=True, use_real_line_count=True
+                ).set_w(left_width)
 
             if indent:
                 with HSplit(sep=6, item_align="l").set_content_align("l"):
                     Spacer(w=indent, h=1)
-                    TextBox(f"{row.plugin_id}", style=id_style, wrap=False).set_w(max(10, left_width - indent))
+                    TextBox(f"{row.plugin_id}", style=id_style, wrap=False).set_w(
+                        max(10, left_width - indent)
+                    )
             else:
-                TextBox(f"{row.plugin_id}", style=id_style, wrap=False).set_w(left_width)
+                TextBox(f"{row.plugin_id}", style=id_style, wrap=False).set_w(
+                    left_width
+                )
 
         # Right (pill)
         _status_pill(row.enabled)
@@ -127,7 +140,9 @@ def _plugin_row(row: PluginStatusRow, left_width: int) -> HSplit:
     return hs
 
 
-def _pick_column_count(groups: Sequence[PluginStatusGroup], canvas_w: int, header_h_est: int = 110) -> int:
+def _pick_column_count(
+    groups: Sequence[PluginStatusGroup], canvas_w: int, header_h_est: int = 110
+) -> int:
     """
     Choose 1 or 2 columns to make output closer to square.
     We keep max 2 columns to avoid overly narrow cards on mobile clients.
@@ -205,7 +220,9 @@ async def render_plugin_status_image(
             # Header
             TextBox(
                 title,
-                style=TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(25, 50, 90, 255)),
+                style=TextStyle(
+                    font=DEFAULT_BOLD_FONT, size=30, color=(25, 50, 90, 255)
+                ),
                 wrap=True,
                 use_real_line_count=True,
             ).set_w(content_w)
@@ -222,7 +239,13 @@ async def render_plugin_status_image(
             if cols == 1:
                 with VSplit(sep=card_sep, item_align="l").set_content_align("l"):
                     for g in groups:
-                        card = Frame().set_bg(card_bg).set_padding(card_padding).set_margin(0).set_content_align("l")
+                        card = (
+                            Frame()
+                            .set_bg(card_bg)
+                            .set_padding(card_padding)
+                            .set_margin(0)
+                            .set_content_align("l")
+                        )
                         with card:
                             with VSplit(sep=8, item_align="l").set_content_align("l"):
                                 _plugin_row(g.parent, left_width=left_width)
@@ -233,14 +256,20 @@ async def render_plugin_status_image(
                 heights = [0, 0]
                 cols_widgets: list[VSplit] = []
 
-                with HSplit(
-                    ratios=[1, 1],
-                    sep=col_sep,
-                    item_size_mode="expand",
-                    item_align="l",
-                ).set_w(content_w).set_content_align("l"):
+                with (
+                    HSplit(
+                        ratios=[1, 1],
+                        sep=col_sep,
+                        item_size_mode="expand",
+                        item_align="l",
+                    )
+                    .set_w(content_w)
+                    .set_content_align("l")
+                ):
                     for _ in range(2):
-                        cols_widgets.append(VSplit(sep=card_sep, item_align="l").set_content_align("l"))
+                        cols_widgets.append(
+                            VSplit(sep=card_sep, item_align="l").set_content_align("l")
+                        )
 
                     for g in groups:
                         idx = 0 if heights[0] <= heights[1] else 1
@@ -255,7 +284,9 @@ async def render_plugin_status_image(
                                 .set_content_align("l")
                             )
                             with card:
-                                with VSplit(sep=8, item_align="l").set_content_align("l"):
+                                with VSplit(sep=8, item_align="l").set_content_align(
+                                    "l"
+                                ):
                                     _plugin_row(g.parent, left_width=left_width)
                                     for child in g.children:
                                         _plugin_row(child, left_width=left_width)
@@ -264,7 +295,9 @@ async def render_plugin_status_image(
 
     # Watermark (optional)
     watermark_text = (watermark_text or "").strip()
-    watermark_position = (watermark_position or "bottom_right").strip() or "bottom_right"
+    watermark_position = (
+        watermark_position or "bottom_right"
+    ).strip() or "bottom_right"
     if watermark_text:
         try:
             p = Painter(img)

@@ -8,8 +8,8 @@ from urllib.parse import quote
 
 import aiosqlite
 
-from .config import BridgeConfig
-from .models import ProbeResult
+from plugins.webconsole_bridge.config import BridgeConfig
+from plugins.webconsole_bridge.models import ProbeResult
 
 SUPPORTED_SCHEMA_VERSION = 1
 REQUIRED_TABLES = frozenset(
@@ -52,9 +52,7 @@ async def probe_storage(config: BridgeConfig) -> ProbeResult:
         return ProbeResult.failure(data_error)
 
     if not config.database_path.exists():
-        return ProbeResult.failure(
-            f"database does not exist: {config.database_path}"
-        )
+        return ProbeResult.failure(f"database does not exist: {config.database_path}")
     if not config.database_path.is_file():
         return ProbeResult.failure(
             f"database path is not a file: {config.database_path}"
@@ -111,4 +109,3 @@ async def probe_storage(config: BridgeConfig) -> ProbeResult:
         )
 
     return ProbeResult.success()
-

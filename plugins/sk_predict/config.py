@@ -1,4 +1,5 @@
 from __future__ import annotations
+from utils.paths import PluginPaths
 
 import json
 from pathlib import Path
@@ -8,8 +9,8 @@ from typing import Any
 class PluginConfig:
     def __init__(self) -> None:
         self.plugin_dir = Path(__file__).parent
-        self.config_file = self.plugin_dir / "config.json"
-        self.data_dir = Path() / "data" / "sekai_cache"
+        self.config_file = PluginPaths("sk_predict").config / "config.json"
+        self.data_dir = PluginPaths("sk_predict").data
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         local_config = self._load_local_config()
@@ -66,7 +67,9 @@ class PluginConfig:
             60,
         )
         self.file_clean_seconds = self._as_int(
-            self._deep_get(local_config, ("cache", "clean_after_seconds"), 24 * 60 * 60),
+            self._deep_get(
+                local_config, ("cache", "clean_after_seconds"), 24 * 60 * 60
+            ),
             24 * 60 * 60,
         )
 
@@ -80,7 +83,9 @@ class PluginConfig:
             return {}
 
     @staticmethod
-    def _deep_get(data: dict[str, Any], keys: tuple[str, ...], default: Any = None) -> Any:
+    def _deep_get(
+        data: dict[str, Any], keys: tuple[str, ...], default: Any = None
+    ) -> Any:
         current: Any = data
         for key in keys:
             if not isinstance(current, dict) or key not in current:

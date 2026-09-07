@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from bs4 import BeautifulSoup, Tag
 from nonebot.log import logger
 
-from ..models import MapStats, MatchStats, PlayerStats
+from plugins.hltv_sub.models import MapStats, MatchStats, PlayerStats
 
 
 def _extract_id_from_url(url: str) -> str:
@@ -198,7 +198,9 @@ def parse_match_stats(
         vetos: list[str] = []
         veto_boxes = soup.find_all("div", class_="veto-box")
         for box in veto_boxes:
-            lines = [line.strip() for line in box.get_text("\n").split("\n") if line.strip()]
+            lines = [
+                line.strip() for line in box.get_text("\n").split("\n") if line.strip()
+            ]
             filtered_lines = [l for l in lines if not l.startswith("*")]
             if filtered_lines:
                 vetos.extend(filtered_lines)
@@ -286,8 +288,12 @@ def parse_match_stats(
         else:
             stats_tables = soup.find_all("table", class_="totalstats")
             if not stats_tables:
-                all_tables = soup.find_all("table", class_=re.compile(r"stats|totalstats"))
-                stats_tables = [t for t in all_tables if "hidden" not in (t.get("class") or [])]
+                all_tables = soup.find_all(
+                    "table", class_=re.compile(r"stats|totalstats")
+                )
+                stats_tables = [
+                    t for t in all_tables if "hidden" not in (t.get("class") or [])
+                ]
 
             for idx, table in enumerate(stats_tables[:2]):
                 team_players = _parse_player_table(table, idx)
@@ -304,7 +310,9 @@ def parse_match_stats(
 
             if content_div:
                 map_players: list[PlayerStats] = []
-                tables = content_div.find_all("table", class_=re.compile(r"stats-table|totalstats"))
+                tables = content_div.find_all(
+                    "table", class_=re.compile(r"stats-table|totalstats")
+                )
                 for idx, table in enumerate(tables[:2]):
                     team_players = _parse_player_table(table, idx)
                     map_players.extend(team_players)

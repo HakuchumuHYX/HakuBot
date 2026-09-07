@@ -3,10 +3,10 @@
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.plugin.on import on_command
 
-from .. import service
-from ..render import render_cp_list, render_member_pool
-from ..rules import check_plugin_enabled
-from ...utils.common import create_exact_command_rule
+from plugins.groupmate_waifu import service
+from plugins.groupmate_waifu.render import render_cp_list, render_member_pool
+from plugins.groupmate_waifu.rules import check_plugin_enabled
+from utils.onebot.rules import create_exact_command_rule
 
 
 waifu_list = on_command(
@@ -14,7 +14,9 @@ waifu_list = on_command(
     aliases={"群友卡池"},
     priority=10,
     block=True,
-    rule=create_exact_command_rule("查看群友卡池", {"群友卡池"}, extra_rule=check_plugin_enabled),
+    rule=create_exact_command_rule(
+        "查看群友卡池", {"群友卡池"}, extra_rule=check_plugin_enabled
+    ),
 )
 
 
@@ -38,7 +40,9 @@ cp_list = on_command(
     aliases={"本群cp"},
     priority=10,
     block=True,
-    rule=create_exact_command_rule("本群CP", {"本群cp"}, extra_rule=check_plugin_enabled),
+    rule=create_exact_command_rule(
+        "本群CP", {"本群cp"}, extra_rule=check_plugin_enabled
+    ),
 )
 
 
@@ -59,7 +63,9 @@ async def handle_cp_list(bot: Bot, event: GroupMessageEvent):
             name_a = str(user_id)
 
         try:
-            member = await bot.get_group_member_info(group_id=group_id, user_id=waifu_id)
+            member = await bot.get_group_member_info(
+                group_id=group_id, user_id=waifu_id
+            )
             name_b = member["card"] or member["nickname"]
         except Exception:
             name_b = str(waifu_id)

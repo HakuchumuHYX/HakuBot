@@ -1,3 +1,4 @@
+from utils.json_io import atomic_write_json
 import asyncio
 import aiohttp
 import json
@@ -11,7 +12,9 @@ REQUEST_TIMEOUT = 10
 POLITE_DELAY = 0.1
 
 
-async def _fetch_alias(session: aiohttp.ClientSession, song_id: int) -> Optional[List[str]]:
+async def _fetch_alias(
+    session: aiohttp.ClientSession, song_id: int
+) -> Optional[List[str]]:
     """异步获取单个歌曲ID的别名。"""
     api_url = API_URL_TEMPLATE.format(song_id)
     try:
@@ -19,13 +22,19 @@ async def _fetch_alias(session: aiohttp.ClientSession, song_id: int) -> Optional
             if response.status == 404:
                 return None
             if response.status != 200:
-                logger.debug(f"[get_aliases] API 请求失败 (Song ID: {song_id}), 状态码: {response.status}")
+                logger.debug(
+                    f"[get_aliases] API 请求失败 (Song ID: {song_id}), 状态码: {response.status}"
+                )
                 return None
 
             data = await response.json()
             aliases: List[str] = []
             if isinstance(data, dict):
-                if "data" in data and isinstance(data["data"], dict) and "aliases" in data["data"]:
+                if (
+                    "data" in data
+                    and isinstance(data["data"], dict)
+                    and "aliases" in data["data"]
+                ):
                     aliases = data["data"]["aliases"]
                 elif "aliases" in data:
                     aliases = data["aliases"]
@@ -92,13 +101,14 @@ async def fetch_all_aliases(guess_song_path: str, output_path: str) -> bool:
 
     try:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(all_aliases, f, indent=4, ensure_ascii=False)
+        atomic_write_json(output_path, all_aliases, indent=4, ensure_ascii=False)
     except Exception as e:
         logger.error(f"[get_aliases] 保存失败: {e}")
         return False
 
-    logger.info(f"[get_aliases] 完成。为 {found_count}/{total_songs} 首歌曲找到了别名，已保存到 {output_path}")
+    logger.info(
+        f"[get_aliases] 完成。为 {found_count}/{total_songs} 首歌曲找到了别名，已保存到 {output_path}"
+    )
     return True
 
 
@@ -112,7 +122,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(_main())
     except RuntimeError as e:
-        if "Event loop is closed" in str(e) and os.name == 'nt':
+        if "Event loop is closed" in str(e) and os.name == "nt":
             pass
         else:
             raise

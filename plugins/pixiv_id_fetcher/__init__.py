@@ -13,4 +13,4 @@ try:
 except Exception:
     pass
 else:
-    from .matcher import *  # noqa: F401,F403
+    from plugins.pixiv_id_fetcher import matcher

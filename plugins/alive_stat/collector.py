@@ -2,6 +2,7 @@
 alive_stat 数据采集模块。
 负责系统资源、进程状态、网络连通性的采集。
 """
+
 import asyncio
 import platform
 from dataclasses import dataclass
@@ -9,14 +10,16 @@ from typing import Optional
 
 import psutil
 
-from .config import config
+from plugins.alive_stat.config import config
 
-from ..utils.tools import get_logger, run_in_pool
+from utils.logging import get_logger
+from utils.concurrency import run_in_pool
 
 logger = get_logger("alive_stat.collector")
 
 
 # ================= 数据类 =================
+
 
 @dataclass
 class ResourceUsage:
@@ -65,19 +68,21 @@ class ServerStatus:
 
 # ================= 格式化工具 =================
 
+
 def format_bytes(b: int) -> str:
     """将字节数格式化为人类可读的字符串。"""
     if b < 1024:
         return f"{b}B"
-    elif b < 1024 ** 2:
+    elif b < 1024**2:
         return f"{b / 1024:.1f}K"
-    elif b < 1024 ** 3:
-        return f"{b / 1024 ** 2:.1f}M"
+    elif b < 1024**3:
+        return f"{b / 1024**2:.1f}M"
     else:
-        return f"{b / 1024 ** 3:.1f}G"
+        return f"{b / 1024**3:.1f}G"
 
 
 # ================= 系统信息 =================
+
 
 def get_cpu_model() -> str:
     try:
@@ -91,10 +96,12 @@ def get_cpu_model() -> str:
 
 
 def get_system_uptime() -> str:
-    from .runtime import format_duration
+    from plugins.alive_stat.runtime import format_duration
+
     try:
         boot_time = psutil.boot_time()
         from datetime import datetime
+
         delta = datetime.now() - datetime.fromtimestamp(boot_time)
         return format_duration(delta)
     except Exception:
@@ -121,6 +128,7 @@ def get_resources() -> ResourceUsage:
 
 
 # ================= 进程采集 =================
+
 
 def _get_processes_psutil() -> list[ProcessInfo]:
     """
@@ -166,9 +174,13 @@ def _get_processes_psutil() -> list[ProcessInfo]:
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
 
-        results.append(ProcessInfo(
-            name=entry.name, running=found, mem_bytes=mem_bytes,
-        ))
+        results.append(
+            ProcessInfo(
+                name=entry.name,
+                running=found,
+                mem_bytes=mem_bytes,
+            )
+        )
     return results
 
 
@@ -176,8 +188,13 @@ async def _get_docker_process(container_name: str) -> tuple[bool, int]:
     """检查 Docker 容器状态和内存占用。"""
     try:
         proc = await asyncio.create_subprocess_exec(
-            "docker", "inspect", "--format", "{{.State.Running}}", container_name,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            "docker",
+            "inspect",
+            "--format",
+            "{{.State.Running}}",
+            container_name,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
         running = stdout.decode().strip().lower() == "true"
@@ -185,8 +202,14 @@ async def _get_docker_process(container_name: str) -> tuple[bool, int]:
             return False, 0
 
         proc2 = await asyncio.create_subprocess_exec(
-            "docker", "stats", "--no-stream", "--format", "{{.MemUsage}}", container_name,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            "docker",
+            "stats",
+            "--no-stream",
+            "--format",
+            "{{.MemUsage}}",
+            container_name,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
         stdout2, _ = await asyncio.wait_for(proc2.communicate(), timeout=5)
         mem_str = stdout2.decode().strip().split("/")[0].strip()
@@ -201,9 +224,9 @@ def _parse_docker_mem(s: str) -> int:
     s = s.strip()
     try:
         if s.endswith("GiB"):
-            return int(float(s[:-3]) * 1024 ** 3)
+            return int(float(s[:-3]) * 1024**3)
         elif s.endswith("MiB"):
-            return int(float(s[:-3]) * 1024 ** 2)
+            return int(float(s[:-3]) * 1024**2)
         elif s.endswith("KiB"):
             return int(float(s[:-3]) * 1024)
         elif s.endswith("B"):
@@ -217,16 +240,24 @@ async def get_processes() -> list[ProcessInfo]:
     results = await run_in_pool(_get_processes_psutil)
     for entry in config.docker_processes:
         running, mem_bytes = await _get_docker_process(entry.container)
-        results.append(ProcessInfo(name=entry.name, running=running, mem_bytes=mem_bytes))
+        results.append(
+            ProcessInfo(name=entry.name, running=running, mem_bytes=mem_bytes)
+        )
     return results
 
 
 # ================= 网络检测 =================
 
+
 async def _ping_host(host: str, timeout: int = 3) -> NetworkResult:
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ping", "-c", "1", "-W", str(timeout), host,
+            "ping",
+            "-c",
+            "1",
+            "-W",
+            str(timeout),
+            host,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -250,13 +281,12 @@ async def _ping_host(host: str, timeout: int = 3) -> NetworkResult:
 
 
 async def get_network() -> list[NetworkResult]:
-    results = await asyncio.gather(
-        *[_ping_host(host) for host in config.ping_hosts]
-    )
+    results = await asyncio.gather(*[_ping_host(host) for host in config.ping_hosts])
     return list(results)
 
 
 # ================= 汇总 =================
+
 
 async def collect_server_status() -> ServerStatus:
     resources = await run_in_pool(get_resources)

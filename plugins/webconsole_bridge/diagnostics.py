@@ -7,9 +7,9 @@ from typing import Any
 from loguru import logger
 from nonebot.matcher import current_matcher
 
-from .capture import DiagnosticLogEntry, capture_manager
-from .persistence import PersistenceWriter
-from .status import BridgeRuntime
+from plugins.webconsole_bridge.capture import DiagnosticLogEntry, capture_manager
+from plugins.webconsole_bridge.persistence import PersistenceWriter
+from plugins.webconsole_bridge.status import BridgeRuntime
 
 
 def _plugin_name_from_record(record: Any) -> str | None:
@@ -76,18 +76,12 @@ class DiagnosticCapture:
         entry = DiagnosticLogEntry(
             created_at_ms=time.time_ns() // 1_000_000,
             level=level,
-            logger_name=(
-                str(record["name"]) if record["name"] is not None else None
-            ),
+            logger_name=(str(record["name"]) if record["name"] is not None else None),
             module_name=(
-                str(record["module"])
-                if record["module"] is not None
-                else None
+                str(record["module"]) if record["module"] is not None else None
             ),
             function_name=(
-                str(record["function"])
-                if record["function"] is not None
-                else None
+                str(record["function"]) if record["function"] is not None else None
             ),
             line=int(record["line"]) if record["line"] is not None else None,
             message=str(record["message"]),

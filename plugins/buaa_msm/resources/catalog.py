@@ -15,6 +15,7 @@
 """
 
 from __future__ import annotations
+from utils.rendering.fonts import load_font_from_path
 
 from pathlib import Path
 from typing import Dict, Tuple
@@ -22,8 +23,8 @@ from typing import Dict, Tuple
 from PIL import Image, ImageFont
 from nonebot.log import logger
 
-from ..config import plugin_config
-from ..domain.constants import SCENE_KEY_TO_NAME
+from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.domain.constants import SCENE_KEY_TO_NAME
 
 # 从配置获取路径
 resource_dir: Path = plugin_config.resource_dir
@@ -110,25 +111,63 @@ ITEM_TEXTURES = {
         "7": str(resource_dir / "icon" / "Texture2D" / "item_blueprint_fragment.png"),
     },
     "mysekai_fixture": {
-        "118": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sapling1_118.png"),
-        "119": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sapling1_119.png"),
-        "120": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sapling1_120.png"),
-        "121": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sapling1_121.png"),
-        "126": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_126.png"),
-        "127": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_127.png"),
-        "128": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_128.png"),
-        "129": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_129.png"),
-        "130": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_130.png"),
-        "474": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_474.png"),
-        "475": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_475.png"),
-        "476": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_476.png"),
-        "477": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_477.png"),
-        "478": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_478.png"),
-        "479": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_479.png"),
-        "480": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_480.png"),
-        "481": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_481.png"),
-        "482": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_482.png"),
-        "483": str(resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_483.png"),
+        "118": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sapling1_118.png"
+        ),
+        "119": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sapling1_119.png"
+        ),
+        "120": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sapling1_120.png"
+        ),
+        "121": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sapling1_121.png"
+        ),
+        "126": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_126.png"
+        ),
+        "127": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_127.png"
+        ),
+        "128": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_128.png"
+        ),
+        "129": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_129.png"
+        ),
+        "130": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_130.png"
+        ),
+        "474": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_474.png"
+        ),
+        "475": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_475.png"
+        ),
+        "476": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_476.png"
+        ),
+        "477": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_477.png"
+        ),
+        "478": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_478.png"
+        ),
+        "479": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_479.png"
+        ),
+        "480": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_480.png"
+        ),
+        "481": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_481.png"
+        ),
+        "482": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_482.png"
+        ),
+        "483": str(
+            resource_dir / "icon" / "Texture2D" / "mdl_non1001_before_sprout1_483.png"
+        ),
     },
     "mysekai_music_record": {
         352: str(resource_dir / "icon" / "Texture2D" / "music352.png"),
@@ -166,7 +205,7 @@ def get_font(size: int = 8) -> ImageFont.FreeTypeFont:
     # 1. 优先尝试加载插件自带的中文字体
     try:
         if plugin_config.font_path.exists():
-            font = ImageFont.truetype(str(plugin_config.font_path), size)
+            font = load_font_from_path(str(plugin_config.font_path), size)
         else:
             logger.warning(f"中文字体文件未找到: {plugin_config.font_path}")
     except IOError as e:
@@ -175,7 +214,7 @@ def get_font(size: int = 8) -> ImageFont.FreeTypeFont:
     # 2. 尝试 Arial
     if font is None:
         try:
-            font = ImageFont.truetype("arial.ttf", size)
+            font = load_font_from_path("arial.ttf", size)
         except IOError:
             logger.warning("Arial font not found, using default font")
 

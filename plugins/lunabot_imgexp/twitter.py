@@ -16,18 +16,23 @@ from nonebot.rule import to_me
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from PIL import Image
 
-from .config import config
-from ..utils.tools import get_logger, get_exc_desc, run_in_pool, truncate, TempFilePath, send_forward_msg
-from ..utils.network import download_image
-from ..utils.browser import PlaywrightPage
-from ..utils.draw.img_utils import concat_images, save_transparent_static_gif
-from ..utils.image_utils import image_segment
+from plugins.lunabot_imgexp.config import config
+from utils.logging import get_logger, get_exc_desc
+from utils.concurrency import run_in_pool
+from utils.text import truncate
+from utils.files import TemporaryPath
+from utils.onebot.forward import send_forward_msg
+from utils.network.http import download_image
+from utils.rendering.browser import browser_pool
+from utils.rendering.draw.img_utils import concat_images, save_transparent_static_gif
+from utils.onebot.media import image_segment
 
-logger = get_logger('Twitter')
+logger = get_logger("Twitter")
 
 try:
-    from ..plugin_manager.enable import is_feature_enabled
-    from ..plugin_manager.cd_manager import check_cd, update_cd
+    from core.access import is_feature_enabled
+    from core.cooldown import check_cd, update_cd
+
     MANAGER_AVAILABLE = True
 except ImportError:
     MANAGER_AVAILABLE = False
@@ -36,8 +41,10 @@ PLUGIN_NAME = "lunabot_imgexp"
 
 # ==================== 推特图片下载 ==================== #
 
+
 class ReplyException(Exception):
     pass
+
 
 async def get_x_content(url: str) -> Tuple[str, List[str]]:
     """从 X 帖子 URL 中提取文本内容和图片链接。"""
@@ -51,8 +58,8 @@ async def get_x_content(url: str) -> Tuple[str, List[str]]:
             await route.abort()
         else:
             await route.continue_()
-    
-    async with PlaywrightPage() as page:
+
+    async with browser_pool.page() as page:
         await page.route("**/*", block_agressive_resources)
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=15000)
@@ -60,9 +67,13 @@ async def get_x_content(url: str) -> Tuple[str, List[str]]:
             # 等待推文核心内容出现
             tweet_selector = 'article[data-testid="tweet"]'
             try:
-                await page.wait_for_selector(tweet_selector, state="visible", timeout=10000)
+                await page.wait_for_selector(
+                    tweet_selector, state="visible", timeout=10000
+                )
             except PlaywrightTimeoutError:
-                raise ReplyException(f"未能找到推文内容，可能是由登录墙、已被删除或网络超时引起，请稍后再试")
+                raise ReplyException(
+                    f"未能找到推文内容，可能是由登录墙、已被删除或网络超时引起，请稍后再试"
+                )
 
             # 处理“敏感内容”或“显示更多”按钮
             sensitive_overlay_selector = '[data-testid="tweet"] div[role="button"]:has-text("View"), [data-testid="tweet"] div[role="button"]:has-text("Show")'
@@ -73,19 +84,23 @@ async def get_x_content(url: str) -> Tuple[str, List[str]]:
                     for overlay in overlays:
                         if await overlay.is_visible():
                             await overlay.click(force=True)
-                            await page.wait_for_timeout(500) # 给一点渲染时间
+                            await page.wait_for_timeout(500)  # 给一点渲染时间
                 except Exception as e:
-                    raise ReplyException(f"尝试点击敏感内容遮罩时出错: {get_exc_desc(e)}")
+                    raise ReplyException(
+                        f"尝试点击敏感内容遮罩时出错: {get_exc_desc(e)}"
+                    )
 
             # 提取图片
             photo_selector = 'div[data-testid="tweetPhoto"] img'
             try:
-                await page.wait_for_selector(photo_selector, state="attached", timeout=3000)
+                await page.wait_for_selector(
+                    photo_selector, state="attached", timeout=3000
+                )
             except PlaywrightTimeoutError:
                 pass
 
             img_locators = await page.locator(photo_selector).all()
-            
+
             for locator in img_locators:
                 src = await locator.get_attribute("src")
                 if src:
@@ -93,17 +108,17 @@ async def get_x_content(url: str) -> Tuple[str, List[str]]:
                     clean_src = src
                     if "pbs.twimg.com/media" in src:
                         if "name=" in src:
-                            clean_src = re.sub(r'name=[a-z0-9]+', 'name=large', src)
+                            clean_src = re.sub(r"name=[a-z0-9]+", "name=large", src)
                         else:
                             clean_src = src + "&name=large"
-                            
+
                     if clean_src not in image_urls:
                         image_urls.append(clean_src)
 
             # 提取用户名
             user_locator = page.locator(f'{tweet_selector} [data-testid="User-Name"]')
             username_text = await user_locator.inner_text()
-            display_name = username_text.split('\n')[0] if username_text else "Unknown"
+            display_name = username_text.split("\n")[0] if username_text else "Unknown"
 
             # 提取推文正文
             text_locator = page.locator(f'{tweet_selector} [data-testid="tweetText"]')
@@ -129,10 +144,14 @@ class ArgumentParser(argparse.ArgumentParser):
     def error(self, message):
         raise ReplyException(message)
 
+
 ximg = on_command("ximg", aliases={"x img", "tw img", "推图"}, priority=5, block=True)
 
+
 @ximg.handle()
-async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message = CommandArg()):
+async def _(
+    bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message = CommandArg()
+):
     # 插件管理检查
     if MANAGER_AVAILABLE:
         group_id = str(event.group_id)
@@ -148,14 +167,14 @@ async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message 
             await ximg.finish(f"功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
     raw_args = args.extract_plain_text().strip().split()
-    
+
     parser = ArgumentParser(description="推特图片下载", add_help=False)
-    parser.add_argument('url', type=str, nargs='?', help='X推文链接')
-    parser.add_argument('--vertical',   '-V', action='store_true')
-    parser.add_argument('--horizontal', '-H', action='store_true')
-    parser.add_argument('--grid',       '-G', action='store_true')
-    parser.add_argument('--fold',       '-f', action='store_true')
-    parser.add_argument('--gif',        '-g', action='store_true')
+    parser.add_argument("url", type=str, nargs="?", help="X推文链接")
+    parser.add_argument("--vertical", "-V", action="store_true")
+    parser.add_argument("--horizontal", "-H", action="store_true")
+    parser.add_argument("--grid", "-G", action="store_true")
+    parser.add_argument("--fold", "-f", action="store_true")
+    parser.add_argument("--gif", "-g", action="store_true")
 
     try:
         args_obj = parser.parse_args(raw_args)
@@ -167,39 +186,48 @@ async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message 
     url = args_obj.url
     if not url:
         await ximg.finish(
-"""
+            """
 使用方式: /ximg <url> [-V] [-H] [-G] [-f]
 -V: 垂直拼图 -H: 水平拼图 -G 网格拼图 
 -f 折叠回复 -g 转换为GIF
 不加参数默认各个图片分开发送
 示例: /ximg https://x.com/xxx/status/12345 -G
-""".strip())
+""".strip()
+        )
 
     if [args_obj.vertical, args_obj.horizontal, args_obj.grid].count(True) > 1:
-        await ximg.finish('只能选择一种拼图模式')
-    
-    concat_mode = 'v' if args_obj.vertical else 'h' if args_obj.horizontal else 'g' if args_obj.grid else None
+        await ximg.finish("只能选择一种拼图模式")
+
+    concat_mode = (
+        "v"
+        if args_obj.vertical
+        else "h"
+        if args_obj.horizontal
+        else "g"
+        if args_obj.grid
+        else None
+    )
 
     await ximg.send("正在获取推文内容...")
 
     try:
-        logger.info(f'获取X图片链接: {url}')
+        logger.info(f"获取X图片链接: {url}")
         content, image_urls = await get_x_content(url)
         image_urls = image_urls[:16]
-        logger.info(f'获取到图片链接: {image_urls}')
+        logger.info(f"获取到图片链接: {image_urls}")
     except ReplyException as e:
         await ximg.finish(str(e))
     except Exception as e:
-        logger.error(f'获取X图片链接失败: {get_exc_desc(e)}')
-        await ximg.finish(f'获取图片链接失败: {get_exc_desc(e)}')
-    
+        logger.error(f"获取X图片链接失败: {get_exc_desc(e)}")
+        await ximg.finish(f"获取图片链接失败: {get_exc_desc(e)}")
+
     if not image_urls:
-        await ximg.finish('在推文中没有找到图片，可能是输入网页链接不正确或其他原因')
-    
+        await ximg.finish("在推文中没有找到图片，可能是输入网页链接不正确或其他原因")
+
     msg_content = url + "\n" + truncate(content, 64)
     messages = [MessageSegment.text(msg_content)]
 
-    force_download_image = True     # 不下载到本地再发送可能导致napcat报错
+    force_download_image = True  # 不下载到本地再发送可能导致napcat报错
 
     if force_download_image or concat_mode or args_obj.gif:
         try:
@@ -225,34 +253,34 @@ async def _(bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message 
         for img in images:
             if args_obj.gif:
                 # GIF 处理
-                gif_path_ctx = TempFilePath("gif", remove_after=timedelta(minutes=3))
+                gif_path_ctx = TemporaryPath("gif", remove_after=timedelta(minutes=3))
                 gif_path = stack.enter_context(gif_path_ctx)
                 await run_in_pool(save_transparent_static_gif, img, str(gif_path))
                 messages.append(image_segment(gif_path))
-            
+
             elif isinstance(img, Image.Image):
                 # PIL Image -> Temp File
-                tmp_ctx = TempFilePath("png")
+                tmp_ctx = TemporaryPath("png")
                 tmp_path = stack.enter_context(tmp_ctx)
-                img.save(tmp_path, format='PNG')
+                img.save(tmp_path, format="PNG")
                 messages.append(image_segment(tmp_path))
-            
+
             elif isinstance(img, bytes):
                 # Bytes -> Temp File
                 # 简单起见假设是 jpg/png，OneBot 通常能自动识别
-                tmp_ctx = TempFilePath("jpg") 
+                tmp_ctx = TemporaryPath("jpg")
                 tmp_path = stack.enter_context(tmp_ctx)
-                with open(tmp_path, 'wb') as f:
+                with open(tmp_path, "wb") as f:
                     f.write(img)
                 messages.append(image_segment(tmp_path))
-                
+
             else:
                 # URL string
                 messages.append(image_segment(img))
 
         # 发送逻辑
         # 使用合并转发发送
-        await send_forward_msg(bot, event, messages)
+        await send_forward_msg(bot, event, items=messages)
 
     # 发送成功后再更新 CD
     if MANAGER_AVAILABLE:

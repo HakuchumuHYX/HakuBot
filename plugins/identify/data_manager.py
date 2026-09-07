@@ -1,3 +1,4 @@
+from utils.json_io import atomic_write_json
 import json
 import time
 import random
@@ -5,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Optional
 from nonebot import logger
 
-from .config import DAILY_RECORDS_FILE, RESOURCES_DIR
+from plugins.identify.config import DAILY_RECORDS_FILE, RESOURCES_DIR
 
 
 class DailyRecordManager:
@@ -18,7 +19,7 @@ class DailyRecordManager:
         """加载每日记录数据"""
         try:
             if self.records_file.exists():
-                with open(self.records_file, 'r', encoding='utf-8') as f:
+                with open(self.records_file, "r", encoding="utf-8") as f:
                     self.records_data = json.load(f)
                 logger.info(f"每日记录加载成功，共 {len(self.records_data)} 条记录")
             else:
@@ -32,8 +33,9 @@ class DailyRecordManager:
         """保存每日记录数据"""
         try:
             self.records_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.records_file, 'w', encoding='utf-8') as f:
-                json.dump(self.records_data, f, ensure_ascii=False, indent=2)
+            atomic_write_json(
+                self.records_file, self.records_data, ensure_ascii=False, indent=2
+            )
         except Exception as e:
             logger.error(f"保存每日记录失败: {e}")
 
@@ -67,7 +69,11 @@ class DailyRecordManager:
         try:
             # 获取所有图片文件
             image_files = list(RESOURCES_DIR.glob("*.*"))
-            image_files = [f for f in image_files if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']]
+            image_files = [
+                f
+                for f in image_files
+                if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".gif", ".bmp"]
+            ]
 
             if not image_files:
                 logger.warning("resources文件夹中没有找到图片文件")

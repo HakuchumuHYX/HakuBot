@@ -14,7 +14,10 @@ from nonebot.log import logger
 
 # 尝试导入 sssekai，如果失败则提供明确提示
 try:
-    from sssekai.crypto.APIManager import decrypt as _sssekai_decrypt, SEKAI_APIMANAGER_KEYSETS
+    from sssekai.crypto.APIManager import (
+        decrypt as _sssekai_decrypt,
+        SEKAI_APIMANAGER_KEYSETS,
+    )
 
     _SSSEKAI_LOADED = True
 except ImportError:

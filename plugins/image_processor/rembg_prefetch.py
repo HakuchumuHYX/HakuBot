@@ -7,10 +7,13 @@ import aiohttp
 from nonebot.log import logger
 
 
-REMBG_RELEASE_BASE_URL = os.getenv(
-    "HAKUBOT_REMBG_RELEASE_BASE_URL",
-    "https://github.com/danielgatis/rembg/releases/download/v0.0.0/",
-).rstrip("/") + "/"
+REMBG_RELEASE_BASE_URL = (
+    os.getenv(
+        "HAKUBOT_REMBG_RELEASE_BASE_URL",
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/",
+    ).rstrip("/")
+    + "/"
+)
 
 
 def get_u2net_home() -> Path:
@@ -26,7 +29,7 @@ def get_u2net_home() -> Path:
 
     # rembg_prefetch.py 位于 plugins/image_processor 下
     project_root = Path(__file__).resolve().parents[2]
-    default_home = project_root / "data" / "rembg_models"
+    default_home = project_root / "data" / "shared" / "rembg_models"
 
     # 确保同一进程里 rembg 推理也使用该路径
     os.environ.setdefault("U2NET_HOME", str(default_home))
@@ -93,7 +96,9 @@ async def ensure_rembg_models_downloaded(
                             continue
                     else:
                         if size == expected_len:
-                            logger.info(f"[rembg] 模型已存在且完整: {target} ({size} bytes)")
+                            logger.info(
+                                f"[rembg] 模型已存在且完整: {target} ({size} bytes)"
+                            )
                             continue
                         if size > expected_len:
                             # 极少数情况：重复写入等，直接保留并跳过
@@ -119,7 +124,9 @@ async def ensure_rembg_models_downloaded(
             for attempt in range(1, retries + 1):
                 tmp = u2net_home / (target.name + f".part-{os.urandom(3).hex()}")
                 try:
-                    logger.info(f"[rembg] 下载模型({attempt}/{retries}): {model} <- {url}")
+                    logger.info(
+                        f"[rembg] 下载模型({attempt}/{retries}): {model} <- {url}"
+                    )
 
                     async with session.get(url, allow_redirects=True) as resp:
                         resp.raise_for_status()

@@ -1,13 +1,15 @@
+from utils.rendering.fonts import load_font_from_path
 from difflib import SequenceMatcher
 from typing import Dict, List, Tuple
 from nonebot import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from ..config import SIMILARITY_THRESHOLD, PLUGIN_DIR
-from ..models.data import data_manager
-from ..utils.common import preprocess_text
+from plugins.poke_reply.config import SIMILARITY_THRESHOLD, PLUGIN_DIR
+from plugins.poke_reply.models.data import data_manager
+from plugins.poke_reply.utils.common import preprocess_text
 
 # --- 文本相似度检查 ---
+
 
 class SimilarityChecker:
     def __init__(self, threshold: float = SIMILARITY_THRESHOLD):
@@ -25,7 +27,9 @@ class SimilarityChecker:
 
         for existing in existing_texts:
             processed_existing = preprocess_text(existing)
-            similarity = SequenceMatcher(None, processed_new, processed_existing).ratio()
+            similarity = SequenceMatcher(
+                None, processed_new, processed_existing
+            ).ratio()
             if similarity >= self.threshold:
                 return True
         return False
@@ -39,22 +43,25 @@ class SimilarityChecker:
         if group_id in self.group_cache:
             del self.group_cache[group_id]
 
+
 similarity_checker = SimilarityChecker()
 
 # --- 文本转图片 ---
 
-HTMLRENDER_AVAILABLE = False
+MARKDOWN_RENDER_AVAILABLE = False
 try:
-    from ...utils.browser import md_to_pic
-    HTMLRENDER_AVAILABLE = True
+    from utils.rendering.engine import render_markdown
+
+    MARKDOWN_RENDER_AVAILABLE = True
 except ImportError:
     logger.warning("浏览器模块未就绪，将使用 PIL 进行简单文本转图片")
 
+
 async def convert_text_to_image(text: str, group_id: int) -> Tuple[bool, bytes]:
     """将文本转换为图片"""
-    if HTMLRENDER_AVAILABLE:
+    if MARKDOWN_RENDER_AVAILABLE:
         try:
-            # 使用 md_to_pic，因为它支持 Markdown 格式，效果较好
+            # 使用 render_markdown，因为它支持 Markdown 格式，效果较好
             # 为了防止 Markdown 注入，可以考虑是否进行转义，这里暂且假设用户输入是安全的或预处理过
             # 添加一些基本的 CSS 样式使看起来更像聊天气泡
             css = """
@@ -75,18 +82,19 @@ async def convert_text_to_image(text: str, group_id: int) -> Tuple[bool, bytes]:
                 }
             </style>
             """
-            # 简单的换行处理，虽然md_to_pic会处理，但保留原格式更好
+            # 简单的换行处理，虽然公共 Markdown 渲染会处理，但保留原格式更好
             formatted_text = text.replace("\n", "  \n")
-            image_data = await md_to_pic(
+            image_data = await render_markdown(
                 md=formatted_text + css,
                 width=500,  # 限制宽度，防止过宽
             )
             return True, image_data
         except Exception as e:
-            logger.error(f"htmlrender 转换文本失败: {e}，尝试使用 PIL 降级方案")
-    
+            logger.error(f"共享 Markdown 渲染失败: {e}，尝试使用 PIL 降级方案")
+
     # PIL 降级方案
     return await _convert_text_to_image_pil(text)
+
 
 async def _convert_text_to_image_pil(text: str) -> Tuple[bool, bytes]:
     try:
@@ -94,28 +102,29 @@ async def _convert_text_to_image_pil(text: str) -> Tuple[bool, bytes]:
         padding = 20
         line_spacing = 5
         max_width = 600
-        
+
         # 尝试加载中文字体，如果没有则使用默认
         font_paths = [
-            "msyh.ttc", "simhei.ttf", # Windows
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", # Linux
-            "/System/Library/Fonts/PingFang.ttc" # macOS
+            "msyh.ttc",
+            "simhei.ttf",  # Windows
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",  # Linux
+            "/System/Library/Fonts/PingFang.ttc",  # macOS
         ]
-        
+
         font = None
         for path in font_paths:
             try:
-                font = ImageFont.truetype(path, font_size)
+                font = load_font_from_path(path, font_size)
                 break
             except:
                 continue
-        
+
         if font is None:
             font = ImageFont.load_default()
 
         # 简单的自动换行逻辑
         lines = []
-        for paragraph in text.split('\n'):
+        for paragraph in text.split("\n"):
             line = ""
             for char in paragraph:
                 test_line = line + char
@@ -128,27 +137,33 @@ async def _convert_text_to_image_pil(text: str) -> Tuple[bool, bytes]:
                 else:
                     line = test_line
             lines.append(line)
-        
+
         # 计算图片尺寸
-        text_height = sum([font.getbbox(line)[3] - font.getbbox(line)[1] + line_spacing for line in lines])
+        text_height = sum(
+            [
+                font.getbbox(line)[3] - font.getbbox(line)[1] + line_spacing
+                for line in lines
+            ]
+        )
         img_width = max_width
         img_height = text_height + 2 * padding
-        
-        image = Image.new('RGB', (img_width, img_height), color=(255, 255, 255))
+
+        image = Image.new("RGB", (img_width, img_height), color=(255, 255, 255))
         draw = ImageDraw.Draw(image)
-        
+
         y_text = padding
         for line in lines:
             draw.text((padding, y_text), line, font=font, fill=(0, 0, 0))
             bbox = font.getbbox(line)
             height = bbox[3] - bbox[1]
             y_text += height + line_spacing
-            
+
         import io
+
         img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='PNG')
+        image.save(img_byte_arr, format="PNG")
         return True, img_byte_arr.getvalue()
-        
+
     except Exception as e:
         logger.error(f"PIL 转换文本失败: {e}")
         return False, b""

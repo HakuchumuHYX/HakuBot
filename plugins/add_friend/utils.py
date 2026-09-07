@@ -1,6 +1,6 @@
 import re
 from typing import Optional, Set
-from .config import GROUP_PATTERNS
+from plugins.add_friend.config import GROUP_PATTERNS
 
 
 def extract_group_candidates(comment: str) -> Set[str]:
@@ -25,7 +25,7 @@ def extract_group_candidates(comment: str) -> Set[str]:
         for number in re.findall(pattern, comment, re.IGNORECASE):
             # 如果是最后一个模式（纯数字），需要确保不是QQ号
             # 简单检查：如果数字长度在4-10位之间，可能是群号
-            if pattern == r'(\d+)' and not (4 <= len(number) <= 10):
+            if pattern == r"(\d+)" and not (4 <= len(number) <= 10):
                 continue
             candidates.add(number)
 
@@ -48,11 +48,8 @@ async def extract_group_from_comment(comment: str) -> Optional[str]:
     return next(iter(candidates))
 
 
-def create_request_data(user_id: int, comment: str, group: Optional[str], flag: str) -> dict:
+def create_request_data(
+    user_id: int, comment: str, group: Optional[str], flag: str
+) -> dict:
     """创建好友请求数据字典"""
-    return {
-        "user_id": user_id,
-        "comment": comment,
-        "group": group,
-        "flag": flag
-    }
+    return {"user_id": user_id, "comment": comment, "group": group, "flag": flag}

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 
 import asyncio
 from dataclasses import asdict
@@ -15,9 +16,13 @@ from urllib.parse import quote
 import aiosqlite
 from loguru import logger
 
-from .capture import CompletedResponse, DiagnosticLogEntry, RunContext
-from .config import BridgeConfig
-from .status import BotStatusSnapshot
+from plugins.webconsole_bridge.capture import (
+    CompletedResponse,
+    DiagnosticLogEntry,
+    RunContext,
+)
+from plugins.webconsole_bridge.config import BridgeConfig
+from plugins.webconsole_bridge.status import BotStatusSnapshot
 
 SUCCESS_QUEUE_SIZE = 5_000
 
@@ -28,9 +33,7 @@ def _encode_full_value(
     if value is None:
         return None, None
     raw = value.encode("utf-8")
-    return gzip.compress(raw, compresslevel=6, mtime=0), hashlib.sha256(
-        raw
-    ).hexdigest()
+    return gzip.compress(raw, compresslevel=6, mtime=0), hashlib.sha256(raw).hexdigest()
 
 
 def _response_payload(response: CompletedResponse) -> dict[str, Any]:
@@ -140,9 +143,7 @@ class PersistenceWriter:
     async def start(self) -> None:
         if self._running:
             return
-        database_uri = (
-            f"file:{quote(str(self.config.database_path), safe='/')}?mode=rw"
-        )
+        database_uri = f"file:{quote(str(self.config.database_path), safe='/')}?mode=rw"
         connection = await aiosqlite.connect(database_uri, uri=True)
         try:
             await connection.execute("PRAGMA busy_timeout = 5000")
@@ -153,9 +154,8 @@ class PersistenceWriter:
             raise
         self._connection = connection
         self._running = True
-        self._worker_task = asyncio.create_task(
-            self._worker_loop(),
-            name="webconsole-database-writer",
+        self._worker_task = runtime.spawn(
+            self._worker_loop(), name="webconsole-database-writer", shutdown="owner"
         )
 
     async def stop(self) -> None:
@@ -259,11 +259,7 @@ class PersistenceWriter:
         deadline = asyncio.get_running_loop().time() + timeout
         while True:
             spool_files = tuple(self.config.spool_path.glob("*.json.gz"))
-            if (
-                self._queue.empty()
-                and not self._pending_status
-                and not spool_files
-            ):
+            if self._queue.empty() and not self._pending_status and not spool_files:
                 return
             if asyncio.get_running_loop().time() >= deadline:
                 raise TimeoutError("persistence writer did not flush in time")
@@ -352,9 +348,7 @@ class PersistenceWriter:
         elif kind == "diagnostic":
             diagnostic = payload.get("diagnostic")
             if not isinstance(diagnostic, dict):
-                raise ValueError(
-                    "diagnostic spool is missing diagnostic object"
-                )
+                raise ValueError("diagnostic spool is missing diagnostic object")
             await self._insert_diagnostic(diagnostic)
         else:
             raise ValueError(f"unsupported spool kind: {kind!r}")
@@ -362,18 +356,12 @@ class PersistenceWriter:
 
     async def _insert_response(self, payload: dict[str, Any]) -> None:
         connection = self._require_connection()
-        request_gzip, request_sha = _encode_full_value(
-            payload.get("request_raw")
-        )
-        response_gzip, response_sha = _encode_full_value(
-            payload.get("response_raw")
-        )
+        request_gzip, request_sha = _encode_full_value(payload.get("request_raw"))
+        response_gzip, response_sha = _encode_full_value(payload.get("response_raw"))
         logs_gzip, logs_sha = _encode_full_value(payload.get("logs_raw"))
         parameters = {
             **payload,
-            "has_full_diagnostics": int(
-                bool(payload["has_full_diagnostics"])
-            ),
+            "has_full_diagnostics": int(bool(payload["has_full_diagnostics"])),
             "request_raw_gzip": request_gzip,
             "response_raw_gzip": response_gzip,
             "logs_raw_gzip": logs_gzip,
@@ -485,9 +473,8 @@ class PersistenceWriter:
                 await connection.rollback()
                 message = str(exc).lower()
                 if (
-                    ("locked" not in message and "busy" not in message)
-                    or attempt >= len(delays)
-                ):
+                    "locked" not in message and "busy" not in message
+                ) or attempt >= len(delays):
                     raise
                 await asyncio.sleep(delays[attempt])
             except BaseException:

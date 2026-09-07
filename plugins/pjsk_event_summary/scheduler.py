@@ -1,13 +1,14 @@
+from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 
 from nonebot import get_driver, require
 
-from ..utils.moesekai_hub import (
+from plugins.pjsk_event_summary.services.index import (
     INITIAL_REBUILD_DELAY_SECONDS,
     REBUILD_INTERVAL_HOURS,
     rebuild_event_index,
 )
-from ..utils.tools import get_logger
+from utils.logging import get_logger
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
@@ -23,13 +24,13 @@ async def _run_rebuild(reason: str) -> None:
         logger.exception(f"MoeSekai-Hub 事件索引重建任务失败 ({reason}): {e}")
 
 
-@driver.on_startup
+@on_plugin_startup(driver, "pjsk_event_summary")
 async def _startup_rebuild() -> None:
     async def delayed_rebuild() -> None:
         await asyncio.sleep(INITIAL_REBUILD_DELAY_SECONDS)
         await _run_rebuild("startup")
 
-    asyncio.create_task(delayed_rebuild())
+    runtime.spawn(delayed_rebuild(), name="pjsk_event_summary")
 
 
 @scheduler.scheduled_job(

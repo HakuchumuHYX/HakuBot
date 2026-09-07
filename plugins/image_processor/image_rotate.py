@@ -5,18 +5,16 @@ import os
 from nonebot.log import logger
 from PIL import Image
 
-from ..utils.tools import run_in_pool
-from .utils import (
+from utils.concurrency import run_in_pool
+from plugins.image_processor.utils import (
     IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
     IMAGE_PROCESSOR_MAX_GIF_BYTES,
     IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
     download_to_temp,
-    ensure_output_dir,
-    guess_ext_from_url,
     load_gif_frames,
-    safe_delete_file,
     save_gif,
 )
+from utils.files import ensure_output_dir, guess_ext_from_url, safe_delete_file
 
 
 def make_square_canvas(img: Image.Image) -> Image.Image:
@@ -37,7 +35,9 @@ def _process_rotate_file(image_path: str, direction: str, speed: float) -> str:
     if direction == "clockwise":
         step_angle = -step_angle
 
-    logger.info(f"旋转参数: 倍速{speed}, 总帧数{frames_per_circle}, 步进{step_angle:.2f}度")
+    logger.info(
+        f"旋转参数: 倍速{speed}, 总帧数{frames_per_circle}, 步进{step_angle:.2f}度"
+    )
 
     with Image.open(image_path) as input_img:
         if bool(getattr(input_img, "is_animated", False)):
@@ -61,11 +61,19 @@ def _process_rotate_file(image_path: str, direction: str, speed: float) -> str:
         offset_x = (diagonal - source_frame.size[0]) // 2
         offset_y = (diagonal - source_frame.size[1]) // 2
         frame_canvas.paste(source_frame, (offset_x, offset_y), source_frame)
-        output_frames.append(frame_canvas.rotate(current_angle, resample=Image.Resampling.BICUBIC))
+        output_frames.append(
+            frame_canvas.rotate(current_angle, resample=Image.Resampling.BICUBIC)
+        )
 
     output_dir = ensure_output_dir("nonebot_image_rotate")
     output_path = output_dir / f"rotate_{direction}_{speed}x_{os.urandom(4).hex()}.gif"
-    save_gif(output_frames, output_path, durations=[50] * len(output_frames), loop=0, optimize_rgb=False)
+    save_gif(
+        output_frames,
+        output_path,
+        durations=[50] * len(output_frames),
+        loop=0,
+        optimize_rgb=False,
+    )
     return str(output_path)
 
 
@@ -81,7 +89,11 @@ async def process_image_rotate(image_url: str, direction: str, speed: float) -> 
     image_path = ""
     try:
         ext = guess_ext_from_url(image_url, "jpg")
-        max_bytes = IMAGE_PROCESSOR_MAX_GIF_BYTES if ext == "gif" else IMAGE_PROCESSOR_MAX_IMAGE_BYTES
+        max_bytes = (
+            IMAGE_PROCESSOR_MAX_GIF_BYTES
+            if ext == "gif"
+            else IMAGE_PROCESSOR_MAX_IMAGE_BYTES
+        )
         image_path = await download_to_temp(
             image_url,
             ext=ext,
@@ -91,7 +103,9 @@ async def process_image_rotate(image_url: str, direction: str, speed: float) -> 
         )
         result_path = await process_rotate(image_path, direction, speed)
         if result_path and os.path.exists(result_path):
-            logger.info(f"旋转成功: {result_path}, 大小: {os.path.getsize(result_path)}")
+            logger.info(
+                f"旋转成功: {result_path}, 大小: {os.path.getsize(result_path)}"
+            )
             return result_path
         return ""
     except Exception as e:

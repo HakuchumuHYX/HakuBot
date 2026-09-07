@@ -1,4 +1,4 @@
-from ..utils.browser import html_to_pic
+from utils.rendering.engine import render_html
 from jinja2 import Template
 from typing import List, Dict, Any
 import re
@@ -250,7 +250,7 @@ def parse_sign_text(text: str) -> Dict:
     if not text:
         return {"is_empty": True}
 
-    lines = [l.strip() for l in text.strip().split('\n') if l.strip()]
+    lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
     if not lines:
         return {"is_empty": True}
 
@@ -271,21 +271,20 @@ def parse_sign_text(text: str) -> Dict:
             items.append({"key": match.group(1), "value": match.group(2)})
         else:
             is_quote = line in poem_set
-            intro_data.append({
-                "text": line,
-                "is_quote": is_quote
-            })
+            intro_data.append({"text": line, "is_quote": is_quote})
 
     return {
         "is_empty": False,
         "title": title,
         "poem": poem,
         "intro_data": intro_data,
-        "items": items
+        "items": items,
     }
 
 
-async def render_sign_image_v2(sign_text: str, index: int, watermark_text: str = "") -> bytes:
+async def render_sign_image_v2(
+    sign_text: str, index: int, watermark_text: str = ""
+) -> bytes:
     """
     渲染签文图片
     :param sign_text: 签文内容
@@ -304,8 +303,6 @@ async def render_sign_image_v2(sign_text: str, index: int, watermark_text: str =
 
     html = Template(SIGN_TEMPLATE).render(**context)
 
-    return await html_to_pic(
-        html,
-        viewport={"width": 420, "height": 10},
-        device_scale_factor=2
+    return await render_html(
+        html, viewport={"width": 420, "height": 10}, device_scale_factor=2
     )
