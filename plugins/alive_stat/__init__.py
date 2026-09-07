@@ -3,7 +3,7 @@ HakuBot alive_stat — 统一处理 alive 命令。
 显示 HakuBot + autochat 运行时间、服务器状态、进程监控、网络连通性。
 """
 
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import on_plugin_shutdown
 from datetime import datetime
 
 from nonebot import on_command, require, get_driver

@@ -1,4 +1,4 @@
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import runtime as app_runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -55,7 +55,7 @@ async def _on_startup():
         logger.warning(f"生成 guess_song.json 时出错: {e}，将尝试使用已有文件。")
 
     await cache_service.load_resources_and_manifest()
-    runtime.spawn(cache_service.periodic_cleanup_task(), name="pjsk_guess_song")
+    app_runtime.spawn(cache_service.periodic_cleanup_task(), name="pjsk_guess_song")
     logger.info("PJSK 猜歌插件服务已启动。")
 
 
