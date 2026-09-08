@@ -74,7 +74,18 @@ func (b *Browser) Markdown(ctx context.Context, md, css string, o Options) ([]by
 			scripts.WriteString("<script>" + string(data) + "</script>")
 		}
 	}
-	return b.HTML(ctx, "<!doctype html><html><head><meta charset=\"utf-8\"><style>"+css+"</style></head><body class=\"markdown-body\">"+out.String()+scripts.String()+"</body></html>", o)
+	bodyStyle := "padding:20px;box-sizing:border-box;"
+	if o.Background != "" {
+		bodyStyle += "background-color:" + o.Background + ";"
+	}
+	footer := ""
+	if o.Footer != "" {
+		footer = `<div style="text-align:right;color:gray;font-size:.9em;font-style:italic;white-space:pre-wrap">` + template.HTMLEscapeString(o.Footer) + `</div>`
+	}
+	html := "<!doctype html><html><head><meta charset=\"utf-8\"><style>" + css + "</style></head>" +
+		`<body class="markdown-body" style="` + template.HTMLEscapeString(bodyStyle) + `">` +
+		out.String() + footer + scripts.String() + "</body></html>"
+	return b.HTML(ctx, html, o)
 }
 func FontPath(paths utils.Paths, weight string) (string, error) {
 	if weight == "" {

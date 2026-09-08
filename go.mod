@@ -4,8 +4,10 @@ go 1.25.1
 
 require (
 	github.com/RealAlexandreAI/json-repair v0.0.17
+	github.com/chai2010/webp v1.4.0
 	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327
 	github.com/chromedp/chromedp v0.14.2
+	github.com/disintegration/imaging v1.6.2
 	github.com/fogleman/gg v1.3.0
 	github.com/litao91/goldmark-mathjax v0.0.0-20210217064022-a43cf739a50f
 	github.com/sirupsen/logrus v1.9.4

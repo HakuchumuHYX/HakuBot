@@ -11,6 +11,7 @@ import (
 )
 
 type BotConfig struct {
+	CommandPrefixes   []string `json:"command_prefixes,omitempty"`
 	Root              string   `json:"root"`
 	NickName          []string `json:"nickname"`
 	CommandPrefix     string   `json:"command_prefix"`
@@ -27,6 +28,15 @@ func ReadBotConfig(path string) (BotConfig, error) {
 	err := utils.ReadJSON(path, &c)
 	return c, err
 }
+
+// Prefixes preserves all configured triggers; the singular field remains the ZeroBot default.
+func (c BotConfig) Prefixes() []string {
+	if len(c.CommandPrefixes) > 0 {
+		return c.CommandPrefixes
+	}
+	return []string{c.CommandPrefix}
+}
+
 func (c BotConfig) ZeroConfig() (*zero.Config, error) {
 	u, err := url.Parse(c.WebSocketURL)
 	if err != nil {

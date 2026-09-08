@@ -70,11 +70,12 @@ type ChatOptions struct {
 }
 
 func (c *Client) Chat(ctx context.Context, messages []map[string]any, o ChatOptions) (ChatResult, error) {
-	body := maps.Clone(c.config.ExtraBody)
-	if body == nil {
-		body = map[string]any{}
+	body := make(map[string]any)
+	extra := maps.Clone(c.config.ExtraBody)
+	if extra == nil {
+		extra = make(map[string]any)
 	}
-	maps.Copy(body, o.ExtraBody)
+	maps.Copy(extra, o.ExtraBody)
 	model := o.Model
 	if model == "" {
 		model = c.config.Model
@@ -93,7 +94,7 @@ func (c *Client) Chat(ctx context.Context, messages []map[string]any, o ChatOpti
 		thinking = *o.ThinkingEnabled
 	}
 	if thinking {
-		body["thinking"] = map[string]string{"type": "enabled"}
+		extra["thinking"] = map[string]string{"type": "enabled"}
 	} else {
 		if o.Temperature != nil {
 			body["temperature"] = *o.Temperature
@@ -112,6 +113,8 @@ func (c *Client) Chat(ctx context.Context, messages []map[string]any, o ChatOpti
 	if o.ResponseFormat != nil {
 		body["response_format"] = o.ResponseFormat
 	}
+	// Provider-specific fields follow the same override order as the Python SDK.
+	maps.Copy(body, extra)
 	data, err := json.Marshal(body)
 	if err != nil {
 		return ChatResult{}, err

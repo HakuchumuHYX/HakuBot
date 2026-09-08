@@ -1,8 +1,10 @@
 # HakuBot
 
-基于 Go / ZeroBot 的自用 OneBot V11 Bot。当前提供启动装配、应用核心和公共工具，尚未注册业务插件。Python 版结构见 [ARCHITECTURE.md](ARCHITECTURE.md)，重写目标和进度见 [GOAL.md](GOAL.md)。
+基于 Go / ZeroBot 的自用 OneBot V11 Bot。当前提供启动装配、应用核心和公共工具，已接入 AI 助手插件。Python 版结构见 [ARCHITECTURE.md](ARCHITECTURE.md)，重写目标和进度见 [GOAL.md](GOAL.md)。
 
 ## 构建与配置
+
+`config_example/` 集中存放配置示例，统一使用 4 空格缩进；`config/` 存放真实配置，整个目录由 Git 忽略。两个目录的相对路径保持一致。
 
 使用 Go 1.25.1 或更新版本，在项目根目录执行：
 
@@ -11,7 +13,7 @@ go mod download
 go build ./...
 ```
 
-`config/bot.example.json` 是配置示例。实际配置保存为 `config/bot.json`，填写现有 OneBot 服务地址、Token 和超级用户；`reverse_websocket` 决定使用 ZeroBot 的正向客户端还是反向服务端。配置读取不会回写文件。
+`config_example/bot.json` 是配置示例。实际配置保存为 `config/bot.json`，填写现有 OneBot 服务地址、Token 和超级用户；`reverse_websocket` 决定使用 ZeroBot 的正向客户端还是反向服务端。配置读取不会回写文件。
 
 完成配置并准备接入时，启动命令为：
 
@@ -51,7 +53,7 @@ HTTP 客户端的空代理继承环境代理，`direct` 明确直连，也可传
 
 ## 与 Python 版的对应边界
 
-- 保留现有功能 ID、状态 JSON 的群/用户/功能键、秒级时间戳及 `waifu`、`alive_stats`、`sekai_cache`、`identify` 的路径例外。没有复制任何私密配置或业务数据。
+- 保留现有功能 ID、状态 JSON 的群/用户/功能键、秒级时间戳及 `waifu`、`alive_stats`、`sekai_cache`、`identify` 的路径例外。已原样复制 AI 助手的真实配置并由 Git 忽略，尚未迁移业务数据。
 - NoneBot 事件模型、消息构造和驱动由 ZeroBot 替代；日志通过 `utils/logging` 统一使用 Logrus，Python 线程池由 goroutine 和并发限额替代。
 - 公共帮助模板已改写为 Go 模板，保留日夜主题和分页脚本。业务插件中的 Jinja 模板要在相应插件迁移时转换，不能直接交给 Go 模板引擎。
 - `painter/plot` 的 Python 类链式 API 不逐类复制，画布、图形、渐变直接用 gg，布局使用已有绘图工具。字体、emoji、Markdown 扩展和排行榜像素效果仍需在具体插件中对照调整，不承诺与 Pillow/Jinja 输出逐像素一致。
@@ -76,3 +78,25 @@ logging.Event("ai_assistant", ctx.Event).Info("开始处理消息")
 ```
 
 `Module` 和 `Event` 返回原生 `*logrus.Entry`，继续使用 `WithField`、`WithFields`、`WithError` 即可。没有 module 字段的框架日志标为 `zerobot`，保留框架原有的 `[bot]`、`[ws]`、`[api]` 消息前缀和异常堆栈。字段按名称排序输出。
+
+## AI 助手
+
+`plugins/ai_assistant` 已接入启动入口。配置位于 `config/plugins/ai_assistant/config.json`，完整字段和默认值见 `config_example/plugins/ai_assistant/config.json`；未提供有效配置时只跳过 AI 命令并记录初始化错误。AI 助手的真实配置已从 Python 版原样复制，仅保留在本地并由 Git 忽略。
+
+| 命令（前缀使用 Bot 配置） | 功能 |
+| --- | --- |
+| `chat` | 单次多模态对话，按配置自动联网 |
+| `chat联网` / `chat_web` / `chatweb` / `chat搜索` | 强制 Tavily 搜索后回答 |
+| `生图` | 文生图；带当前或回复图片时调用图片编辑 |
+| `生图联网` / `生图web` / `生图搜索` | 搜索、视觉设定提炼、生图或编辑 |
+| `切换模型` / `更改模型` / `change_model` | 超管确认新聊天模型可用后保存配置 |
+
+保留查询规则提取和 LLM 重写、全部搜索参数、模块级聊天连接覆盖、参考图压缩、合并转发展开限制、Markdown 背景和水印、群聊子功能开关与 CD。视觉提炼使用搜索文本和图片描述，搜索图片不会自动作为编辑参考图上传。没有会话历史或数据库。
+
+自动搜索失败时会提示模型无法确认最新信息，强制联网在全部查询失败时直接报告错误；搜索成功但无结果与网络失败分别处理。`query_rewrite=false` 现在直接使用用户搜索文本，不再暗中做规则改写。CD 在最终聊天或生图调用成功后更新；查询重写和视觉提炼的额外 Token 不计入“本次回答 Token”。
+
+实现按注册与管理、配置、消息输入、对话、生图、搜索拆为六个文件，共享 HTTP 和 LLM 客户端。CSS 在渲染时生成，不再写入 `data/ai_assistant/custom_markdown.css`。文字降级保留 Markdown 原文，避免破坏代码和公式。图片格式能力补充了 EXIF 方向处理和 WebP 编码；WebP 编码依赖 CGO，构建环境需具备 C 编译器。
+
+本次仅通过构建和源码核对，尚未接入实际 QQ、Tavily、LLM 或 Chromium 做端到端运行。
+
+真实的 `config/bot.json` 已根据 Python `.env.prod` 和现有 OneBotFilter 路由生成，沿用昵称、超管和反向 WS 设置，Chromium 指向已有浏览器可执行文件。`command_prefixes` 可配置多个命令前缀（例如 `["", "."]`），省略时使用 `command_prefix`；AI 命令支持列表中的所有前缀。当前未启动 Go Bot，也未修改现有服务路由。

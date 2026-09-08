@@ -39,6 +39,20 @@ func (r *Lifecycle) Go(name string, work func(context.Context) error) error {
 	}()
 	return nil
 }
+
+// Do tracks a handler on the calling goroutine, preserving ZeroBot's panic handling.
+func (r *Lifecycle) Do(work func(context.Context) error) error {
+	r.mu.Lock()
+	if r.stopping {
+		r.mu.Unlock()
+		return errors.New("runtime is stopping")
+	}
+	r.tasks.Add(1)
+	r.mu.Unlock()
+	defer r.tasks.Done()
+	return work(r.ctx)
+}
+
 func (r *Lifecycle) Every(name string, interval time.Duration, work func(context.Context) error) error {
 	if interval <= 0 {
 		return errors.New("interval must be positive")

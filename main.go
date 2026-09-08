@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/HakuchumuHYX/HakuBot/core"
+	"github.com/HakuchumuHYX/HakuBot/plugins/ai_assistant"
 	"github.com/HakuchumuHYX/HakuBot/utils/logging"
 	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
@@ -49,7 +50,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// Business plugins register here before the transport starts.
+	if err := app.Runtime.StartPlugin(app.Access, "ai_assistant", func(context.Context) error {
+		return ai_assistant.Register(app, config.Prefixes()...)
+	}); err != nil {
+		logging.Module("ai_assistant").WithError(err).Error("插件初始化失败，未注册 AI 命令")
+	}
 	go zero.Run(zeroConfig)
 	<-ctx.Done()
 	return app.Close()
