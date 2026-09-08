@@ -4,24 +4,33 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/HakuchumuHYX/HakuBot/core"
+	"github.com/HakuchumuHYX/HakuBot/utils/logging"
+	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 )
 
 func main() {
+	logging.Init(os.Stderr, logrus.InfoLevel, false)
 	if err := run(); err != nil {
-		slog.Error("HakuBot stopped", "error", err)
+		logging.Module("main").WithError(err).Error("HakuBot stopped")
 		os.Exit(1)
 	}
 }
 func run() error {
 	path := flag.String("config", "config/bot.json", "Bot configuration path")
+	levelName := flag.String("log-level", "info", "Log level: trace, debug, info, warn, error, fatal, panic")
+	color := flag.Bool("log-color", false, "Enable ANSI colors for console logs")
 	flag.Parse()
+	level, err := logrus.ParseLevel(*levelName)
+	if err != nil {
+		return fmt.Errorf("log-level: %w", err)
+	}
+	logging.Init(os.Stderr, level, *color)
 	config, err := core.ReadBotConfig(*path)
 	if err != nil {
 		return err

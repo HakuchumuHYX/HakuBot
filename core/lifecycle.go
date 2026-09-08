@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/HakuchumuHYX/HakuBot/utils/logging"
 )
 
 type Lifecycle struct {
@@ -33,7 +34,7 @@ func (r *Lifecycle) Go(name string, work func(context.Context) error) error {
 	go func() {
 		defer r.tasks.Done()
 		if err := work(r.ctx); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Error("background task failed", "task", name, "error", err)
+			logging.Module("lifecycle").WithField("task", name).WithError(err).Error("background task failed")
 		}
 	}()
 	return nil
@@ -51,7 +52,7 @@ func (r *Lifecycle) Every(name string, interval time.Duration, work func(context
 				return ctx.Err()
 			case <-ticker.C:
 				if err := work(ctx); err != nil {
-					slog.Error("scheduled task failed", "task", name, "error", err)
+					logging.Module("lifecycle").WithField("task", name).WithError(err).Error("scheduled task failed")
 				}
 			}
 		}

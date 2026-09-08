@@ -33,6 +33,7 @@ go run . -config config/bot.json
 | `core/settings.go` | 插件配置读取、保留未知字段与数字精度的局部更新 |
 | `core/lifecycle.go` | 带 context 的后台任务、周期任务、逆序资源关闭 |
 | `utils/paths.go` / `json.go` / `files.go` | 路径、原子写入、临时文件、并发限制和文本截断 |
+| `utils/logging/` | 统一业务与 ZeroBot 日志的格式、级别及模块/事件上下文 |
 | `utils/network/` | HTTP 会话、代理、限量下载、原子文件下载、图片和头像获取 |
 | `utils/llm/` | OpenAI 兼容聊天、生图、图片编辑、用量、可选 JSON 修复 |
 | `utils/images/` | 图片解码与编码、裁切缩放、拼接、颜色处理、GIF 拆帧/编码、APNG 编码 |
@@ -51,7 +52,7 @@ HTTP 客户端的空代理继承环境代理，`direct` 明确直连，也可传
 ## 与 Python 版的对应边界
 
 - 保留现有功能 ID、状态 JSON 的群/用户/功能键、秒级时间戳及 `waifu`、`alive_stats`、`sekai_cache`、`identify` 的路径例外。没有复制任何私密配置或业务数据。
-- NoneBot 事件模型、消息构造和驱动由 ZeroBot 替代；日志使用 Go `slog` 与 ZeroBot 自身日志，Python 线程池由 goroutine 和并发限额替代。
+- NoneBot 事件模型、消息构造和驱动由 ZeroBot 替代；日志通过 `utils/logging` 统一使用 Logrus，Python 线程池由 goroutine 和并发限额替代。
 - 公共帮助模板已改写为 Go 模板，保留日夜主题和分页脚本。业务插件中的 Jinja 模板要在相应插件迁移时转换，不能直接交给 Go 模板引擎。
 - `painter/plot` 的 Python 类链式 API 不逐类复制，画布、图形、渐变直接用 gg，布局使用已有绘图工具。字体、emoji、Markdown 扩展和排行榜像素效果仍需在具体插件中对照调整，不承诺与 Pillow/Jinja 输出逐像素一致。
 - GIF 支持透明阈值和 disposal 合成；APNG 支持完整 RGBA 帧。Go 标准库及 x/image 负责静态格式解码，动画 WebP 不在本次实现范围。
@@ -60,3 +61,18 @@ HTTP 客户端的空代理继承环境代理，`direct` 明确直连，也可传
 - 定时器当前提供固定间隔任务。原 APScheduler 的 cron 时刻、上海时区日切和各插件调度逻辑在迁移对应业务时接入。
 
 当前验证为 `gofmt` 和 `go build ./...`。未启动 Bot，未调用外部 LLM 或 OneBot，未运行截图或发送业务消息；未新增或运行测试。
+
+## 日志
+
+业务与 ZeroBot 共用 Logrus 全局 logger，默认 Info 级别、标准错误输出、不带 ANSI 颜色。时间使用进程本地时区。启动参数 `-log-level debug` 开启调试日志，`-log-color` 显式开启控制台颜色；重定向与 journald 默认得到纯文本。输出目标也可由入口调用 `logging.Init` 指定，不内置文件轮转或异步队列。
+
+```go
+log := logging.Module("ai_assistant")
+log.WithField("group_id", groupID).Info("开始生成回复")
+log.WithError(err).Error("生成回复失败")
+
+// 在事件处理器内，按需附加 Bot、群、用户和消息 ID。
+logging.Event("ai_assistant", ctx.Event).Info("开始处理消息")
+```
+
+`Module` 和 `Event` 返回原生 `*logrus.Entry`，继续使用 `WithField`、`WithFields`、`WithError` 即可。没有 module 字段的框架日志标为 `zerobot`，保留框架原有的 `[bot]`、`[ws]`、`[api]` 消息前缀和异常堆栈。字段按名称排序输出。
