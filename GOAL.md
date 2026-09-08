@@ -1,0 +1,1 @@
+把HakuBot从nonebot框架迁移到zerobot框架，用Golang重写该项目
