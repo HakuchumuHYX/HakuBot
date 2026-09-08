@@ -2,7 +2,9 @@ package ai_assistant
 
 import (
 	"context"
+	"embed"
 	"fmt"
+	"html/template"
 	"regexp"
 	"strings"
 	"time"
@@ -13,6 +15,9 @@ import (
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
+
+//go:embed templates/reply.html
+var replyTemplates embed.FS
 
 var (
 	freshPattern = regexp.MustCompile(`(?i)最新|今天|今日|昨天|昨日|明天|本周|本月|今年|近期|最近|实时|现任|新版|版本|价格|报价|股价|汇率|天气|新闻|政策|法规|赛程|比分|排名|更新|发布|上线|latest|current|today|now|recent|release|changelog`)
@@ -118,12 +123,7 @@ func (p *plugin) handleChat(ctx context.Context, bot *zero.Ctx, args message.Mes
 
 func (p *plugin) replyChat(ctx context.Context, bot *zero.Ctx, cfg Config, text, stats string) error {
 	markdown := text + "\n\n---\n*" + stats + "*"
-	options := rendering.Options{
-		Width:      800,
-		Background: cfg.Chat.BgColor,
-		Footer:     cfg.Chat.Watermark,
-	}
-	data, err := p.app.Browser.Markdown(ctx, markdown, "", options)
+	data, err := p.renderChatReply(ctx, cfg, markdown)
 	var reply message.Message
 	if bot.Event.GroupID != 0 {
 		reply = append(reply, message.At(bot.Event.UserID))
@@ -135,4 +135,34 @@ func (p *plugin) replyChat(ctx context.Context, bot *zero.Ctx, cfg Config, text,
 		reply = append(reply, message.ImageBytes(data))
 	}
 	return send(bot, reply)
+}
+
+func (p *plugin) renderChatReply(ctx context.Context, cfg Config, markdown string) ([]byte, error) {
+	content, err := rendering.MarkdownContent(markdown)
+	if err != nil {
+		return nil, err
+	}
+	var css strings.Builder
+	for _, name := range []string{"github-markdown-light.css", "pygments-default.css"} {
+		data, err := rendering.ReadAsset(name)
+		if err != nil {
+			return nil, err
+		}
+		css.Write(data)
+		css.WriteByte('\n')
+	}
+	// Only line breaks are markup; configured watermark text remains escaped.
+	watermark := strings.ReplaceAll(template.HTMLEscapeString(cfg.Chat.Watermark), "\n", "<br>")
+	data := struct {
+		Content    rendering.MarkdownDocument
+		CSS        template.CSS
+		Background template.CSS
+		Watermark  template.HTML
+	}{
+		Content:    content,
+		CSS:        template.CSS(css.String()),
+		Background: template.CSS(cfg.Chat.BgColor),
+		Watermark:  template.HTML(watermark),
+	}
+	return p.app.Browser.TemplateFS(ctx, replyTemplates, "templates/reply.html", data, rendering.Options{Width: 800})
 }

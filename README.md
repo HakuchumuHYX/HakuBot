@@ -1,6 +1,6 @@
 # HakuBot
 
-基于 Go / ZeroBot 的自用 OneBot V11 Bot。当前提供启动装配、应用核心和公共工具，已接入 AI 助手插件。Python 版结构见 [ARCHITECTURE.md](ARCHITECTURE.md)，重写目标和进度见 [GOAL.md](GOAL.md)。
+基于 Go / ZeroBot 的自用 OneBot V11 Bot。当前提供启动装配、应用核心和公共工具，已接入 AI 助手和状态监控插件。Python 版结构见 [ARCHITECTURE.md](ARCHITECTURE.md)，重写目标和进度见 [GOAL.md](GOAL.md)。
 
 ## 构建与配置
 
@@ -95,8 +95,22 @@ logging.Event("ai_assistant", ctx.Event).Info("开始处理消息")
 
 自动搜索失败时会提示模型无法确认最新信息，强制联网在全部查询失败时直接报告错误；搜索成功但无结果与网络失败分别处理。`query_rewrite=false` 现在直接使用用户搜索文本，不再暗中做规则改写。CD 在最终聊天或生图调用成功后更新；查询重写和视觉提炼的额外 Token 不计入“本次回答 Token”。
 
-实现按注册与管理、配置、消息输入、对话、生图、搜索拆为六个文件，共享 HTTP 和 LLM 客户端。CSS 在渲染时生成，不再写入 `data/ai_assistant/custom_markdown.css`。文字降级保留 Markdown 原文，避免破坏代码和公式。图片格式能力补充了 EXIF 方向处理和 WebP 编码；WebP 编码依赖 CGO，构建环境需具备 C 编译器。
+实现按注册与管理、配置、消息输入、对话、生图、搜索拆为六个文件，共享 HTTP 和 LLM 客户端。AI 页面使用 `plugins/ai_assistant/templates/reply.html`，沿用原 Markdown 模板的 article 结构、45px 内边距及小屏 15px 内边距；背景和水印由该模板根据配置填充。原 `github-markdown-light.css`、`pygments-default.css` 保留在公共模板资源目录，高亮输出 CSS 类名以使用原样式。通用渲染层提供 Markdown 转换和模板执行，不再在 Go 字符串里设计页面布局，也不再写入 `data/ai_assistant/custom_markdown.css`。文字降级保留 Markdown 原文，避免破坏代码和公式。图片格式能力补充了 EXIF 方向处理和 WebP 编码；WebP 编码依赖 CGO，构建环境需具备 C 编译器。
 
 本次仅通过构建和源码核对，尚未接入实际 QQ、Tavily、LLM 或 Chromium 做端到端运行。
 
 真实的 `config/bot.json` 已根据 Python `.env.prod` 和现有 OneBotFilter 路由生成，沿用昵称、超管和反向 WS 设置，Chromium 指向已有浏览器可执行文件。`command_prefixes` 可配置多个命令前缀（例如 `["", "."]`），省略时使用 `command_prefix`；AI 命令支持列表中的所有前缀。当前未启动 Go Bot，也未修改现有服务路由。
+
+## 状态监控
+
+`alive_stat` 已接入启动入口，支持 `alive`、`alive day`、`alive night` 以及配置的所有命令前缀。群聊遵循插件开关和超管豁免，不增加 CD。收到命令时并行采集 CPU（0.5 秒采样）、内存、Swap、根分区磁盘、进程、Docker 容器和 ping 结果，不持续轮询或主动告警。
+
+真实配置已原样复制到 `config/plugins/alive_stat/config.json`，示例在 `config_example/plugins/alive_stat/config.json`，字段保持 `autochat_data_file`、`monitored_processes`、`docker_processes`、`ping_hosts`。真实配置由 Git 忽略，进程关键词没有自动改写。Docker 查询需要当前用户可执行 Docker CLI，网络检测使用系统 ping；无法采集的项显示 Unknown/N/A 并记录日志。进程内存是包含子进程、按 PID 去重后的 RSS 总和，不代表独占物理内存。
+
+状态卡沿用 900px 宽度、28px 外边距、32px 内边距、26px 区块间距、日夜配色、背景渐变、双列运行时间、进度条、装饰和水印。原字体已复制。`render.go` 组织布局与样式，所有具体绘制由公共 `utils/rendering/draw` 的 Scene、文字测量、圆角框和进度条完成，不使用浏览器或插件私有绘图引擎。
+
+HakuBot 统计继续使用 `data/alive_stats/stats.json` 和原有四个字段，每五分钟及退出时原子保存。累计值为启动时读取的总时长加本次运行时长，缺少文件时从零开始。Autochat 文件只读，时长计算及缺失值行为与 Python 版一致，不增加在线判断。
+
+本次未移动、复制或修改统计文件，也没有添加迁移工具、兼容层或双读逻辑。正式切换时停止 Python 版，将最新 `stats.json` 直接移到 Go 工作区对应目录，再启动 Go 版；届时根据最终启动命令调整监控关键词。
+
+已完成源码核对、格式化和 `go build ./...`。未启动 Bot、执行实际监控查询或发送图片，状态卡视觉效果尚未实际联调；未新增或运行测试。

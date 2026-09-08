@@ -10,6 +10,7 @@ import (
 
 	"github.com/HakuchumuHYX/HakuBot/core"
 	"github.com/HakuchumuHYX/HakuBot/plugins/ai_assistant"
+	"github.com/HakuchumuHYX/HakuBot/plugins/alive_stat"
 	"github.com/HakuchumuHYX/HakuBot/utils/logging"
 	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
@@ -54,6 +55,11 @@ func run() error {
 		return ai_assistant.Register(app, config.Prefixes()...)
 	}); err != nil {
 		logging.Module("ai_assistant").WithError(err).Error("插件初始化失败，未注册 AI 命令")
+	}
+	if err := app.Runtime.StartPlugin(app.Access, "alive_stat", func(context.Context) error {
+		return alive_stat.Register(app, config.Prefixes()...)
+	}); err != nil {
+		logging.Module("alive_stat").WithError(err).Error("插件初始化失败，未注册监控命令")
 	}
 	go zero.Run(zeroConfig)
 	<-ctx.Done()

@@ -8,15 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/HakuchumuHYX/HakuBot/utils"
-	mathjax "github.com/litao91/goldmark-mathjax"
-	"github.com/yuin/goldmark"
-	highlighting "github.com/yuin/goldmark-highlighting/v2"
-	"github.com/yuin/goldmark/extension"
 )
 
 //go:embed templates/*
@@ -40,53 +36,58 @@ func (b *Browser) Template(ctx context.Context, files []string, data any, funcs 
 	}
 	return b.HTML(ctx, out.String(), o)
 }
-func (b *Browser) Text(ctx context.Context, text, css string, o Options) ([]byte, error) {
-	if css == "" {
-		css = "body{font-family:sans-serif;padding:20px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:20px;}"
-	}
-	return b.HTML(ctx, "<!doctype html><html><head><meta charset=\"utf-8\"><style>"+css+"</style></head><body>"+template.HTMLEscapeString(text)+"</body></html>", o)
-}
-func (b *Browser) Markdown(ctx context.Context, md, css string, o Options) ([]byte, error) {
-	var out bytes.Buffer
-	engine := goldmark.New(goldmark.WithExtensions(extension.GFM, highlighting.NewHighlighting(highlighting.WithStyle("github")), mathjax.NewMathJax(mathjax.WithInlineDelim(`<script type="math/tex">`, `</script>`), mathjax.WithBlockDelim(`<script type="math/tex; mode=display">`, `</script>`))))
-	if err := engine.Convert([]byte(md), &out); err != nil {
+
+// TemplateFS renders an embedded or directory-backed template without selecting its design.
+func (b *Browser) TemplateFS(ctx context.Context, files fs.FS, name string, data any, o Options) ([]byte, error) {
+	t, err := template.ParseFS(files, name)
+	if err != nil {
 		return nil, err
 	}
+	var out bytes.Buffer
+	if err = t.Execute(&out, data); err != nil {
+		return nil, err
+	}
+	return b.HTML(ctx, out.String(), o)
+}
+
+func ReadAsset(name string) ([]byte, error) {
+	return templates.ReadFile("templates/" + name)
+}
+
+func (b *Browser) Text(ctx context.Context, text, css string, o Options) ([]byte, error) {
 	if css == "" {
-		data, err := templates.ReadFile("templates/github-markdown-light.css")
+		data, err := ReadAsset("text.css")
 		if err != nil {
 			return nil, err
 		}
 		css = string(data)
 	}
-	var scripts strings.Builder
-	if strings.Contains(out.String(), "math/tex") {
-		data, err := templates.ReadFile("templates/katex/katex.min.b64_fonts.css")
-		if err != nil {
-			return nil, err
-		}
-		css += string(data)
-		for _, file := range []string{"katex.min.js", "mhchem.min.js", "mathtex-script-type.min.js"} {
-			data, err := templates.ReadFile("templates/katex/" + file)
+	return b.TemplateFS(ctx, templates, "templates/text.html", struct {
+		Text string
+		CSS  template.CSS
+	}{text, template.CSS(css)}, o)
+}
+
+func (b *Browser) Markdown(ctx context.Context, md, css string, o Options) ([]byte, error) {
+	content, err := MarkdownContent(md)
+	if err != nil {
+		return nil, err
+	}
+	if css == "" {
+		for _, name := range []string{"github-markdown-light.css", "pygments-default.css"} {
+			data, err := ReadAsset(name)
 			if err != nil {
 				return nil, err
 			}
-			scripts.WriteString("<script>" + string(data) + "</script>")
+			css += string(data) + "\n"
 		}
 	}
-	bodyStyle := "padding:20px;box-sizing:border-box;"
-	if o.Background != "" {
-		bodyStyle += "background-color:" + o.Background + ";"
-	}
-	footer := ""
-	if o.Footer != "" {
-		footer = `<div style="text-align:right;color:gray;font-size:.9em;font-style:italic;white-space:pre-wrap">` + template.HTMLEscapeString(o.Footer) + `</div>`
-	}
-	html := "<!doctype html><html><head><meta charset=\"utf-8\"><style>" + css + "</style></head>" +
-		`<body class="markdown-body" style="` + template.HTMLEscapeString(bodyStyle) + `">` +
-		out.String() + footer + scripts.String() + "</body></html>"
-	return b.HTML(ctx, html, o)
+	return b.TemplateFS(ctx, templates, "templates/markdown.html", struct {
+		Content MarkdownDocument
+		CSS     template.CSS
+	}{content, template.CSS(css)}, o)
 }
+
 func FontPath(paths utils.Paths, weight string) (string, error) {
 	if weight == "" {
 		weight = "Regular"

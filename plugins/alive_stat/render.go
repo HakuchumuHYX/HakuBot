@@ -1,0 +1,253 @@
+package alive_stat
+
+import (
+	"fmt"
+	"image/color"
+	"math"
+	"strings"
+	"time"
+
+	"github.com/HakuchumuHYX/HakuBot/utils/rendering/draw"
+)
+
+type theme struct {
+	CanvasG1      color.NRGBA
+	CanvasG2      color.NRGBA
+	CardBg        color.NRGBA
+	CardBorder    color.NRGBA
+	BlockBg       color.NRGBA
+	BlockBorder   color.NRGBA
+	TextMain      color.NRGBA
+	TextSub       color.NRGBA
+	TextMuted     color.NRGBA
+	Accent        color.NRGBA
+	BarBg         color.NRGBA
+	BarFill       color.NRGBA
+	BarFillWarn   color.NRGBA
+	BarFillDanger color.NRGBA
+	Green         color.NRGBA
+	Red           color.NRGBA
+}
+
+var dayTheme = theme{
+	CanvasG1:      color.NRGBA{224, 244, 255, 255},
+	CanvasG2:      color.NRGBA{252, 254, 255, 255},
+	CardBg:        color.NRGBA{255, 255, 255, 235},
+	CardBorder:    color.NRGBA{170, 210, 235, 255},
+	BlockBg:       color.NRGBA{242, 250, 255, 255},
+	BlockBorder:   color.NRGBA{200, 230, 245, 255},
+	TextMain:      color.NRGBA{25, 55, 75, 255},
+	TextSub:       color.NRGBA{80, 120, 140, 255},
+	TextMuted:     color.NRGBA{120, 150, 165, 255},
+	Accent:        color.NRGBA{35, 125, 175, 255},
+	BarBg:         color.NRGBA{220, 235, 245, 255},
+	BarFill:       color.NRGBA{70, 160, 210, 255},
+	BarFillWarn:   color.NRGBA{230, 170, 50, 255},
+	BarFillDanger: color.NRGBA{220, 80, 60, 255},
+	Green:         color.NRGBA{50, 170, 90, 255},
+	Red:           color.NRGBA{220, 70, 60, 255},
+}
+
+var nightTheme = theme{
+	CanvasG1:      color.NRGBA{18, 24, 36, 255},
+	CanvasG2:      color.NRGBA{34, 46, 68, 255},
+	CardBg:        color.NRGBA{26, 32, 44, 240},
+	CardBorder:    color.NRGBA{88, 118, 160, 255},
+	BlockBg:       color.NRGBA{32, 40, 56, 255},
+	BlockBorder:   color.NRGBA{70, 92, 128, 255},
+	TextMain:      color.NRGBA{236, 244, 252, 255},
+	TextSub:       color.NRGBA{168, 190, 212, 255},
+	TextMuted:     color.NRGBA{120, 140, 160, 255},
+	Accent:        color.NRGBA{120, 230, 210, 255},
+	BarBg:         color.NRGBA{40, 50, 70, 255},
+	BarFill:       color.NRGBA{80, 190, 170, 255},
+	BarFillWarn:   color.NRGBA{220, 180, 60, 255},
+	BarFillDanger: color.NRGBA{220, 80, 60, 255},
+	Green:         color.NRGBA{80, 210, 130, 255},
+	Red:           color.NRGBA{240, 90, 80, 255},
+}
+
+func textStyle(size float64, color color.Color) draw.TextStyle {
+	return draw.TextStyle{Size: size, Color: color, Shrink: true, MaxLines: 1}
+}
+
+func renderCard(haku, autochat botRuntime, server serverStatus, now time.Time, night bool, fontPath string) ([]byte, error) {
+	t := dayTheme
+	if night {
+		t = nightTheme
+	}
+	const width = 900
+	const margin, padding, gap = 28.0, 32.0, 26.0
+	const content = width - 2*(margin+padding)
+	const x = margin + padding
+	scene, err := draw.NewScene(width, fontPath)
+	if err != nil {
+		return nil, err
+	}
+	defer scene.Close()
+	y := x
+	y += scene.Text(x, y, content, "HakuBot Server Status", textStyle(30, t.TextMain))
+	y += 6
+	stamp := "Generated at " + now.Format("15:04:05 Jan. 02 2006")
+	y += scene.Text(x, y, content, stamp, textStyle(15, t.TextSub))
+	y += gap
+	y += scene.Text(x, y, content, "── Bot Runtime ──", textStyle(18, t.TextMuted))
+	y += 12
+	blockWidth := (content - 16) / 2
+	hakuHeight := runtimeBlock(scene, haku, t, x, y, blockWidth)
+	autoHeight := runtimeBlock(scene, autochat, t, x+blockWidth+16, y, blockWidth)
+	y += math.Max(hakuHeight, autoHeight) + gap
+
+	y += scene.Text(x, y, content, "── Server ──", textStyle(18, t.TextMuted))
+	y += 10
+	y += scene.Text(x, y, content, server.Hostname+"  |  Uptime: "+server.Uptime, textStyle(16, t.TextSub))
+	y += 6
+	model := []rune(server.CPUModel)
+	if len(model) > 50 {
+		model = append(model[:47], '.', '.', '.')
+	}
+	cores := fmt.Sprint(server.Cores)
+	if server.Cores == 0 {
+		cores = "N/A"
+	}
+	style := textStyle(14, t.TextMuted)
+	style.Wrap, style.MaxLines, style.LineGap = true, 2, 2
+	y += scene.Text(x, y, content, fmt.Sprintf("CPU: %s (%s cores)", string(model), cores), style)
+	y += gap
+
+	y += scene.Text(x, y, content, "── Resources ──", textStyle(18, t.TextMuted))
+	y += 10
+	for i, resource := range server.Resources {
+		if i > 0 {
+			y += 10
+		}
+		y += resourceRow(scene, resource, t, x, y, content)
+	}
+	y += gap
+
+	y += scene.Text(x, y, content, "── Processes ──", textStyle(18, t.TextMuted))
+	y += 10
+	for i, process := range server.Processes {
+		if i > 0 {
+			y += 8
+		}
+		y += processRow(scene, process, t, x, y)
+	}
+	y += gap
+
+	y += scene.Text(x, y, content, "── Network ──", textStyle(18, t.TextMuted))
+	y += 10
+	var hosts []string
+	for _, network := range server.Network {
+		status := "✗ " + network.Status
+		if network.Status == "ok" {
+			status = "✓ ok"
+			if network.Latency != nil {
+				status = fmt.Sprintf("✓ %.0fms", *network.Latency)
+			}
+		}
+		hosts = append(hosts, network.Host+"  "+status)
+	}
+	text := strings.Join(hosts, "  |  ")
+	if text == "" {
+		text = "N/A"
+	}
+	y += scene.Text(x, y, content, text, textStyle(16, t.TextSub))
+	y += 14
+	style = textStyle(14, t.TextMuted)
+	style.Align = 1
+	y += scene.Text(x, y, content, "Generated by HakuBot", style)
+	height := int(math.Ceil(y + padding + margin))
+
+	decoration := t.Accent
+	decoration.A = 28
+	decorations := []draw.Box{{X: margin - 10, Y: margin - 10, Width: 180, Height: 120, Radius: 60, Fill: decoration}}
+	decoration.A = 22
+	decorations = append(decorations, draw.Box{X: width - 220, Y: float64(height) - 160, Width: 200, Height: 140, Radius: 70, Fill: decoration})
+	return scene.PNG(height, draw.Background{
+		Decorations: decorations,
+		Start:       t.CanvasG1,
+		End:         t.CanvasG2,
+		Panel: &draw.Box{
+			X: margin, Y: margin, Width: width - 2*margin, Height: float64(height) - 2*margin,
+			Radius: 28, Fill: t.CardBg, Border: t.CardBorder, BorderWidth: 2,
+		},
+	})
+}
+
+func runtimeBlock(scene *draw.Scene, runtime botRuntime, t theme, x, y, width float64) float64 {
+	start := y
+	y += 16
+	innerX, innerWidth := x+18, width-36
+	y += scene.Text(innerX, y, innerWidth, runtime.Name, textStyle(18, t.TextSub))
+	y += 8
+	y += scene.Text(innerX, y, innerWidth, "Session", textStyle(15, t.TextMuted))
+	valueStyle := textStyle(26, t.Accent)
+	valueStyle.Wrap, valueStyle.MaxLines, valueStyle.LineGap = true, 2, 2
+	y += scene.Text(innerX, y, innerWidth, runtime.SessionTime, valueStyle)
+	y += scene.Text(innerX, y, innerWidth, "Since "+runtime.SessionSince, textStyle(14, t.TextMuted))
+	y += 14
+	y += scene.Text(innerX, y, innerWidth, "Total", textStyle(15, t.TextMuted))
+	y += scene.Text(innerX, y, innerWidth, runtime.TotalTime, valueStyle)
+	y += scene.Text(innerX, y, innerWidth, "Since "+runtime.TotalSince, textStyle(14, t.TextMuted))
+	y += 16
+	scene.Backdrop(draw.Box{
+		X: x, Y: start, Width: width, Height: y - start, Radius: 18,
+		Fill: t.BlockBg, Border: t.BlockBorder, BorderWidth: 2,
+	})
+	return y - start
+}
+
+func resourceRow(scene *draw.Scene, value resource, t theme, x, y, width float64) float64 {
+	barWidth := math.Max(80, width-60-60-120-30)
+	fill := t.BarFill
+	if value.Percent >= 90 {
+		fill = t.BarFillDanger
+	} else if value.Percent >= 75 {
+		fill = t.BarFillWarn
+	}
+	percent, detail := "N/A", "N/A"
+	if value.Available {
+		percent = fmt.Sprintf("%.1f%%", value.Percent)
+		if value.Name == "CPU" {
+			detail = ""
+		} else if value.Name != "Swap" || value.Total > 0 {
+			detail = formatBytes(value.Used) + "/" + formatBytes(value.Total)
+		}
+	}
+	height := scene.Text(x, y, 60, value.Name, textStyle(16, t.TextSub))
+	barX := x + 60 + 8
+	scene.Progress(barX, y+(height-16)/2, barWidth, 16, value.Percent, t.BarBg, fill)
+	style := textStyle(16, t.TextMain)
+	style.Align = 1
+	scene.Text(barX+barWidth+8, y, 60, percent, style)
+	style = textStyle(14, t.TextMuted)
+	style.Align = 1
+	scene.Text(barX+barWidth+8+60+8, y+1, 120, detail, style)
+	return height
+}
+
+func processRow(scene *draw.Scene, value processInfo, t theme, x, y float64) float64 {
+	statusColor := t.Red
+	if value.Status == "Running" {
+		statusColor = t.Green
+	} else if value.Status == "Unknown" {
+		statusColor = t.TextMuted
+	}
+	style := textStyle(16, statusColor)
+	style.Align = .5
+	height := scene.Text(x, y, 20, "●", style)
+	scene.Text(x+26, y, 200, value.Name, textStyle(16, t.TextSub))
+	scene.Text(x+232, y, 100, value.Status, textStyle(16, statusColor))
+	memory := "-"
+	if value.Status == "Running" {
+		memory = "N/A"
+		if value.MemoryKnown {
+			memory = formatBytes(value.Memory)
+		}
+	}
+	style = textStyle(14, t.TextMuted)
+	style.Align = 1
+	scene.Text(x+338, y+1, 100, memory, style)
+	return height
+}

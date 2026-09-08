@@ -1,0 +1,13 @@
+<head>
+  <meta charset="utf-8" />
+  {{ if .CSS }}
+  <style type="text/css">
+    {{ .CSS }}
+  </style>
+  {{ end }}
+</head>
+<body>
+  <div id="main" class="main-box">
+    <div class="text">{{ .Text }}</div>
+  </div>
+</body>

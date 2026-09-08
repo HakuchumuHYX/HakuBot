@@ -79,8 +79,6 @@ func (b *Browser) Close() error {
 }
 
 type Options struct {
-	Background    string
-	Footer        string
 	Width, Height int
 	Scale         float64
 	Timeout       time.Duration

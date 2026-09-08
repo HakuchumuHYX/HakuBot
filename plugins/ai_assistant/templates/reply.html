@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8">
+    <style type="text/css">
+        {{ .CSS }}
+    </style>
+    <style>
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+        }
+
+        @media (max-width: 767px) {
+            .markdown-body {
+                padding: 15px;
+            }
+        }
+    </style>
+    <style>
+        html, body, .markdown-body {
+            background-color: {{ .Background }} !important;
+        }
+    </style>
+</head>
+
+<body>
+    <article class="markdown-body">
+        {{ .Content.HTML }}
+        {{ if .Watermark }}
+        <div align="right" style="color: gray; font-size: 0.9em; font-style: italic;">{{ .Watermark }}</div>
+        {{ end }}
+    </article>
+</body>
+{{ if .Content.MathCSS }}<style>{{ .Content.MathCSS }}</style>{{ end }}
+{{ range .Content.Scripts }}<script>{{ . }}</script>{{ end }}
+</html>

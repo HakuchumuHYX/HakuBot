@@ -30,7 +30,8 @@ Python 版是梳理现有行为、配置和数据格式的参考；Go 版按实�
 - 已安装并锁定 ZeroBot 及公共渲染、图片、Markdown、JSON 修复依赖。
 - 已建立 Go 启动入口、core 和 utils 的公共实现；当前功能与 Python 对应边界见 `README.md`。
 - `ai_assistant` 已迁移并接入启动入口，保留对话、搜索、生图、视觉提炼和模型管理能力；构建已通过，尚未进行实际服务联调。
-- `ai_assistant` 的真实配置已从 Python 版原样复制；`config/bot.json` 已根据 Python 环境配置与 OneBotFilter 路由生成，保留双命令前缀。真实配置由 Git 忽略。尚未迁移其他插件配置、资源和运行数据，未连接现有 Bot。
+- `alive_stat` 已迁移并接入启动入口；真实配置和原字体已复制，绘图复用公共层并保留原布局、配色与样式。Autochat 逻辑保持原样。统计文件留到正式切换时直接移动，不建设兼容层或迁移工具。
+- `ai_assistant`、`alive_stat` 的真实配置已从 Python 版原样复制；`config/bot.json` 已根据 Python 环境配置与 OneBotFilter 路由生成，保留双命令前缀。真实配置由 Git 忽略。尚未迁移其他插件配置、资源和运行数据，未连接现有 Bot。
 
 ## 已确定的功能取舍
 
