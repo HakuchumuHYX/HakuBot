@@ -217,7 +217,6 @@ async def render_document(document: dict[str, Any], event_id: str) -> list[Path]
                 "viewport": {"width": 1200, "height": 10},
                 "base_url": f"{TEMPLATE_DIR.resolve().as_uri()}/",
             },
-            wait=2000,
             device_scale_factor=1,
             screenshot_timeout=60_000,
         )
