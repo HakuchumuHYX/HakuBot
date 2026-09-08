@@ -1,0 +1,7 @@
+.env*
+/config/**/*.json
+!/config/**/*.example.json
+/data/
+/cache/
+/bin/
+*.log
