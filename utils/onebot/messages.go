@@ -84,7 +84,12 @@ const (
 	TimeoutUnknown ForwardStatus = "timeout_unknown"
 )
 
-func SendForward(ctx context.Context, bot *zero.Ctx, target Target, items []ForwardItem, fallback bool) (ForwardStatus, error) {
+type ForwardOptions struct {
+	FallbackInterval        time.Duration
+	ContinueOnFallbackError bool
+}
+
+func SendForward(ctx context.Context, bot *zero.Ctx, target Target, items []ForwardItem, fallback bool, opts ...ForwardOptions) (ForwardStatus, error) {
 	if (target.GroupID == 0) == (target.UserID == 0) || len(items) == 0 {
 		return "", errors.New("one target and nonempty forward items are required")
 	}
@@ -113,7 +118,18 @@ func SendForward(ctx context.Context, bot *zero.Ctx, target Target, items []Forw
 	if !fallback {
 		return "", fmt.Errorf("forward rejected (%d): %s", rsp.RetCode, rsp.Message)
 	}
+
+	interval := time.Second
+	continueOnError := false
+	if len(opts) > 0 {
+		if opts[0].FallbackInterval > 0 {
+			interval = opts[0].FallbackInterval
+		}
+		continueOnError = opts[0].ContinueOnFallbackError
+	}
+
 	sent := 0
+	var fallbackErrs []error
 	for i, item := range items {
 		action = "send_group_msg"
 		if target.GroupID == 0 {
@@ -121,14 +137,22 @@ func SendForward(ctx context.Context, bot *zero.Ctx, target Target, items []Forw
 		}
 		r := bot.CallActionWithContext(ctx, action, zero.Params{key: id, "message": item.Content})
 		if r.Status != "ok" || r.RetCode != 0 {
-			return "", fmt.Errorf("forward fallback stopped after %d messages: %s", sent, r.Message)
+			err := fmt.Errorf("forward fallback stopped after %d messages (%d): %s", sent, r.RetCode, r.Message)
+			if !continueOnError {
+				return "", err
+			}
+			fallbackErrs = append(fallbackErrs, err)
+		} else {
+			sent++
 		}
-		sent++
 		if i < len(items)-1 {
-			if err := network.Wait(ctx, time.Second); err != nil {
+			if err := network.Wait(ctx, interval); err != nil {
 				return "", err
 			}
 		}
+	}
+	if len(fallbackErrs) > 0 {
+		return FallbackSent, errors.Join(fallbackErrs...)
 	}
 	return FallbackSent, nil
 }

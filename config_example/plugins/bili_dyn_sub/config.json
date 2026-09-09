@@ -1,0 +1,20 @@
+{
+    "poll_interval_seconds": 100,
+    "poll_jitter_seconds": 20,
+    "uid_request_gap_seconds": 8.0,
+    "max_dynamic_age_minutes": 30,
+    "max_push_per_round": 5,
+    "sessdata": "",
+    "bili_jct": "",
+    "proxy": null,
+    "enable_wbi": false,
+    "enable_playwright_fallback": true,
+    "http_timeout_connect": 5.0,
+    "http_timeout_total": 10.0,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "seen_ids_max": 50,
+    "seen_retention_days": 14,
+    "send_interval_seconds": 1.5,
+    "send_retry_times": 3,
+    "text_truncate_length": 500
+}

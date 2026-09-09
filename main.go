@@ -12,6 +12,7 @@ import (
 	"github.com/HakuchumuHYX/HakuBot/plugins/ai_assistant"
 	"github.com/HakuchumuHYX/HakuBot/plugins/alive_stat"
 	"github.com/HakuchumuHYX/HakuBot/plugins/analysis_bilibili"
+	"github.com/HakuchumuHYX/HakuBot/plugins/bili_dyn_sub"
 	"github.com/HakuchumuHYX/HakuBot/utils/logging"
 	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
@@ -66,6 +67,11 @@ func run() error {
 		return analysis_bilibili.Register(app)
 	}); err != nil {
 		logging.Module("analysis_bilibili").WithError(err).Error("插件初始化失败，未注册 B 站解析")
+	}
+	if err := app.Runtime.StartPlugin(app.Access, "bili_dyn_sub", func(context.Context) error {
+		return bili_dyn_sub.Register(app, config.Prefixes()...)
+	}); err != nil {
+		logging.Module("bili_dyn_sub").WithError(err).Error("插件初始化失败，未注册 B 站动态订阅")
 	}
 	go zero.Run(zeroConfig)
 	<-ctx.Done()

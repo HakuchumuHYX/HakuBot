@@ -10,7 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/runtime"
+	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 )
 
@@ -27,6 +29,34 @@ type Browser struct {
 func NewBrowser(executable string) *Browser {
 	return &Browser{executable: executable, slots: make(chan struct{}, 5)}
 }
+
+func (b *Browser) ensureRootLocked(ctx context.Context) error {
+	if b.ctx != nil {
+		return nil
+	}
+	options := append([]chromedp.ExecAllocatorOption(nil), chromedp.DefaultExecAllocatorOptions[:]...)
+	if b.executable != "" {
+		options = append(options, chromedp.ExecPath(b.executable))
+	}
+	alloc, ac := chromedp.NewExecAllocator(context.Background(), options...)
+	root, rc := chromedp.NewContext(alloc)
+	stopStartup := context.AfterFunc(ctx, rc)
+	err := chromedp.Run(root)
+	stopStartup()
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err != nil {
+		rc()
+		ac()
+		return err
+	}
+	b.ctx = root
+	b.cancel = rc
+	b.allocatorCancel = ac
+	return nil
+}
+
 func (b *Browser) tab(ctx context.Context) (context.Context, func(), error) {
 	select {
 	case b.slots <- struct{}{}:
@@ -40,33 +70,69 @@ func (b *Browser) tab(ctx context.Context) (context.Context, func(), error) {
 		release()
 		return nil, nil, errors.New("browser closed")
 	}
-	if b.ctx == nil {
-		options := append([]chromedp.ExecAllocatorOption(nil), chromedp.DefaultExecAllocatorOptions[:]...)
-		if b.executable != "" {
-			options = append(options, chromedp.ExecPath(b.executable))
-		}
-		alloc, ac := chromedp.NewExecAllocator(context.Background(), options...)
-		root, rc := chromedp.NewContext(alloc)
-		stopStartup := context.AfterFunc(ctx, rc)
-		err := chromedp.Run(root)
-		stopStartup()
-		if err == nil {
-			err = ctx.Err()
-		}
-		if err != nil {
-			rc()
-			ac()
-			release()
-			return nil, nil, err
-		}
-		b.ctx = root
-		b.cancel = rc
-		b.allocatorCancel = ac
+	if err := b.ensureRootLocked(ctx); err != nil {
+		release()
+		return nil, nil, err
 	}
 	tab, cancel := chromedp.NewContext(b.ctx, chromedp.WithNewBrowserContext())
 	stop := context.AfterFunc(ctx, cancel)
 	return tab, func() { stop(); cancel(); release() }, nil
 }
+
+type BrowserContextOptions struct {
+	Proxy     string
+	UserAgent string
+	Locale    string
+}
+
+func (b *Browser) RunContext(ctx context.Context, opts BrowserContextOptions, fn func(ctx context.Context) error) error {
+	select {
+	case b.slots <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	release := func() { <-b.slots }
+	defer release()
+
+	tab, cancel, err := func() (context.Context, context.CancelFunc, error) {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if b.closed {
+			return nil, nil, errors.New("browser closed")
+		}
+		if err := b.ensureRootLocked(ctx); err != nil {
+			return nil, nil, err
+		}
+		var cdpOpts []chromedp.CreateBrowserContextOption
+		if opts.Proxy != "" {
+			cdpOpts = append(cdpOpts, func(p *target.CreateBrowserContextParams) *target.CreateBrowserContextParams {
+				return p.WithProxyServer(opts.Proxy)
+			})
+		}
+		tab, cancel := chromedp.NewContext(b.ctx, chromedp.WithNewBrowserContext(cdpOpts...))
+		return tab, cancel, nil
+	}()
+	if err != nil {
+		return err
+	}
+	defer cancel()
+
+	stop := context.AfterFunc(ctx, cancel)
+	defer stop()
+
+	if opts.UserAgent != "" || opts.Locale != "" {
+		uaAction := emulation.SetUserAgentOverride(opts.UserAgent)
+		if opts.Locale != "" {
+			uaAction = uaAction.WithAcceptLanguage(opts.Locale)
+		}
+		if err := chromedp.Run(tab, uaAction); err != nil {
+			return err
+		}
+	}
+
+	return fn(tab)
+}
+
 func (b *Browser) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()

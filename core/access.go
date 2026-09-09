@@ -48,6 +48,17 @@ func NewAccess(paths utils.Paths, superusers []string) (*Access, error) {
 	}
 	return a, nil
 }
+
+func (a *Access) Superusers() []string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	res := make([]string, 0, len(a.superusers))
+	for id := range a.superusers {
+		res = append(res, id)
+	}
+	return res
+}
+
 func (a *Access) enabled(id, group, user string) bool {
 	if strings.HasPrefix(a.health[id], "unavailable:") {
 		return false
