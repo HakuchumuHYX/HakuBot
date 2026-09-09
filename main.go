@@ -11,6 +11,7 @@ import (
 	"github.com/HakuchumuHYX/HakuBot/core"
 	"github.com/HakuchumuHYX/HakuBot/plugins/ai_assistant"
 	"github.com/HakuchumuHYX/HakuBot/plugins/alive_stat"
+	"github.com/HakuchumuHYX/HakuBot/plugins/analysis_bilibili"
 	"github.com/HakuchumuHYX/HakuBot/utils/logging"
 	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
@@ -60,6 +61,11 @@ func run() error {
 		return alive_stat.Register(app, config.Prefixes()...)
 	}); err != nil {
 		logging.Module("alive_stat").WithError(err).Error("插件初始化失败，未注册监控命令")
+	}
+	if err := app.Runtime.StartPlugin(app.Access, "analysis_bilibili", func(context.Context) error {
+		return analysis_bilibili.Register(app)
+	}); err != nil {
+		logging.Module("analysis_bilibili").WithError(err).Error("插件初始化失败，未注册 B 站解析")
 	}
 	go zero.Run(zeroConfig)
 	<-ctx.Done()

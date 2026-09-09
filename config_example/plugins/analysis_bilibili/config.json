@@ -1,0 +1,15 @@
+{
+    "analysis_whitelist": [],
+    "analysis_group_whitelist": [],
+    "analysis_blacklist": [],
+    "analysis_group_blacklist": [],
+    "analysis_desc_blacklist": [],
+    "analysis_trust_env": false,
+    "analysis_enable_search": false,
+    "analysis_use_on_message": false,
+    "analysis_display_image": false,
+    "analysis_display_image_list": [],
+    "analysis_images_size": "",
+    "analysis_cover_images_size": "",
+    "analysis_reanalysis_time": 0
+}
