@@ -309,9 +309,8 @@ async def copy_local_file(source_path: str, destination_path: Path):
     """复制本地文件"""
     decoded_path = unquote(source_path)
 
-    # 将 NapCat 容器内路径映射到宿主机路径
     if decoded_path.startswith("/app/.config/QQ"):
-        decoded_path = decoded_path.replace("/app/.config/QQ", "/opt/NapCat/qq_data", 1)
+        decoded_path = decoded_path.replace("/app/.config/QQ", "/opt/SnowLuma/qq-config/QQ", 1)
 
     source_file = Path(decoded_path)
 
