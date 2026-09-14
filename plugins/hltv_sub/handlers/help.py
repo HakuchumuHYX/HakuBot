@@ -3,16 +3,14 @@
 """
 
 from __future__ import annotations
-from plugins.hltv_sub.help_content import build_help_document
+from plugins.hltv_sub.help_content import build_help_sections
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 
 from utils.onebot.media import image_segment
 from plugins.hltv_sub.permissions import is_group_enabled
-from utils.rendering.models import HelpDocument, HelpSection, HelpEntry
-from utils.onebot.help import send_help
-from plugins.hltv_sub.config import plugin_config
+from plugins.hltv_sub.render import render_help
 
 
 hltv_help = on_command("hltv帮助", aliases={"hltvhelp"}, priority=5, block=True)
@@ -25,5 +23,5 @@ async def handle_hltv_help(bot: Bot, event: GroupMessageEvent):
     if not is_group_enabled(group_id):
         return
 
-    document = build_help_document(plugin_config.hltv_watermark_text)
-    await send_help(hltv_help, document)
+    img = await render_help(build_help_sections())
+    await hltv_help.finish(image_segment(img))
