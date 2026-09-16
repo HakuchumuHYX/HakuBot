@@ -42,7 +42,7 @@ async def handle_event_list(bot: Bot, event: GroupMessageEvent):
         ongoing = [e for e in events if e.is_ongoing]
         upcoming = [e for e in events if not e.is_ongoing]
 
-        subscribed_ids = data_manager.get_subscribed_event_ids(group_id)
+        subscribed_ids = list(data_manager.get_all_subscribed_event_ids())
 
         img = await render_events(ongoing, upcoming, subscribed_ids)
         await event_list.finish(image_segment(img))
