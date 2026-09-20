@@ -12,6 +12,7 @@ from nonebot.log import logger
 from utils.onebot.media import image_segment
 from plugins.hltv_sub.data_manager import data_manager
 from plugins.hltv_sub.data_source import hltv_data
+from plugins.hltv_sub.http_client import HLTVFetchError
 from plugins.hltv_sub.permissions import is_group_enabled
 from plugins.hltv_sub.render import render_matches
 
@@ -64,6 +65,8 @@ async def handle_matches_list(bot: Bot, event: GroupMessageEvent):
 
     except FinishedException:
         raise
+    except HLTVFetchError as e:
+        await matches_list.finish(str(e))
     except Exception as e:
         logger.error(f"获取比赛列表失败: {e}")
         await matches_list.finish("获取比赛列表失败，HLTV 可能暂时无法访问")

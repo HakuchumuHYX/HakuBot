@@ -1,62 +1,39 @@
-"""
-HLTV HTTP 客户端（负责请求、重试、代理、会话管理）
-
-改进：
-- 使用可配置的 impersonate 版本（默认 chrome136）
-- 完善请求头（Sec-* 系列）
-- FlareSolverr 回退（遇到持续 403 时自动尝试）
-"""
+"""HLTV 的共享会话、请求节流、页面缓存与拦截暂停。"""
 
 from __future__ import annotations
 
 import asyncio
-import random
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
-from curl_cffi.requests import AsyncSession
+from bs4 import BeautifulSoup
 from nonebot.log import logger
+
+from utils.json_io import atomic_write_json, load_json
+
+
+class HLTVFetchError(Exception):
+    def __init__(self, reason: str, *, retry_at: float = 0):
+        self.reason = reason
+        self.retry_at = retry_at
+        message = f"HLTV 暂时无法访问（{reason}）"
+        if retry_at:
+            when = datetime.fromtimestamp(retry_at, timezone.utc).astimezone(
+                timezone(timedelta(hours=8))
+            )
+            message = f"HLTV 已暂停访问（{reason}），下次允许尝试：{when:%m-%d %H:%M:%S}（北京时间）"
+        super().__init__(message)
 
 
 @dataclass
 class FetchResult:
-    text: Optional[str]
-    status_code: Optional[int] = None
+    text: str
     final_url: str = ""
-    error: str = ""
-
-
-def _chrome_hint_version(impersonate: str) -> str:
-    if impersonate == "chrome":
-        return "142"
-    if impersonate.startswith("chrome"):
-        suffix = impersonate.removeprefix("chrome")
-        version = "".join(ch for ch in suffix if ch.isdigit())
-        if version:
-            return version
-    return "142"
-
-
-def _build_headers(impersonate: str) -> dict[str, str]:
-    """构建完整的现代 Chrome 浏览器请求头"""
-    chrome_version = _chrome_hint_version(impersonate)
-    return {
-        "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version}.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Cache-Control": "max-age=0",
-        "Sec-Ch-Ua": f'"Chromium";v="{chrome_version}", "Google Chrome";v="{chrome_version}", "Not.A/Brand";v="99"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-    }
 
 
 class HLTVHttpClient:
@@ -64,206 +41,215 @@ class HLTVHttpClient:
         self,
         *,
         timeout: int,
-        min_delay: float,
-        proxy_list: list[str] | None = None,
-        impersonate: str = "chrome136",
-        flaresolverr_url: str = "",
+        request_interval: float,
+        endpoint: str,
+        session_name: str,
+        cooldown: int,
+        max_cooldown: int,
+        state_path: Path,
     ) -> None:
         self._timeout = timeout
-        self._min_delay = min_delay
-        self._proxy_list = proxy_list or []
-        self._impersonate = impersonate
-        self._flaresolverr_url = (
-            flaresolverr_url.rstrip("/") if flaresolverr_url else ""
+        self._interval = request_interval
+        self._endpoint = endpoint
+        self._session_name = session_name
+        self._cooldown = cooldown
+        self._max_cooldown = max_cooldown
+        self._state_path = state_path
+        self._client: httpx.AsyncClient | None = None
+        self._lock = asyncio.Lock()
+        self._last_request = 0.0
+        self._request_count = 0
+        self._cache: OrderedDict[str, tuple[float, FetchResult]] = OrderedDict()
+        self._inflight: dict[str, asyncio.Task] = {}
+        self._probe: asyncio.Task | None = None
+        self._closed = False
+        state = load_json(state_path, missing_ok=True, default={})
+        if not state.success:
+            raise ValueError("HLTV 暂停状态文件无法读取")
+        self._blocked_until = state.data.get("blocked_until", 0.0)
+        self._blocks = state.data.get("blocks", 0)
+
+    def _save_state(self) -> None:
+        atomic_write_json(
+            self._state_path,
+            {"blocked_until": self._blocked_until, "blocks": self._blocks},
         )
-        self._session: Optional[AsyncSession] = None
 
-        # 代理轮换状态（失败退避 + 冷却）
-        self._proxy_cursor: int = 0
-        self._proxy_failures: dict[str, int] = {}
-        self._proxy_cooldown_until: dict[str, float] = {}
-        self._proxy_backoff_base_seconds: int = 3
-        self._proxy_backoff_max_seconds: int = 60
+    def _check_pause(self) -> None:
+        if time.time() < self._blocked_until:
+            raise HLTVFetchError("访问冷却中", retry_at=self._blocked_until)
+        if self._probe is not None and self._probe is not asyncio.current_task():
+            raise HLTVFetchError("恢复探测中")
 
-    async def _get_session(self) -> AsyncSession:
-        if self._session is None:
-            self._session = AsyncSession(impersonate=self._impersonate)
-        return self._session
+    def _pause(self, reason: str, *, blocked: bool) -> HLTVFetchError:
+        delay = 60
+        if blocked:
+            self._blocks += 1
+            delay = min(
+                self._cooldown * 2 ** min(self._blocks - 1, 20), self._max_cooldown
+            )
+        self._blocked_until = time.time() + delay
+        self._save_state()
+        logger.warning(f"[HLTV] 暂停访问 reason={reason} seconds={delay}")
+        return HLTVFetchError(reason, retry_at=self._blocked_until)
 
     async def close(self) -> None:
-        if self._session is not None:
-            await self._session.close()
-            self._session = None
+        self._closed = True
+        tasks = list(self._inflight.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+        self._cache.clear()
 
-    def _pick_proxy(self) -> Optional[str]:
-        """选择当前可用代理（轮换 + 冷却过滤）"""
-        if not self._proxy_list:
-            return None
+    async def fetch_with_meta(
+        self,
+        url: str,
+        *,
+        cache_key: str,
+        ttl: int,
+        force_refresh: bool = False,
+    ) -> FetchResult:
+        if self._closed:
+            raise HLTVFetchError("客户端已关闭")
+        cached = self._cache.get(cache_key)
+        if not force_refresh and cached and cached[0] > time.monotonic():
+            self._cache.move_to_end(cache_key)
+            logger.debug(f"[HLTV] cache_hit page={cache_key}")
+            return cached[1]
+        if cached and cached[0] <= time.monotonic():
+            self._cache.pop(cache_key)
+        task = self._inflight.get(cache_key)
+        if task is not None:
+            return await asyncio.shield(task)
+        self._check_pause()
+        task = asyncio.create_task(self._fetch_and_cache(url, cache_key, ttl))
+        self._inflight[cache_key] = task
+        # 到期后的第一个调用占用探测权，避免同时排入其他页面。
+        if self._blocked_until:
+            self._probe = task
+        task.add_done_callback(lambda done: self._finish(cache_key, done))
+        return await asyncio.shield(task)
 
-        now = time.time()
-        candidates = [
-            p for p in self._proxy_list if self._proxy_cooldown_until.get(p, 0.0) <= now
-        ]
-        if not candidates:
-            # 全部在冷却中时，允许继续轮换，避免完全阻塞
-            candidates = self._proxy_list
+    def _finish(self, key: str, task: asyncio.Task) -> None:
+        self._inflight.pop(key, None)
+        if self._probe is task:
+            self._probe = None
+        if not task.cancelled():
+            task.exception()
 
-        idx = self._proxy_cursor % len(candidates)
-        proxy = candidates[idx]
-        self._proxy_cursor = (self._proxy_cursor + 1) % max(1, len(candidates))
-        return proxy
+    async def _fetch_and_cache(self, url: str, key: str, ttl: int) -> FetchResult:
+        async with self._lock:
+            self._check_pause()
+            result = await self._request(url, key)
+            if self._blocked_until:
+                self._blocks = 0
+                self._blocked_until = 0
+                self._save_state()
+                logger.info("[HLTV] 恢复访问")
+            self._cache[key] = (time.monotonic() + ttl, result)
+            self._cache.move_to_end(key)
+            while len(self._cache) > 256:
+                self._cache.popitem(last=False)
+            return result
 
-    def _mark_proxy_failure(self, proxy: Optional[str]) -> None:
-        if not proxy:
-            return
-
-        failures = self._proxy_failures.get(proxy, 0) + 1
-        self._proxy_failures[proxy] = failures
-
-        backoff = min(
-            self._proxy_backoff_base_seconds * (2 ** max(0, failures - 1)),
-            self._proxy_backoff_max_seconds,
-        )
-        self._proxy_cooldown_until[proxy] = time.time() + backoff
-
-    def _mark_proxy_success(self, proxy: Optional[str]) -> None:
-        if not proxy:
-            return
-        self._proxy_failures[proxy] = 0
-        self._proxy_cooldown_until[proxy] = 0.0
-
-    async def _fetch_via_flaresolverr(self, url: str) -> FetchResult:
-        """通过 FlareSolverr 获取页面（Cloudflare 挑战回退）"""
-        if not self._flaresolverr_url:
-            return FetchResult(text=None, error="flaresolverr_not_configured")
-
-        endpoint = f"{self._flaresolverr_url}"
-        # 确保 endpoint 以 /v1 结尾
-        if not endpoint.endswith("/v1"):
-            endpoint = endpoint.rstrip("/") + "/v1"
-
-        payload = {
-            "cmd": "request.get",
-            "url": url,
-            "maxTimeout": self._timeout * 1000,  # FlareSolverr 使用毫秒
-        }
-
+    async def _call(self, command: str, **params) -> dict:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=self._timeout + 30, trust_env=False
+            )
         try:
-            logger.info(f"[HLTV] FlareSolverr 回退请求: {url}")
-            async with httpx.AsyncClient(timeout=self._timeout + 30) as client:
-                resp = await client.post(endpoint, json=payload)
-                data = resp.json()
+            response = await self._client.post(
+                self._endpoint,
+                json={"cmd": command, "session": self._session_name, **params},
+            )
+            data = response.json()
+        except (httpx.HTTPError, ValueError):
+            raise self._pause("FlareSolverr 连接失败或响应无效", blocked=False) from None
 
-            if data.get("status") == "ok":
-                solution = data.get("solution", {})
-                html = solution.get("response", "")
-                status_code = solution.get("status", 200)
-                final_url = solution.get("url", url)
-                logger.info(f"[HLTV] FlareSolverr 成功: {url} status={status_code}")
-                return FetchResult(
-                    text=html if html else None,
-                    status_code=status_code,
-                    final_url=final_url,
+        if not isinstance(data, dict):
+            raise self._pause("FlareSolverr 响应无效", blocked=False)
+        if data.get("status") != "ok":
+            # 服务异常可能含 URL、代理凭据或浏览器堆栈，仅输出归类后的原因。
+            message = str(data.get("message", "")).lower()
+            blocked = command == "request.get" and any(
+                marker in message
+                for marker in (
+                    "timeout after",
+                    "captcha detected",
+                    "challenge not solved",
+                    "cloudflare has blocked",
+                    "access denied",
                 )
-            else:
-                error_msg = data.get("message", "unknown_error")
-                logger.warning(f"[HLTV] FlareSolverr 失败: {url} error={error_msg}")
-                return FetchResult(text=None, error=f"flaresolverr: {error_msg}")
+            )
+            reason = "浏览器挑战未通过" if blocked else "FlareSolverr 服务或浏览器异常"
+            raise self._pause(reason, blocked=blocked)
+        if not response.is_success:
+            raise self._pause("FlareSolverr API 请求失败", blocked=False)
+        return data
 
-        except Exception as e:
-            logger.error(f"[HLTV] FlareSolverr 异常: {url} error={e}")
-            return FetchResult(text=None, error=f"flaresolverr_exception: {repr(e)}")
+    async def _request(self, url: str, key: str) -> FetchResult:
+        session = await self._call("sessions.create")
+        reused = session.get("message") == "Session already exists."
+        logger.info(f"[HLTV] browser_session reused={reused}")
 
-    async def fetch_with_meta(self, url: str, max_retries: int = 5) -> FetchResult:
-        """发送请求获取 HTML + 响应元信息"""
-        session = await self._get_session()
-        headers = _build_headers(self._impersonate)
-
-        last_status: Optional[int] = None
-        last_final_url = ""
-        last_error = ""
-        consecutive_403 = 0
-
-        for attempt in range(max_retries):
-            try:
-                # 添加随机延迟（重试时）
-                if attempt > 0:
-                    delay = self._min_delay + (attempt * 2) + random.uniform(0, 2)
-                    logger.info(
-                        f"[HLTV] 重试 {attempt + 1}/{max_retries}，延迟 {delay:.1f}s..."
-                    )
-                    await asyncio.sleep(delay)
-
-                proxy = self._pick_proxy()
-                logger.info(
-                    f"[HLTV] 正在请求: {url} (proxy={proxy or 'direct'}, impersonate={self._impersonate})"
-                )
-
-                response = await session.get(
-                    url,
-                    proxy=proxy,
-                    timeout=self._timeout,
-                    headers=headers,
-                )
-
-                last_status = response.status_code
-                last_final_url = str(response.url)
-
-                if response.status_code == 200:
-                    self._mark_proxy_success(proxy)
-                    logger.debug(f"[HLTV] 请求成功: {url}")
-                    return FetchResult(
-                        text=response.text,
-                        status_code=response.status_code,
-                        final_url=last_final_url,
-                    )
-                if response.status_code == 403:
-                    consecutive_403 += 1
-                    self._mark_proxy_failure(proxy)
-                    logger.warning(
-                        f"[HLTV] 403 Forbidden: {url} (proxy={proxy or 'direct'}, attempt={attempt + 1})"
-                    )
-
-                    # 连续 403 达到 2 次且配置了 FlareSolverr，尝试回退
-                    if consecutive_403 >= 2 and self._flaresolverr_url:
-                        logger.info(
-                            f"[HLTV] 连续 {consecutive_403} 次 403，尝试 FlareSolverr 回退..."
-                        )
-                        fs_result = await self._fetch_via_flaresolverr(url)
-                        if fs_result.text:
-                            return fs_result
-                        logger.warning(
-                            f"[HLTV] FlareSolverr 回退失败: {fs_result.error}"
-                        )
-
-                    continue
-
-                self._mark_proxy_failure(proxy)
-                logger.warning(
-                    f"[HLTV] HTTP {response.status_code}: {url} (proxy={proxy or 'direct'})"
-                )
-            except Exception as e:
-                last_error = repr(e)
-                self._mark_proxy_failure(proxy)
-                logger.error(f"[HLTV] 请求失败: {e} (proxy={proxy or 'direct'})")
-                continue
-
-        # 所有重试都失败后，最后尝试一次 FlareSolverr
-        if self._flaresolverr_url and last_status == 403:
-            logger.info(f"[HLTV] 所有重试失败（403），最终 FlareSolverr 回退...")
-            fs_result = await self._fetch_via_flaresolverr(url)
-            if fs_result.text:
-                return fs_result
-
-        logger.error(f"[HLTV] 请求失败，已达最大重试次数: {url}")
-        return FetchResult(
-            text=None,
-            status_code=last_status,
-            final_url=last_final_url,
-            error=last_error,
+        delay = self._last_request + self._interval - time.monotonic()
+        if delay > 0:
+            await asyncio.sleep(delay)
+        self._check_pause()
+        self._last_request = time.monotonic()
+        self._request_count += 1
+        logger.info(f"[HLTV] request page={key} count={self._request_count}")
+        data = await self._call(
+            "request.get", url=url, maxTimeout=self._timeout * 1000
         )
+        solution = data.get("solution")
+        if not isinstance(solution, dict):
+            raise self._pause("FlareSolverr 页面响应无效", blocked=False)
+        html = solution.get("response")
+        final_url = solution.get("url")
+        if not isinstance(html, str) or not html.strip():
+            raise self._pause("页面响应为空", blocked=False)
+        if not isinstance(final_url, str):
+            raise self._pause("页面地址缺失", blocked=False)
+        try:
+            parts = urlsplit(final_url)
+        except ValueError:
+            raise self._pause("页面地址无效", blocked=False) from None
+        if parts.scheme != "https" or parts.hostname != "www.hltv.org":
+            raise self._pause("页面跳转到了非 HLTV 地址", blocked=False)
 
-    async def fetch(self, url: str, max_retries: int = 5) -> Optional[str]:
-        """发送请求获取 HTML（兼容旧接口）"""
-        result = await self.fetch_with_meta(url, max_retries=max_retries)
+        # FlareSolverr 的 solution.status 固定为 200，必须检查实际页面。
+        soup = BeautifulSoup(html, "lxml")
+        title = soup.title.get_text(" ", strip=True).lower() if soup.title else ""
+        heading = soup.h1.get_text(" ", strip=True).lower() if soup.h1 else ""
+        blocked = any(
+            marker in title or marker in heading
+            for marker in (
+                "just a moment", "access denied", "sorry, you have been blocked",
+            )
+        ) or soup.select_one(
+            "#challenge-form, #cf-challenge-running, #cf-please-wait, "
+            "#challenge-spinner, #turnstile-wrapper, .cf-error-details"
+        ) is not None
+        if blocked:
+            raise self._pause("页面仍为挑战或拒绝访问页", blocked=True)
+        if "hltv.org" not in title or any(
+            marker in title for marker in ("not found", "server error", "unavailable")
+        ):
+            raise self._pause("无法识别 HLTV 页面", blocked=False)
+        logger.info(
+            f"[HLTV] response page={key} "
+            f"elapsed={time.monotonic() - self._last_request:.2f}s"
+        )
+        return FetchResult(text=html, final_url=final_url)
+
+    async def fetch(
+        self, url: str, *, cache_key: str, ttl: int, force_refresh: bool = False
+    ) -> str:
+        result = await self.fetch_with_meta(
+            url, cache_key=cache_key, ttl=ttl, force_refresh=force_refresh
+        )
         return result.text

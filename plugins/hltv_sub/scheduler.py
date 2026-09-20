@@ -17,8 +17,9 @@ from nonebot.log import logger
 from utils.onebot.media import image_segment
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.data_manager import data_manager
-from plugins.hltv_sub.data_source import hltv_data
-from plugins.hltv_sub.models import ResultInfo
+from plugins.hltv_sub.data_source import EventMatchesMeta, hltv_data
+from plugins.hltv_sub.http_client import HLTVFetchError
+from plugins.hltv_sub.models import MatchInfo, MatchTimeHint, ResultInfo
 from plugins.hltv_sub.render import render_reminder, render_stats
 from plugins.hltv_sub.scheduler_internal.constants import (
     ADAPTIVE_INTERVAL_TABLE,
@@ -49,7 +50,7 @@ T = TypeVar("T")
 class HLTVScheduler:
     def __init__(self):
         self._tz = pytz.timezone(plugin_config.hltv_timezone)
-        self._initialized = False
+        self._initialized_events: set[str] = set()
 
         # 赛事结束判定缓冲（避免时区/页面延迟导致漏推最后结果）
         self._end_grace_days: int = max(
@@ -60,13 +61,14 @@ class HLTVScheduler:
         self._event_states: dict[str, EventPollState] = {}
         self._event_run_locks: dict[str, asyncio.Lock] = {}
 
-        # 抓取并发限制（避免多个赛事同时请求风暴）
-        self._fetch_semaphore = asyncio.Semaphore(
-            max(1, plugin_config.hltv_scheduler_max_parallel)
-        )
-
     async def run_check_for_event(self, event_id: str) -> dict:
         lock = self._event_run_locks.setdefault(event_id, asyncio.Lock())
+        if lock.locked():
+            return {
+                "event_id": event_id, "upcoming_matches": [],
+                "completed_map_results": [], "new_results": [],
+                "errors": [f"赛事 {event_id} 正在检查，跳过重复触发"],
+            }
         async with lock:
             return await self._run_check_for_event_unlocked(event_id)
 
@@ -99,12 +101,19 @@ class HLTVScheduler:
                 )
                 return result
 
-            upcoming = await self.check_match_starts_for_event(event_id)
+            if event_id not in self._initialized_events:
+                await self.initialize_event_results_as_notified(event_id)
+            matches_snapshot = await hltv_data.get_event_matches_with_hints_and_meta(
+                event_id
+            )
+            upcoming = await self.check_match_starts_for_event(event_id, matches_snapshot)
             result["upcoming_matches"] = upcoming
             for match in upcoming:
                 await self.send_match_reminder(bot, match)
 
-            completed_maps = await self.check_completed_map_results_for_event(event_id)
+            completed_maps = await self.check_completed_map_results_for_event(
+                event_id, matches_snapshot
+            )
             result["completed_map_results"] = [
                 m.notification_id for m in completed_maps
             ]
@@ -124,6 +133,10 @@ class HLTVScheduler:
                 f"[HLTV Scheduler] 检查完成(event={event_id}): {len(upcoming)} 场即将开始, "
                 f"{len(completed_maps)} 张单图结果, {len(new_results)} 场新结果"
             )
+        except HLTVFetchError as e:
+            poll_state.has_fetch_error = True
+            result["errors"].append(str(e))
+            logger.info(f"[HLTV Scheduler] 本轮停止(event={event_id}): {e}")
         except Exception as e:
             logger.error(f"[HLTV Scheduler] 检查失败(event={event_id}): {e}")
             result["errors"].append(str(e))
@@ -191,6 +204,8 @@ class HLTVScheduler:
                                 is_third_place=match.is_third_place,
                             )
                         )
+            except HLTVFetchError:
+                raise
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 获取赛事 {event_id} 比赛失败: {e}")
                 continue
@@ -206,6 +221,7 @@ class HLTVScheduler:
     def _cleanup_event_state_if_unsubscribed(self) -> None:
         subscribed = data_manager.get_all_subscribed_event_ids()
         stale = [eid for eid in self._event_states.keys() if eid not in subscribed]
+        self._initialized_events.intersection_update(subscribed)
         for eid in stale:
             self._event_states.pop(eid, None)
             self._event_run_locks.pop(eid, None)
@@ -270,8 +286,6 @@ class HLTVScheduler:
         """是否属于可直接自动退订的 matches 不可用原因（避免临时网络问题误退订）"""
         return reason in {
             "generic_matches_page_no_event_matches",
-            "http_404",
-            "http_410",
         }
 
     def _update_unavailable_streak(
@@ -361,33 +375,21 @@ class HLTVScheduler:
         except Exception:
             return None
 
-    async def _fetch_with_retry(
+    async def _fetch(
         self,
         coro_func: Callable[[], Awaitable[T]],
-        max_retries: int = 3,
-        delay: float = 2.0,
         event_id: str = "",
-    ) -> Optional[T]:
-        """带重试的异步请求（受并发信号量控制）"""
-        for attempt in range(max_retries):
-            try:
-                async with self._fetch_semaphore:
-                    return await coro_func()
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    logger.error(
-                        f"[HLTV Scheduler] 请求失败 (event={event_id}, 尝试 {attempt + 1}/{max_retries}): {e}"
-                    )
-                    state = self._get_event_poll_state(event_id)
-                    state.has_fetch_error = True
-                    return None
-                logger.warning(
-                    f"[HLTV Scheduler] 请求失败 (event={event_id}, 尝试 {attempt + 1}/{max_retries}): {e}，{delay * (attempt + 1)}秒后重试"
-                )
-                await asyncio.sleep(delay * (attempt + 1))
-        return None
+    ) -> T:
+        try:
+            return await coro_func()
+        except Exception:
+            self._get_event_poll_state(event_id).has_fetch_error = True
+            raise
 
-    async def check_match_starts_for_event(self, event_id: str) -> list[UpcomingMatch]:
+    async def check_match_starts_for_event(
+        self, event_id: str,
+        snapshot: tuple[list[MatchInfo], list[MatchTimeHint], EventMatchesMeta],
+    ) -> list[UpcomingMatch]:
         upcoming: list[UpcomingMatch] = []
         now = datetime.now(self._tz)
 
@@ -404,16 +406,7 @@ class HLTVScheduler:
         event_title = sub.event_title if sub else f"Event #{event_id}"
 
         try:
-            triplet = await self._fetch_with_retry(
-                lambda eid=event_id: (
-                    hltv_data.get_event_matches_with_hints_and_meta(eid)
-                ),
-                event_id=event_id,
-            )
-            if not triplet:
-                return upcoming
-
-            matches, hints, meta = triplet
+            matches, hints, meta = snapshot
 
             self._update_unavailable_streak(
                 event_id,
@@ -537,7 +530,7 @@ class HLTVScheduler:
         poll_state = self._get_event_poll_state(event_id)
 
         try:
-            results = await self._fetch_with_retry(
+            results = await self._fetch(
                 lambda eid=event_id: hltv_data.get_event_results(
                     eid, max_results=5
                 ),
@@ -549,6 +542,8 @@ class HLTVScheduler:
             for r in results:
                 if not data_manager.is_result_notified(r.id):
                     new_results.append((event_id, event_title, r))
+        except HLTVFetchError:
+            raise
         except Exception as e:
             logger.error(f"[HLTV Scheduler] 检查赛事 {event_id} 结果失败: {e}")
             poll_state.has_fetch_error = True
@@ -556,7 +551,8 @@ class HLTVScheduler:
         return new_results
 
     async def check_completed_map_results_for_event(
-        self, event_id: str
+        self, event_id: str,
+        snapshot: tuple[list[MatchInfo], list[MatchTimeHint], EventMatchesMeta],
     ) -> list[CompletedMapResult]:
         completed_maps: list[CompletedMapResult] = []
 
@@ -569,16 +565,7 @@ class HLTVScheduler:
         poll_state = self._get_event_poll_state(event_id)
 
         try:
-            triplet = await self._fetch_with_retry(
-                lambda eid=event_id: (
-                    hltv_data.get_event_matches_with_hints_and_meta(eid)
-                ),
-                event_id=event_id,
-            )
-            if not triplet:
-                return completed_maps
-
-            matches, hints, meta = triplet
+            matches, hints, meta = snapshot
             if meta.is_unavailable:
                 return completed_maps
 
@@ -593,7 +580,7 @@ class HLTVScheduler:
                     continue
 
                 bo_maps = int(match.maps)
-                stats = await self._fetch_with_retry(
+                stats = await self._fetch(
                     lambda m=match: hltv_data.get_match_stats(
                         match_id=m.id,
                         team1=m.team1,
@@ -616,6 +603,8 @@ class HLTVScheduler:
                     ):
                         completed_maps.append(candidate)
 
+        except HLTVFetchError:
+            raise
         except Exception as e:
             logger.error(f"[HLTV Scheduler] 检查赛事 {event_id} 单图结果失败: {e}")
             poll_state.has_fetch_error = True
@@ -624,33 +613,18 @@ class HLTVScheduler:
 
     async def init_existing_results(self) -> int:
         """启动时初始化：将现有结果标记为已推送，避免重启后误推送"""
-        if self._initialized:
-            return 0
-
         event_ids = data_manager.get_all_subscribed_event_ids()
-        if not event_ids:
-            self._initialized = True
-            return 0
-
         count = 0
         for event_id in event_ids:
             try:
-                results = await self._fetch_with_retry(
-                    lambda eid=event_id: hltv_data.get_event_results(
-                        eid, max_results=10
-                    ),
-                    event_id=event_id,
-                )
-                if results:
-                    for r in results:
-                        if not data_manager.is_result_notified(r.id):
-                            data_manager.add_notified_result(r.id, force=True)
-                            count += 1
+                lock = self._event_run_locks.setdefault(event_id, asyncio.Lock())
+                async with lock:
+                    if event_id not in self._initialized_events:
+                        count += await self.initialize_event_results_as_notified(event_id)
             except Exception as e:
                 logger.error(f"[HLTV Scheduler] 初始化赛事 {event_id} 结果失败: {e}")
                 continue
 
-        self._initialized = True
         logger.info(f"[HLTV Scheduler] 已初始化 {count} 条历史结果记录")
         return count
 
@@ -658,33 +632,25 @@ class HLTVScheduler:
         self, event_id: str, max_results: int = 10
     ) -> int:
         """订阅进行中赛事时调用：把当前已有结果先标记为已推送，避免订阅后立刻推历史结果"""
-        try:
-            results = await self._fetch_with_retry(
-                lambda eid=event_id: hltv_data.get_event_results(
-                    eid, max_results=max_results
-                ),
-                event_id=event_id,
-            )
-            if not results:
-                return 0
-
-            count = 0
-            for r in results:
-                if not data_manager.is_result_notified(r.id):
-                    data_manager.add_notified_result(r.id, force=True)
-                    count += 1
-            logger.info(
-                f"[HLTV Scheduler] 订阅初始化：已标记 {count} 条现有结果为已推送 (event {event_id})"
-            )
-            return count
-        except Exception as e:
-            logger.warning(f"[HLTV Scheduler] 订阅初始化失败 (event {event_id}): {e}")
-            return 0
+        results = await self._fetch(
+            lambda: hltv_data.get_event_results(event_id, max_results=max_results),
+            event_id=event_id,
+        )
+        count = 0
+        for r in results:
+            if not data_manager.is_result_notified(r.id):
+                data_manager.add_notified_result(r.id, force=True)
+                count += 1
+        self._initialized_events.add(event_id)
+        logger.info(
+            f"[HLTV Scheduler] 订阅初始化：已标记 {count} 条现有结果为已推送 (event {event_id})"
+        )
+        return count
 
     async def _try_refresh_subscription_meta(self, event_id: str) -> bool:
         """尝试补全 UNKNOWN 赛事元信息（start/end/title）"""
         try:
-            info = await self._fetch_with_retry(
+            info = await self._fetch(
                 lambda eid=event_id: hltv_data.get_event_info(eid),
                 event_id=event_id,
             )
@@ -714,6 +680,15 @@ class HLTVScheduler:
         max_results: int = 10,
     ) -> bool:
         """退订前多轮探测：尽量推送最后结果，避免 finished 竞态漏推"""
+        if event_id not in self._initialized_events:
+            try:
+                lock = self._event_run_locks.setdefault(event_id, asyncio.Lock())
+                async with lock:
+                    if event_id not in self._initialized_events:
+                        await self.initialize_event_results_as_notified(event_id)
+            except HLTVFetchError as e:
+                logger.info(f"[HLTV Scheduler] 延后退订 event={event_id}: {e}")
+                return False
         rounds = max(1, int(max_rounds))
         required_empty_rounds = max(1, min(int(stable_empty_rounds), rounds))
         delay_seconds = max(0, int(round_delay_seconds))
@@ -725,16 +700,17 @@ class HLTVScheduler:
 
         consecutive_empty_rounds = 0
         for idx in range(1, rounds + 1):
-            results = await self._fetch_with_retry(
-                lambda eid=event_id: hltv_data.get_event_results(
-                    eid, max_results=max_results
-                ),
-                event_id=event_id,
-            )
-            if results is None:
+            try:
+                results = await self._fetch(
+                    lambda eid=event_id: hltv_data.get_event_results(
+                        eid, max_results=max_results, force_refresh=True
+                    ),
+                    event_id=event_id,
+                )
+            except HLTVFetchError as e:
                 logger.warning(
                     f"[HLTV Scheduler] final_probe_defer_unsubscribe event={event_id}, "
-                    f"reason=fetch_failed, round={idx}/{rounds}"
+                    f"reason={e}, round={idx}/{rounds}"
                 )
                 return False
 
@@ -777,7 +753,11 @@ class HLTVScheduler:
                         return False
 
                     for r in pending:
-                        await self.send_match_result(bot, event_id, event_title, r)
+                        try:
+                            await self.send_match_result(bot, event_id, event_title, r)
+                        except HLTVFetchError as e:
+                            logger.info(f"[HLTV Scheduler] 延后退订 event={event_id}: {e}")
+                            return False
 
                     unsent = [
                         r.id
@@ -810,7 +790,9 @@ class HLTVScheduler:
 
             # UNKNOWN 先尝试补全一次元信息
             if state == "UNKNOWN":
-                await self._try_refresh_subscription_meta(event_id)
+                if not await self._try_refresh_subscription_meta(event_id):
+                    failed_events.append(event_id)
+                    continue
                 state = get_event_state(self._tz, self._end_grace_days, event_id)
 
             sub = data_manager.get_any_subscription_by_event(event_id)
@@ -842,11 +824,13 @@ class HLTVScheduler:
                 continue
 
             # 2) matches 页面不可用（基于真实响应元信息）也要先做最终结果探测
-            health = await self._fetch_with_retry(
-                lambda eid=event_id: hltv_data.get_event_matches_health(eid),
-                event_id=event_id,
-            )
-            if not health:
+            try:
+                health = await self._fetch(
+                    lambda eid=event_id: hltv_data.get_event_matches_health(eid),
+                    event_id=event_id,
+                )
+            except HLTVFetchError as e:
+                logger.info(f"[HLTV Scheduler] 每日维护跳过 event={event_id}: {e}")
                 failed_events.append(event_id)
                 continue
 
@@ -984,7 +968,7 @@ class HLTVScheduler:
         any_success = False
 
         try:
-            stats = await self._fetch_with_retry(
+            stats = await self._fetch(
                 lambda: hltv_data.get_match_stats(
                     match_id=result.id,
                     team1=result.team1,
@@ -1022,6 +1006,8 @@ class HLTVScheduler:
                         f"[HLTV Scheduler] 发送比赛结果到群 {group_id} 失败: {e}"
                     )
 
+        except HLTVFetchError:
+            raise
         except Exception as e:
             logger.error(f"[HLTV Scheduler] 处理比赛结果 {result.id} 失败: {e}")
 

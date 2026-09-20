@@ -13,6 +13,7 @@ from nonebot.params import CommandArg
 from utils.onebot.media import image_segment
 from plugins.hltv_sub.data_manager import EventSubscription, data_manager
 from plugins.hltv_sub.data_source import hltv_data
+from plugins.hltv_sub.http_client import HLTVFetchError
 from plugins.hltv_sub.permissions import check_permission, is_group_enabled
 from plugins.hltv_sub.render import render_events
 
@@ -49,6 +50,8 @@ async def handle_event_list(bot: Bot, event: GroupMessageEvent):
 
     except FinishedException:
         raise
+    except HLTVFetchError as e:
+        await event_list.finish(str(e))
     except Exception as e:
         logger.error(f"获取赛事列表失败: {e}")
         await event_list.finish("获取赛事列表失败，HLTV 可能暂时无法访问")
@@ -94,10 +97,19 @@ async def handle_event_subscribe(
                 event_info = e
                 break
 
-        if not event_info:
+        if not event_info or not event_info.start_date or not event_info.end_date:
             event_info = await hltv_data.get_event_info(event_id)
 
-        if event_info:
+        if (
+            event_info and event_info.title
+            and event_info.start_date and event_info.end_date
+        ):
+            from plugins.hltv_sub.scheduler import hltv_scheduler
+
+            # 在写入订阅前完成网络操作，避免失败后留下半完成订阅。
+            if event_info.is_ongoing:
+                await hltv_scheduler.initialize_event_results_as_notified(event_id)
+
             created = data_manager.subscribe_event(
                 subscription=EventSubscription(
                     event_id=event_id,
@@ -110,39 +122,17 @@ async def handle_event_subscribe(
                 await event_subscribe.finish(f"已经订阅了赛事 #{event_id}")
                 return
 
-            from plugins.hltv_sub.scheduler import hltv_scheduler
-
-            # 进行中赛事先标记已有结果，避免订阅后立刻推历史结果
-            if event_info.is_ongoing:
-                await hltv_scheduler.initialize_event_results_as_notified(event_id)
-
             hltv_scheduler.ensure_event_job_state(event_id)
             hltv_scheduler.refresh_wakeup_jobs()
 
             await event_subscribe.finish(f"✅ 成功订阅赛事：{event_info.title}")
         else:
-            # 未获取到详细信息：仍允许订阅，元信息后续由每日维护自动补全
-            created = data_manager.subscribe_event(
-                subscription=EventSubscription(
-                    event_id=event_id,
-                    event_title=f"Event #{event_id}",
-                    start_date="",
-                    end_date="",
-                ),
-            )
-            if not created:
-                await event_subscribe.finish(f"已经订阅了赛事 #{event_id}")
-                return
-
-            from plugins.hltv_sub.scheduler import hltv_scheduler
-
-            hltv_scheduler.ensure_event_job_state(event_id)
-            hltv_scheduler.refresh_wakeup_jobs()
-
-            await event_subscribe.finish(f"✅ 成功订阅赛事 #{event_id}")
+            await event_subscribe.finish(f"无法获取赛事 #{event_id} 的信息，未创建订阅")
 
     except FinishedException:
         raise
+    except HLTVFetchError as e:
+        await event_subscribe.finish(f"订阅未完成：{e}")
     except Exception as e:
         logger.error(f"订阅赛事失败: {e}")
         await event_subscribe.finish("订阅失败，HLTV 可能暂时无法访问")

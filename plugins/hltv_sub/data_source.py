@@ -1,8 +1,8 @@
-"""HLTV 数据源 - 使用 curl_cffi 绕过 Cloudflare
+"""HLTV 数据源。
 
 说明：
 - 作为“门面（Facade）”对外提供同名方法
-- 网络请求：由 HLTVHttpClient 负责（重试/代理/会话管理）
+- 页面抓取：由 HLTVHttpClient 通过 FlareSolverr 持久会话完成
 - HTML 解析：拆分到 plugins/hltv_sub/parsers/*
 - 数据模型：拆分到 plugins/hltv_sub/models.py
 """
@@ -15,6 +15,7 @@ from typing import Optional
 import pytz
 from bs4 import BeautifulSoup
 from nonebot.log import logger
+from utils.paths import PluginPaths
 
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.http_client import FetchResult, HLTVHttpClient
@@ -33,7 +34,6 @@ from plugins.hltv_sub.parsers.stats import parse_match_stats
 
 @dataclass
 class EventMatchesMeta:
-    status_code: Optional[int] = None
     final_url: str = ""
     page_title: str = ""
     match_wrapper_count: int = 0
@@ -50,11 +50,13 @@ class HLTVDataSource:
     def __init__(self):
         self._tz = pytz.timezone(plugin_config.hltv_timezone)
         self._client = HLTVHttpClient(
-            timeout=plugin_config.hltv_timeout,
-            min_delay=plugin_config.hltv_min_delay,
-            proxy_list=plugin_config.hltv_proxy_list,
-            impersonate=plugin_config.hltv_impersonate,
-            flaresolverr_url=plugin_config.hltv_flaresolverr_url,
+            timeout=plugin_config.hltv_flaresolverr_timeout_seconds,
+            request_interval=plugin_config.hltv_request_interval_seconds,
+            endpoint=plugin_config.hltv_flaresolverr_url,
+            session_name=plugin_config.hltv_flaresolverr_session,
+            cooldown=plugin_config.hltv_block_cooldown_seconds,
+            max_cooldown=plugin_config.hltv_block_cooldown_max_seconds,
+            state_path=PluginPaths("hltv_sub").data / "http_state.json",
         )
 
     async def close(self):
@@ -63,9 +65,9 @@ class HLTVDataSource:
 
     async def get_big_events(self) -> list[EventInfo]:
         """获取 Big Events（正在进行 + 即将举行的赛事）"""
-        html = await self._client.fetch(f"{self.BASE_URL}/events")
-        if not html:
-            return []
+        html = await self._client.fetch(
+            f"{self.BASE_URL}/events", cache_key="events", ttl=3600
+        )
         return parse_big_events(html, self._tz)
 
     async def get_event_info(
@@ -75,44 +77,28 @@ class HLTVDataSource:
         title_slug = event_title.lower().replace(" ", "-") if event_title else "event"
         url = f"{self.BASE_URL}/events/{event_id}/{title_slug}"
 
-        html = await self._client.fetch(url)
-        if not html:
-            return None
+        html = await self._client.fetch(url, cache_key=f"event:{event_id}", ttl=3600)
 
         return parse_event_info(
             html, event_id=event_id, event_title=event_title, tz=self._tz
         )
 
     def _analyze_matches_meta(
-        self, event_id: str, fetch_result: FetchResult, soup: Optional[BeautifulSoup]
+        self, event_id: str, fetch_result: FetchResult, soup: BeautifulSoup
     ) -> EventMatchesMeta:
-        status = fetch_result.status_code
         final_url = fetch_result.final_url or ""
-        title = soup.title.get_text(strip=True) if soup and soup.title else ""
+        title = soup.title.get_text(strip=True) if soup.title else ""
 
-        wrappers = soup.find_all("div", class_="match-wrapper") if soup else []
-        links = (
-            soup.find_all("a", href=lambda x: bool(x and "/matches/" in x))
-            if soup
-            else []
-        )
-        text = soup.get_text(" ", strip=True).lower() if soup else ""
+        wrappers = soup.find_all("div", class_="match-wrapper")
+        links = soup.find_all("a", href=lambda x: bool(x and "/matches/" in x))
+        text = soup.get_text(" ", strip=True).lower()
 
         meta = EventMatchesMeta(
-            status_code=status,
             final_url=final_url,
             page_title=title,
             match_wrapper_count=len(wrappers),
             match_link_count=len(links),
         )
-
-        if status is None:
-            return meta
-
-        if status != 200:
-            meta.is_unavailable = True
-            meta.unavailable_reason = f"http_{status}"
-            return meta
 
         expected_path = f"/events/{event_id}/matches"
         if final_url and expected_path not in final_url:
@@ -139,14 +125,9 @@ class HLTVDataSource:
     ) -> tuple[list[MatchInfo], list[MatchTimeHint], EventMatchesMeta]:
         """获取赛事比赛列表 + 时间提示 + 页面元信息"""
         url = f"{self.BASE_URL}/events/{event_id}/matches"
-        fetch_result = await self._client.fetch_with_meta(url)
-        if not fetch_result.text:
-            meta = self._analyze_matches_meta(event_id, fetch_result, None)
-            if not meta.unavailable_reason:
-                meta.is_unavailable = False
-                meta.unavailable_reason = "empty_response"
-            return [], [], meta
-
+        fetch_result = await self._client.fetch_with_meta(
+            url, cache_key=f"matches:{event_id}", ttl=120
+        )
         soup = BeautifulSoup(fetch_result.text, "lxml")
         meta = self._analyze_matches_meta(event_id, fetch_result, soup)
 
@@ -154,7 +135,7 @@ class HLTVDataSource:
         if meta.is_unavailable:
             logger.warning(
                 f"[HLTV] 赛事 matches 页面不可用: event={event_id}, "
-                f"status={meta.status_code}, final_url={meta.final_url}, "
+                f"final_url={meta.final_url}, "
                 f"title={meta.page_title}, reason={meta.unavailable_reason}"
             )
             return [], [], meta
@@ -205,14 +186,14 @@ class HLTVDataSource:
         return matches
 
     async def get_event_results(
-        self, event_id: str, days: int = 7, max_results: int = 20
+        self, event_id: str, days: int = 7, max_results: int = 20,
+        *, force_refresh: bool = False,
     ) -> list[ResultInfo]:
         """获取赛事的已结束比赛结果"""
         url = f"{self.BASE_URL}/results?event={event_id}"
-        html = await self._client.fetch(url)
-        if not html:
-            logger.warning(f"[HLTV][RESULTS] fetch_empty event={event_id} url={url}")
-            return []
+        html = await self._client.fetch(
+            url, cache_key=f"results:{event_id}", ttl=120, force_refresh=force_refresh
+        )
 
         results = parse_event_results(html, max_results=max_results)
         logger.info(
@@ -232,10 +213,7 @@ class HLTVDataSource:
         url = f"{self.BASE_URL}/matches/{match_id}/{t1_slug}-vs-{t2_slug}-{event_slug}"
         logger.info(f"[HLTV][STATS] fetch_start match_id={match_id} url={url}")
 
-        html = await self._client.fetch(url)
-        if not html:
-            logger.warning(f"[HLTV][STATS] fetch_empty match_id={match_id} url={url}")
-            return None
+        html = await self._client.fetch(url, cache_key=f"stats:{match_id}", ttl=60)
 
         parsed = parse_match_stats(
             html,

@@ -13,6 +13,7 @@ from nonebot.params import CommandArg
 from utils.onebot.media import image_segment
 from plugins.hltv_sub.data_manager import data_manager
 from plugins.hltv_sub.data_source import hltv_data
+from plugins.hltv_sub.http_client import HLTVFetchError
 from plugins.hltv_sub.permissions import is_group_enabled
 from plugins.hltv_sub.render import render_stats
 
@@ -54,6 +55,8 @@ async def handle_stats(
 
         except FinishedException:
             raise
+        except HLTVFetchError as e:
+            await stats_cmd.finish(str(e))
         except Exception as e:
             logger.error(f"获取比赛数据失败: {e}")
             await stats_cmd.finish("获取比赛数据失败，HLTV 可能暂时无法访问")
@@ -63,34 +66,7 @@ async def handle_stats(
         await stats_cmd.send(f"正在获取比赛 #{match_id} 的数据...")
 
         try:
-            # 优先直接按 match_id 拉取，避免先遍历所有订阅赛事 results 带来的额外请求开销
             stats = await hltv_data.get_match_stats(match_id=match_id)
-
-            # 直连失败时，再尝试通过订阅赛事补全 slug 信息后重试（兼容少量边缘路由）
-            if not stats and subscriptions:
-                team1 = ""
-                team2 = ""
-                event_title = ""
-
-                for sub in subscriptions:
-                    results = await hltv_data.get_event_results(
-                        sub.event_id, max_results=10
-                    )
-                    for r in results:
-                        if r.id == match_id:
-                            team1 = r.team1
-                            team2 = r.team2
-                            event_title = sub.event_title
-                            break
-                    if team1:
-                        break
-
-                stats = await hltv_data.get_match_stats(
-                    match_id=match_id,
-                    team1=team1,
-                    team2=team2,
-                    event_title=event_title,
-                )
 
             if stats:
                 img = await render_stats(stats)
@@ -100,6 +76,8 @@ async def handle_stats(
 
         except FinishedException:
             raise
+        except HLTVFetchError as e:
+            await stats_cmd.finish(str(e))
         except Exception as e:
             logger.error(f"获取比赛数据失败: {e}")
             await stats_cmd.finish("获取比赛数据失败，HLTV 可能暂时无法访问")

@@ -28,7 +28,6 @@ dependencies = [
     "opencv-python-headless",
     "beautifulsoup4",
     "pytz",
-    "curl-cffi",
     "pydub",
     "aiosqlite",
     "tenacity",
