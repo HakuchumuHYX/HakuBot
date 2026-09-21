@@ -1147,6 +1147,10 @@ class HLTVScheduler:
         """延迟初始化，等待一段时间后再执行"""
         await asyncio.sleep(10)
         try:
+            await hltv_data.start()
+        except HLTVFetchError as e:
+            logger.warning(f"[HLTV Scheduler] 会话准备暂未完成，后续轮询恢复: {e}")
+        try:
             count = await self.init_existing_results()
             if count > 0:
                 logger.info(f"[HLTV Scheduler] 启动初始化完成，标记了 {count} 条历史结果")

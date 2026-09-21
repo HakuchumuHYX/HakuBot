@@ -53,11 +53,15 @@ class HLTVDataSource:
             timeout=plugin_config.hltv_flaresolverr_timeout_seconds,
             request_interval=plugin_config.hltv_request_interval_seconds,
             endpoint=plugin_config.hltv_flaresolverr_url,
-            session_name=plugin_config.hltv_flaresolverr_session,
             cooldown=plugin_config.hltv_block_cooldown_seconds,
             max_cooldown=plugin_config.hltv_block_cooldown_max_seconds,
             state_path=PluginPaths("hltv_sub").data / "http_state.json",
+            session_state_path=PluginPaths("hltv_sub").data / "session_state.json",
         )
+
+    async def start(self):
+        """准备浏览器会话，不访问 HLTV 页面。"""
+        await self._client.start()
 
     async def close(self):
         """关闭会话"""
