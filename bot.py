@@ -46,9 +46,31 @@ def _install_log_filter():
     )
 
 
+def _install_onebot_result_guard():
+    # 适配器对已结束的 Future 再次 set_result 会抛 InvalidStateError。
+    # 该异常出在收包循环外，会拆掉整条 WebSocket。迟到或重复的回包直接丢掉。
+    from nonebot.adapters.onebot.store import ResultStore
+    from nonebot.adapters.onebot.v11.utils import log
+
+    def add_result(self, result):
+        echo = result.get("echo")
+        if not isinstance(echo, str) or not echo.isdecimal():
+            return
+        future = self._futures.get(int(echo))
+        if future is None:
+            return
+        if future.done():
+            log("WARNING", f"丢弃已结束的 OneBot API 回包 echo={echo}")
+            return
+        future.set_result(result)
+
+    ResultStore.add_result = add_result
+
+
 if __name__ == "__main__":
     nonebot.init()
     _install_log_filter()
+    _install_onebot_result_guard()
 
     driver = nonebot.get_driver()
     driver.register_adapter(ONEBOT_V11Adapter)
