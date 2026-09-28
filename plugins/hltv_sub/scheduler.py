@@ -16,7 +16,7 @@ from nonebot.adapters.onebot.v11 import Bot, MessageSegment
 from nonebot.log import logger
 from utils.onebot.media import image_segment
 from plugins.hltv_sub.config import plugin_config
-from plugins.hltv_sub.data_manager import data_manager
+from plugins.hltv_sub.data_manager import EventSubscription, data_manager
 from plugins.hltv_sub.data_source import EventMatchesMeta, hltv_data
 from plugins.hltv_sub.http_client import HLTVFetchError
 from plugins.hltv_sub.models import MatchInfo, MatchTimeHint, ResultInfo
@@ -25,6 +25,7 @@ from plugins.hltv_sub.scheduler_internal.constants import (
     ADAPTIVE_INTERVAL_TABLE,
     AUTO_UNSUB_UNAVAILABLE_STREAK,
     DEFAULT_INTERVAL_MINUTES,
+    AUTO_SUBSCRIBE_JOB_ID,
     DAILY_MAINTENANCE_JOB_ID,
     event_job_id,
     OVERDUE_THRESHOLD_MINUTES,
@@ -894,6 +895,54 @@ class HLTVScheduler:
             "cleaned_results": removed_results,
         }
 
+    async def auto_subscribe_big_events(self) -> list[str]:
+        """抓取 /events，订阅尚未订阅的 big events，并立刻注册轮询任务。"""
+        try:
+            events = await hltv_data.get_big_events()
+        except HLTVFetchError as e:
+            logger.info(f"[HLTV Scheduler] 自动订阅跳过: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"[HLTV Scheduler] 自动订阅失败: {e}")
+            return []
+
+        subscribed = data_manager.get_all_subscribed_event_ids()
+        added: list[str] = []
+        for event in events:
+            if (
+                not event.id
+                or not event.title
+                or not event.start_date
+                or not event.end_date
+            ):
+                continue
+            if event.id in subscribed:
+                continue
+
+            created = data_manager.subscribe_event(
+                EventSubscription(
+                    event_id=event.id,
+                    event_title=event.title,
+                    start_date=event.start_date,
+                    end_date=event.end_date,
+                )
+            )
+            if not created:
+                continue
+
+            subscribed.add(event.id)
+            self.ensure_event_job_state(event.id)
+            added.append(f"#{event.id} {event.title}")
+
+        if added:
+            self.refresh_wakeup_jobs()
+
+        logger.info(
+            "[HLTV Scheduler] 自动订阅完成: "
+            + (", ".join(added) if added else "无新赛事")
+        )
+        return added
+
     async def send_match_reminder(self, bot: Bot, match: UpcomingMatch) -> None:
         groups = data_manager.get_groups_by_event(match.event_id)
         if not groups:
@@ -1150,6 +1199,11 @@ class HLTVScheduler:
             await hltv_data.start()
         except HLTVFetchError as e:
             logger.warning(f"[HLTV Scheduler] 会话准备暂未完成，后续轮询恢复: {e}")
+        else:
+            try:
+                await self.auto_subscribe_big_events()
+            except Exception as e:
+                logger.error(f"[HLTV Scheduler] 启动自动订阅失败: {e}")
         try:
             count = await self.init_existing_results()
             if count > 0:
@@ -1184,6 +1238,28 @@ class HLTVScheduler:
         except Exception as e:
             logger.warning(f"[HLTV Scheduler] 注册每日维护任务失败: {e}")
 
+    def _ensure_auto_subscribe_job(self) -> None:
+        try:
+            existing = scheduler.get_job(AUTO_SUBSCRIBE_JOB_ID)
+            if existing is not None:
+                return
+
+            scheduler.add_job(
+                self.auto_subscribe_big_events,
+                trigger="interval",
+                days=int(plugin_config.hltv_auto_sub_interval_days),
+                id=AUTO_SUBSCRIBE_JOB_ID,
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            logger.info(
+                "[HLTV Scheduler] 已注册自动订阅任务 "
+                f"({plugin_config.hltv_auto_sub_interval_days}d)"
+            )
+        except Exception as e:
+            logger.warning(f"[HLTV Scheduler] 注册自动订阅任务失败: {e}")
+
 
 hltv_scheduler = HLTVScheduler()
 _scheduler_setup_done = False
@@ -1198,6 +1274,7 @@ def setup_scheduler() -> None:
     for event_id in data_manager.get_all_subscribed_event_ids():
         hltv_scheduler._ensure_event_job(event_id)
     hltv_scheduler._ensure_daily_maintenance_job()
+    hltv_scheduler._ensure_auto_subscribe_job()
 
     @on_plugin_startup(get_driver(), "hltv_sub")
     async def start_scheduler():

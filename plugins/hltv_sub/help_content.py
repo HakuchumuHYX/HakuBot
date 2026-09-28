@@ -16,7 +16,7 @@ def build_help_sections():
                     "name": "event订阅",
                     "args": "[ID]",
                     "aliases": ["订阅赛事", "subscribe"],
-                    "desc": "订阅指定赛事（需要管理员权限）；支持同时订阅多个赛事，并为每个赛事独立轮询推送。",
+                    "desc": "订阅指定赛事（需要管理员权限）；支持同时订阅多个赛事，并为每个赛事独立轮询推送。未订阅的近期大型赛事会在启动时和每 7 天自动订阅。",
                     "admin_only": True,
                     "superuser_only": False,
                 },

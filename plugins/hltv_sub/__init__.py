@@ -25,7 +25,7 @@ __plugin_meta__ = PluginMetadata(
     description="HLTV CS2 赛事订阅和比赛信息查询",
     usage="""命令列表：
 - event列表：查看近期大型赛事
-- event订阅 [ID]：订阅赛事
+- event订阅 [ID]：订阅赛事（未订阅的近期大型赛事会在启动时和每 7 天自动订阅）
 - event取消订阅 [ID]：取消订阅
 - 我的订阅：查看已订阅赛事
 

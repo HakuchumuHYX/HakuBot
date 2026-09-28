@@ -14,6 +14,9 @@ EVENT_JOB_PREFIX = "hltv_check_"
 # 每日维护任务（自动退订 + 去重状态清理）
 DAILY_MAINTENANCE_JOB_ID = "hltv_daily_maintenance"
 
+# 自动订阅 big events（启动时也会跑一轮）
+AUTO_SUBSCRIBE_JOB_ID = "hltv_auto_subscribe"
+
 # start_date 前多少小时进入 UPCOMING（仅在这个窗口内才恢复轮询）
 UPCOMING_WINDOW_HOURS = 24
 

@@ -17,6 +17,7 @@ class Config(BaseModel):
 
     # 调度配置
     hltv_auto_unsub_delay_days: int = 2  # 赛事结束后延迟多少天自动取消订阅
+    hltv_auto_sub_interval_days: int = 7  # 自动订阅 big events 的心跳间隔；启动时另跑一轮
     hltv_notified_ttl_days: int = 30  # 推送去重状态保留天数
     hltv_scheduler_jitter_seconds: int = 8  # 每赛事 job 触发抖动，避免同刻并发
 
