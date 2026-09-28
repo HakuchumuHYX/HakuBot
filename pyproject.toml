@@ -20,6 +20,7 @@ dependencies = [
     "nonebot-plugin-userinfo",
     # 通用依赖
     "httpx",
+    "requests",
     "aiohttp",
     "aiofiles",
     "pillow",
@@ -41,7 +42,7 @@ dependencies = [
     "colour>=0.1.5",
     "msgspec>=0.20.0",
     "watchdog>=6.0.0",
-    "sssekai>=0.7.62",
+    "pycryptodome",
     "json-repair>=0.58.0",
     "psutil>=7.2.2",
     "playwright-stealth>=2.0.2",

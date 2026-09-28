@@ -1,6 +1,7 @@
 # plugins/buaa_msm/infra/decryptor.py
 """
-解密模块：负责 sssekai 加密包体的解密、JSON 保存与加载。
+解密模块：负责 API 包体的解密、JSON 保存与加载。
+再见了，所有的sssekai，respect。
 """
 
 from __future__ import annotations
@@ -10,18 +11,10 @@ import msgpack
 from pathlib import Path
 from typing import Any, Dict
 
+from Crypto.Cipher import AES
 from nonebot.log import logger
 
 from plugins.buaa_msm.config import plugin_config
-
-# 尝试导入 sssekai，如果失败则提供明确提示
-try:
-    from sssekai.crypto.APIManager import decrypt as _sssekai_decrypt
-
-    _SSSEKAI_LOADED = True
-except ImportError:
-    _SSSEKAI_LOADED = False
-    logger.error("关键依赖 'sssekai' 未安装！请执行: pip install sssekai")
 
 
 def _api_keyset() -> tuple[bytes, bytes] | None:
@@ -33,19 +26,24 @@ def _api_keyset() -> tuple[bytes, bytes] | None:
     return key, iv
 
 
+def _decrypt_api_packet(data: bytes, key: bytes, iv: bytes) -> bytes:
+    """国服 API 包体：AES-CBC，PKCS7 填充。"""
+    plain = AES.new(key, AES.MODE_CBC, iv).decrypt(data)
+    pad = plain[-1]
+    if pad < 1 or pad > AES.block_size or plain[-pad:] != bytes([pad]) * pad:
+        raise ValueError("invalid PKCS7 padding")
+    return plain[:-pad]
+
+
 def decrypt_packet(infile: Path) -> dict[str, Any] | None:
     """解密加密的数据包 (bin) 并返回 Python 字典。"""
-    if not _SSSEKAI_LOADED:
-        logger.error("decrypt_packet 调用失败: 'sssekai' 模块未加载。")
-        return None
-
     keyset = _api_keyset()
     if keyset is None:
         return None
 
     try:
         data = infile.read_bytes()
-        plain = _sssekai_decrypt(data, keyset)
+        plain = _decrypt_api_packet(data, *keyset)
         try:
             return msgpack.unpackb(plain)
         except Exception as e:
