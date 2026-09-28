@@ -21,5 +21,9 @@
     },
     "upload": {
         "wait_timeout_seconds": 600
+    },
+    "api_crypto": {
+        "key": "",
+        "iv": ""
     }
 }

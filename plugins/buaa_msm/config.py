@@ -144,6 +144,20 @@ class PluginConfig:
             600,
         )
 
+        # API 包体解密密钥（config.json，不写入代码）
+        self.api_crypto_key: str = self._as_str(
+            self._deep_get(local_cfg, ("api_crypto", "key"), ""),
+            "",
+        )
+        self.api_crypto_iv: str = self._as_str(
+            self._deep_get(local_cfg, ("api_crypto", "iv"), ""),
+            "",
+        )
+        if not self.api_crypto_key or not self.api_crypto_iv:
+            logger.warning(
+                "BUAA_MSM 未配置 api_crypto.key / api_crypto.iv，数据包解密将失败。"
+            )
+
         # 字体配置
         self.font_name: str = "font.ttf"
         self.font_path: Path = self.resource_dir / self.font_name

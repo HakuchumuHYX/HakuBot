@@ -89,7 +89,9 @@ file_handler = on_message(priority=10, block=False)
 
 
 @file_handler.handle()
-async def handle_file_message(bot: Bot, event: PrivateMessageEvent):
+async def handle_file_message(
+    bot: Bot, event: PrivateMessageEvent | GroupMessageEvent
+):
     _cleanup_expired_waiting()
     user_id = str(event.user_id)
 
@@ -100,6 +102,9 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent):
     file_segments = [seg for seg in event.message if seg.type == "file"]
 
     if not file_segments:
+        # 等待态的提示只回私聊，避免在群里刷「未检测到文件」
+        if isinstance(event, GroupMessageEvent):
+            return
         # 检查是否是取消命令
         msg_text = event.message.extract_plain_text().strip()
         if msg_text == "取消":
@@ -119,8 +124,20 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent):
 
         logger.info(f"收到文件: {file_name}, ID: {file_id}, 大小: {file_size} 字节")
 
-        # 获取文件URL
-        file_url_result = await bot.get_file(file_id=file_id)
+        # get_file 只解析图片/语音缓存；普通文件按会话类型取下载链接
+        if isinstance(event, GroupMessageEvent):
+            file_url_result = await bot.call_api(
+                "get_group_file_url",
+                group_id=event.group_id,
+                file_id=file_id,
+            )
+        else:
+            file_url_result = await bot.call_api(
+                "get_private_file_url",
+                user_id=event.user_id,
+                file_id=file_id,
+                file_hash=str(file_data.get("file_hash") or ""),
+            )
         file_url = (
             file_url_result.get("url", "")
             if isinstance(file_url_result, dict)

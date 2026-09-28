@@ -12,12 +12,11 @@ from typing import Any, Dict
 
 from nonebot.log import logger
 
+from plugins.buaa_msm.config import plugin_config
+
 # 尝试导入 sssekai，如果失败则提供明确提示
 try:
-    from sssekai.crypto.APIManager import (
-        decrypt as _sssekai_decrypt,
-        SEKAI_APIMANAGER_KEYSETS,
-    )
+    from sssekai.crypto.APIManager import decrypt as _sssekai_decrypt
 
     _SSSEKAI_LOADED = True
 except ImportError:
@@ -25,15 +24,28 @@ except ImportError:
     logger.error("关键依赖 'sssekai' 未安装！请执行: pip install sssekai")
 
 
-def decrypt_packet(infile: Path, region: str = "jp") -> dict[str, Any] | None:
-    """解密 sssekai 加密的数据包 (bin) 并返回 Python 字典。"""
+def _api_keyset() -> tuple[bytes, bytes] | None:
+    key = plugin_config.api_crypto_key.encode("utf-8")
+    iv = plugin_config.api_crypto_iv.encode("utf-8")
+    if not key or not iv:
+        logger.error("未配置 api_crypto.key / api_crypto.iv")
+        return None
+    return key, iv
+
+
+def decrypt_packet(infile: Path) -> dict[str, Any] | None:
+    """解密加密的数据包 (bin) 并返回 Python 字典。"""
     if not _SSSEKAI_LOADED:
         logger.error("decrypt_packet 调用失败: 'sssekai' 模块未加载。")
         return None
 
+    keyset = _api_keyset()
+    if keyset is None:
+        return None
+
     try:
         data = infile.read_bytes()
-        plain = _sssekai_decrypt(data, SEKAI_APIMANAGER_KEYSETS[region])
+        plain = _sssekai_decrypt(data, keyset)
         try:
             return msgpack.unpackb(plain)
         except Exception as e:
@@ -48,10 +60,9 @@ def decrypt_and_save(
     *,
     bin_file_path: Path,
     json_output_path: Path,
-    region: str = "jp",
 ) -> dict[str, Any] | None:
     """解密 .bin 文件，将其保存为 .json，并返回解密后的字典。"""
-    decrypted_data = decrypt_packet(bin_file_path, region)
+    decrypted_data = decrypt_packet(bin_file_path)
     if decrypted_data is None:
         logger.error(f"文件解密失败: {bin_file_path.name}")
         return None
