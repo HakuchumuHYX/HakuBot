@@ -11,43 +11,19 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-import msgspec
 from nonebot.log import logger
 
 from plugins.buaa_msm.domain.constants import SITE_ID_MAP
 
 
-# ============== msgspec 数据结构（与原 paint.py 保持一致） ==============
-
-
-class UserMysekaiSiteHarvestFixture(msgspec.Struct):
-    mysekaiSiteHarvestFixtureId: int
-    positionX: int
-    positionZ: int
-    hp: int
-    userMysekaiSiteHarvestFixtureStatus: str
-
-
-class UserMysekaiSiteHarvestResourceDrop(msgspec.Struct):
-    resourceType: str
-    resourceId: int
-    positionX: int
-    positionZ: int
-    hp: int
-    seq: int
-    mysekaiSiteHarvestResourceDropStatus: str
-    quantity: int
-
-
-class Map(msgspec.Struct, kw_only=True):
-    mysekaiSiteId: int
-    siteName: Optional[str] = None
-    userMysekaiSiteHarvestFixtures: List[UserMysekaiSiteHarvestFixture]
-    userMysekaiSiteHarvestResourceDrops: List[UserMysekaiSiteHarvestResourceDrop]
+# 服务端现在把采集图压成位置数组，不再是带字段名的对象：
+# 地图：[siteId, fixtures, drops]
+# 采集点：[fixtureId, x, z, hp, status, extra]
+# 掉落：[resourceType, resourceId, x, z, hp, seq, status, quantity, extra]
 
 
 def parse_map(user_data: Dict[str, Any]) -> Optional[Dict[str, List]]:
-    """从解密的字典数据中解析地图采集点信息（结构与原 paint.parse_map 一致）"""
+    """从解密的字典数据中解析地图采集点信息。"""
     if "updatedResources" not in user_data:
         logger.error("Error: 'updatedResources' not found in decrypted data.")
         return None
@@ -57,45 +33,41 @@ def parse_map(user_data: Dict[str, Any]) -> Optional[Dict[str, List]]:
         return None
 
     try:
-        harvest_maps: List[Map] = [
-            msgspec.json.decode(msgspec.json.encode(mp), type=Map)
-            for mp in user_data["updatedResources"]["userMysekaiHarvestMaps"]
-        ]
-    except Exception as e:
-        logger.error(f"Error decoding map data with msgspec: {e}")
-        return None
+        processed_map: Dict[str, List] = {}
+        for site_id, fixtures, drops in user_data["updatedResources"][
+            "userMysekaiHarvestMaps"
+        ]:
+            site_name = SITE_ID_MAP.get(site_id, f"Unknown Site {site_id}")
+            mp_detail: List[Dict[str, Any]] = []
 
-    for mp in harvest_maps:
-        mp.siteName = SITE_ID_MAP.get(
-            mp.mysekaiSiteId, f"Unknown Site {mp.mysekaiSiteId}"
-        )
-
-    processed_map: Dict[str, List] = {}
-    for mp in harvest_maps:
-        mp_detail: List[Dict[str, Any]] = []
-
-        for fixture in mp.userMysekaiSiteHarvestFixtures:
-            if fixture.userMysekaiSiteHarvestFixtureStatus == "spawned":
+            for fixture in fixtures:
+                if fixture[4] != "spawned":
+                    continue
                 mp_detail.append(
                     {
-                        "location": (fixture.positionX, fixture.positionZ),
-                        "fixtureId": fixture.mysekaiSiteHarvestFixtureId,
+                        "location": (fixture[1], fixture[2]),
+                        "fixtureId": fixture[0],
                         "reward": {},
                     }
                 )
 
-        for drop in mp.userMysekaiSiteHarvestResourceDrops:
-            pos = (drop.positionX, drop.positionZ)
-            for i in range(len(mp_detail)):
-                if mp_detail[i]["location"] != pos:
-                    continue
-                mp_detail[i]["reward"].setdefault(drop.resourceType, {})
-                mp_detail[i]["reward"][drop.resourceType][drop.resourceId] = (
-                    mp_detail[i]["reward"][drop.resourceType].get(drop.resourceId, 0)
-                    + drop.quantity
-                )
-                break
+            for drop in drops:
+                pos = (drop[2], drop[3])
+                resource_type = drop[0]
+                resource_id = drop[1]
+                quantity = drop[7]
+                for detail in mp_detail:
+                    if detail["location"] != pos:
+                        continue
+                    detail["reward"].setdefault(resource_type, {})
+                    detail["reward"][resource_type][resource_id] = (
+                        detail["reward"][resource_type].get(resource_id, 0) + quantity
+                    )
+                    break
 
-        processed_map[str(mp.siteName)] = mp_detail
+            processed_map[str(site_name)] = mp_detail
+    except Exception as e:
+        logger.error(f"Error decoding map data: {e}")
+        return None
 
     return processed_map
