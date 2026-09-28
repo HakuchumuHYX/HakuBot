@@ -11,11 +11,7 @@ from bs4 import BeautifulSoup, Tag
 from nonebot.log import logger
 
 from plugins.hltv_sub.models import MapStats, MatchStats, PlayerStats
-
-
-def _extract_id_from_url(url: str) -> str:
-    m = re.search(r"/(\d+)/", url or "")
-    return m.group(1) if m else ""
+from plugins.hltv_sub.parsers.common import extract_id_from_url
 
 
 def _parse_player_table(table: Tag, team_idx: int) -> List[PlayerStats]:
@@ -78,7 +74,7 @@ def _parse_player_table(table: Tag, team_idx: int) -> List[PlayerStats]:
 
             player_link = row.find("a", href=re.compile(r"/player/\d+/"))
             player_id = (
-                _extract_id_from_url(player_link.get("href", "")) if player_link else ""
+                extract_id_from_url(player_link.get("href", "")) if player_link else ""
             )
 
             nickname = ""

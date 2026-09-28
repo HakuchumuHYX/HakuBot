@@ -1,4 +1,4 @@
-"""HLTV 的共享会话、请求节流、页面缓存与拦截暂停。"""
+"""HLTV 页面数据获取、共享会话、缓存与访问冷却。"""
 
 from __future__ import annotations
 
@@ -7,15 +7,24 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
+from typing import Optional
 
 import httpx
+import pytz
 from bs4 import BeautifulSoup
 from nonebot.log import logger
 
 from utils.json_io import atomic_write_json, load_json
+from utils.paths import PluginPaths
+
+from plugins.hltv_sub.config import plugin_config
+from plugins.hltv_sub.models import EventInfo, EventMatchesPage, MatchStats, ResultInfo
+from plugins.hltv_sub.parsers.events import parse_big_events, parse_event_info
+from plugins.hltv_sub.parsers.matches import parse_event_matches_page
+from plugins.hltv_sub.parsers.results import parse_event_results
+from plugins.hltv_sub.parsers.stats import parse_match_stats
 
 
 class HLTVFetchError(Exception):
@@ -40,25 +49,18 @@ class FetchResult:
     final_url: str = ""
 
 
-class HLTVHttpClient:
-    def __init__(
-        self,
-        *,
-        timeout: int,
-        request_interval: float,
-        endpoint: str,
-        cooldown: int,
-        max_cooldown: int,
-        state_path: Path,
-        session_state_path: Path,
-    ) -> None:
-        self._timeout = timeout
-        self._interval = request_interval
-        self._endpoint = endpoint
-        self._cooldown = cooldown
-        self._max_cooldown = max_cooldown
-        self._state_path = state_path
-        self._session_state_path = session_state_path
+class HLTVClient:
+    BASE_URL = "https://www.hltv.org"
+
+    def __init__(self) -> None:
+        self._tz = pytz.timezone(plugin_config.hltv_timezone)
+        self._timeout = plugin_config.hltv_flaresolverr_timeout_seconds
+        self._interval = plugin_config.hltv_request_interval_seconds
+        self._endpoint = plugin_config.hltv_flaresolverr_url
+        self._cooldown = plugin_config.hltv_block_cooldown_seconds
+        self._max_cooldown = plugin_config.hltv_block_cooldown_max_seconds
+        self._state_path = PluginPaths("hltv_sub").data / "http_state.json"
+        self._session_state_path = PluginPaths("hltv_sub").data / "session_state.json"
         self._client: httpx.AsyncClient | None = None
         self._lock = asyncio.Lock()
         self._last_request = 0.0
@@ -67,17 +69,118 @@ class HLTVHttpClient:
         self._inflight: dict[str, asyncio.Task] = {}
         self._probe: asyncio.Task | None = None
         self._closed = False
-        state = load_json(state_path, missing_ok=True, default={})
+        state = load_json(self._state_path, missing_ok=True, default={})
         if not state.success:
             raise ValueError("HLTV 暂停状态文件无法读取")
         self._blocked_until = state.data.get("blocked_until", 0.0)
         self._blocks = state.data.get("blocks", 0)
-        session_state = load_json(session_state_path, missing_ok=True, default={})
+        session_state = load_json(self._session_state_path, missing_ok=True, default={})
         if not session_state.success:
             raise ValueError("HLTV 会话状态文件无法读取")
         self._session_id = session_state.data.get("selected_session_id", "")
         self._pending_cleanup_id = session_state.data.get(
             "pending_cleanup_session_id", ""
+        )
+
+    async def get_big_events(self) -> list[EventInfo]:
+        """获取 Big Events（正在进行 + 即将举行的赛事）"""
+        page = await self._fetch(
+            f"{self.BASE_URL}/events", cache_key="events", ttl=3600
+        )
+        return parse_big_events(page.text, self._tz)
+
+    async def get_event_info(
+        self, event_id: str, event_title: str = ""
+    ) -> Optional[EventInfo]:
+        """获取赛事详细信息"""
+        title_slug = event_title.lower().replace(" ", "-") if event_title else "event"
+        url = f"{self.BASE_URL}/events/{event_id}/{title_slug}"
+
+        page = await self._fetch(url, cache_key=f"event:{event_id}", ttl=3600)
+
+        return parse_event_info(
+            page.text, event_id=event_id, event_title=event_title, tz=self._tz
+        )
+
+    async def get_event_results(
+        self, event_id: str, max_results: int = 20,
+        *, force_refresh: bool = False,
+    ) -> list[ResultInfo]:
+        """获取赛事的已结束比赛结果"""
+        url = f"{self.BASE_URL}/results?event={event_id}"
+        page = await self._fetch(
+            url, cache_key=f"results:{event_id}", ttl=120, force_refresh=force_refresh
+        )
+
+        results = parse_event_results(page.text, max_results=max_results)
+        logger.debug(
+            f"[HLTV][RESULTS] parsed event={event_id} count={len(results)} max_results={max_results}"
+        )
+        return results
+
+    async def get_match_stats(
+        self, match_id: str, team1: str = "", team2: str = "", event_title: str = ""
+    ) -> Optional[MatchStats]:
+        """获取比赛详细数据"""
+        # slug 只用于 URL 友好，不影响 match_id 定位。
+        t1_slug = team1.lower().replace(" ", "-") if team1 else "team1"
+        t2_slug = team2.lower().replace(" ", "-") if team2 else "team2"
+        event_slug = event_title.lower().replace(" ", "-") if event_title else "event"
+
+        url = f"{self.BASE_URL}/matches/{match_id}/{t1_slug}-vs-{t2_slug}-{event_slug}"
+        logger.debug(f"[HLTV][STATS] fetch_start match_id={match_id} url={url}")
+
+        page = await self._fetch(url, cache_key=f"stats:{match_id}", ttl=60)
+
+        parsed = parse_match_stats(
+            page.text,
+            match_id=match_id,
+            team1=team1,
+            team2=team2,
+            event_title=event_title,
+        )
+
+        if not parsed:
+            logger.warning(f"[HLTV][STATS] parse_failed match_id={match_id} url={url}")
+            return None
+
+        logger.debug(
+            f"[HLTV][STATS] parse_ok match_id={match_id} maps={len(parsed.maps)} players={len(parsed.players)}"
+        )
+        return parsed
+
+    async def get_latest_result_with_stats(
+        self, event_id: str, event_title: str = ""
+    ) -> Optional[MatchStats]:
+        """获取最近一场比赛的详细数据"""
+        results = await self.get_event_results(event_id, max_results=1)
+        if not results:
+            logger.warning(f"[HLTV][LATEST_STATS] no_results event={event_id}")
+            return None
+
+        result = results[0]
+        logger.debug(
+            f"[HLTV][LATEST_STATS] picked_latest event={event_id} match_id={result.id} "
+            f"teams={result.team1} vs {result.team2}"
+        )
+
+        return await self.get_match_stats(
+            result.id,
+            team1=result.team1,
+            team2=result.team2,
+            event_title=event_title,
+        )
+
+    async def get_event_matches(
+        self, event_id: str, *, include_partial_tbd: bool = False,
+    ) -> EventMatchesPage:
+        page = await self._fetch(
+            f"{self.BASE_URL}/events/{event_id}/matches",
+            cache_key=f"matches:{event_id}", ttl=120,
+        )
+        return parse_event_matches_page(
+            page.text, page.final_url, event_id, self._tz,
+            include_partial_tbd=include_partial_tbd,
         )
 
     def _save_state(self) -> None:
@@ -164,7 +267,7 @@ class HLTVHttpClient:
             self._client = None
         self._cache.clear()
 
-    async def fetch_with_meta(
+    async def _fetch(
         self,
         url: str,
         *,
@@ -282,7 +385,7 @@ class HLTVHttpClient:
         self._check_pause()
         self._last_request = time.monotonic()
         self._request_count += 1
-        logger.info(
+        logger.debug(
             f"[HLTV] request page={key} count={self._request_count} "
             f"session={self._session_id}"
         )
@@ -334,16 +437,11 @@ class HLTVHttpClient:
                 element.decompose()
         if body is None or not body.get_text(" ", strip=True):
             raise HLTVFetchError("页面正文为空", recoverable=True)
-        logger.info(
+        logger.debug(
             f"[HLTV] response page={key} "
             f"elapsed={time.monotonic() - self._last_request:.2f}s"
         )
         return FetchResult(text=html, final_url=final_url)
 
-    async def fetch(
-        self, url: str, *, cache_key: str, ttl: int, force_refresh: bool = False
-    ) -> str:
-        result = await self.fetch_with_meta(
-            url, cache_key=cache_key, ttl=ttl, force_refresh=force_refresh
-        )
-        return result.text
+
+hltv_client = HLTVClient()

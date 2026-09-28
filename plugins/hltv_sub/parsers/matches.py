@@ -1,9 +1,4 @@
-"""
-HLTV matches 页面解析
-
-- parse_event_matches：默认过滤 TBD，展示模式允许单边 TBD
-- parse_match_time_hints：不过滤 TBD（用于 scheduler 自适应轮询）
-"""
+"""赛事比赛页：一次读取比赛节点，同时保留不过滤 TBD 的时间提示。"""
 
 from __future__ import annotations
 
@@ -13,52 +8,10 @@ from typing import Tuple
 from bs4 import BeautifulSoup
 from nonebot.log import logger
 
-from plugins.hltv_sub.models import MatchInfo, MatchTimeHint
-from plugins.hltv_sub.parsers.common import format_date, format_time
-
-
-def parse_match_time_hints(soup: BeautifulSoup, tz) -> list[MatchTimeHint]:
-    """解析 matches 页面的时间提示（不过滤 TBD）"""
-    hints: list[MatchTimeHint] = []
-    try:
-        match_wrappers = soup.find_all("div", class_="match-wrapper")
-        for wrapper in match_wrappers:
-            try:
-                match_id = wrapper.get("data-match-id", "") or ""
-                if not match_id:
-                    continue
-
-                team1_id = wrapper.get("team1", "") or ""
-                team2_id = wrapper.get("team2", "") or ""
-                is_tbd = (not team1_id) or (not team2_id)
-                is_live = (wrapper.get("live", "false") or "false") == "true"
-
-                match_time = ""
-                match_date = ""
-                time_elem = wrapper.find("div", class_="match-time")
-                if time_elem:
-                    unix_ts = time_elem.get("data-unix", "") or ""
-                    if unix_ts:
-                        match_time = format_time(unix_ts, tz)
-                        match_date = format_date(unix_ts, tz)
-                    else:
-                        match_time = time_elem.get_text(strip=True)
-
-                hints.append(
-                    MatchTimeHint(
-                        match_id=match_id,
-                        date=match_date if not is_live else "LIVE",
-                        time=match_time if not is_live else "LIVE",
-                        is_live=is_live,
-                        is_tbd=is_tbd,
-                    )
-                )
-            except Exception:
-                continue
-    except Exception:
-        return hints
-
-    return hints
+from plugins.hltv_sub.models import (
+    EventMatchesMeta, EventMatchesPage, MatchInfo, MatchTimeHint,
+)
+from plugins.hltv_sub.parsers.common import extract_id_from_url, parse_start_time
 
 
 def _extract_maps_format(wrapper) -> str:
@@ -76,14 +29,15 @@ def _extract_maps_format(wrapper) -> str:
     return bo_match.group(1)
 
 
-def parse_event_matches(
+def _parse_matches(
     soup: BeautifulSoup,
     tz,
     *,
     include_partial_tbd: bool = False,
-) -> list[MatchInfo]:
+) -> tuple[list[MatchInfo], list[MatchTimeHint]]:
     """解析 matches 页面的比赛列表（默认过滤 TBD）"""
     matches: list[MatchInfo] = []
+    hints: list[MatchTimeHint] = []
 
     # 方法1: 使用 match-wrapper 结构（最精确）
     match_wrappers = soup.find_all("div", class_="match-wrapper")
@@ -98,6 +52,15 @@ def parse_event_matches(
 
             if not match_id:
                 continue
+
+            time_elem = wrapper.find("div", class_="match-time")
+            start_time = parse_start_time(
+                time_elem.get("data-unix", "") if time_elem else "", tz
+            )
+            hints.append(MatchTimeHint(
+                match_id=match_id, start_time=start_time,
+                is_live=is_live, is_tbd=not (team1_id and team2_id),
+            ))
 
             has_team1_id = bool(team1_id)
             has_team2_id = bool(team2_id)
@@ -129,17 +92,6 @@ def parse_event_matches(
                 if not _is_winner_placeholder(placeholder_name):
                     continue
 
-            match_time = ""
-            match_date = ""
-            time_elem = wrapper.find("div", class_="match-time")
-            if time_elem:
-                unix_ts = time_elem.get("data-unix", "")
-                if unix_ts:
-                    match_time = format_time(unix_ts, tz)
-                    match_date = format_date(unix_ts, tz)
-                else:
-                    match_time = time_elem.get_text(strip=True)
-
             maps_format = _extract_maps_format(wrapper)
 
             rating = 0
@@ -151,8 +103,7 @@ def parse_event_matches(
             matches.append(
                 MatchInfo(
                     id=match_id,
-                    date=match_date if not is_live else "LIVE",
-                    time=match_time if not is_live else "LIVE",
+                    start_time=start_time,
                     team1=team1,
                     team2=team2,
                     team1_id=team1_id,
@@ -179,7 +130,7 @@ def parse_event_matches(
         for link in match_links:
             try:
                 href = link.get("href", "")
-                match_id = _extract_id_from_url(href)
+                match_id = extract_id_from_url(href)
 
                 if not match_id or match_id in seen_ids:
                     continue
@@ -202,8 +153,7 @@ def parse_event_matches(
                 matches.append(
                     MatchInfo(
                         id=match_id,
-                        date="LIVE" if is_live else "",
-                        time="LIVE" if is_live else "",
+                        start_time=None,
                         team1=team1,
                         team2=team2,
                         team1_id="",
@@ -220,19 +170,61 @@ def parse_event_matches(
                 logger.debug(f"[HLTV] 解析单个比赛链接失败: {e}")
                 continue
 
-    return matches
-
-
-def parse_event_matches_with_hints(
-    soup: BeautifulSoup,
-    tz,
-    *,
-    include_partial_tbd: bool = False,
-) -> tuple[list[MatchInfo], list[MatchTimeHint]]:
-    """单次解析得到 filtered matches + raw hints"""
-    matches = parse_event_matches(soup, tz, include_partial_tbd=include_partial_tbd)
-    hints = parse_match_time_hints(soup, tz)
     return matches, hints
+
+
+def _analyze_matches_meta(
+    event_id: str, final_url: str, soup: BeautifulSoup
+) -> EventMatchesMeta:
+    title = soup.title.get_text(strip=True) if soup.title else ""
+
+    wrappers = soup.find_all("div", class_="match-wrapper")
+    text = soup.get_text(" ", strip=True).lower()
+
+    meta = EventMatchesMeta(
+        final_url=final_url,
+        page_title=title,
+        match_wrapper_count=len(wrappers),
+    )
+
+    expected_path = f"/events/{event_id}/matches"
+    if final_url and expected_path not in final_url:
+        meta.is_unavailable = True
+        meta.unavailable_reason = "unexpected_final_url"
+        return meta
+
+    # 真实抓取证据：finished 赛事会返回通用 matches 页（标题固定 + 无 wrapper + no matches yet）
+    is_generic_matches_title = "counter-strike matches & livescore" in title.lower()
+    has_no_matches_marker = ("no matches yet" in text) or ("no matches" in text)
+
+    if is_generic_matches_title and len(wrappers) == 0 and has_no_matches_marker:
+        meta.is_unavailable = True
+        meta.unavailable_reason = "generic_matches_page_no_event_matches"
+
+    return meta
+
+
+def parse_event_matches_page(
+    html: str, final_url: str, event_id: str, tz,
+    *, include_partial_tbd: bool = False,
+) -> EventMatchesPage:
+    soup = BeautifulSoup(html, "lxml")
+    meta = _analyze_matches_meta(event_id, final_url, soup)
+    # 页面不可用时停止解析，避免从通用 matches 页误抓其他赛事。
+    if meta.is_unavailable:
+        logger.warning(
+            f"[HLTV] 赛事 matches 页面不可用: event={event_id}, "
+            f"final_url={meta.final_url}, title={meta.page_title}, "
+            f"reason={meta.unavailable_reason}"
+        )
+        return EventMatchesPage([], [], meta)
+
+    matches, hints = _parse_matches(soup, tz, include_partial_tbd=include_partial_tbd)
+    logger.debug(
+        f"[HLTV] 获取到 {len(matches)} 场比赛 (filtered) / {len(hints)} 条时间提示 (raw), "
+        f"event={event_id}, wrappers={meta.match_wrapper_count}"
+    )
+    return EventMatchesPage(matches, hints, meta)
 
 
 def _is_winner_placeholder(name: str) -> bool:
@@ -304,8 +296,3 @@ def _extract_team_names_from_wrapper(wrapper) -> Tuple[str, str]:
         team2 = team2 or team_elems[1].get_text(strip=True)
 
     return team1, team2
-
-
-def _extract_id_from_url(url: str) -> str:
-    match = re.search(r"/(\d+)/", url or "")
-    return match.group(1) if match else ""

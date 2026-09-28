@@ -5,7 +5,7 @@ HLTV events 页面解析
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 from bs4 import BeautifulSoup
 from nonebot.log import logger
@@ -15,26 +15,11 @@ from plugins.hltv_sub.parsers.common import extract_id_from_url, format_date
 
 
 def is_ongoing(start_date: str, end_date: str, tz) -> bool:
-    """判断赛事是否正在进行（复刻原逻辑）"""
+    """按页面给出的完整日期判断，不从展示字符串猜年份。"""
     try:
-        now = datetime.now(tz)
-        current_year = now.year
-
-        if start_date and "-" in start_date:
-            start_month, start_day = map(int, start_date.split("-"))
-            # pytz 注意事项：不能直接用 tzinfo=tz（会导致 LMT 等错误 offset），必须 localize
-            start = tz.localize(datetime(current_year, start_month, start_day))
-        else:
-            return False
-
-        if end_date and "-" in end_date:
-            end_month, end_day = map(int, end_date.split("-"))
-            end = tz.localize(datetime(current_year, end_month, end_day, 23, 59, 59))
-        else:
-            return False
-
-        return start <= now <= end
-    except Exception:
+        today = datetime.now(tz).date()
+        return date.fromisoformat(start_date) <= today <= date.fromisoformat(end_date)
+    except ValueError:
         return False
 
 
@@ -163,7 +148,7 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
                 except Exception:
                     continue
 
-        logger.info(f"[HLTV] 获取到 {len(events)} 个赛事")
+        logger.debug(f"[HLTV] 获取到 {len(events)} 个赛事")
     except Exception as e:
         logger.error(f"[HLTV] 解析赛事列表失败: {e}")
 

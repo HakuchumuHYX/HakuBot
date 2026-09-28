@@ -9,23 +9,27 @@ import pytz
 from utils.rendering.engine import render_template_image
 
 from plugins.hltv_sub.config import plugin_config
-from plugins.hltv_sub.data_source import EventInfo, MatchInfo, ResultInfo, MatchStats
-
-# 导入 UpcomingMatch 类型（用于类型提示）
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from plugins.hltv_sub.scheduler_internal.types import UpcomingMatch
-
+from plugins.hltv_sub.models import EventInfo, MatchInfo, ResultInfo, MatchStats
 
 # 模板目录
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
-def get_timestamp() -> str:
-    """获取当前时间戳"""
+async def _render(template_name: str, context: dict, width: int) -> bytes:
     tz = pytz.timezone(plugin_config.hltv_timezone)
-    return datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+    return await render_template_image(
+        template_path=str(TEMPLATE_DIR),
+        template_name=template_name,
+        templates={
+            **context,
+            "timestamp": datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S"),
+            "watermark_text": plugin_config.hltv_watermark_text,
+        },
+        pages={
+            "viewport": {"width": width, "height": 100},
+            "base_url": f"file://{TEMPLATE_DIR}/",
+        },
+    )
 
 
 async def render_events(
@@ -36,23 +40,23 @@ async def render_events(
     """渲染赛事列表图片"""
 
     # 转换为字典以便在模板中使用
-    ongoing = [asdict(e) for e in ongoing_events]
-    upcoming = [asdict(e) for e in upcoming_events]
+    ongoing = [
+        {**asdict(e), "start_date": e.start_date[5:], "end_date": e.end_date[5:]}
+        for e in ongoing_events
+    ]
+    upcoming = [
+        {**asdict(e), "start_date": e.start_date[5:], "end_date": e.end_date[5:]}
+        for e in upcoming_events
+    ]
 
-    return await render_template_image(
-        template_path=str(TEMPLATE_DIR),
-        template_name="events.html",
-        templates={
+    return await _render(
+        "events.html",
+        {
             "ongoing_events": ongoing,
             "upcoming_events": upcoming,
             "subscribed_ids": subscribed_ids,
-            "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text,
         },
-        pages={
-            "viewport": {"width": 650, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/",
-        },
+        width=650,
     )
 
 
@@ -64,22 +68,23 @@ async def render_matches(
     # 转换数据结构
     matches_dict = {}
     for event_name, matches in matches_by_event.items():
-        matches_dict[event_name] = [asdict(m) for m in matches]
+        matches_dict[event_name] = [
+            {
+                **asdict(m),
+                "date": m.start_time.strftime("%m-%d") if m.start_time else "",
+                "time": m.start_time.strftime("%H:%M") if m.start_time else "",
+            }
+            for m in matches
+        ]
 
-    return await render_template_image(
-        template_path=str(TEMPLATE_DIR),
-        template_name="matches.html",
-        templates={
+    return await _render(
+        "matches.html",
+        {
             "matches_by_event": matches_dict,
             "live_count": live_count,
             "upcoming_count": upcoming_count,
-            "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text,
         },
-        pages={
-            "viewport": {"width": 700, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/",
-        },
+        width=700,
     )
 
 
@@ -91,18 +96,12 @@ async def render_results(results_by_event: dict[str, list[ResultInfo]]) -> bytes
     for event_name, results in results_by_event.items():
         results_dict[event_name] = [asdict(r) for r in results]
 
-    return await render_template_image(
-        template_path=str(TEMPLATE_DIR),
-        template_name="results.html",
-        templates={
+    return await _render(
+        "results.html",
+        {
             "results_by_event": results_dict,
-            "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text,
         },
-        pages={
-            "viewport": {"width": 700, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/",
-        },
+        width=700,
     )
 
 
@@ -120,35 +119,12 @@ async def render_stats(stats: Optional[MatchStats]) -> bytes:
         )
         stats_dict["show_total_overview"] = not has_single_map_details
 
-    return await render_template_image(
-        template_path=str(TEMPLATE_DIR),
-        template_name="stats.html",
-        templates={
+    return await _render(
+        "stats.html",
+        {
             "stats": stats_dict,
-            "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text,
         },
-        pages={
-            "viewport": {"width": 800, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/",
-        },
-    )
-
-
-async def render_help(sections: list[dict]) -> bytes:
-    """渲染帮助图片"""
-    return await render_template_image(
-        template_path=str(TEMPLATE_DIR),
-        template_name="help.html",
-        templates={
-            "sections": sections,
-            "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text,
-        },
-        pages={
-            "viewport": {"width": 820, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/",
-        },
+        width=800,
     )
 
 
@@ -156,44 +132,20 @@ async def render_reminder(
     team1: str,
     team2: str,
     event_title: str,
-    minutes_until: int,
-    start_time_str: str = "",
     maps: str = "",
     is_grand_final: bool = False,
     is_third_place: bool = False,
 ) -> bytes:
-    """渲染比赛开始提醒图片
-
-    Args:
-        team1: 队伍1名称
-        team2: 队伍2名称
-        event_title: 赛事名称
-        minutes_until: 距离开始的分钟数
-        start_time_str: 开始时间字符串
-        maps: 比赛格式（如 "3" 表示 BO3）
-        is_grand_final: 是否为总决赛
-        is_third_place: 是否为季军赛
-
-    Returns:
-        渲染后的图片字节
-    """
-    return await render_template_image(
-        template_path=str(TEMPLATE_DIR),
-        template_name="reminder.html",
-        templates={
+    """渲染比赛已开始的提醒。"""
+    return await _render(
+        "reminder.html",
+        {
             "team1": team1,
             "team2": team2,
             "event_title": event_title,
-            "minutes_until": minutes_until,
-            "start_time_str": start_time_str,
             "maps": maps,
             "is_grand_final": is_grand_final,
             "is_third_place": is_third_place,
-            "timestamp": get_timestamp(),
-            "watermark_text": plugin_config.hltv_watermark_text,
         },
-        pages={
-            "viewport": {"width": 550, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/",
-        },
+        width=550,
     )
