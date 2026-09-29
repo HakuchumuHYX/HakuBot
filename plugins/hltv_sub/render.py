@@ -128,6 +128,11 @@ async def render_stats(stats: Optional[MatchStats]) -> bytes:
     )
 
 
+async def render_help(sections: list[dict]) -> bytes:
+    """渲染帮助图片"""
+    return await _render("help.html", {"sections": sections}, width=820)
+
+
 async def render_reminder(
     team1: str,
     team2: str,

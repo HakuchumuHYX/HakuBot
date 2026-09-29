@@ -12,13 +12,12 @@ from nonebot.log import logger
 from nonebot.params import CommandArg
 
 from utils.onebot.media import image_segment
-from utils.onebot.help import send_help
 from plugins.hltv_sub.client import HLTVFetchError, hltv_client
 from plugins.hltv_sub.data_manager import EventSubscription, data_manager
 from plugins.hltv_sub.handler import hltv_handler
-from plugins.hltv_sub.help_content import build_help_document
+from plugins.hltv_sub.help_content import build_help_sections
 from plugins.hltv_sub.render import (
-    render_events, render_matches, render_results, render_stats,
+    render_events, render_help, render_matches, render_results, render_stats,
 )
 from plugins.hltv_sub.scheduler import hltv_scheduler
 
@@ -533,4 +532,5 @@ async def handle_hltv_help(bot: Bot, event: GroupMessageEvent):
     if not data_manager.is_enabled(group_id):
         return
 
-    await send_help(hltv_help, build_help_document())
+    img = await render_help(build_help_sections())
+    await hltv_help.finish(image_segment(img))
