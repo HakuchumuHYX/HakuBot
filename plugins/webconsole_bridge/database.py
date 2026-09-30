@@ -11,10 +11,8 @@ import aiosqlite
 from plugins.webconsole_bridge.config import BridgeConfig
 from plugins.webconsole_bridge.models import ProbeResult
 
-SUPPORTED_SCHEMA_VERSION = 1
 REQUIRED_TABLES = frozenset(
     {
-        "schema_migrations",
         "response_events",
         "diagnostic_logs",
         "bot_status",
@@ -77,18 +75,6 @@ async def probe_storage(config: BridgeConfig) -> ProbeResult:
     try:
         async with aiosqlite.connect(database_uri, uri=True) as connection:
             await connection.execute("PRAGMA busy_timeout = 5000")
-            cursor = await connection.execute(
-                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
-            )
-            row = await cursor.fetchone()
-            await cursor.close()
-            version = int(row[0]) if row else 0
-            if version != SUPPORTED_SCHEMA_VERSION:
-                return ProbeResult.failure(
-                    "unsupported database schema version "
-                    f"{version}; expected {SUPPORTED_SCHEMA_VERSION}"
-                )
-
             placeholders = ",".join("?" for _ in REQUIRED_TABLES)
             cursor = await connection.execute(
                 "SELECT name FROM sqlite_schema "
