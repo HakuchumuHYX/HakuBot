@@ -169,24 +169,6 @@ class BotStatusSnapshot:
     collector_heartbeat_at_ms: int
     updated_at_ms: int
 
-    def is_online(self, now_ms: int) -> bool:
-        collector_fresh = now_ms - self.collector_heartbeat_at_ms <= 45_000
-        heartbeat_fresh = (
-            self.last_heartbeat_at_ms is not None
-            and now_ms - self.last_heartbeat_at_ms <= 90_000
-        )
-        heartbeat_grace = (
-            self.last_heartbeat_at_ms is None
-            and self.connection_started_at_ms is not None
-            and now_ms - self.connection_started_at_ms <= 90_000
-        )
-        heartbeat_healthy = heartbeat_grace or (
-            heartbeat_fresh
-            and self.heartbeat_online is True
-            and self.heartbeat_good is True
-        )
-        return self.connected and collector_fresh and heartbeat_healthy
-
 
 def _now_ms() -> int:
     return time.time_ns() // 1_000_000
