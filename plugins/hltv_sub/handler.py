@@ -22,7 +22,7 @@ from plugins.hltv_sub.models import (
 )
 from plugins.hltv_sub.render import render_reminder, render_stats
 
-UPCOMING_WINDOW_HOURS = 24
+UPCOMING_WINDOW_HOURS = 72
 OVERDUE_THRESHOLD_MINUTES = 30
 EventState = Literal["ONGOING", "UPCOMING", "NOT_ONGOING", "ENDED", "UNKNOWN"]
 
@@ -293,6 +293,14 @@ class HLTVHandler:
         self._initialized_events: set[str] = set()
         self._event_run_locks: dict[str, asyncio.Lock] = {}
 
+    def active_subscriptions(self) -> list[EventSubscription]:
+        """与调度器一致：只抓进行中或 UPCOMING_WINDOW_HOURS 内开赛的赛事，远期赛事每抓一次都要排队 15 秒以上。"""
+        now = datetime.now(self._tz)
+        return [
+            sub for sub in data_manager.get_subscribed_events()
+            if get_event_state(sub, now, self._end_grace_days) in ("ONGOING", "UPCOMING")
+        ]
+
     def cleanup_unsubscribed(self) -> None:
         subscribed = data_manager.get_all_subscribed_event_ids()
         self._initialized_events.intersection_update(subscribed)
@@ -377,16 +385,9 @@ class HLTVHandler:
         upcoming: list[UpcomingMatch] = []
         now = datetime.now(self._tz)
 
-        event_ids = data_manager.get_all_subscribed_event_ids()
-        if not event_ids:
-            return upcoming
-
-        for event_id in event_ids:
-            sub = data_manager.get_subscription(event_id)
-            if get_event_state(sub, datetime.now(self._tz), self._end_grace_days) == "ENDED":
-                continue
-
-            event_title = sub.event_title if sub else f"Event #{event_id}"
+        for sub in self.active_subscriptions():
+            event_id = sub.event_id
+            event_title = sub.event_title
 
             try:
                 page = await hltv_client.get_event_matches(event_id)
@@ -585,7 +586,8 @@ class HLTVHandler:
         """启动时初始化：将现有结果标记为已推送，避免重启后误推送"""
         if not data_manager.has_enabled_groups():
             return 0
-        event_ids = data_manager.get_all_subscribed_event_ids()
+        # 未激活的赛事会在首次检查时初始化，ENDED 的由每日维护初始化，启动时不必抓。
+        event_ids = [sub.event_id for sub in self.active_subscriptions()]
         count = 0
         for event_id in event_ids:
             try:

@@ -21,6 +21,8 @@ from plugins.hltv_sub.render import (
 )
 from plugins.hltv_sub.scheduler import hltv_scheduler
 
+NO_ACTIVE_HINT = "当前没有进行中的订阅赛事\n使用 我的订阅 查看已订阅赛事的日期"
+
 
 async def check_permission(bot: Bot, group_id: int, user_id: int) -> bool:
     """检查权限：群主、管理员或超级用户"""
@@ -238,9 +240,9 @@ async def handle_matches_list(bot: Bot, event: GroupMessageEvent):
     if not data_manager.is_enabled(group_id):
         return
 
-    subscriptions = data_manager.get_subscribed_events()
+    subscriptions = hltv_handler.active_subscriptions()
     if not subscriptions:
-        await matches_list.finish("请先订阅赛事\n使用 event列表 查看可订阅的赛事")
+        await matches_list.finish(NO_ACTIVE_HINT)
         return
 
     await matches_list.send("正在获取比赛列表，请稍候...")
@@ -295,9 +297,9 @@ async def handle_results_list(bot: Bot, event: GroupMessageEvent):
     if not data_manager.is_enabled(group_id):
         return
 
-    subscriptions = data_manager.get_subscribed_events()
+    subscriptions = hltv_handler.active_subscriptions()
     if not subscriptions:
-        await results_list.finish("请先订阅赛事\n使用 event列表 查看可订阅的赛事")
+        await results_list.finish(NO_ACTIVE_HINT)
         return
 
     await results_list.send("正在获取比赛结果，请稍候...")
@@ -344,12 +346,12 @@ async def handle_stats(
         return
 
     match_id = args.extract_plain_text().strip()
-    subscriptions = data_manager.get_subscribed_events()
 
     if not match_id:
         # 获取最新比赛数据
+        subscriptions = hltv_handler.active_subscriptions()
         if not subscriptions:
-            await stats_cmd.finish("请先订阅赛事，或提供比赛ID\n例如：stats 2370931")
+            await stats_cmd.finish(f"{NO_ACTIVE_HINT}\n或提供比赛ID，例如：stats 2370931")
             return
 
         await stats_cmd.send("正在获取最新比赛数据...")
