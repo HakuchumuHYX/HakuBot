@@ -260,13 +260,13 @@ async def run_once(*, force_latest: bool = False) -> str:
             logger.info(f"已建立基线（{len(items)} 条），本轮不推送历史早报")
             return "initialized"
         seen = state.get("seen") if isinstance(state.get("seen"), dict) else {}
-        updates = []
-        for item in items:
-            old = seen.get(item["guid"])
-            if not isinstance(old, dict):
-                updates.append(dict(item, change_kind="new"))
-            elif old.get("fingerprint") != item["fingerprint"]:
-                updates.append(dict(item, change_kind="changed"))
+        # 只推新期数：站点会整批重新生成旧期（如调换视频链接顺序、换 BV 号），
+        # 已推过的期数正文变化不再推送，下面无更新分支会静默刷新 fingerprint
+        updates = [
+            dict(item, change_kind="new")
+            for item in items
+            if not isinstance(seen.get(item["guid"]), dict)
+        ]
         if not updates:
             state["seen"] = current_seen(items)
             save_state(state)
