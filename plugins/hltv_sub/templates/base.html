@@ -11,6 +11,11 @@
             box-sizing: border-box;
         }
         
+        /* 截图期间若排版跳变导致页面变矮，body 渐变铺不到的区域会露白，用同色纯色兜底 */
+        html {
+            background: #16213e;
+        }
+        
         body {
             font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
