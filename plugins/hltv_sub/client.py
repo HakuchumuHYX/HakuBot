@@ -56,6 +56,7 @@ class HLTVClient:
         self._tz = pytz.timezone(plugin_config.hltv_timezone)
         self._timeout = plugin_config.hltv_flaresolverr_timeout_seconds
         self._interval = plugin_config.hltv_request_interval_seconds
+        self._session_max_requests = plugin_config.hltv_session_max_requests
         self._endpoint = plugin_config.hltv_flaresolverr_url
         self._cooldown = plugin_config.hltv_block_cooldown_seconds
         self._max_cooldown = plugin_config.hltv_block_cooldown_max_seconds
@@ -65,6 +66,8 @@ class HLTVClient:
         self._lock = asyncio.Lock()
         self._last_request = 0.0
         self._request_count = 0
+        # 只记在内存里：Bot 重启后沿用旧会话会从 0 重新计数，最多多用一轮。
+        self._session_requests = 0
         self._cache: OrderedDict[str, tuple[float, FetchResult]] = OrderedDict()
         self._inflight: dict[str, asyncio.Task] = {}
         self._probe: asyncio.Task | None = None
@@ -239,6 +242,7 @@ class HLTVClient:
             created = await self._call("sessions.create", session=self._session_id)
             if created.get("session") != self._session_id:
                 raise HLTVFetchError("FlareSolverr 返回了不匹配的会话 ID")
+            self._session_requests = 0
             logger.info(f"[HLTV] 新会话创建成功 session={self._session_id}")
 
         if self._pending_cleanup_id:
@@ -308,6 +312,8 @@ class HLTVClient:
             self._check_pause()
             try:
                 await self._prepare_session()
+                if self._session_requests >= self._session_max_requests:
+                    await self._replace_session()
                 try:
                     result = await self._request(url, key)
                 except HLTVFetchError as exc:
@@ -385,6 +391,7 @@ class HLTVClient:
         self._check_pause()
         self._last_request = time.monotonic()
         self._request_count += 1
+        self._session_requests += 1
         logger.debug(
             f"[HLTV] request page={key} count={self._request_count} "
             f"session={self._session_id}"

@@ -11,6 +11,8 @@ class Config(BaseModel):
     hltv_flaresolverr_url: str = "http://127.0.0.1:8191/v1"
     hltv_flaresolverr_timeout_seconds: int = Field(default=60, gt=0)
     hltv_request_interval_seconds: float = Field(default=15.0, gt=0)
+    # 同一标签页反复加载 HLTV，Chromium 每次涨十几 MB 且不回收，抓够次数就换会话。
+    hltv_session_max_requests: int = Field(default=30, gt=0)
     hltv_block_cooldown_seconds: int = Field(default=600, gt=0)
     hltv_block_cooldown_max_seconds: int = Field(default=7200, gt=0)
     hltv_timezone: str = "Asia/Shanghai"  # 时区
