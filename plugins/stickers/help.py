@@ -1,23 +1,13 @@
+from pathlib import Path
+
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from core.access import is_plugin_enabled
-from utils.onebot.help import send_help
-from utils.rendering.models import HelpDocument, HelpSection, HelpEntry
+from utils.onebot.media import image_segment
+from utils.rendering.engine import render_template
 from .help_content import HELP_DATA
 
-HELP = HelpDocument(
-    "Stickers 插件帮助",
-    sections=tuple(
-        HelpSection(
-            section["category"],
-            tuple(
-                HelpEntry(item["cmd"], item["desc"], example=item.get("eg", ""))
-                for item in section["commands"]
-            ),
-        )
-        for section in HELP_DATA
-    ),
-)
+TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 help_matcher = on_command(
     "sticker帮助",
@@ -31,4 +21,7 @@ help_matcher = on_command(
 async def handle_help(event: GroupMessageEvent):
     if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
         return
-    await send_help(help_matcher, HELP)
+    image = await render_template(
+        TEMPLATE_DIR, "help.html", width=780, help_data=HELP_DATA
+    )
+    await help_matcher.finish(image_segment(image))

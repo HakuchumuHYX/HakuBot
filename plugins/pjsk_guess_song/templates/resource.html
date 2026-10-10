@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block style %}
+.title { font-size: 36px; }
+
+.stats {
+    margin-top: 30px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.stat {
+    position: relative;
+    padding: 20px 24px 18px 30px;
+    overflow: hidden;
+}
+
+.stat::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    background: var(--c);
+}
+
+.stat .label {
+    font-size: 18px;
+    color: var(--sub);
+}
+
+.stat .value {
+    margin-top: 4px;
+    font-size: 42px;
+    font-weight: 900;
+    color: var(--c);
+}
+
+.version {
+    margin: 26px auto 0;
+    width: fit-content;
+    min-width: 360px;
+    padding: 16px 36px;
+    border-radius: 999px;
+    text-align: center;
+}
+
+.version .label {
+    font-size: 15px;
+    letter-spacing: 1px;
+    color: var(--teal-deep);
+}
+
+.version .value {
+    margin-top: 2px;
+    font-size: 28px;
+    font-weight: 700;
+}
+{% endblock %}
+
+{% block content %}
+<div class="title">PJSK 猜歌资源版本</div>
+<div class="stats">
+    {% for label, value, color in stats %}
+    <div class="stat card" style="--c: {{ color }}">
+        <div class="label">{{ label }}</div>
+        <div class="value">{{ value }}</div>
+    </div>
+    {% endfor %}
+</div>
+<div class="version card">
+    <div class="label">CURRENT DATA VERSION</div>
+    <div class="value">{{ data_version }}</div>
+</div>
+{% endblock %}

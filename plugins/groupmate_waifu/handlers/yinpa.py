@@ -170,7 +170,7 @@ async def handle_yinpa_list(bot: Bot, event: GroupMessageEvent):
         make_forward_node(
             "卡池",
             event.self_id,
-            render_member_pool("卡池", member_list_filtered),
+            await render_member_pool("卡池", member_list_filtered),
         )
     )
 
@@ -182,7 +182,7 @@ async def handle_yinpa_list(bot: Bot, event: GroupMessageEvent):
             make_forward_node(
                 "记录①",
                 event.self_id,
-                render_yinpa_record("涩涩记录①", record1, "今日透群友"),
+                await render_yinpa_record("涩涩记录①", record1, "今日透群友"),
             )
         )
 
@@ -194,7 +194,7 @@ async def handle_yinpa_list(bot: Bot, event: GroupMessageEvent):
             make_forward_node(
                 "记录②",
                 event.self_id,
-                render_yinpa_record("涩涩记录②", record2, "今日被透"),
+                await render_yinpa_record("涩涩记录②", record2, "今日被透"),
             )
         )
 

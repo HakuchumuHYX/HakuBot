@@ -30,7 +30,7 @@ async def handle_waifu_list(bot: Bot, event: GroupMessageEvent):
     member_list.sort(key=lambda x: x["last_sent_time"], reverse=True)
 
     if member_list:
-        await waifu_list.finish(render_member_pool("卡池", member_list))
+        await waifu_list.finish(await render_member_pool("卡池", member_list))
     else:
         await waifu_list.finish("群友已经被娶光了。")
 
@@ -72,4 +72,4 @@ async def handle_cp_list(bot: Bot, event: GroupMessageEvent):
 
         names.append((name_a, name_b))
 
-    await cp_list.finish(render_cp_list(names))
+    await cp_list.finish(await render_cp_list(names))

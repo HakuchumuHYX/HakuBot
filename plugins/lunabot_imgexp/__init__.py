@@ -18,7 +18,6 @@ from plugins.lunabot_imgexp.core import search_image
 from plugins.lunabot_imgexp.config import config
 from utils.logging import get_logger
 from utils.onebot.forward import send_forward_msg
-from utils.files import TemporaryPath
 from utils.network.http import download_image
 from utils.onebot.media import image_segment
 from plugins.lunabot_imgexp import twitter
@@ -106,46 +105,40 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
             res_img, results = await search_image(url)
 
             # 发送结果图片
-            # 使用临时文件保存图片，避免 Base64 过大导致 WebSocket 超时
-            with TemporaryPath(ext="png") as tmp_path:
-                res_img.save(tmp_path, format="PNG")
+            # 构建合并转发消息列表
+            forward_messages = [image_segment(res_img)]
 
-                # 构建合并转发消息列表
-                forward_messages = [image_segment(tmp_path)]
+            # 发送文字结果详情
+            # 将每一条搜索结果拆分成独立消息（合并转发的独立 node），方便移动端逐条复制链接
+            for result in results:
+                # 错误信息也单独成条
+                if result.error:
+                    forward_messages.append(
+                        f"来自 {result.source} 的结果:\n{result.error}".strip()
+                    )
+                    continue
 
-                # 发送文字结果详情
-                # 将每一条搜索结果拆分成独立消息（合并转发的独立 node），方便移动端逐条复制链接
-                for result in results:
-                    # 错误信息也单独成条
-                    if result.error:
-                        forward_messages.append(
-                            f"来自 {result.source} 的结果:\n{result.error}".strip()
-                        )
-                        continue
+                # 没有结果则跳过（不发送“未找到结果”文字，避免刷屏）
+                if not result.results:
+                    continue
 
-                    # 没有结果则跳过（不发送“未找到结果”文字，避免刷屏）
-                    if not result.results:
-                        continue
+                # 每个 item 独立成条
+                for i, item in enumerate(result.results):
+                    title_str = f"[{item.title}]\n" if item.title else ""
+                    sim_str = (
+                        f"({item.similarity:.1f}%)\n"
+                        if item.similarity is not None
+                        else ""
+                    )
+                    # GoogleLens 的结果可能带来源站点（item.source）
+                    from_str = (
+                        f"From {item.source}\n" if getattr(item, "source", None) else ""
+                    )
+                    forward_messages.append(
+                        f"来自 {result.source} 的结果 #{i + 1}\n{from_str}{title_str}{sim_str}{item.url}".strip()
+                    )
 
-                    # 每个 item 独立成条
-                    for i, item in enumerate(result.results):
-                        title_str = f"[{item.title}]\n" if item.title else ""
-                        sim_str = (
-                            f"({item.similarity:.1f}%)\n"
-                            if item.similarity is not None
-                            else ""
-                        )
-                        # GoogleLens 的结果可能带来源站点（item.source）
-                        from_str = (
-                            f"From {item.source}\n"
-                            if getattr(item, "source", None)
-                            else ""
-                        )
-                        forward_messages.append(
-                            f"来自 {result.source} 的结果 #{i + 1}\n{from_str}{title_str}{sim_str}{item.url}".strip()
-                        )
-
-                await send_forward_msg(bot, event, items=forward_messages)
+            await send_forward_msg(bot, event, items=forward_messages)
 
             # 发送成功后再更新 CD（仅群聊，多张图只扣一次）
             if (

@@ -59,8 +59,8 @@ async def generate_custom_css():
     """机器人启动时生成合并好的自定义 Markdown CSS"""
     try:
         # 获取基础样式
-        base_css = await read_tpl("github-markdown-light.css")
-        highlight_css = await read_tpl("pygments-default.css")
+        base_css = read_tpl("github-markdown-light.css")
+        highlight_css = read_tpl("pygments-default.css")
 
         # 加上配置的背景颜色覆盖
         bg_color = plugin_config.chat.bg_color

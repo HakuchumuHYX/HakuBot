@@ -24,7 +24,10 @@ from utils.files import TemporaryPath
 from utils.onebot.forward import send_forward_msg
 from utils.network.http import download_image
 from utils.rendering.browser import browser_pool
-from utils.rendering.draw.img_utils import concat_images, save_transparent_static_gif
+from plugins.lunabot_imgexp.image_utils import (
+    concat_images,
+    save_transparent_static_gif,
+)
 from utils.onebot.media import image_segment
 
 logger = get_logger("Twitter")

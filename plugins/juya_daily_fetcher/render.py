@@ -5,8 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from utils.rendering.engine import render_template_image
-from utils.rendering.fonts import font_path
+from utils.rendering.engine import render_template
 from plugins.juya_daily_fetcher.config import ARTICLE_DIR, TEMPLATE_DIR
 
 ARTICLES_PER_PAGE = 5
@@ -23,14 +22,6 @@ def _safe_url(value: Any) -> str:
 
 def _inline_text(text: Any) -> str:
     return _escape(text).replace("\n", "<br>")
-
-
-def _font_uris() -> dict[str, str]:
-    return {
-        "font_regular": font_path("Regular").as_uri(),
-        "font_bold": font_path("Bold").as_uri(),
-        "font_heavy": font_path("Heavy").as_uri(),
-    }
 
 
 def _links_html(block: dict[str, Any]) -> str:
@@ -190,8 +181,6 @@ async def render_document(document: dict[str, Any], event_id: str) -> list[Path]
 
     total_pages = 1 + ((len(articles) + ARTICLES_PER_PAGE - 1) // ARTICLES_PER_PAGE)
     ARTICLE_DIR.mkdir(parents=True, exist_ok=True)
-    font_uris = _font_uris()
-    template_dir = str(TEMPLATE_DIR.resolve())
     outputs: list[Path] = []
     for page_index in range(total_pages):
         page_number = page_index + 1
@@ -201,24 +190,18 @@ async def render_document(document: dict[str, Any], event_id: str) -> list[Path]
             offset = (page_number - 2) * ARTICLES_PER_PAGE
             page_articles = articles[offset : offset + ARTICLES_PER_PAGE]
             content = _article_page_html(page_articles, offset)
-        image_bytes = await render_template_image(
-            template_path=template_dir,
-            template_name="article-template.html",
-            templates={
-                "title": _escape(document.get("title") or "原文更新"),
-                "date": _escape(document.get("date") or ""),
-                "header": _header_html(document, page_number, total_pages),
-                "content": content,
-                "page": page_number,
-                "total_pages": total_pages,
-                **font_uris,
-            },
-            pages={
-                "viewport": {"width": 1200, "height": 10},
-                "base_url": f"{TEMPLATE_DIR.resolve().as_uri()}/",
-            },
-            device_scale_factor=1,
-            screenshot_timeout=60_000,
+        image_bytes = await render_template(
+            TEMPLATE_DIR,
+            "article-template.html",
+            width=1200,
+            scale=1,
+            timeout=60_000,
+            title=document.get("title") or "原文更新",
+            date=document.get("date") or "",
+            header=_header_html(document, page_number, total_pages),
+            content=content,
+            page=page_number,
+            total_pages=total_pages,
         )
         suffix = "" if total_pages == 1 else f"-{page_number:02d}"
         output_path = ARTICLE_DIR / f"{event_id}{suffix}.png"

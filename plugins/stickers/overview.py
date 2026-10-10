@@ -1,13 +1,11 @@
-from utils.rendering.fonts import load_font_from_path
-from utils.rendering.fonts import font_path
-
 # stickers/overview.py
+# 概览图是上千张缩略图的拼接（贴图合成），留在 PIL；其余报告图走 Chromium 模板。
 import math
 import asyncio
 import warnings
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 
@@ -32,35 +30,9 @@ from plugins.stickers.config import (
     MAX_CANVAS_PIXELS,
 )
 from plugins.stickers import send
+from utils.rendering.fonts import load_font
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
-
-# === 字体缓存 ===
-_font_cache: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
-
-
-def get_cached_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
-    """获取缓存的字体，避免重复加载"""
-    key = (font_name, size)
-    if key not in _font_cache:
-        try:
-            _font_cache[key] = load_font_from_path(font_name, size)
-        except:
-            pass
-    return _font_cache.get(key)
-
-
-def load_fonts(font_size: int) -> Tuple[ImageFont.FreeTypeFont, ImageFont.FreeTypeFont]:
-    """加载标题和正文字体"""
-    # 尝试加载中文字体（包含 Linux 路径）
-    font_candidates = [str(font_path())]
-    for font_name in font_candidates:
-        title_font = get_cached_font(font_name, 32)
-        text_font = get_cached_font(font_name, font_size)
-        if title_font and text_font:
-            return title_font, text_font
-    # 回退到默认字体
-    return ImageFont.load_default(), ImageFont.load_default()
 
 
 # === 并行图片加载 ===
@@ -373,7 +345,7 @@ def render_gallery_overview_sync(
     draw = ImageDraw.Draw(canvas)
 
     # 加载字体（使用缓存）
-    title_font, text_font = load_fonts(font_size)
+    title_font, text_font = load_font(32), load_font(font_size)
 
     # 绘制标题
     title_text = f"Gallery: {folder_name} ({total} items)"
@@ -407,11 +379,7 @@ def render_gallery_overview_sync(
         # 绘制文件名 (ID)
         file_name = file_path.stem
 
-        try:
-            bbox = draw.textbbox((0, 0), file_name, font=text_font)
-            text_w = bbox[2] - bbox[0]
-        except:
-            text_w = draw.textlength(file_name, font=text_font)
+        text_w = draw.textlength(file_name, font=text_font)
 
         text_x = x + (thumb_size - text_w) // 2
         text_y = y + thumb_size + 2

@@ -17,7 +17,7 @@ html, body {
   padding: 0;
   background: var(--paper);
   color: var(--ink);
-  font-family: "Source Han Sans CN", "Noto Sans CJK SC", sans-serif;
+  font-family: Haku, "Noto Sans CJK SC", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 body { width: 1200px; }

@@ -193,15 +193,14 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
             f"[猜歌插件] 新游戏开始. 答案: {correct_song['title']} (选项 {game_data['correct_answer_num']})"
         )
 
-        options_img_path = await image_service.create_options_image(options)
+        options_image = await image_service.create_options_image(options)
 
         answer_timeout = _get_setting_for_group(event, "answer_timeout", 30)
         intro_text = f".......嗯\n这首歌是？请在{answer_timeout}秒内发送编号回答。\n"
 
         intro_messages = Message(intro_text)
-        if options_img_path:
-            img_path = Path(options_img_path)
-            intro_messages.append(image_segment(img_path))
+        if options_image:
+            intro_messages.append(image_segment(options_image))
 
         jacket_source = cache_service.get_resource_path_or_url(
             f"music_jacket/{correct_song['jacketAssetbundleName']}.png"
@@ -328,14 +327,13 @@ async def _(bot: Bot, event: MessageEvent):
             f"[猜歌插件] 新游戏开始. 答案: {correct_song['title']} (选项 {game_data['correct_answer_num']})"
         )
 
-        options_img_path = await image_service.create_options_image(options)
+        options_image = await image_service.create_options_image(options)
         timeout_seconds = _get_setting_for_group(event, "answer_timeout", 30)
         intro_text = f".......嗯\n这首歌是？请在{timeout_seconds}秒内发送编号回答。\n"
 
         intro_messages = Message(intro_text)
-        if options_img_path:
-            img_path = Path(options_img_path)
-            intro_messages.append(image_segment(img_path))
+        if options_image:
+            intro_messages.append(image_segment(options_image))
 
         jacket_source = cache_service.get_resource_path_or_url(
             f"music_jacket/{correct_song['jacketAssetbundleName']}.png"

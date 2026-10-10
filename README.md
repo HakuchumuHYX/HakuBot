@@ -1,6 +1,6 @@
 # HakuBot
 
-项目分为 `plugins/`、`core/` 和根目录 `utils/` 三层，详见 [结构说明](ARCHITECTURE.md)。插件配置集中在 `config/plugins/`，内容保持原样；公共字体、浏览器和模型集中在 `data/shared/`。帮助图片统一复用浅蓝卡片与夜间主题，全局菜单仍由手写配置维护。
+项目分为 `plugins/`、`core/` 和根目录 `utils/` 三层，详见 [结构说明](ARCHITECTURE.md)。插件配置集中在 `config/plugins/`，内容保持原样；公共字体、浏览器和模型集中在 `data/shared/`。图片统一由 Chromium 渲染，模板放在各插件的 `templates/` 下，全局菜单仍由手写配置维护。
 
 <div align="center">
 
@@ -20,7 +20,7 @@
 
 ### 🎸 PJSK 相关
 
-- **[sk-predict](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/cnsk_predict)**: PJSK 预测线。本质上是访问榜线预测api获得结果并进行手动渲染。可访问[榜线预测站](https://pjsk.moe/prediction/)。
+- **[sk-predict](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/cnsk_predict)**: PJSK 预测线。本质上是访问榜线预测api获得结果并渲染成图片。可访问[榜线预测站](https://pjsk.moe/prediction/)。
 - **[pjsk_event_summary](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/pjsk_event_summary)**: PJSK 剧情总结，数据来源于 [MoeSekai-Hub](https://github.com/moe-sekai/MoeSekai-Hub/tree/main/story/detail/)。
 - **[pjsk_guess_song](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/pjsk_guess_song)**: PJSK 猜歌以及听歌插件。主要逻辑来自于 [astrbot-plugin-pjsk-guess-song](https://github.com/nichinichisou0609/astrbot_plugin_pjsk_guess_song) 并由我进行了一些修改。
 - **[pjskprofile_snowybot](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/pjskprofile_snowybot)**: 获取SnowyBot版的PJSK个人信息（已废弃）。

@@ -113,4 +113,4 @@ async def handle_show_protect(bot: Bot, event: GroupMessageEvent):
             )
         )
     ]
-    await show_protect.finish(render_protect_list(names))
+    await show_protect.finish(await render_protect_list(names))

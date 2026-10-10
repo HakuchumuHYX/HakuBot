@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+
+:root {
+    --ink: #1f2f4d;
+    --sub: #62728d;
+    --muted: #a6b1c4;
+    --on: #2fb67c;
+    --on-soft: #e3f7ee;
+    --off: #e5675f;
+    --off-soft: #fdebea;
+    --line: #e7edf6;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Haku, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(135deg, #e6efff 0%, #f5f9ff 100%);
+    padding: 24px;
+}
+
+.head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin: 4px 6px 18px;
+}
+
+h1 { font-size: 30px; font-weight: 900; }
+
+.group { margin-top: 4px; font-size: 16px; color: var(--sub); }
+
+.summary { display: flex; gap: 10px; }
+
+.summary span {
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.summary .on { background: var(--on-soft); color: var(--on); }
+
+.summary .off { background: var(--off-soft); color: var(--off); }
+
+.cards { column-count: {{ columns }}; column-gap: 14px; }
+
+.card {
+    break-inside: avoid;
+    margin-bottom: 14px;
+    padding: 6px 16px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #dde7f5;
+    border-radius: 16px;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+}
+
+.row + .row { border-top: 1px dashed var(--line); }
+
+.row.child { padding-left: 18px; }
+
+.text { flex: 1; min-width: 0; }
+
+.name { font-size: 20px; font-weight: 700; word-break: break-all; }
+
+.child .name { font-size: 17px; font-weight: 400; }
+
+.id { font-size: 13px; color: var(--muted); }
+
+.row.disabled .name { color: var(--muted); }
+
+.pill {
+    flex: none;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--on);
+}
+
+.disabled .pill { background: var(--off); }
+
+.watermark {
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #8697b3;
+    white-space: pre-line;
+    text-align: {{ "center" if watermark_position == "bottom" else "right" }};
+}
+</style>
+</head>
+<body>
+<div class="head">
+    <div>
+        <h1>{{ title }}</h1>
+        <div class="group">Group: {{ group_id }}</div>
+    </div>
+    <div class="summary">
+        <span class="on">启用 {{ enabled_count }}</span>
+        <span class="off">禁用 {{ disabled_count }}</span>
+    </div>
+</div>
+<div class="cards">
+    {% for group in groups %}
+    <div class="card">
+        {% for row in [group.parent] + group.children %}
+        <div class="row{% if row.is_child %} child{% endif %}{% if not row.enabled %} disabled{% endif %}">
+            <div class="text">
+                <div class="name">{{ row.name }}</div>
+                <div class="id">{{ row.plugin_id }}</div>
+            </div>
+            <div class="pill">{{ "ON" if row.enabled else "OFF" }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+{% if watermark_text %}<div class="watermark">{{ watermark_text }}</div>{% endif %}
+</body>
+</html>

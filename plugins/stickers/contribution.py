@@ -22,7 +22,8 @@ from plugins.stickers.send import (
     get_next_image_id,
     invalidate_count_cache,
 )
-from plugins.stickers.check import check_duplicate_images, render_duplicate_report
+from plugins.stickers.check import check_duplicate_images
+from plugins.stickers.render import render_duplicate_report
 from plugins.stickers.config import DOWNLOAD_CONCURRENCY
 
 

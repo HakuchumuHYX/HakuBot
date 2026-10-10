@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}HLTV{% endblock %}</title>
     <style>
+        {{ font_css | safe }}
+
         * {
             margin: 0;
             padding: 0;
@@ -17,7 +19,7 @@
         }
         
         body {
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            font-family: Haku, sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             color: #e0e0e0;
             min-width: 600px;

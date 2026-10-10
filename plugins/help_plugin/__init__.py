@@ -1,19 +1,20 @@
-from nonebot import on_command, get_driver
+import re
+from pathlib import Path
+
+from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
-from nonebot.exception import FinishedException
+from nonebot.log import logger
 from nonebot.matcher import Matcher
 
-from plugins.help_plugin.content import load_help_document
-from utils.onebot.help import send_help
-from utils.rendering.help import render_help
+from plugins.help_plugin.config import load_config
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
 from utils.onebot.forward import send_forward_msg
+from utils.rendering.engine import render_template
 
-driver = get_driver()
+TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 help_cmd = on_command("help", aliases={"帮助", "菜单"}, priority=5, block=True)
-reload_cmd = on_command("reload_help", aliases={"重载帮助"}, priority=1, block=True)
 
 
 @help_cmd.handle()
@@ -23,32 +24,26 @@ async def handle_help(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     if not is_plugin_enabled("help_plugin", str(event.group_id), user_id):
         return
 
+    config = load_config()
     try:
-        document, links = load_help_document()
-        await send_help(matcher, document)
+        image = await render_template(
+            TEMPLATE_DIR,
+            "help.html",
+            width=750,
+            title=config.bot_name,
+            help_text=config.help_text,
+        )
+        await matcher.send(image_segment(image))
+    except Exception:
+        # 全局菜单是手写文本，渲染失败时原样发出去
+        logger.exception("帮助图片渲染失败，改发文本")
+        await matcher.send("\n\n".join([config.bot_name, *config.help_text]))
 
-        if links:
-            forward_nodes = ["包含的链接如下："]
-            for index, link in enumerate(links, 1):
-                forward_nodes.append(f"{index}. {link}")
+    full_text = "\n".join(config.help_text)
+    links = list(dict.fromkeys(re.findall(r"https?://[^\s<>]+", full_text)))
+    if links:
+        forward_nodes = ["包含的链接如下："]
+        for index, link in enumerate(links, 1):
+            forward_nodes.append(f"{index}. {link}")
 
-            await send_forward_msg(bot, group_id=event.group_id, items=forward_nodes)
-
-    except FinishedException:
-        raise
-    except Exception as e:
-        await matcher.finish(f"发送帮助信息失败：{e}")
-
-
-# --- 重载命令 ---
-@reload_cmd.handle()
-async def handle_reload(matcher: Matcher):
-    try:
-        # 记得加 await
-        document, _ = load_help_document()
-        await render_help(document, force=True)
-        await matcher.finish("帮助文本及图片缓存已强制重载！")
-    except FinishedException:
-        raise
-    except Exception as e:
-        await matcher.finish(f"重载失败：{e}")
+        await send_forward_msg(bot, group_id=event.group_id, items=forward_nodes)

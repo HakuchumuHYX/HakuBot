@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        {{ font_css | safe }}
+
+        :root {
+            --primary-color: #5c7cfa;
+            --primary-dark: #3b5bdb; /* 新增深色主题色 */
+            --bg-color: #f8f9fa; /* 背景稍微调亮一点 */
+            --card-bg: #ffffff;
+            --text-main: #2c3e50;
+            --text-sub: #868e96;
+            /* --- 命令样式修改区域 --- */
+            --cmd-bg: #e7f5ff; /* 改为极浅的蓝色背景 */
+            --cmd-text: var(--primary-dark); /* 改为深蓝色，不再使用丑红 */
+            --cmd-border: #d0ebff; /* 新增边框色 */
+        }
+        body {
+            font-family: Haku, 'Noto Color Emoji', sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            -webkit-font-smoothing: antialiased; /* 让字体更清晰 */
+        }
+        .container {
+            width: 720px;
+            background-color: var(--card-bg);
+            border-radius: 20px; /* 更圆润一点 */
+            box-shadow: 0 12px 40px rgba(0,0,0,0.08);
+            overflow: hidden;
+            padding-bottom: 25px;
+        }
+        .header {
+            /* 调整渐变角度和颜色 */
+            background: linear-gradient(120deg, #4dabf7 0%, #5c7cfa 100%);
+            color: white;
+            padding: 35px 45px;
+            position: relative;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 34px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+        .header p {
+            margin: 12px 0 0 0;
+            opacity: 0.95;
+            font-size: 17px;
+            font-weight: 500;
+        }
+        .content {
+            padding: 35px 45px;
+        }
+        .section {
+            margin-bottom: 35px;
+        }
+        .section-title {
+            display: flex;
+            align-items: center;
+            font-size: 21px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f1f3f5;
+        }
+        .section-icon {
+            margin-right: 12px;
+            font-size: 26px;
+        }
+        .command-item {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 18px;
+            padding: 14px 18px;
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02); /* 轻微的卡片阴影 */
+            transition: all 0.2s;
+        }
+        .command-header {
+            display: flex;
+            justify-content: flex-start; /* 左对齐 */
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        /* --- 重点修改区域：命令样式 --- */
+        .cmd-code {
+            /* 1. 弃用 monospace，继承 body 的无衬线字体，解决间距过大问题 */
+            font-family: inherit; 
+            background-color: var(--cmd-bg);
+            color: var(--cmd-text);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 15px;
+            /* 2. 调整字重，看起来更精致 */
+            font-weight: 600; 
+            /* 3. 增加轻微边框和阴影，增加立体感 */
+            border: 1px solid var(--cmd-border);
+            box-shadow: 0 1px 2px rgba(59, 91, 219, 0.05);
+            letter-spacing: -0.2px; /* 微调字间距使其更紧凑 */
+        }
+        .cmd-desc {
+            font-size: 15px;
+            color: var(--text-main);
+            margin-top: 4px;
+            line-height: 1.5;
+        }
+        .cmd-eg {
+            font-size: 13px;
+            color: var(--text-sub);
+            margin-top: 6px;
+            background-color: #f8f9fa;
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block; /* 让示例也像一个小标签 */
+        }
+        .cmd-eg::before {
+            content: "e.g. ";
+            font-weight: 600;
+            color: #adb5bd;
+        }
+        .footer {
+            text-align: center;
+            color: #adb5bd;
+            font-size: 13px;
+            margin-top: 30px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Stickers Plugin</h1>
+            <p>表情包管理插件帮助文档</p>
+        </div>
+        <div class="content">
+            {% for section in help_data %}
+            <div class="section">
+                <div class="section-title">
+                    <span class="section-icon">{{ section.icon }}</span>
+                    <span>{{ section.category }}</span>
+                </div>
+                {% for item in section.commands %}
+                <div class="command-item">
+                    <div class="command-header">
+                        <span class="cmd-code">{{ item.cmd }}</span>
+                    </div>
+                    <div class="cmd-desc">{{ item.desc }}</div>
+                    <div class="cmd-eg">{{ item.eg }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+
+            <div class="footer">
+                Generated by HakuBot
+            </div>
+        </div>
+    </div>
+</body>
+</html>

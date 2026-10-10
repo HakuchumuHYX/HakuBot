@@ -1,7 +1,6 @@
-"""Local font lookup shared by browser and PIL rendering."""
+"""本地 CJK 字体，浏览器模板（font_css）和少量 PIL 贴图合成共用。"""
 
 from functools import lru_cache
-import hashlib
 from pathlib import Path
 from PIL import ImageFont
 from utils.paths import project_root
@@ -19,22 +18,17 @@ def font_path(weight: str = "Regular") -> Path:
     raise FileNotFoundError("No local CJK font in data/shared/fonts or system fonts")
 
 
-@lru_cache(maxsize=128)
-def load_font(size: int, weight: str = "Regular"):
-    return ImageFont.truetype(str(font_path(weight)), size)
-
-
-def font_fingerprint() -> str:
-    return hashlib.sha256(
-        b"".join(font_path(w).read_bytes() for w in ("Regular", "Bold", "Heavy"))
-    ).hexdigest()
-
-
+@lru_cache(maxsize=1)
 def font_css() -> str:
     return "\n".join(
         f"@font-face{{font-family:Haku;src:url('{font_path(w).as_uri()}');font-weight:{n};}}"
         for w, n in (("Regular", 400), ("Bold", 700), ("Heavy", 900))
     )
+
+
+@lru_cache(maxsize=128)
+def load_font(size: int, weight: str = "Regular"):
+    return ImageFont.truetype(str(font_path(weight)), size)
 
 
 @lru_cache(maxsize=128)

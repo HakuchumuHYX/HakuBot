@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block style %}
+.page { padding: 26px 24px 20px; }
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, 168px);
+    gap: 16px;
+    justify-content: center;
+}
+
+.option {
+    padding: 8px 8px 10px;
+}
+
+.jacket {
+    position: relative;
+    width: 152px;
+    height: 152px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #dde3ee;
+}
+
+.jacket img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.num {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 8px;
+    border-radius: 18px;
+    background: rgba(38, 42, 61, 0.78);
+    border: 2px solid var(--teal);
+    color: #fff;
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 32px;
+    text-align: center;
+}
+
+.name {
+    margin-top: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.footer { margin-top: 18px; }
+{% endblock %}
+
+{% block content %}
+<div class="grid">
+    {% for option in options %}
+    <div class="option card">
+        <div class="jacket">
+            {% if option.jacket %}<img src="{{ option.jacket }}">{% endif %}
+            <div class="num">{{ loop.index }}</div>
+        </div>
+        <div class="name">{{ option.title }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

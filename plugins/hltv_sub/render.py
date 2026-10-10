@@ -6,7 +6,7 @@ from dataclasses import asdict
 from typing import Optional
 import pytz
 
-from utils.rendering.engine import render_template_image
+from utils.rendering.engine import render_template
 
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.models import EventInfo, MatchInfo, ResultInfo, MatchStats
@@ -17,18 +17,13 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 async def _render(template_name: str, context: dict, width: int) -> bytes:
     tz = pytz.timezone(plugin_config.hltv_timezone)
-    return await render_template_image(
-        template_path=str(TEMPLATE_DIR),
-        template_name=template_name,
-        templates={
-            **context,
-            "timestamp": datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S"),
-            "watermark_text": plugin_config.hltv_watermark_text,
-        },
-        pages={
-            "viewport": {"width": width, "height": 100},
-            "base_url": f"file://{TEMPLATE_DIR}/",
-        },
+    return await render_template(
+        TEMPLATE_DIR,
+        template_name,
+        width=width,
+        **context,
+        timestamp=datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S"),
+        watermark_text=plugin_config.hltv_watermark_text,
     )
 
 

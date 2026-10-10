@@ -23,8 +23,6 @@ from plugins.image_processor.gif_speed import (
     change_gif_speed_alternative,
 )
 from plugins.image_processor.image_symmetry import process_image_symmetry
-from plugins.image_processor.help import HELP
-from utils.onebot.help import send_help
 from plugins.image_processor.video_to_gif import convert_video_to_gif
 from plugins.image_processor.image_mirror import process_image_mirror
 from plugins.image_processor.image_rotate import process_image_rotate

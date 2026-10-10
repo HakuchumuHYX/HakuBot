@@ -4,26 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=1200">
   <title>{{ title }}</title>
-  <style>
-    @font-face {
-      font-family: "Source Han Sans CN";
-      src: url("{{ font_regular }}") format("truetype");
-      font-weight: 400;
-      font-display: block;
-    }
-    @font-face {
-      font-family: "Source Han Sans CN";
-      src: url("{{ font_bold }}") format("truetype");
-      font-weight: 700;
-      font-display: block;
-    }
-    @font-face {
-      font-family: "Source Han Sans CN";
-      src: url("{{ font_heavy }}") format("truetype");
-      font-weight: 900;
-      font-display: block;
-    }
-  </style>
+  <style>{{ font_css | safe }}</style>
   <link rel="stylesheet" href="./article-styles.css">
 </head>
 <body>

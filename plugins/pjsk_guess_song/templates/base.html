@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+
+:root {
+    --teal: #33ccbb;
+    --teal-deep: #189b8e;
+    --pink: #ff6fa5;
+    --ink: #262a3d;
+    --sub: #626a82;
+    --muted: #949bb0;
+    --card: rgba(255, 255, 255, 0.86);
+    --line: rgba(51, 204, 187, 0.25);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Haku, 'Noto Color Emoji', sans-serif;
+    color: var(--ink);
+    background: linear-gradient(160deg, #e3f8f5 0%, #eef0fb 55%, #fbeaf3 100%);
+}
+
+.page {
+    position: relative;
+    padding: 34px 32px 26px;
+    overflow: hidden;
+}
+
+{% if bg_uri %}
+.page::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("{{ bg_uri }}") center / cover no-repeat;
+    opacity: 0.32;
+}
+{% endif %}
+
+.page > * { position: relative; }
+
+.title {
+    text-align: center;
+    font-size: 40px;
+    font-weight: 900;
+    letter-spacing: 2px;
+}
+
+.title::after {
+    content: "";
+    display: block;
+    width: 72px;
+    height: 5px;
+    margin: 12px auto 0;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--teal), var(--pink));
+}
+
+.subtitle {
+    margin-top: 12px;
+    text-align: center;
+    font-size: 20px;
+    color: var(--sub);
+}
+
+.card {
+    background: var(--card);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(38, 42, 61, 0.08);
+}
+
+.footer {
+    margin-top: 26px;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--muted);
+}
+
+{% block style %}{% endblock %}
+</style>
+</head>
+<body>
+<div class="page">
+    {% block content %}{% endblock %}
+    <div class="footer">
+        {% for line in footer_lines %}<div>{{ line }}</div>{% endfor %}
+    </div>
+</div>
+</body>
+</html>

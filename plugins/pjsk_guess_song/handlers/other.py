@@ -22,8 +22,6 @@ from plugins.pjsk_guess_song.runtime import (
     resources_dir,
     game_service,
 )
-from plugins.pjsk_guess_song.help_content import build_help_document
-from utils.onebot.help import send_help
 from plugins.pjsk_guess_song.tools.get_aliases import fetch_all_aliases
 from plugins.pjsk_guess_song.utils import _is_group_allowed
 from core.access import (
@@ -54,7 +52,8 @@ async def _(bot: Bot, event: MessageEvent):
     if not await _is_group_allowed(event):
         return
 
-    await send_help(show_guess_song_help, build_help_document(game_service))
+    image = await image_service.draw_help_image(game_service.game_modes)
+    await show_guess_song_help.finish(image_segment(image))
 
 
 # --- 资源版本 ---
@@ -111,13 +110,12 @@ async def _(bot: Bot, event: MessageEvent):
             external_version_info = f"读取错误: {e}"
 
     # 3. 生成图片并发送
-    img_path = await image_service.draw_resource_version_image(
+    image = await image_service.draw_resource_version_image(
         stats, external_version_info
     )
 
-    if img_path:
-        img_p = Path(img_path)
-        await show_resource_version.finish(image_segment(img_p))
+    if image:
+        await show_resource_version.finish(image_segment(image))
     else:
         await show_resource_version.finish(
             f"生成图片失败，请检查日志。\nDataVersion: {external_version_info}"

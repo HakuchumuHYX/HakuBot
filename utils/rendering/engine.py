@@ -1,132 +1,111 @@
+"""Chromium 渲染的公共入口。
+
+业务模板归各插件自己的 templates/ 目录所有，这里只负责“模板 → HTML → 截图”。
+本目录的 templates/ 只放通用的 Markdown / 纯文本转图模板。
+"""
+
+from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
-import aiofiles
+from typing import Literal
+from zoneinfo import ZoneInfo
+
 import jinja2
 import markdown
+
 from utils.logging import get_logger
-from utils.rendering.browser import browser_pool
 from utils.paths import project_root
+from utils.rendering.browser import browser_pool
+from utils.rendering.fonts import font_css
 
 logger = get_logger("rendering")
-TEMPLATES_PATH = str(Path(__file__).parent / "templates")
+TEMPLATES_PATH = Path(__file__).parent / "templates"
 
-
-async def read_file(path: str) -> str:
-    async with aiofiles.open(path, encoding="UTF8") as f:
-        return await f.read()
-
-
-async def read_tpl(path: str) -> str:
-    return await read_file(f"{TEMPLATES_PATH}/{path}")
-
-
-# ================= jinja2 环境 =================
-
-_env = jinja2.Environment(
-    extensions=["jinja2.ext.loopcontrols"],
-    loader=jinja2.FileSystemLoader(TEMPLATES_PATH),
-    enable_async=True,
+# 通用转换器的模板输入本身就是 HTML（markdown 产物、bison 文本卡片），不能转义。
+_builtin_env = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(TEMPLATES_PATH), enable_async=True
 )
 
 
-# ================= render_html =================
+def is_night(now: datetime | None = None) -> bool:
+    """上海时间 18:00–06:00 为夜间，模板据此切换深色配色。"""
+    hour = (now or datetime.now(ZoneInfo("Asia/Shanghai"))).hour
+    return not 6 <= hour < 18
+
+
+def read_tpl(name: str) -> str:
+    return (TEMPLATES_PATH / name).read_text(encoding="utf-8")
 
 
 async def render_html(
     html: str,
-    template_path: str = project_root().as_uri() + "/",
+    *,
+    base_dir: Path = project_root(),
+    width: int = 800,
+    scale: float = 2,
     type: Literal["jpeg", "png"] = "png",
-    quality: Union[int, None] = None,
-    device_scale_factor: float = 2,
-    screenshot_timeout: Optional[float] = 30_000,
-    full_page: Optional[bool] = True,
-    **kwargs,
+    quality: int | None = None,
+    timeout: float = 30_000,
 ) -> bytes:
-    """html 转图片，公共渲染入口。"""
-    if "file:" not in template_path:
-        raise Exception("template_path should be file:///path/to/template")
+    """HTML 转图片；base_dir 决定模板里相对路径（CSS、图片）的解析位置。"""
     async with browser_pool.page(
-        device_scale_factor=device_scale_factor, **kwargs
+        viewport={"width": width, "height": 10}, device_scale_factor=scale
     ) as page:
         page.on("console", lambda msg: logger.debug(f"[Browser Console]: {msg.text}"))
-        await page.goto(template_path)
+        await page.goto(base_dir.resolve().as_uri() + "/")
         await page.set_content(html, wait_until="load")
         await page.evaluate("document.fonts.ready")
         await page.evaluate(
             "Promise.all(Array.from(document.images).map(i => i.decode().catch(() => {})))"
         )
         return await page.screenshot(
-            full_page=full_page,
-            type=type,
-            quality=quality,
-            timeout=screenshot_timeout,
+            full_page=True, type=type, quality=quality, timeout=timeout
         )
 
 
-# ================= render_template_image =================
-
-
-async def render_template_image(
-    template_path: str,
-    template_name: str,
-    templates: dict[Any, Any],
-    filters: Optional[dict[str, Any]] = None,
-    pages: Optional[dict[Any, Any]] = None,
-    type: Literal["jpeg", "png"] = "png",
-    quality: Union[int, None] = None,
-    device_scale_factor: float = 2,
-    screenshot_timeout: Optional[float] = 30_000,
-) -> bytes:
-    """使用 jinja2 模板引擎通过 html 生成图片，公共渲染入口。"""
-    if pages is None:
-        pages = {
-            "viewport": {"width": 500, "height": 10},
-            "base_url": project_root().as_uri() + "/",
-        }
-
-    template_env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(template_path),
+@lru_cache(maxsize=None)
+def _plugin_env(template_dir: Path) -> jinja2.Environment:
+    return jinja2.Environment(
+        loader=jinja2.FileSystemLoader(template_dir),
+        autoescape=jinja2.select_autoescape(),
         enable_async=True,
     )
 
-    if filters:
-        for filter_name, filter_func in filters.items():
-            template_env.filters[filter_name] = filter_func
 
-    template = template_env.get_template(template_name)
+async def render_template(
+    template_dir: Path,
+    name: str,
+    /,
+    *,
+    width: int,
+    scale: float = 2,
+    type: Literal["jpeg", "png"] = "png",
+    quality: int | None = None,
+    timeout: float = 30_000,
+    **context,
+) -> bytes:
+    """渲染插件自己的 Jinja2 模板。
 
+    模板额外可用 font_css（本地思源黑体，family 名为 Haku）和 dark（是否夜间）；
+    调用方显式传入同名参数时以调用方为准。
+    """
+    template = _plugin_env(template_dir.resolve()).get_template(name)
+    html = await template.render_async(
+        **{"font_css": font_css(), "dark": is_night(), **context}
+    )
     return await render_html(
-        template_path=f"file://{template_path}",
-        html=await template.render_async(**templates),
+        html,
+        base_dir=template_dir,
+        width=width,
+        scale=scale,
         type=type,
         quality=quality,
-        device_scale_factor=device_scale_factor,
-        screenshot_timeout=screenshot_timeout,
-        **pages,
+        timeout=timeout,
     )
 
 
-# ================= render_markdown =================
-
-
-async def render_markdown(
-    md: str = "",
-    md_path: str = "",
-    css_path: str = "",
-    width: int = 500,
-    type: Literal["jpeg", "png"] = "png",
-    quality: Union[int, None] = None,
-    device_scale_factor: float = 2,
-    screenshot_timeout: Optional[float] = 30_000,
-) -> bytes:
-    """markdown 转图片，公共渲染入口。"""
-    template = _env.get_template("markdown.html")
-    if not md:
-        if md_path:
-            md = await read_file(md_path)
-        else:
-            raise Exception("md or md_path must be provided")
-
+async def render_markdown(md: str, *, css_path: str = "", width: int = 500) -> bytes:
+    """Markdown 转图片，默认 GitHub 样式；css_path 可整体替换样式表。"""
     md = markdown.markdown(
         md,
         extensions=[
@@ -142,60 +121,27 @@ async def render_markdown(
 
     extra = ""
     if "math/tex" in md:
-        katex_css = await read_tpl("katex/katex.min.b64_fonts.css")
-        katex_js = await read_tpl("katex/katex.min.js")
-        mhchem_js = await read_tpl("katex/mhchem.min.js")
-        mathtex_js = await read_tpl("katex/mathtex-script-type.min.js")
         extra = (
-            f'<style type="text/css">{katex_css}</style>'
-            f"<script defer>{katex_js}</script>"
-            f"<script defer>{mhchem_js}</script>"
-            f"<script defer>{mathtex_js}</script>"
+            f'<style type="text/css">{read_tpl("katex/katex.min.b64_fonts.css")}</style>'
+            f"<script defer>{read_tpl('katex/katex.min.js')}</script>"
+            f"<script defer>{read_tpl('katex/mhchem.min.js')}</script>"
+            f"<script defer>{read_tpl('katex/mathtex-script-type.min.js')}</script>"
         )
 
     if css_path:
-        css = await read_file(css_path)
+        css = Path(css_path).read_text(encoding="utf-8")
     else:
-        css = await read_tpl("github-markdown-light.css") + await read_tpl(
-            "pygments-default.css",
-        )
+        css = read_tpl("github-markdown-light.css") + read_tpl("pygments-default.css")
 
-    return await render_html(
-        template_path=f"file://{css_path or TEMPLATES_PATH}",
-        html=await template.render_async(md=md, css=css, extra=extra),
-        viewport={"width": width, "height": 10},
-        type=type,
-        quality=quality,
-        device_scale_factor=device_scale_factor,
-        screenshot_timeout=screenshot_timeout,
+    html = await _builtin_env.get_template("markdown.html").render_async(
+        md=md, css=css, extra=extra
     )
+    return await render_html(html, base_dir=TEMPLATES_PATH, width=width)
 
 
-# ================= render_text =================
-
-
-async def render_text(
-    text: str,
-    css_path: str = "",
-    width: int = 500,
-    type: Literal["jpeg", "png"] = "png",
-    quality: Union[int, None] = None,
-    device_scale_factor: float = 2,
-    screenshot_timeout: Optional[float] = 30_000,
-) -> bytes:
-    """多行文本转图片，公共渲染入口。"""
-    template = _env.get_template("text.html")
-
-    return await render_html(
-        template_path=f"file://{css_path or TEMPLATES_PATH}",
-        html=await template.render_async(
-            text=text,
-            css=await read_file(css_path) if css_path else await read_tpl("text.css"),
-        ),
-        viewport={"width": width, "height": 10},
-        type=type,
-        quality=quality,
-        device_scale_factor=device_scale_factor,
-        screenshot_timeout=screenshot_timeout,
+async def render_text(text: str, *, width: int = 500) -> bytes:
+    """多行纯文本转图片（bili_dyn_sub 依赖此模板与 bison 的像素一致）。"""
+    html = await _builtin_env.get_template("text.html").render_async(
+        text=text, css=read_tpl("text.css")
     )
-
+    return await render_html(html, base_dir=TEMPLATES_PATH, width=width)

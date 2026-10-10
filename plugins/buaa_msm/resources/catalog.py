@@ -190,40 +190,12 @@ SUPER_RARE_ITEM = {
     "mysekai_music_record": [],
 }
 
-# ============== 字体缓存 ==============
-
-_font_cache: Dict[int, ImageFont.FreeTypeFont] = {}
+# ============== 字体 ==============
 
 
 def get_font(size: int = 8) -> ImageFont.FreeTypeFont:
-    """加载字体，带缓存"""
-    if size in _font_cache:
-        return _font_cache[size]
-
-    font = None
-
-    # 1. 优先尝试加载插件自带的中文字体
-    try:
-        if plugin_config.font_path.exists():
-            font = load_font_from_path(str(plugin_config.font_path), size)
-        else:
-            logger.warning(f"中文字体文件未找到: {plugin_config.font_path}")
-    except IOError as e:
-        logger.error(f"加载字体失败: {e}")
-
-    # 2. 尝试 Arial
-    if font is None:
-        try:
-            font = load_font_from_path("arial.ttf", size)
-        except IOError:
-            logger.warning("Arial font not found, using default font")
-
-    # 3. 使用默认字体
-    if font is None:
-        font = ImageFont.load_default()
-
-    _font_cache[size] = font
-    return font
+    """插件字体缺失时 load_font_from_path 会回退到公共思源黑体"""
+    return load_font_from_path(str(plugin_config.font_path), size)
 
 
 # ============== 图标缓存 ==============

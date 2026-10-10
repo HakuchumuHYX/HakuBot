@@ -2,14 +2,12 @@
 
 import asyncio
 import os
-import io
 import json
 import time
 import difflib
 from pathlib import Path
 from typing import List, Dict, Optional, Union
 from collections import defaultdict
-from PIL import Image
 import aiohttp
 
 # --- Nonebot Imports ---
@@ -350,26 +348,6 @@ class CacheService:
             "未配置任何远程资源地址 (asset_url_base 或 remote_resource_url_base)。"
         )
         return None
-
-    async def open_image(self, relative_path: str) -> Optional[Image.Image]:
-        """打开一个资源图片，无论是本地路径还是远程URL。"""
-        source = self.get_resource_path_or_url(relative_path)
-        if not source:
-            logger.warning(f"请求的图片资源未找到: {relative_path}")
-            return None
-
-        try:
-            if isinstance(source, str) and source.startswith(("http://", "https://")):
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(source) as response:
-                        response.raise_for_status()
-                        image_data = await response.read()
-                        return Image.open(io.BytesIO(image_data))
-            else:
-                return Image.open(source)
-        except Exception as e:
-            logger.error(f"无法打开图片资源 {source}: {e}", exc_info=True)
-            return None
 
     def find_song_by_query(
         self, query: str, pool: Optional[List[Dict]] = None

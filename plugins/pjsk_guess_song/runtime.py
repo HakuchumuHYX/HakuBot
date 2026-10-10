@@ -33,7 +33,7 @@ executor = ThreadPoolExecutor(max_workers=5)
 audio_processor = AudioProcessor(cache_service, output_dir, executor)
 
 image_service = ImageService(
-    cache_service, resources_dir, output_dir, PLUGIN_VERSION, executor, plugin_config
+    cache_service, resources_dir, PLUGIN_VERSION, plugin_config
 )
 
 game_service = GameService(

@@ -4,7 +4,6 @@
 存放排行榜指令
 """
 
-from pathlib import Path
 from nonebot import on_command
 from nonebot.log import logger
 from nonebot.matcher import Matcher
@@ -56,13 +55,10 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
         except Exception:
             group_name = f"群 {group_id}"
 
-        img_path = await image_service.draw_leaderboard_image(
-            group_name, leaderboard_data
-        )
+        image = await image_service.draw_leaderboard_image(group_name, leaderboard_data)
 
-        if img_path:
-            img_p = Path(img_path)
-            await matcher.send(image_segment(img_p))
+        if image:
+            await matcher.send(image_segment(image))
         else:
             # 绘图失败，回退到文本
             await matcher.send(

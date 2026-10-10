@@ -25,7 +25,6 @@ from plugins.poke_reply.models.data import data_manager
 from plugins.poke_reply.models.cache import message_cache
 from plugins.poke_reply.models.request import delete_request_manager
 from plugins.poke_reply.services.image import invalidate_cache_for_file
-from plugins.poke_reply.services.text import MARKDOWN_RENDER_AVAILABLE
 from utils.onebot.media import image_segment
 
 # --- 注册命令 ---
@@ -479,8 +478,7 @@ async def handle_text_to_image_status(event: GroupMessageEvent):
         status_msg = "启用" if enabled else "禁用"
         message = (
             f"文本转图片功能状态：{status_msg}\n"
-            f"当前阈值：{get_text_to_image_threshold()} 字符\n"
-            f"渲染引擎：{'共享 Markdown' if MARKDOWN_RENDER_AVAILABLE else 'PIL备用方案'}"
+            f"当前阈值：{get_text_to_image_threshold()} 字符"
         )
         await text_to_image_status.finish(message)
     except FinishedException:

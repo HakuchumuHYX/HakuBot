@@ -21,7 +21,7 @@ from plugins.deer_pipe.database import (
     get_deer_map,
     update_avatar,
 )
-from plugins.deer_pipe.image import generate_calendar
+from plugins.deer_pipe.image import render_calendar
 from utils.onebot.media import prepare_image_source
 
 # 导入插件管理器
@@ -136,7 +136,7 @@ async def handle_deer(
         deer_map = await attend(target_user_id, now)
 
         # 生成日历图片
-        img = generate_calendar(now, deer_map, avatar)
+        img = await render_calendar(now, deer_map, avatar)
 
         # 更新CD（仅在群聊中）
         if is_group:
@@ -215,7 +215,7 @@ async def handle_deer_past(
         success, deer_map = await attend_past(target_user_id, now, target_day)
 
         # 生成日历图片
-        img = generate_calendar(now, deer_map, avatar)
+        img = await render_calendar(now, deer_map, avatar)
 
         # 补签成功时更新CD
         if success and is_group:
@@ -282,7 +282,7 @@ async def handle_deer_calendar(
         deer_map = await get_deer_map(target_user_id, now)
 
         # 生成日历图片
-        img = generate_calendar(now, deer_map, avatar)
+        img = await render_calendar(now, deer_map, avatar)
 
         await UniMessage.image(path=prepare_image_source(img)).finish(reply_to=True)
 

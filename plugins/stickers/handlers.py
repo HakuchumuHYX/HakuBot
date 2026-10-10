@@ -34,14 +34,16 @@ from plugins.stickers.contribution import (
 from plugins.stickers.statistics import (
     handle_statistics_command,
     get_sticker_statistics,
+)
+from plugins.stickers.render import (
     render_stickers_preview,
+    render_cleanup_report,
+    preview_duplicates_before_cleanup,
 )
 from plugins.stickers.manage import handle_manage_command, is_superuser
 from plugins.stickers.check import (
     find_all_duplicates,
     remove_duplicates,
-    render_cleanup_report,
-    preview_duplicates_before_cleanup,
     safe_remove_duplicates,
     batch_rename_stickers,
 )

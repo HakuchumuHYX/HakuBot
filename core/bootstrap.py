@@ -30,12 +30,10 @@ def configure(driver):
 
     @driver.on_startup
     async def start_shared_resources():
-        from utils.rendering.cache import cleanup_render_cache
         from utils.onebot.media import cleanup_outbound_media
 
         async def cleanup():
             while True:
-                await asyncio.to_thread(cleanup_render_cache)
                 await asyncio.to_thread(cleanup_outbound_media)
                 await asyncio.sleep(3600)
 

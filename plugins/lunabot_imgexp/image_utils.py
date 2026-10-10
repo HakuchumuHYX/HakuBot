@@ -1,11 +1,13 @@
-from typing import Tuple, List, Union
+"""ximg 用到的图片工具：多图拼接、透明 GIF 保存（从 lunabot 抽出）。"""
+
 from collections import defaultdict
-from random import randrange
 from itertools import chain
-from PIL import Image, ImageSequence
-import numpy as np
 import math
-from pathlib import Path
+from random import randrange
+from typing import List, Tuple, Union
+
+from PIL import Image, ImageSequence
+
 
 # ============================ 透明GIF处理 ============================ #
 # This code adapted from https://github.com/python-pillow/Pillow/issues/4644 to resolve an issue
@@ -189,16 +191,6 @@ def _save_transparent_gif(
 # ============================ 工具函数 ============================ #
 
 
-def open_image(file_path: Union[str, Path], load=True) -> Image.Image:
-    """
-    打开图片文件并返回PIL Image对象，默认直接load
-    """
-    img = Image.open(file_path)
-    if load:
-        img.load()
-    return img
-
-
 def is_animated(image: Union[str, Image.Image]) -> bool:
     """
     检查图片是否为动图
@@ -208,13 +200,6 @@ def is_animated(image: Union[str, Image.Image]) -> bool:
     if isinstance(image, Image.Image):
         return hasattr(image, "is_animated") and image.is_animated
     return False
-
-
-def get_gif_duration(img: Image.Image) -> int:
-    """
-    获取GIF的帧间隔
-    """
-    return img.info.get("duration", 50)
 
 
 def gif_to_frames(img: Image.Image) -> List[Image.Image]:
@@ -252,99 +237,6 @@ def save_transparent_static_gif(
     return save_transparent_gif(
         img, duration=50, save_path=save_path, alpha_threshold=alpha_threshold
     )
-
-
-def save_apng(images: List[Image.Image], save_path: str, duration=50, loop=0):
-    """
-    将RGBA图像列表保存为APNG文件
-    Args:
-        images: PIL Image对象列表
-        output_path: 输出文件路径
-        duration: 每帧持续时间（毫秒）
-        loop: 循环次数（0表示无限循环）
-    """
-    if not images:
-        raise ValueError("图像列表不能为空")
-    rgba_images = []
-    for img in images:
-        img = img.convert("RGBA")
-        rgba_images.append(img)
-    rgba_images[0].save(
-        save_path,
-        format="PNG",
-        save_all=True,
-        append_images=rgba_images[1:],
-        duration=duration,
-        loop=loop,
-    )
-
-
-def multiply_image_by_color(img: Image.Image, color: tuple) -> Image.Image:
-    """
-    将图像的每个像素乘以指定颜色的RGB值，A通道保持不变
-    """
-    if img.mode.upper() not in ["RGB", "RGBA"]:
-        img = img.convert("RGBA")
-    channel = 4 if img.mode.upper() == "RGBA" else 3
-    img_np = np.array(img, dtype=np.float32)
-    if len(color) == 3:
-        color = (*color, 255)
-    color_np = np.array(color[:channel], dtype=np.float32)
-    img_np = img_np * color_np / 255
-    img_np = np.clip(img_np, 0, 255).astype(np.uint8)
-    return Image.fromarray(img_np, mode=img.mode)
-
-
-def mix_image_by_color(img: Image.Image, color: tuple) -> Image.Image:
-    """
-    将图像与指定颜色混合，使用颜色的A通道作为混合因子
-    """
-    if img.mode.upper() not in ["RGB", "RGBA"]:
-        img = img.convert("RGBA")
-    assert len(color) == 4, "Color must be a tuple of 4 elements (R, G, B, A)"
-    # 仅混合 RGB 部分，用 A 作为混合因子
-    factor = color[3] / 255.0
-    color_np = np.array(color[:3], dtype=np.float32)
-    img_np = np.array(img, dtype=np.float32)
-    img_np[..., :3] = img_np[..., :3] * (1 - factor) + color_np * factor
-    img_np = np.clip(img_np, 0, 255).astype(np.uint8)
-    return Image.fromarray(img_np, mode=img.mode)
-
-
-def adjust_image_alpha_inplace(img: Image.Image, value: Union[int, float], method: str):
-    """
-    调整图像的透明度（原地修改）
-    """
-    assert method in ("set", "multiply")
-    if isinstance(value, float):
-        value = int(value * 255)
-    if img.mode.upper() not in ["RGBA"]:
-        img = img.convert("RGBA")
-    alpha_channel = img.split()[-1]
-    if method == "set":
-        alpha_channel = Image.new("L", img.size, value)
-    elif method == "multiply":
-        alpha_channel = Image.eval(alpha_channel, lambda a: int(a * value / 255))
-    img.putalpha(alpha_channel)
-
-
-def center_crop_by_aspect_ratio(img: Image.Image, aspect_ratio: float):
-    """
-    根据给定的宽高比裁剪图像中心部分
-    """
-    if img.mode.upper() not in ["RGB", "RGBA"]:
-        img = img.convert("RGBA")
-    width, height = img.size
-    target_width = width
-    target_height = int(width / aspect_ratio)
-    if target_height > height:
-        target_height = height
-        target_width = int(height * aspect_ratio)
-    left = (width - target_width) // 2
-    top = (height - target_height) // 2
-    right = left + target_width
-    bottom = top + target_height
-    return img.crop((left, top, right, bottom))
 
 
 def concat_images(images: List[Image.Image], mode) -> Image.Image:

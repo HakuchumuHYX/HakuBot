@@ -1,3 +1,4 @@
+from pathlib import Path
 from nonebot import on_command, on_message, get_driver
 from nonebot.rule import to_me
 from nonebot.adapters import Event, Message
@@ -23,8 +24,6 @@ from plugins.image_processor.gif_speed import (
     change_gif_speed_alternative,
 )
 from plugins.image_processor.image_symmetry import process_image_symmetry
-from plugins.image_processor.help import HELP
-from utils.onebot.help import send_help
 from plugins.image_processor.video_to_gif import convert_video_to_gif
 from plugins.image_processor.image_mirror import process_image_mirror
 from plugins.image_processor.image_rotate import process_image_rotate
@@ -39,6 +38,7 @@ from core.access import (
 )
 from core.cooldown import get_plugin_cd_duration, check_cd, update_cd, set_plugin_cd
 from utils.onebot.media import image_segment
+from utils.rendering.engine import render_template
 from utils.concurrency import run_in_pool
 from utils.files import safe_delete_file
 from plugins.image_processor.handlers.registration import (
@@ -61,6 +61,8 @@ from plugins.image_processor.handlers.registration import (
 )
 from plugins.image_processor.runtime import _send_generated_image, is_gif_image
 
+TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
+
 
 @image_help_handler.handle()
 async def handle_image_help(event: Event, cmd_arg: Message = CommandArg()):
@@ -71,4 +73,5 @@ async def handle_image_help(event: Event, cmd_arg: Message = CommandArg()):
             await image_help_handler.finish()
             return
 
-    await send_help(image_help_handler, HELP)
+    image = await render_template(TEMPLATE_DIR, "help.html", width=840)
+    await image_help_handler.finish(image_segment(image))

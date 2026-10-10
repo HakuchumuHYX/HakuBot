@@ -13,7 +13,7 @@ from plugins.group_daily_analysis.models import AnalysisResult
 
 class ReportRenderer:
     def __init__(self):
-        self.template_path = str(
+        self.template_path = (
             Path(__file__).parent / "templates" / plugin_config.report_template
         )
         # 初始化 Jinja2 环境
@@ -30,15 +30,9 @@ class ReportRenderer:
             template = self.env.get_template("image_template.html")
             html_content = template.render(**render_data)
 
-            # 2. 转换为图片
-            # template_path 用于解析 CSS/JS 等相对路径资源
-            # 将路径转换为 file URI 以确保在 Windows 等系统上正确解析
-            template_uri = Path(self.template_path).as_uri()
-
+            # 2. 转换为图片，模板目录用于解析 CSS/JS 等相对路径资源
             image_bytes = await render_html(
-                html=html_content,
-                template_path=template_uri,
-                viewport={"width": 800, "height": 10},  # 宽度设为800，高度自适应
+                html_content, base_dir=self.template_path, width=800
             )
             return image_bytes
         except Exception as e:

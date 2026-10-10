@@ -1,38 +1,24 @@
 import asyncio
+import base64
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, List, Optional, Tuple
 from urllib.parse import quote
 
-from PIL import Image
 from PicImageSearch import Network, SauceNAO
 
 from plugins.lunabot_imgexp.config import config
 from utils.logging import get_logger
 from utils.network.http import (
     DEFAULT_TIMEOUT,
-    download_image,
     get_client_session,
     get_effective_proxy,
 )
-from utils.rendering.draw.painter import DEFAULT_BOLD_FONT, LinearGradient, RED
-from utils.rendering.draw.plot import (
-    Canvas,
-    DEFAULT_FONT,
-    FillBg,
-    Frame,
-    HSplit,
-    ImageBox,
-    Painter,
-    RoundRectBg,
-    Spacer,
-    TextBox,
-    TextStyle,
-    VSplit,
-    get_font,
-    get_text_size,
-)
+from utils.network.images import fetch_image
+from utils.rendering.engine import render_template
 
 logger = get_logger("ImgExp")
+TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
 @dataclass
@@ -40,9 +26,10 @@ class ImageSearchResultItem:
     title: str
     url: str
     source: Optional[str] = None
-    source_icon: Optional[Image.Image] = None
+    # 图标与缩略图是 data URI，直接嵌进结果模板
+    source_icon: Optional[str] = None
     similarity: Optional[float] = None
-    thumbnail: Optional[Image.Image] = None
+    thumbnail: Optional[str] = None
 
 
 @dataclass
@@ -58,7 +45,7 @@ _THUMB_SEM = asyncio.Semaphore(8)
 _THUMB_TIMEOUT_SEC = 30
 
 
-async def download_batch_thumbnails(urls: list[str]) -> list[Image.Image]:
+async def download_batch_thumbnails(urls: list[str]) -> list[Optional[str]]:
     plugin_proxy = config.get("proxy")
 
     async def download_nothrow(url: str):
@@ -66,10 +53,12 @@ async def download_batch_thumbnails(urls: list[str]) -> list[Image.Image]:
             return None
         async with _THUMB_SEM:
             try:
-                return await asyncio.wait_for(
-                    download_image(url, proxy=plugin_proxy),
+                image = await asyncio.wait_for(
+                    fetch_image(url, proxy=plugin_proxy, timeout=_THUMB_TIMEOUT_SEC),
                     timeout=_THUMB_TIMEOUT_SEC,
                 )
+                data = base64.b64encode(image.data).decode()
+                return f"data:{image.mime_type};base64,{data}"
             except asyncio.TimeoutError:
                 logger.warning(f"下载缩略图超时({_THUMB_TIMEOUT_SEC}s): {url}")
                 return None
@@ -210,7 +199,7 @@ async def search_googlelens(
 async def search_image(
     img_url: str,
     img_size: int = 0,  # img_size 默认为0，如果不提供
-) -> Tuple[Image.Image, List[ImageSearchResult]]:
+) -> Tuple[bytes, List[ImageSearchResult]]:
     SIZE_LIMIT_MB = 15
     if img_size > SIZE_LIMIT_MB * 1024 * 1024:
         raise ValueError(f"图片大小超过{SIZE_LIMIT_MB}MB，请先缩小后再进行搜索")
@@ -224,178 +213,11 @@ async def search_image(
             _with_timeout(search_googlelens(img_url), "GoogleLens"),
         )
 
-    # Drawing Logic
-    bg = FillBg(
-        LinearGradient(
-            c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1)
-        )
+    image = await render_template(
+        TEMPLATE_DIR,
+        "search.html",
+        width=900,
+        results=results,
+        watermark_text=config.get("watermark_text", "").strip(),
     )
-    item_bg = RoundRectBg((255, 255, 255, 125), 10)
-    text_color1 = (50, 50, 50, 255)
-    text_color2 = (75, 75, 75, 255)
-    w = 800
-
-    canvas = Canvas(bg=bg).set_padding(10)
-    with canvas:
-        with (
-            VSplit()
-            .set_sep(16)
-            .set_padding(16)
-            .set_item_bg(item_bg)
-            .set_content_align("l")
-            .set_item_align("l")
-        ):
-            for result in results:
-                with (
-                    VSplit()
-                    .set_sep(16)
-                    .set_padding(16)
-                    .set_content_align("l")
-                    .set_item_align("l")
-                ):
-                    TextBox(
-                        f"来自 {result.source} 的结果",
-                        style=TextStyle(
-                            font=DEFAULT_BOLD_FONT, size=35, color=text_color1
-                        ),
-                    )
-                    if result.error:
-                        TextBox(
-                            result.error,
-                            style=TextStyle(font=DEFAULT_FONT, size=24, color=RED),
-                            use_real_line_count=True,
-                        ).set_w(w)
-                    else:
-                        if not result.results:
-                            TextBox(
-                                "未找到结果",
-                                style=TextStyle(
-                                    font=DEFAULT_FONT, size=32, color=text_color2
-                                ),
-                            ).set_margin(32)
-                        else:
-                            result_container = (
-                                VSplit()
-                                .set_sep(8)
-                                .set_padding(16)
-                                .set_item_bg(item_bg)
-                                .set_content_align("l")
-                                .set_item_align("l")
-                            )
-                            with result_container:
-                                for i, item in enumerate(result.results):
-                                    with (
-                                        HSplit()
-                                        .set_sep(8)
-                                        .set_item_align("l")
-                                        .set_content_align("l")
-                                    ):
-                                        if item.thumbnail:
-                                            size = 150
-                                            frame = (
-                                                Frame()
-                                                .set_margin(32)
-                                                .set_content_align("c")
-                                                .set_size((size, size))
-                                            )
-                                            with frame:
-                                                thumb_copy = item.thumbnail.copy()
-                                                thumb_copy.thumbnail((size, size))
-                                                ImageBox(thumb_copy)
-                                        with (
-                                            VSplit()
-                                            .set_sep(12)
-                                            .set_item_align("l")
-                                            .set_content_align("l")
-                                        ):
-                                            with (
-                                                HSplit()
-                                                .set_sep(6)
-                                                .set_item_align("l")
-                                                .set_content_align("l")
-                                            ):
-                                                TextBox(
-                                                    f"#{i + 1}",
-                                                    style=TextStyle(
-                                                        font=DEFAULT_BOLD_FONT,
-                                                        size=32,
-                                                        color=text_color1,
-                                                    ),
-                                                )
-                                                Spacer(w=8)
-                                                if item.source:
-                                                    TextBox(
-                                                        f"From {item.source}",
-                                                        style=TextStyle(
-                                                            font=DEFAULT_FONT,
-                                                            size=24,
-                                                            color=text_color2,
-                                                        ),
-                                                    )
-                                                if item.source_icon:
-                                                    ImageBox(
-                                                        item.source_icon,
-                                                        size=(None, 24),
-                                                    ).set_offset((0, 4))
-                                                if item.similarity is not None:
-                                                    TextBox(
-                                                        f"相似度: {item.similarity:.2f}%",
-                                                        style=TextStyle(
-                                                            font=DEFAULT_FONT,
-                                                            size=24,
-                                                            color=text_color2,
-                                                        ),
-                                                    )
-                                            if item.title:
-                                                TextBox(
-                                                    item.title,
-                                                    style=TextStyle(
-                                                        font=DEFAULT_BOLD_FONT,
-                                                        size=28,
-                                                        color=text_color1,
-                                                    ),
-                                                ).set_w(w)
-                                            if item.url:
-                                                TextBox(
-                                                    item.url,
-                                                    style=TextStyle(
-                                                        font=DEFAULT_FONT,
-                                                        size=24,
-                                                        color=text_color2,
-                                                    ),
-                                                ).set_w(w)
-
-    img = await canvas.get_img()
-
-    # 绘制水印
-    watermark_text = config.get("watermark_text", "")
-    if watermark_text:
-        p = Painter(img)
-        font_size = 20
-        font = get_font(DEFAULT_BOLD_FONT, font_size)
-        lines = watermark_text.strip().split("\n")
-        line_height = font_size + 4
-        padding = 15
-
-        total_height = len(lines) * line_height
-        start_y = img.height - total_height - padding
-
-        cur_y = start_y
-        for line in lines:
-            if not line:
-                cur_y += line_height
-                continue
-
-            w_text, _h_text = get_text_size(font, line)
-            x = img.width - w_text - padding
-
-            # 阴影
-            p.text(line, (x + 2, cur_y + 2), font, fill=(0, 0, 0, 128))
-            # 主体
-            p.text(line, (x, cur_y), font, fill=(255, 255, 255, 180))
-
-            cur_y += line_height
-
-        img = await p.get()
-
-    return img, results
+    return image, results
