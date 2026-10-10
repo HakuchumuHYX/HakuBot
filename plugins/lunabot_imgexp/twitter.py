@@ -1,19 +1,16 @@
 import re
-import time
 import asyncio
 import argparse
+from dataclasses import dataclass
 from datetime import timedelta
-from typing import List, Tuple, Union
+from typing import List, Tuple
 from contextlib import ExitStack
 
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot
 from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
-from nonebot.typing import T_State
-from nonebot.rule import to_me
 
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from PIL import Image
 
 from plugins.lunabot_imgexp.config import config
@@ -22,13 +19,19 @@ from utils.concurrency import run_in_pool
 from utils.text import truncate
 from utils.files import TemporaryPath
 from utils.onebot.forward import send_forward_msg
-from utils.network.http import download_image
-from utils.rendering.browser import browser_pool
+from utils.network.http import (
+    DownloadTooLarge,
+    download_bytes,
+    download_image,
+    download_to_file,
+    get_client_session,
+    get_effective_proxy,
+)
 from plugins.lunabot_imgexp.image_utils import (
     concat_images,
     save_transparent_static_gif,
 )
-from utils.onebot.media import image_segment
+from utils.onebot.media import image_segment, outbound_media_path, video_segment
 
 logger = get_logger("Twitter")
 
@@ -42,104 +45,71 @@ except ImportError:
 
 PLUGIN_NAME = "lunabot_imgexp"
 
-# ==================== 推特图片下载 ==================== #
+# ==================== 推特图片/视频下载 ==================== #
 
 
 class ReplyException(Exception):
     pass
 
 
-async def get_x_content(url: str) -> Tuple[str, List[str]]:
-    """从 X 帖子 URL 中提取文本内容和图片链接。"""
-    image_urls = []
+# X 网页版未登录时对无头浏览器只返回空白页，改走 fxtwitter 的公开 JSON 接口
+FXTWITTER_API = "https://api.fxtwitter.com/status/{}"
+# 超过此大小的视频降级到更低码率，仍超出则放弃
+VIDEO_MAX_BYTES = 100 * 1024 * 1024
 
-    async def block_agressive_resources(route):
-        """拦截图片以外的非必要资源"""
-        if route.request.resource_type in ["font", "stylesheet", "media", "websocket"]:
-            await route.abort()
-        elif "google-analytics" in route.request.url or "monitor" in route.request.url:
-            await route.abort()
+
+@dataclass
+class Tweet:
+    content: str
+    photo_urls: List[str]
+    # (媒体 id, mp4 直链)
+    videos: List[Tuple[str, str]]
+
+
+def pick_video_url(media: dict) -> str:
+    """选不超过大小上限的最高码率 mp4，都超出时取最低码率。"""
+    mp4s = sorted(
+        (f for f in media.get("formats", []) if f.get("container") == "mp4"),
+        key=lambda f: f.get("bitrate", 0),
+    )
+    if not mp4s:
+        return media["url"]
+    duration = media.get("duration") or 0
+    fitting = [
+        f for f in mp4s if f.get("bitrate", 0) * duration / 8 <= VIDEO_MAX_BYTES
+    ]
+    return (fitting[-1] if fitting else mp4s[0])["url"]
+
+
+async def get_x_content(url: str) -> Tweet:
+    match = re.search(r"/status(?:es)?/(\d+)", url)
+    if not match:
+        raise ReplyException(
+            "链接格式不正确，需要形如 https://x.com/xxx/status/12345 的推文链接"
+        )
+
+    async with get_client_session().get(
+        FXTWITTER_API.format(match.group(1)),
+        proxy=get_effective_proxy(config.get("proxy")),
+    ) as resp:
+        data = await resp.json(content_type=None)
+    if data.get("code") != 200:
+        raise ReplyException(
+            f"获取推文失败（{data.get('code')} {data.get('message')}），"
+            "可能已被删除或为私密账号"
+        )
+
+    tweet = data["tweet"]
+    photo_urls, videos = [], []
+    for media in (tweet.get("media") or {}).get("all", []):
+        if media["type"] == "photo":
+            photo_urls.append(media["url"])
         else:
-            await route.continue_()
+            # video 与 gif 都是 mp4
+            videos.append((media["id"], pick_video_url(media)))
 
-    async with browser_pool.page() as page:
-        await page.route("**/*", block_agressive_resources)
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-
-            # 等待推文核心内容出现
-            tweet_selector = 'article[data-testid="tweet"]'
-            try:
-                await page.wait_for_selector(
-                    tweet_selector, state="visible", timeout=10000
-                )
-            except PlaywrightTimeoutError:
-                raise ReplyException(
-                    f"未能找到推文内容，可能是由登录墙、已被删除或网络超时引起，请稍后再试"
-                )
-
-            # 处理“敏感内容”或“显示更多”按钮
-            sensitive_overlay_selector = '[data-testid="tweet"] div[role="button"]:has-text("View"), [data-testid="tweet"] div[role="button"]:has-text("Show")'
-            if await page.locator(sensitive_overlay_selector).count() > 0:
-                try:
-                    # 点击所有覆盖层
-                    overlays = await page.locator(sensitive_overlay_selector).all()
-                    for overlay in overlays:
-                        if await overlay.is_visible():
-                            await overlay.click(force=True)
-                            await page.wait_for_timeout(500)  # 给一点渲染时间
-                except Exception as e:
-                    raise ReplyException(
-                        f"尝试点击敏感内容遮罩时出错: {get_exc_desc(e)}"
-                    )
-
-            # 提取图片
-            photo_selector = 'div[data-testid="tweetPhoto"] img'
-            try:
-                await page.wait_for_selector(
-                    photo_selector, state="attached", timeout=3000
-                )
-            except PlaywrightTimeoutError:
-                pass
-
-            img_locators = await page.locator(photo_selector).all()
-
-            for locator in img_locators:
-                src = await locator.get_attribute("src")
-                if src:
-                    # URL 清洗/优化
-                    clean_src = src
-                    if "pbs.twimg.com/media" in src:
-                        if "name=" in src:
-                            clean_src = re.sub(r"name=[a-z0-9]+", "name=large", src)
-                        else:
-                            clean_src = src + "&name=large"
-
-                    if clean_src not in image_urls:
-                        image_urls.append(clean_src)
-
-            # 提取用户名
-            user_locator = page.locator(f'{tweet_selector} [data-testid="User-Name"]')
-            username_text = await user_locator.inner_text()
-            display_name = username_text.split("\n")[0] if username_text else "Unknown"
-
-            # 提取推文正文
-            text_locator = page.locator(f'{tweet_selector} [data-testid="tweetText"]')
-            content = ""
-            if await text_locator.count() > 0:
-                content = await text_locator.inner_text()
-
-            full_content = f"{display_name}: {content.strip()}"
-
-        except Exception as e:
-            # 保存调试用页面截图
-            # screenshot_path = f"data/imgexp/debug/x_{int(time.time())}.png"
-            # await page.screenshot(path=screenshot_path, full_page=True)
-            if isinstance(e, ReplyException):
-                raise e
-            raise e
-
-    return full_content, image_urls
+    content = f"{tweet['author']['name']}: {tweet.get('text', '').strip()}"
+    return Tweet(content, photo_urls, videos)
 
 
 # 简单的参数解析器
@@ -176,7 +146,6 @@ async def _(
     parser.add_argument("--vertical", "-V", action="store_true")
     parser.add_argument("--horizontal", "-H", action="store_true")
     parser.add_argument("--grid", "-G", action="store_true")
-    parser.add_argument("--fold", "-f", action="store_true")
     parser.add_argument("--gif", "-g", action="store_true")
 
     try:
@@ -190,10 +159,9 @@ async def _(
     if not url:
         await ximg.finish(
             """
-使用方式: /ximg <url> [-V] [-H] [-G] [-f]
--V: 垂直拼图 -H: 水平拼图 -G 网格拼图 
--f 折叠回复 -g 转换为GIF
-不加参数默认各个图片分开发送
+使用方式: /ximg <url> [-V] [-H] [-G] [-g]
+-V: 垂直拼图 -H: 水平拼图 -G 网格拼图 -g 转换为GIF
+不加参数默认各个图片分开发送，推文中的视频会单独发送
 示例: /ximg https://x.com/xxx/status/12345 -G
 """.strip()
         )
@@ -214,76 +182,86 @@ async def _(
     await ximg.send("正在获取推文内容...")
 
     try:
-        logger.info(f"获取X图片链接: {url}")
-        content, image_urls = await get_x_content(url)
-        image_urls = image_urls[:16]
-        logger.info(f"获取到图片链接: {image_urls}")
+        logger.info(f"获取X推文: {url}")
+        tweet = await get_x_content(url)
+        image_urls = tweet.photo_urls[:16]
+        logger.info(f"获取到图片: {image_urls} 视频: {tweet.videos}")
     except ReplyException as e:
         await ximg.finish(str(e))
     except Exception as e:
-        logger.error(f"获取X图片链接失败: {get_exc_desc(e)}")
-        await ximg.finish(f"获取图片链接失败: {get_exc_desc(e)}")
+        logger.error(f"获取X推文失败: {get_exc_desc(e)}")
+        await ximg.finish(f"获取推文失败: {get_exc_desc(e)}")
 
-    if not image_urls:
-        await ximg.finish("在推文中没有找到图片，可能是输入网页链接不正确或其他原因")
+    if not image_urls and not tweet.videos:
+        await ximg.finish("这条推文里没有图片或视频")
 
-    msg_content = url + "\n" + truncate(content, 64)
+    msg_content = url + "\n" + truncate(tweet.content, 64)
     messages = [MessageSegment.text(msg_content)]
 
-    force_download_image = True  # 不下载到本地再发送可能导致napcat报错
-
-    if force_download_image or concat_mode or args_obj.gif:
+    images = []
+    if image_urls:
         try:
-            images = await asyncio.gather(
-                *[download_image(u, proxy=config.get("proxy")) for u in image_urls]
-            )
+            if concat_mode or args_obj.gif:
+                images = await asyncio.gather(
+                    *[download_image(u, proxy=config.get("proxy")) for u in image_urls]
+                )
+            else:
+                # 不拼图时直接发原图字节，免得把原图 JPEG 转成体积更大的 PNG
+                images = await asyncio.gather(
+                    *[download_bytes(u, proxy=config.get("proxy")) for u in image_urls]
+                )
         except Exception as e:
-            await ximg.finish(f"下载图片失败: {e}")
-            return
-    else:
-        images = image_urls
+            await ximg.finish(f"下载图片失败: {get_exc_desc(e)}")
 
-    if concat_mode:
+    if concat_mode and images:
         try:
-            concated_image = await run_in_pool(concat_images, images, concat_mode)
-            images = [concated_image]
+            images = [await run_in_pool(concat_images, images, concat_mode)]
         except Exception as e:
             await ximg.finish(f"拼图失败: {e}")
-            return
 
     # 使用 ExitStack 管理多个临时文件
     with ExitStack() as stack:
         for img in images:
             if args_obj.gif:
-                # GIF 处理
                 gif_path_ctx = TemporaryPath("gif", remove_after=timedelta(minutes=3))
                 gif_path = stack.enter_context(gif_path_ctx)
                 await run_in_pool(save_transparent_static_gif, img, str(gif_path))
                 messages.append(image_segment(gif_path))
 
             elif isinstance(img, Image.Image):
-                # PIL Image -> Temp File
-                tmp_ctx = TemporaryPath("png")
-                tmp_path = stack.enter_context(tmp_ctx)
+                tmp_path = stack.enter_context(TemporaryPath("png"))
                 img.save(tmp_path, format="PNG")
                 messages.append(image_segment(tmp_path))
 
-            elif isinstance(img, bytes):
-                # Bytes -> Temp File
-                # 简单起见假设是 jpg/png，OneBot 通常能自动识别
-                tmp_ctx = TemporaryPath("jpg")
-                tmp_path = stack.enter_context(tmp_ctx)
-                with open(tmp_path, "wb") as f:
-                    f.write(img)
-                messages.append(image_segment(tmp_path))
-
             else:
-                # URL string
                 messages.append(image_segment(img))
 
-        # 发送逻辑
-        # 使用合并转发发送
-        await send_forward_msg(bot, event, items=messages)
+        if images:
+            await send_forward_msg(bot, event, items=messages)
+        else:
+            await ximg.send(msg_content)
+
+    # 合并转发里的视频节点不稳定，视频逐条单独发
+    for media_id, video_url in tweet.videos:
+        path = outbound_media_path(f"x_{media_id}.mp4")
+        try:
+            if not path.exists():
+                await download_to_file(
+                    video_url,
+                    path,
+                    proxy=config.get("proxy"),
+                    max_bytes=VIDEO_MAX_BYTES,
+                    timeout=300,
+                )
+        except DownloadTooLarge:
+            await ximg.send(
+                f"视频超过 {VIDEO_MAX_BYTES // 1024 // 1024}MB，未发送: {video_url}"
+            )
+            continue
+        except Exception as e:
+            await ximg.send(f"下载视频失败: {get_exc_desc(e)}")
+            continue
+        await ximg.send(video_segment(path))
 
     # 发送成功后再更新 CD
     if MANAGER_AVAILABLE:

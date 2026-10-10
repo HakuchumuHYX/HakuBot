@@ -93,15 +93,7 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
     cd_updated = False  # 成功发送结果后才扣 CD，多张图只扣一次
     for url in img_urls:
         try:
-            # 获取图片大小，这里简单用 Content-Length 头判断可能不准，或者直接下载后判断
-            # search_image 内部会下载并处理，这里主要做个大致检查或直接传 URL
-
-            # 为了获取 img_size，我们可以先 HEAD 请求一下，或者直接传 0 让 core 下载
-            # core.py 中 search_image 的 img_size 主要是为了限制过大图片，但如果直接传 URL 给 SauceNAO/GoogleLens，
-            # 它们通常自己处理。这里我们假设不预先检查大小，或者在 core.py 完善下载逻辑。
-            # 目前 core.py 的 search_image 接受 img_url 和 img_size
-
-            # 搜索图片
+            # search_image 内部会先下载图片并限制大小
             res_img, results = await search_image(url)
 
             # 发送结果图片

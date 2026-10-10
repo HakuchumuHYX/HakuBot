@@ -271,6 +271,15 @@ def image_segment(
     )
 
 
+def outbound_media_path(name: str) -> Path:
+    """共享目录内的路径；视频等非图片媒体要直接下载到这里，OneBot 容器才读得到。"""
+    return _outbound_media_dir() / name
+
+
+def video_segment(path: Path) -> MessageSegment:
+    return MessageSegment.video(_container_path_for_host_file(path))
+
+
 def audio_segment(path) -> MessageSegment:
     """Encode a local audio file using OneBot's record transport."""
     source_path = _validate_file(Path(path))

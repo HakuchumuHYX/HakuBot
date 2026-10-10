@@ -1,16 +1,21 @@
 import asyncio
 import base64
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
+import aiohttp
 from PicImageSearch import Network, SauceNAO
+from PicImageSearch.model import Ascii2DResponse
 
 from plugins.lunabot_imgexp.config import config
 from utils.logging import get_logger
 from utils.network.http import (
     DEFAULT_TIMEOUT,
+    DownloadTooLarge,
+    download_bytes,
     get_client_session,
     get_effective_proxy,
 )
@@ -82,9 +87,34 @@ async def _with_timeout(coro, source: str, timeout_sec: int = 120) -> ImageSearc
         return ImageSearchResult(source=source, results=[], error=f"搜索失败: {e}")
 
 
+def _saucenao_link(item: Any) -> Tuple[str, Optional[str]]:
+    """booru 类结果的 ext_urls 只是 booru 帖子页，人工填写的 source 才是原始出处，优先用它。"""
+    source = str(item.origin["data"].get("source") or "")
+    if not source.startswith("http"):
+        return item.url, None
+    # SauceNAO 会截断过长的 source，pximg 直链可能只剩到作品 id
+    pximg = re.search(r"pximg\.net/.+/(\d{5,})", source)
+    if pximg:
+        source = f"https://www.pixiv.net/artworks/{pximg.group(1)}"
+    # index_name 形如 "Index #12: Yande.re - xxx.jpg"
+    via = item.index_name.split(": ", 1)[-1].rsplit(" - ", 1)[0]
+    return source, via
+
+
+def _work_key(url: str) -> str:
+    """同一推文/作品的不同写法（带用户名、i/web 形式等）归为一个键。"""
+    tweet = re.search(r"(?:twitter|x)\.com/.+/status/(\d+)", url)
+    if tweet:
+        return f"tweet:{tweet.group(1)}"
+    pixiv = re.search(r"pixiv\.net/(?:artworks/|.*illust_id=)(\d+)", url)
+    if pixiv:
+        return f"pixiv:{pixiv.group(1)}"
+    return url
+
+
 async def search_saucenao(
     client: Any,
-    img_url: str,
+    img_bytes: bytes,
     limit: int = 10,
     min_similarity: int = 60,
 ) -> ImageSearchResult:
@@ -98,13 +128,93 @@ async def search_saucenao(
             api_key=config.get("saucenao_apikey"),
             numres=limit,
         )
-        results = await saucenao.search(url=img_url)
+        # 直接上传图片，不依赖 SauceNAO 能否回源拉到带时效 rkey 的 QQ 图链
+        results = await saucenao.search(file=img_bytes)
 
-        results = [
-            item
-            for item in results.raw
-            if item.similarity >= min_similarity and item.url and item.thumbnail
+        # 转载号与原作者的相似度往往几乎相同：同一作品只保留最高分，并显示作者便于分辨
+        best = {}
+        for item in results.raw:
+            if item.similarity < min_similarity:
+                continue
+            url, via = _saucenao_link(item)
+            key = _work_key(url)
+            if url and (key not in best or item.similarity > best[key][1].similarity):
+                best[key] = (url, item, via)
+        picked = sorted(best.values(), key=lambda x: x[1].similarity, reverse=True)
+
+        thumbnails = await download_batch_thumbnails(
+            [item.thumbnail for _, item, _ in picked]
+        )
+        items = [
+            ImageSearchResultItem(
+                title=item.title,
+                url=url,
+                source=" · ".join(
+                    filter(None, [item.author, via and f"经 {via} 溯源"])
+                )
+                or None,
+                similarity=item.similarity,
+                thumbnail=thumbnail,
+            )
+            for (url, item, via), thumbnail in zip(picked, thumbnails)
         ]
+        logger.info(f"从 SauceNAO 搜索到 {len(items)} 个结果")
+        return ImageSearchResult(source="SauceNAO", results=items)
+
+    except Exception as e:
+        logger.warning(f"从 SauceNAO 搜索图片失败: {e}")
+        return ImageSearchResult(source="SauceNAO", results=[], error=f"搜索失败: {e}")
+
+
+async def _flaresolverr(http: aiohttp.ClientSession, **payload) -> dict:
+    async with http.post(
+        config.get("flaresolverr_url"), json={"maxTimeout": 30000, **payload}
+    ) as resp:
+        data = await resp.json()
+    if data.get("status") != "ok":
+        raise Exception(f"FlareSolverr: {data.get('message')}")
+    return data
+
+
+async def search_ascii2d(img_url: str, limit: int = 3) -> ImageSearchResult:
+    try:
+        if not config.get("flaresolverr_url"):
+            return ImageSearchResult(
+                source="Ascii2D", results=[], error="未配置 FlareSolverr"
+            )
+        logger.info("开始从 Ascii2D 搜索图片...")
+
+        # Ascii2D 在 Cloudflare 后面，拿到 clearance 后上传文件接口仍会被质询，
+        # 只能让 FlareSolverr 的浏览器走按链接搜索（color 检索）
+        async with aiohttp.ClientSession() as http:
+            sid = (await _flaresolverr(http, cmd="sessions.create"))["session"]
+            try:
+                home = await _flaresolverr(
+                    http, cmd="request.get", url="https://ascii2d.net/", session=sid
+                )
+                token = re.search(
+                    r'name="authenticity_token" value="([^"]+)"',
+                    home["solution"]["response"],
+                ).group(1)
+                result = await _flaresolverr(
+                    http,
+                    cmd="request.post",
+                    url="https://ascii2d.net/search/uri",
+                    postData=urlencode(
+                        {"utf8": "✓", "authenticity_token": token, "uri": img_url}
+                    ),
+                    session=sid,
+                )
+            finally:
+                await _flaresolverr(http, cmd="sessions.destroy", session=sid)
+
+        solution = result["solution"]
+        # 第一项是查询图本身；没有外链的结果没有参考价值，同一链接常重复出现
+        unique = {}
+        for item in Ascii2DResponse(solution["response"], solution["url"]).raw[1:]:
+            if item.url:
+                unique.setdefault(item.url, item)
+        results = list(unique.values())[:limit]
 
         thumbnails = await download_batch_thumbnails(
             [item.thumbnail for item in results]
@@ -113,18 +223,17 @@ async def search_saucenao(
             ImageSearchResultItem(
                 title=item.title,
                 url=item.url,
-                similarity=item.similarity,
+                source=item.author or None,
                 thumbnail=thumbnail,
             )
             for item, thumbnail in zip(results, thumbnails)
         ]
-        items.sort(key=lambda x: x.similarity or 0, reverse=True)
-        logger.info(f"从 SauceNAO 搜索到 {len(items)} 个结果")
-        return ImageSearchResult(source="SauceNAO", results=items)
+        logger.info(f"从 Ascii2D 搜索到 {len(items)} 个结果")
+        return ImageSearchResult(source="Ascii2D", results=items)
 
     except Exception as e:
-        logger.warning(f"从 SauceNAO 搜索图片 {img_url} 失败: {e}")
-        return ImageSearchResult(source="SauceNAO", results=[], error=f"搜索失败: {e}")
+        logger.warning(f"从 Ascii2D 搜索图片 {img_url} 失败: {e}")
+        return ImageSearchResult(source="Ascii2D", results=[], error=f"搜索失败: {e}")
 
 
 async def search_googlelens(
@@ -196,20 +305,21 @@ async def search_googlelens(
         )
 
 
-async def search_image(
-    img_url: str,
-    img_size: int = 0,  # img_size 默认为0，如果不提供
-) -> Tuple[bytes, List[ImageSearchResult]]:
+async def search_image(img_url: str) -> Tuple[bytes, List[ImageSearchResult]]:
     SIZE_LIMIT_MB = 15
-    if img_size > SIZE_LIMIT_MB * 1024 * 1024:
+    proxy = get_effective_proxy(config.get("proxy"))
+    try:
+        img_bytes = await download_bytes(
+            img_url, proxy=config.get("proxy"), max_bytes=SIZE_LIMIT_MB * 1024 * 1024
+        )
+    except DownloadTooLarge:
         raise ValueError(f"图片大小超过{SIZE_LIMIT_MB}MB，请先缩小后再进行搜索")
 
-    proxy = get_effective_proxy(config.get("proxy"))
-
     async with Network(timeout=120, proxies=proxy) as client:
-        # 并行执行所有搜索（已移除 TraceMoe）
         results = await asyncio.gather(
-            _with_timeout(search_saucenao(client, img_url), "SauceNAO"),
+            _with_timeout(search_saucenao(client, img_bytes), "SauceNAO"),
+            # Cloudflare 偶尔要长时间验证，单独限时，别拖慢整体出结果
+            _with_timeout(search_ascii2d(img_url), "Ascii2D", 45),
             _with_timeout(search_googlelens(img_url), "GoogleLens"),
         )
 
