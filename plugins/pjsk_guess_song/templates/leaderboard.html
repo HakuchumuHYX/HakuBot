@@ -29,12 +29,16 @@
     font-size: 24px;
     font-weight: 900;
     color: #fff;
-    background: #aab3c6;
+    background: none;
+    border: 2px solid #c4cad6;
+    color: var(--muted);
 }
 
-.rank-1 { background: linear-gradient(135deg, #ffd65a, #f2a900); }
-.rank-2 { background: linear-gradient(135deg, #e3e8ef, #9ea8b8); }
-.rank-3 { background: linear-gradient(135deg, #f0b98a, #c47a3d); }
+.rank-1, .rank-2, .rank-3 { border: none; color: #fff; }
+
+.rank-1 { background: #f2b600; }
+.rank-2 { background: #9ea8b8; }
+.rank-3 { background: #c98149; }
 
 .player {
     flex: 1;

@@ -5,10 +5,20 @@ from pathlib import Path
 from PIL import ImageFont
 from utils.paths import project_root
 
+FONT_DIR = project_root() / "data/shared/fonts"
+# 每个字重一个真实文件；font-weight 只有在对应文件存在时才生效，缺了浏览器会全部渲染成常规体
+WEIGHTS = {
+    "Regular": 400,
+    "Medium": 500,
+    "Semibold": 600,
+    "Bold": 700,
+    "Heavy": 900,
+}
+
 
 def font_path(weight: str = "Regular") -> Path:
     candidates = [
-        project_root() / "data/shared/fonts" / f"SourceHanSansCN-{weight}.ttf",
+        FONT_DIR / f"MiSans-{weight}.ttf",
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
         Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
     ]
@@ -22,7 +32,7 @@ def font_path(weight: str = "Regular") -> Path:
 def font_css() -> str:
     return "\n".join(
         f"@font-face{{font-family:Haku;src:url('{font_path(w).as_uri()}');font-weight:{n};}}"
-        for w, n in (("Regular", 400), ("Bold", 700), ("Heavy", 900))
+        for w, n in WEIGHTS.items()
     )
 
 

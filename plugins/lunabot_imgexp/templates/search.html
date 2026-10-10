@@ -6,12 +6,16 @@
 {{ font_css | safe }}
 
 :root {
-    --ink: #262b3f;
-    --sub: #5d6480;
-    --muted: #9aa0b8;
-    --accent: #6c63ff;
-    --line: #e7e8f4;
-    --red: #e5484d;
+    --paper: #f3f3f6;
+    --card: #ffffff;
+    --ink: #22232c;
+    --sub: #5e6070;
+    --muted: #9c9eab;
+    --line: #e7e7ee;
+    --high: #1f9a55;
+    --mid: #d08a12;
+    --low: #9c9eab;
+    --red: #d93d42;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -19,115 +23,115 @@
 body {
     font-family: Haku, 'Noto Color Emoji', sans-serif;
     color: var(--ink);
-    background: linear-gradient(135deg, #e3e4ff 0%, #e4f1ff 100%);
-    padding: 22px;
+    background: var(--paper);
+    padding: 30px 32px 24px;
 }
 
-.source {
-    padding: 22px 24px;
-    background: rgba(255, 255, 255, 0.82);
-    border-radius: 22px;
-    box-shadow: 0 8px 24px rgba(38, 43, 63, 0.06);
+header { display: flex; align-items: center; gap: 20px; }
+
+.query {
+    flex: none;
+    width: 96px;
+    height: 96px;
+    border-radius: 14px;
+    object-fit: cover;
+    background: var(--line);
 }
 
-.source + .source { margin-top: 16px; }
+h1 { font-size: 32px; font-weight: 900; }
 
-h2 { display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 900; }
+.summary { margin-top: 6px; font-size: 16px; color: var(--sub); }
 
-h2 span {
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: #ecebff;
-    color: var(--accent);
-    font-size: 14px;
-    font-weight: 700;
+.summary span + span { margin-left: 16px; }
+
+section { margin-top: 24px; }
+
+h2 {
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--ink);
+    font-size: 22px;
+    font-weight: 900;
 }
 
-.error { margin-top: 12px; color: var(--red); font-size: 18px; word-break: break-all; }
+.error { padding: 14px 0; color: var(--red); font-size: 17px; word-break: break-all; }
 
-.none { margin-top: 12px; color: var(--muted); font-size: 18px; }
+.none { padding: 14px 0; color: var(--muted); font-size: 17px; }
 
 .item {
     display: flex;
     gap: 18px;
-    margin-top: 14px;
-    padding: 14px;
-    border-radius: 16px;
-    background: #fff;
-    border: 1px solid var(--line);
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
 }
 
 .thumb {
     flex: none;
-    width: 150px;
-    height: 150px;
+    width: 140px;
+    height: 140px;
     border-radius: 12px;
-    background: #f1f2f8;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
+    background: var(--card);
+    object-fit: contain;
 }
-
-.thumb img { max-width: 100%; max-height: 100%; }
 
 .info { flex: 1; min-width: 0; }
 
-.meta { display: flex; align-items: center; gap: 10px; font-size: 16px; color: var(--sub); }
+/* 相似度是判断结果靠不靠谱的唯一依据，放最大 */
+.sim { font-size: 30px; font-weight: 900; line-height: 1.1; color: var(--low); }
 
-.meta .no { font-size: 24px; font-weight: 900; color: var(--ink); }
+.sim.high { color: var(--high); }
+.sim.mid { color: var(--mid); }
 
-.meta img { height: 20px; border-radius: 4px; }
+.sim small { margin-left: 4px; font-size: 14px; font-weight: 400; color: var(--muted); }
 
-.meta .sim {
-    margin-left: auto;
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: #e9f8ef;
-    color: #1f9a55;
-    font-weight: 700;
-}
+.site { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 15px; color: var(--sub); }
 
-.title { margin-top: 8px; font-size: 20px; font-weight: 700; line-height: 1.4; word-break: break-all; }
+.site img { height: 18px; border-radius: 4px; }
 
-.url { margin-top: 6px; font-size: 14px; color: var(--muted); word-break: break-all; }
+.title { margin-top: 6px; font-size: 19px; font-weight: 700; line-height: 1.4; word-break: break-all; }
 
-.watermark {
-    margin-top: 14px;
-    text-align: right;
-    font-size: 14px;
-    color: var(--sub);
-    white-space: pre-line;
-}
+.url { margin-top: 4px; font-size: 13.5px; color: var(--muted); word-break: break-all; }
+
+footer { margin-top: 18px; font-size: 13px; color: var(--muted); text-align: right; white-space: pre-line; }
 </style>
 </head>
 <body>
+<header>
+    {% if query_url %}<img class="query" src="{{ query_url }}" onerror="this.remove()">{% endif %}
+    <div>
+        <h1>搜图结果</h1>
+        <div class="summary">
+            {% for result in results %}<span>{{ result.source }} {{ result.results|length if result.results else 0 }} 条</span>{% endfor %}
+        </div>
+    </div>
+</header>
+
 {% for result in results %}
-<div class="source">
-    <h2>{{ result.source }}<span>{{ result.results|length if result.results else 0 }} 条结果</span></h2>
+<section>
+    <h2>{{ result.source }}</h2>
     {% if result.error %}
     <div class="error">{{ result.error }}</div>
     {% elif not result.results %}
-    <div class="none">未找到结果</div>
+    <div class="none">没有找到结果</div>
     {% else %}
     {% for item in result.results %}
     <div class="item">
-        {% if item.thumbnail %}<div class="thumb"><img src="{{ item.thumbnail }}"></div>{% endif %}
+        {% if item.thumbnail %}<img class="thumb" src="{{ item.thumbnail }}">{% endif %}
         <div class="info">
-            <div class="meta">
-                <span class="no">#{{ loop.index }}</span>
-                {% if item.source_icon %}<img src="{{ item.source_icon }}">{% endif %}
-                {% if item.source %}<span>{{ item.source }}</span>{% endif %}
-                {% if item.similarity is not none %}<span class="sim">{{ "%.2f"|format(item.similarity) }}%</span>{% endif %}
-            </div>
+            {% if item.similarity is not none %}
+            <div class="sim {{ 'high' if item.similarity >= 90 else 'mid' if item.similarity >= 70 else '' }}">{{ "%.1f"|format(item.similarity) }}%<small>相似</small></div>
+            {% endif %}
+            {% if item.source or item.source_icon %}
+            <div class="site">{% if item.source_icon %}<img src="{{ item.source_icon }}">{% endif %}{{ item.source }}</div>
+            {% endif %}
             {% if item.title %}<div class="title">{{ item.title }}</div>{% endif %}
             <div class="url">{{ item.url }}</div>
         </div>
     </div>
     {% endfor %}
     {% endif %}
-</div>
+</section>
 {% endfor %}
-{% if watermark_text %}<div class="watermark">{{ watermark_text }}</div>{% endif %}
+
+{% if watermark_text %}<footer>{{ watermark_text }}</footer>{% endif %}
 </body>
 </html>

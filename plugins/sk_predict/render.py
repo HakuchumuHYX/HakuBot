@@ -8,6 +8,11 @@ from utils.rendering.engine import render_template
 
 CST = timezone(timedelta(hours=8))
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+EVENT_TYPES = {
+    "marathon": "马拉松",
+    "cheerful_carnival": "欢乐嘉年华",
+    "world_bloom": "World Link",
+}
 
 
 def format_number(value: Optional[int]) -> str:
@@ -22,6 +27,12 @@ def format_delta(current: Optional[int], prediction: Optional[int]) -> str:
     delta = int(prediction) - int(current)
     sign = "+" if delta >= 0 else "-"
     return f"{sign}{abs(delta):,}"
+
+
+def progress(current: Optional[int], prediction: Optional[int]) -> Optional[float]:
+    if not current or not prediction:
+        return None
+    return min(100.0, current / prediction * 100)
 
 
 def parse_event_ms(ms: int) -> datetime:
@@ -43,6 +54,7 @@ async def render_prediction_card(
             "score": format_number(item.get("score")),
             "prediction": format_number(item.get("prediction")),
             "delta": format_delta(item.get("score"), item.get("prediction")),
+            "progress": progress(item.get("score"), item.get("prediction")),
         }
         for item in latest_data.get("items") or []
     ]
@@ -53,6 +65,7 @@ async def render_prediction_card(
         width=920,
         event_id=event_info["event_id"],
         name=event_info["name"],
+        event_type=EVENT_TYPES.get(event_info.get("event_type"), ""),
         period=f"{start_at:%m-%d %H:%M} ~ {end_at:%m-%d %H:%M}",
         updated_at=f"{updated_at.astimezone(CST):%m-%d %H:%M:%S}",
         rows=rows,

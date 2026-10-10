@@ -1,169 +1,127 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <style>
-        {{ font_css | safe }}
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
 
-        :root {
-            --primary-color: #5c7cfa;
-            --primary-dark: #3b5bdb; /* 新增深色主题色 */
-            --bg-color: #f8f9fa; /* 背景稍微调亮一点 */
-            --card-bg: #ffffff;
-            --text-main: #2c3e50;
-            --text-sub: #868e96;
-            /* --- 命令样式修改区域 --- */
-            --cmd-bg: #e7f5ff; /* 改为极浅的蓝色背景 */
-            --cmd-text: var(--primary-dark); /* 改为深蓝色，不再使用丑红 */
-            --cmd-border: #d0ebff; /* 新增边框色 */
-        }
-        body {
-            font-family: Haku, 'Noto Color Emoji', sans-serif;
-            background-color: var(--bg-color);
-            margin: 0;
-            padding: 30px;
-            display: flex;
-            justify-content: center;
-            -webkit-font-smoothing: antialiased; /* 让字体更清晰 */
-        }
-        .container {
-            width: 720px;
-            background-color: var(--card-bg);
-            border-radius: 20px; /* 更圆润一点 */
-            box-shadow: 0 12px 40px rgba(0,0,0,0.08);
-            overflow: hidden;
-            padding-bottom: 25px;
-        }
-        .header {
-            /* 调整渐变角度和颜色 */
-            background: linear-gradient(120deg, #4dabf7 0%, #5c7cfa 100%);
-            color: white;
-            padding: 35px 45px;
-            position: relative;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 34px;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-        }
-        .header p {
-            margin: 12px 0 0 0;
-            opacity: 0.95;
-            font-size: 17px;
-            font-weight: 500;
-        }
-        .content {
-            padding: 35px 45px;
-        }
-        .section {
-            margin-bottom: 35px;
-        }
-        .section-title {
-            display: flex;
-            align-items: center;
-            font-size: 21px;
-            font-weight: 700;
-            color: var(--text-main);
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #f1f3f5;
-        }
-        .section-icon {
-            margin-right: 12px;
-            font-size: 26px;
-        }
-        .command-item {
-            display: flex;
-            flex-direction: column;
-            margin-bottom: 18px;
-            padding: 14px 18px;
-            background: #fff;
-            border-radius: 12px;
-            border: 1px solid #e9ecef;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.02); /* 轻微的卡片阴影 */
-            transition: all 0.2s;
-        }
-        .command-header {
-            display: flex;
-            justify-content: flex-start; /* 左对齐 */
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        /* --- 重点修改区域：命令样式 --- */
-        .cmd-code {
-            /* 1. 弃用 monospace，继承 body 的无衬线字体，解决间距过大问题 */
-            font-family: inherit; 
-            background-color: var(--cmd-bg);
-            color: var(--cmd-text);
-            padding: 5px 12px;
-            border-radius: 8px;
-            font-size: 15px;
-            /* 2. 调整字重，看起来更精致 */
-            font-weight: 600; 
-            /* 3. 增加轻微边框和阴影，增加立体感 */
-            border: 1px solid var(--cmd-border);
-            box-shadow: 0 1px 2px rgba(59, 91, 219, 0.05);
-            letter-spacing: -0.2px; /* 微调字间距使其更紧凑 */
-        }
-        .cmd-desc {
-            font-size: 15px;
-            color: var(--text-main);
-            margin-top: 4px;
-            line-height: 1.5;
-        }
-        .cmd-eg {
-            font-size: 13px;
-            color: var(--text-sub);
-            margin-top: 6px;
-            background-color: #f8f9fa;
-            padding: 4px 8px;
-            border-radius: 6px;
-            display: inline-block; /* 让示例也像一个小标签 */
-        }
-        .cmd-eg::before {
-            content: "e.g. ";
-            font-weight: 600;
-            color: #adb5bd;
-        }
-        .footer {
-            text-align: center;
-            color: #adb5bd;
-            font-size: 13px;
-            margin-top: 30px;
-            font-weight: 500;
-        }
-    </style>
+:root {
+    --wall: #ffe4ec;
+    --paper: #ffffff;
+    --ink: #26202b;
+    --sub: #625a6a;
+    --muted: #a49cab;
+    --line: #f0e8ee;
+    --accent: #e0457b;
+    --arg: #7b61d6;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Haku, 'Noto Color Emoji', sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+}
+
+/* 随机抽几张真贴图，像贴在笔记本盖上一样歪着摆 */
+.wall {
+    display: flex;
+    justify-content: center;
+    padding: 34px 20px 26px;
+    background: var(--wall);
+}
+
+.sticker {
+    width: 112px;
+    height: 112px;
+    margin: 0 -6px;
+    padding: 5px;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 3px 8px rgba(120, 40, 70, 0.18);
+    object-fit: contain;
+}
+
+.sticker:nth-child(odd) { transform: rotate(-7deg); }
+.sticker:nth-child(even) { transform: rotate(5deg) translateY(10px); }
+.sticker:nth-child(3n) { transform: rotate(-2deg) translateY(-6px); }
+
+main { padding: 30px 44px 0; }
+
+h1 { font-size: 42px; font-weight: 900; }
+
+.lead { margin-top: 8px; font-size: 17px; color: var(--sub); }
+
+.lead b { color: var(--accent); font-weight: 700; }
+
+section { margin-top: 28px; }
+
+h2 {
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--ink);
+    font-size: 22px;
+    font-weight: 900;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: 4px 20px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.cmd { font-size: 18px; font-weight: 700; color: var(--accent); }
+
+.cmd i { font-style: normal; color: var(--arg); }
+
+.desc { font-size: 16px; color: var(--ink); }
+
+.eg { grid-column: 2; font-size: 14px; color: var(--muted); }
+
+footer {
+    display: flex;
+    justify-content: space-between;
+    margin: 0 44px;
+    padding: 22px 0 30px;
+    font-size: 13.5px;
+    color: var(--muted);
+}
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Stickers Plugin</h1>
-            <p>表情包管理插件帮助文档</p>
-        </div>
-        <div class="content">
-            {% for section in help_data %}
-            <div class="section">
-                <div class="section-title">
-                    <span class="section-icon">{{ section.icon }}</span>
-                    <span>{{ section.category }}</span>
-                </div>
-                {% for item in section.commands %}
-                <div class="command-item">
-                    <div class="command-header">
-                        <span class="cmd-code">{{ item.cmd }}</span>
-                    </div>
-                    <div class="cmd-desc">{{ item.desc }}</div>
-                    <div class="cmd-eg">{{ item.eg }}</div>
-                </div>
-                {% endfor %}
-            </div>
-            {% endfor %}
+{% if covers %}
+<div class="wall">
+    {% for uri in covers %}<img class="sticker" src="{{ uri }}">{% endfor %}
+</div>
+{% endif %}
 
-            <div class="footer">
-                Generated by HakuBot
+<main>
+    <h1>表情包</h1>
+    <p class="lead">{{ folder_count }} 个文件夹，{{ image_count }} 张表情。发送 <b>随机猫猫</b> 这样的指令就能用。</p>
+
+    {% for section in help_data %}
+    <section>
+        <h2>{{ section.category }}</h2>
+        {% for item in section.commands %}
+        <div class="row">
+            <div class="cmd">
+                {%- for part in item.cmd.split('<') -%}
+                {%- if loop.first -%}{{ part }}{%- else -%}{% set p = part.partition('>') %}<i>&lt;{{ p[0] }}&gt;</i>{{ p[2] }}{%- endif -%}
+                {%- endfor -%}
             </div>
+            <div class="desc">{{ item.desc }}</div>
+            <div class="eg">如：{{ item.eg }}</div>
         </div>
-    </div>
+        {% endfor %}
+    </section>
+    {% endfor %}
+</main>
+
+<footer>
+    <span>数据部分来自 astrbot_plugin_stickers 与 LunaBot Gallery</span>
+    <span>HakuBot</span>
+</footer>
 </body>
 </html>

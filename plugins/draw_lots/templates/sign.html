@@ -1,216 +1,144 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <style>
-        body {
-            margin: 0;
-            font-family: 'Noto Serif CJK SC', serif;
-            background-color: transparent;
-        }
+<meta charset="utf-8">
+<style>
+/* 仿浅草寺签纸：白纸、朱印、竖排签诗 */
+:root {
+    --paper: #fbfaf7;
+    --ink: #2a2622;
+    --sub: #5f5850;
+    --muted: #a39b91;
+    --red: #c8302c;
+    --line: #e4ddd2;
+}
 
-        .container {
-            background-color: #f8f7f2;
-            background-image: linear-gradient(0deg, transparent 24%, rgba(0, 0, 0, .03) 25%, rgba(0, 0, 0, .03) 26%, transparent 27%, transparent 74%, rgba(0, 0, 0, .03) 75%, rgba(0, 0, 0, .03) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(0, 0, 0, .03) 25%, rgba(0, 0, 0, .03) 26%, transparent 27%, transparent 74%, rgba(0, 0, 0, .03) 75%, rgba(0, 0, 0, .03) 76%, transparent 77%, transparent);
-            background-size: 50px 50px;
-            border: 1px solid #aaa;
-            padding: 25px;
-            box-shadow: 5px 5px 15px rgba(0,0,0,0.2);
-            position: relative;
-            width: auto; 
-            box-sizing: border-box;
-        }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .border-inner {
-            border: 2px solid #333;
-            padding: 20px;
-            position: relative;
-            min-height: 600px; 
-        }
+body {
+    font-family: 'Noto Serif CJK SC', serif;
+    color: var(--ink);
+    background: var(--paper);
+    padding: 18px;
+}
 
-        /* 标题部分 */
-        .header {
-            text-align: center;
-            margin-bottom: 25px;
-            border-bottom: 3px double #d02c2c;
-            padding-bottom: 15px;
-        }
+.slip { border: 2px solid var(--ink); padding: 26px 26px 18px; }
 
-        .header .number {
-            font-size: 14px;
-            color: #555;
-            margin-bottom: 5px;
-            letter-spacing: 2px;
-        }
+header { display: flex; justify-content: space-between; align-items: center; }
 
-        .header .title {
-            font-size: 56px;
-            font-weight: 700;
-            color: #d02c2c;
-            line-height: 1.2;
-        }
+.number { font-size: 26px; font-weight: 700; letter-spacing: 4px; }
 
-        /* 核心诗句部分 */
-        .poem-box {
-            text-align: center;
-            font-size: 26px;
-            font-weight: bold;
-            color: #222;
-            margin: 20px 0 30px 0;
-            padding: 20px 10px;
-            background-color: rgba(255, 255, 255, 0.6);
-            border-top: 1px solid #ccc;
-            border-bottom: 1px solid #ccc;
-            letter-spacing: 2px;
-        }
+.temple { margin-top: 4px; font-size: 14px; letter-spacing: 6px; color: var(--sub); }
 
-        .poem-line {
-            margin: 8px 0;
-        }
+/* 吉凶盖成朱印 */
+.seal {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 92px;
+    height: 92px;
+    padding: 0 10px;
+    border: 4px solid var(--red);
+    border-radius: 6px;
+    color: var(--red);
+    font-size: 44px;
+    font-weight: 700;
+    transform: rotate(-4deg);
+}
 
-        /* 详细解释部分 */
-        .explanation {
-            font-size: 15px;
-            line-height: 1.6;
-            color: #444;
-            text-align: justify;
-            margin-bottom: 25px;
-        }
+.poem {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: center;
+    margin: 24px 0 6px;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+}
 
-        /* 解释中的引用诗句 - 加粗样式 */
-        .explanation .quote {
-            font-weight: 900;
-            color: #111;
-            font-size: 18px;
-            margin-top: 20px;
-            margin-bottom: 5px;
-            letter-spacing: 1px;
-        }
+.poem div {
+    writing-mode: vertical-rl;
+    inline-size: max-content;
+    padding: 18px 14px;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 8px;
+}
 
-        /* 解释中的普通文本 */
-        .explanation .text {
-            margin-top: 0;
-            margin-bottom: 10px;
-            color: #555;
-        }
+.poem div + div { border-right: 1px solid var(--line); }
 
-        /* 运势项目列表 */
-        .items-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            font-size: 15px;
-            border-top: 2px solid #eee;
-            padding-top: 20px;
-            padding-bottom: 40px; 
-        }
+.reading { margin-top: 18px; }
 
-        .item-row {
-            display: flex;
-            align-items: baseline; 
-        }
+.reading .quote { margin-top: 14px; font-size: 17px; font-weight: 700; color: var(--red); }
 
-        .item-label {
-            font-weight: bold;
-            color: #d02c2c;
-            width: 130px; 
-            flex-shrink: 0;
-            text-align: left;
-        }
+.reading .text { margin-top: 4px; font-size: 14.5px; line-height: 1.75; color: var(--sub); text-align: justify; }
 
-        .item-content {
-            color: #333;
-            flex-grow: 1;
-        }
+.items {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--ink);
+    font-size: 14.5px;
+    line-height: 1.6;
+}
 
-        /* 空签样式 */
-        .empty-sign {
-            text-align: center;
-            padding: 100px 0;
-            color: #888;
-        }
+.items dt { max-width: 8em; font-weight: 700; color: var(--red); }
 
-        .footer {
-            margin-top: 30px;
-            text-align: center;
-            font-size: 12px;
-            color: #aaa;
-            border-top: 1px dashed #ccc;
-            padding-top: 10px;
-            padding-bottom: 20px;
-        }
+.items dd { color: var(--ink); }
 
-        /* 水印样式 */
-        .watermark {
-            position: absolute;
-            bottom: 10px;
-            right: 15px;
-            font-size: 14px;
-            color: rgba(0, 0, 0, 0.15);
-            font-weight: bold;
-            font-family: 'Noto Sans CJK SC', sans-serif;
-            pointer-events: none;
-            user-select: none;
-            z-index: 10;
-        }
-    </style>
+.empty { padding: 70px 0 60px; text-align: center; }
+
+.empty .seal { margin: 0 auto 28px; color: var(--muted); border-color: var(--muted); }
+
+.empty p { font-size: 16px; line-height: 2; color: var(--sub); }
+
+footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 22px;
+    font-size: 12px;
+    color: var(--muted);
+}
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="border-inner">
-            {% if is_empty %}
-                <div class="header">
-                    <div class="title" style="color: #555; font-size: 40px;">空签</div>
-                </div>
-                <div class="empty-sign">
-                    <h3>心诚则灵</h3>
-                    <p>这也是一种修行</p>
-                    <p>请明天再来吧</p>
-                </div>
-            {% else %}
-                <div class="header">
-                    <div class="number">{{ number_str }} 赛博浅草寺</div>
-                    <div class="title">{{ title }}</div>
-                </div>
-
-                <div class="poem-box">
-                    {% for line in poem %}
-                    <div class="poem-line">{{ line }}</div>
-                    {% endfor %}
-                </div>
-
-                <div class="explanation">
-                    {% for item in intro_data %}
-                        {% if item.is_quote %}
-                        <div class="quote">{{ item.text }}</div>
-                        {% else %}
-                        <div class="text">{{ item.text }}</div>
-                        {% endif %}
-                    {% endfor %}
-                </div>
-
-                {% if items %}
-                <div class="items-grid">
-                    {% for item in items %}
-                    <div class="item-row">
-                        <div class="item-label">{{ item.key }}</div>
-                        <div class="item-content">{{ item.value }}</div>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% endif %}
-            {% endif %}
-
-            <div class="footer">
-                此签仅供娱乐，命运掌握在自己手中
-            </div>
-
-            {% if watermark_text %}
-            <div class="watermark">
-                {{ watermark_text }}
-            </div>
-            {% endif %}
-        </div>
+<div class="slip">
+    {% if is_empty %}
+    <div class="empty">
+        <div class="seal">空签</div>
+        <p>心诚则灵，这也是一种修行<br>请明天再来吧</p>
     </div>
+    {% else %}
+    <header>
+        <div>
+            <div class="number">{{ number_str }}</div>
+            <div class="temple">赛博浅草寺</div>
+        </div>
+        <div class="seal">{{ title }}</div>
+    </header>
+
+    <div class="poem">
+        {% for line in poem %}<div>{{ line }}</div>{% endfor %}
+    </div>
+
+    <div class="reading">
+        {% for item in intro_data %}
+        <div class="{{ 'quote' if item.is_quote else 'text' }}">{{ item.text }}</div>
+        {% endfor %}
+    </div>
+
+    {% if items %}
+    <dl class="items">
+        {% for item in items %}<dt>{{ item.key }}</dt><dd>{{ item.value }}</dd>{% endfor %}
+    </dl>
+    {% endif %}
+    {% endif %}
+
+    <footer>
+        <span>此签仅供娱乐，命运掌握在自己手中</span>
+        {% if watermark_text %}<span>{{ watermark_text }}</span>{% endif %}
+    </footer>
+</div>
 </body>
 </html>

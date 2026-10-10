@@ -1,74 +1,58 @@
 {% extends "base.html" %}
 
 {% block style %}
-.page { padding: 26px 24px 20px; }
+.page { padding: 24px 22px 18px; }
 
 .grid {
     display: grid;
-    grid-template-columns: repeat(3, 168px);
-    gap: 16px;
-    justify-content: center;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
 }
 
-.option {
-    padding: 8px 8px 10px;
-}
+.option { padding: 8px 8px 10px; }
 
 .jacket {
-    position: relative;
-    width: 152px;
-    height: 152px;
-    border-radius: 14px;
+    aspect-ratio: 1;
+    border-radius: 12px;
     overflow: hidden;
     background: #dde3ee;
 }
 
-.jacket img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-}
+.jacket img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.caption { display: flex; gap: 8px; margin-top: 8px; }
 
 .num {
-    position: absolute;
-    top: 6px;
-    left: 6px;
-    min-width: 36px;
-    height: 36px;
-    padding: 0 8px;
-    border-radius: 18px;
-    background: rgba(38, 42, 61, 0.78);
-    border: 2px solid var(--teal);
-    color: #fff;
-    font-size: 20px;
+    flex: none;
+    font-size: 26px;
     font-weight: 900;
-    line-height: 32px;
-    text-align: center;
+    line-height: 1;
+    color: var(--teal-deep);
 }
 
+/* 歌名是要看的东西，允许两行 */
 .name {
-    margin-top: 8px;
     font-size: 15px;
     font-weight: 700;
-    text-align: center;
-    white-space: nowrap;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-.footer { margin-top: 18px; }
+.footer { margin-top: 16px; }
 {% endblock %}
 
 {% block content %}
 <div class="grid">
     {% for option in options %}
     <div class="option card">
-        <div class="jacket">
-            {% if option.jacket %}<img src="{{ option.jacket }}">{% endif %}
+        <div class="jacket">{% if option.jacket %}<img src="{{ option.jacket }}">{% endif %}</div>
+        <div class="caption">
             <div class="num">{{ loop.index }}</div>
+            <div class="name">{{ option.title }}</div>
         </div>
-        <div class="name">{{ option.title }}</div>
     </div>
     {% endfor %}
 </div>

@@ -18,41 +18,51 @@ def _image(path: Path) -> dict:
     return {"uri": path.resolve().as_uri(), "name": path.name}
 
 
+# 两张对比缩略图一组，太多会让图片过长
+MAX_PAIRS = 20
+
+
+async def _render_duplicates(
+    title: str,
+    hint: str,
+    labels: Tuple[str, str],
+    duplicates: Dict[str, List[Tuple[Path, Path]]],
+) -> Optional[bytes]:
+    folders, shown = [], 0
+    for name, pairs in duplicates.items():
+        pairs = pairs[: MAX_PAIRS - shown]
+        if not pairs:
+            break
+        folders.append((name, [(_image(a), _image(b)) for a, b in pairs]))
+        shown += len(pairs)
+    try:
+        return await render_template(
+            TEMPLATE_DIR,
+            "duplicates.html",
+            width=760,
+            title=title,
+            hint=hint,
+            labels=labels,
+            folders=folders,
+            total=sum(len(pairs) for pairs in duplicates.values()),
+            shown=shown,
+        )
+    except Exception as e:
+        logger.error(f"生成重复图片报告失败: {e}")
+        return None
+
+
 async def render_duplicate_report(
     folder_name: str, duplicates: List[Tuple[Path, Path]]
 ) -> Optional[bytes]:
     if not duplicates:
         return None
-    try:
-        return await render_template(
-            TEMPLATE_DIR,
-            "duplicate.html",
-            width=720,
-            folder_name=folder_name,
-            total=len(duplicates),
-            pairs=[(_image(a), _image(b)) for a, b in duplicates[:10]],
-        )
-    except Exception as e:
-        logger.error(f"生成重复报告图片失败: {e}")
-        return None
-
-
-async def _render_cleanup(
-    all_duplicates: Dict[str, List[Tuple[Path, Path]]], removed_count: Optional[int]
-) -> Optional[bytes]:
-    try:
-        return await render_template(
-            TEMPLATE_DIR,
-            "cleanup.html",
-            width=600,
-            done=removed_count is not None,
-            removed_count=removed_count,
-            total_pairs=sum(len(dups) for dups in all_duplicates.values()),
-            folders=[(name, len(dups)) for name, dups in all_duplicates.items()],
-        )
-    except Exception as e:
-        logger.error(f"生成清理图片失败: {e}")
-        return None
+    return await _render_duplicates(
+        "投稿图片已存在",
+        "如需强制上传，在投稿指令后加 force",
+        ("已有", "投稿"),
+        {folder_name: duplicates},
+    )
 
 
 async def preview_duplicates_before_cleanup(
@@ -60,13 +70,12 @@ async def preview_duplicates_before_cleanup(
 ) -> Optional[bytes]:
     if not all_duplicates:
         return None
-    return await _render_cleanup(all_duplicates, None)
-
-
-async def render_cleanup_report(
-    removed_count: int, all_duplicates: Dict[str, List[Tuple[Path, Path]]]
-) -> Optional[bytes]:
-    return await _render_cleanup(all_duplicates, removed_count)
+    return await _render_duplicates(
+        "待清理的重复图片",
+        "确认后，每组右边的图片会移到备份文件夹",
+        ("保留", "移走"),
+        all_duplicates,
+    )
 
 
 async def render_stickers_preview() -> Optional[bytes]:
@@ -77,12 +86,12 @@ async def render_stickers_preview() -> Optional[bytes]:
         cover = get_random_sticker(folder["name"])
         folder["cover"] = cover.resolve().as_uri() if cover else ""
 
-    cols = min(7, len(folders))
+    cols = min(5, len(folders))
     try:
         return await render_template(
             TEMPLATE_DIR,
             "folders.html",
-            width=max(640, cols * 216 - 16 + 124),
+            width=max(640, cols * 200),
             cols=cols,
             folders=folders,
             total_images=sum(folder["image_count"] for folder in folders),

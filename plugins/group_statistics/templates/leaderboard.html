@@ -5,15 +5,16 @@
 <style>
 {{ font_css | safe }}
 
+/* 零点推送，深色更合适 */
 :root {
-    --bg1: #141a2e;
-    --bg2: #1f2a44;
-    --card: rgba(30, 38, 60, 0.92);
-    --line: rgba(255, 255, 255, 0.08);
-    --ink: #e8edf7;
-    --sub: #9aa6bf;
-    --muted: #66728c;
+    --bg: #161b29;
+    --card: #1e2436;
+    --line: rgba(255, 255, 255, 0.07);
+    --ink: #edf1f8;
+    --sub: #9aa5bd;
+    --muted: #66718a;
     --accent: #7ce0d0;
+    --track: rgba(124, 224, 208, 0.12);
     --gold: #f4c95d;
     --silver: #c3cad6;
     --bronze: #e09a6b;
@@ -24,139 +25,94 @@
 body {
     font-family: Haku, 'Noto Color Emoji', sans-serif;
     color: var(--ink);
-    background:
-        radial-gradient(circle at 85% 0%, rgba(124, 224, 208, 0.18) 0, transparent 40%),
-        radial-gradient(circle at 0% 100%, rgba(140, 120, 255, 0.16) 0, transparent 45%),
-        linear-gradient(160deg, var(--bg1), var(--bg2));
-    padding: 26px;
+    background: var(--bg);
+    padding: 34px 36px 26px;
 }
 
-.card {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 26px;
-    padding: 28px 28px 20px;
-}
+header { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }
 
-.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }
-
-h1 { font-size: 32px; font-weight: 900; }
+h1 { font-size: 34px; font-weight: 900; }
 
 .date { margin-top: 6px; font-size: 16px; color: var(--sub); }
 
-.total { text-align: right; }
+.total { text-align: right; font-size: 15px; color: var(--sub); }
 
-.total .label { font-size: 14px; color: var(--sub); letter-spacing: 1px; }
+.total b { display: block; font-size: 60px; font-weight: 900; line-height: 1; color: var(--accent); }
 
-.total .value {
-    font-size: 54px;
-    font-weight: 900;
-    line-height: 1.05;
-    color: var(--accent);
-}
-
-.rows { margin-top: 22px; }
+.rows { margin-top: 24px; padding: 6px 22px; border-radius: 20px; background: var(--card); }
 
 .row {
     display: grid;
-    grid-template-columns: 48px 1fr auto;
+    grid-template-columns: 34px 48px 1fr 104px;
     align-items: center;
     gap: 14px;
-    padding: 10px 14px;
-    border-radius: 14px;
-    position: relative;
-    overflow: hidden;
+    padding: 12px 0;
 }
 
-.row + .row { margin-top: 6px; }
+.row + .row { border-top: 1px solid var(--line); }
 
-/* 条形背景表示占第一名的比例 */
-.row::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    width: var(--ratio);
-    border-radius: inherit;
-    background: rgba(124, 224, 208, 0.08);
-}
+.rank { font-size: 22px; font-weight: 900; color: var(--muted); text-align: center; }
 
-.row > * { position: relative; }
+.rank-1 .rank { color: var(--gold); }
+.rank-2 .rank { color: var(--silver); }
+.rank-3 .rank { color: var(--bronze); }
 
-.badge {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    font-weight: 900;
-    background: rgba(255, 255, 255, 0.07);
-    color: var(--sub);
-}
+.avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--line); }
 
-.rank-1 .badge { background: var(--gold); color: #3b2c06; }
-.rank-2 .badge { background: var(--silver); color: #262c36; }
-.rank-3 .badge { background: var(--bronze); color: #3a1f0d; }
+.rank-1 .avatar { box-shadow: 0 0 0 3px var(--gold); }
+.rank-2 .avatar { box-shadow: 0 0 0 3px var(--silver); }
+.rank-3 .avatar { box-shadow: 0 0 0 3px var(--bronze); }
 
-.name {
-    font-size: 20px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
+.who { min-width: 0; }
 
-.count { font-size: 20px; font-weight: 700; }
+.name { font-size: 19px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 条长 = 占第一名的比例 */
+.bar { margin-top: 7px; height: 6px; border-radius: 3px; background: var(--track); }
+
+.bar span { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+
+.count { font-size: 22px; font-weight: 900; text-align: right; }
 
 .count small { margin-left: 3px; font-size: 14px; font-weight: 400; color: var(--sub); }
 
-.empty { margin-top: 22px; color: var(--sub); font-size: 18px; }
+.empty { padding: 18px 0; color: var(--sub); font-size: 18px; }
 
-.extra {
-    margin-top: 18px;
-    padding: 14px 16px;
-    border-radius: 14px;
-    background: rgba(124, 224, 208, 0.08);
-    border-left: 4px solid var(--accent);
-    font-size: 17px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-}
+.extra { margin-top: 18px; font-size: 18px; line-height: 1.6; white-space: pre-wrap; }
 
-.foot { margin-top: 14px; text-align: right; font-size: 13px; color: var(--muted); }
+footer { margin-top: 16px; font-size: 13px; color: var(--muted); text-align: right; }
 </style>
 </head>
 <body>
-<div class="card">
-    <div class="head">
-        <div>
-            <h1>{{ title }}</h1>
-            <div class="date">统计日期：{{ date }}</div>
-        </div>
-        <div class="total">
-            <div class="label">总消息数</div>
-            <div class="value">{{ total }}</div>
-        </div>
+<header>
+    <div>
+        <h1>{{ title }}</h1>
+        <div class="date">{{ date }}</div>
     </div>
+    <div class="total"><b>{{ total }}</b>条消息</div>
+</header>
 
+<div class="rows">
     {% if rows %}
-    {% set top = rows[0][1] or 1 %}
-    <div class="rows">
-        {% for name, count in rows %}
-        <div class="row rank-{{ loop.index }}" style="--ratio: {{ (count / top * 100)|round(1) }}%">
-            <div class="badge">{{ loop.index }}</div>
+    {% set top = rows[0][2] or 1 %}
+    {% for user_id, name, count in rows %}
+    <div class="row rank-{{ loop.index }}">
+        <span class="rank">{{ loop.index }}</span>
+        <img class="avatar" src="https://q1.qlogo.cn/g?b=qq&nk={{ user_id }}&s=100" onerror="this.style.visibility='hidden'">
+        <div class="who">
             <div class="name">{{ name }}</div>
-            <div class="count">{{ count }}<small>条</small></div>
+            <div class="bar"><span style="width: {{ (count / top * 100)|round(1) }}%"></span></div>
         </div>
-        {% endfor %}
+        <span class="count">{{ count }}<small>条</small></span>
     </div>
+    {% endfor %}
     {% else %}
-    <div class="empty">暂无排行数据</div>
+    <div class="empty">今天还没有人说话</div>
     {% endif %}
-
-    {% if extra %}<div class="extra">{{ extra }}</div>{% endif %}
-
-    <div class="foot">Generated by HakuBot · {{ date }}</div>
 </div>
+
+{% if extra %}<div class="extra">{{ extra }}</div>{% endif %}
+
+<footer>HakuBot</footer>
 </body>
 </html>

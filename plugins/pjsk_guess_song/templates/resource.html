@@ -1,77 +1,64 @@
 {% extends "base.html" %}
 
 {% block style %}
-.title { font-size: 36px; }
+.head { display: flex; justify-content: space-between; align-items: flex-end; }
 
-.stats {
-    margin-top: 30px;
+.head .title { text-align: left; font-size: 34px; }
+
+.head .title::after { margin: 12px 0 0; }
+
+.version { text-align: right; }
+
+.version .label { font-size: 15px; color: var(--sub); }
+
+.version .value { font-size: 40px; font-weight: 900; line-height: 1.15; color: var(--teal-deep); }
+
+.board { margin-top: 26px; padding: 8px 26px; }
+
+.row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 110px 1fr 70px;
+    align-items: center;
     gap: 18px;
+    padding: 14px 0;
 }
 
-.stat {
-    position: relative;
-    padding: 20px 24px 18px 30px;
-    overflow: hidden;
-}
+.row + .row { border-top: 1px solid var(--line); }
 
-.stat::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 8px;
-    background: var(--c);
-}
+.row .label { font-size: 18px; font-weight: 700; }
 
-.stat .label {
-    font-size: 18px;
-    color: var(--sub);
-}
+.row .value { font-size: 24px; font-weight: 900; text-align: right; }
 
-.stat .value {
-    margin-top: 4px;
-    font-size: 42px;
-    font-weight: 900;
-    color: var(--c);
-}
+.total .value { color: var(--teal-deep); }
 
-.version {
-    margin: 26px auto 0;
-    width: fit-content;
-    min-width: 360px;
-    padding: 16px 36px;
-    border-radius: 999px;
-    text-align: center;
-}
+/* 每种音轨覆盖了多少首歌 */
+.bar { height: 10px; border-radius: 5px; background: rgba(51, 204, 187, 0.14); overflow: hidden; }
 
-.version .label {
-    font-size: 15px;
-    letter-spacing: 1px;
-    color: var(--teal-deep);
-}
+.bar span { display: block; height: 100%; border-radius: 5px; background: var(--teal); }
 
-.version .value {
-    margin-top: 2px;
-    font-size: 28px;
-    font-weight: 700;
-}
+.row .note { font-size: 15px; color: var(--sub); }
 {% endblock %}
 
 {% block content %}
-<div class="title">PJSK 猜歌资源版本</div>
-<div class="stats">
-    {% for label, value, color in stats %}
-    <div class="stat card" style="--c: {{ color }}">
+<div class="head">
+    <div class="title">猜歌资源</div>
+    <div class="version">
+        <div class="label">数据版本</div>
+        <div class="value">{{ data_version }}</div>
+    </div>
+</div>
+<div class="board card">
+    <div class="row total">
+        <div class="label">{{ total[0] }}</div>
+        <div class="note">所有可猜的歌曲</div>
+        <div class="value">{{ total[1] }}</div>
+    </div>
+    {% for label, value in tracks %}
+    <div class="row">
         <div class="label">{{ label }}</div>
+        <div class="bar"><span style="width: {{ (value / (total[1] or 1) * 100)|round(1) }}%"></span></div>
         <div class="value">{{ value }}</div>
     </div>
     {% endfor %}
-</div>
-<div class="version card">
-    <div class="label">CURRENT DATA VERSION</div>
-    <div class="value">{{ data_version }}</div>
 </div>
 {% endblock %}

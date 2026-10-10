@@ -30,13 +30,16 @@ body {
     overflow: hidden;
 }
 
+/* 线稿背景只铺在页头，往下淡出，不和正文抢 */
 {% if bg_uri %}
 .page::before {
     content: "";
     position: absolute;
-    inset: 0;
-    background: url("{{ bg_uri }}") center / cover no-repeat;
-    opacity: 0.32;
+    inset: 0 0 auto;
+    height: 320px;
+    background: url("{{ bg_uri }}") center top / cover no-repeat;
+    opacity: 0.22;
+    -webkit-mask-image: linear-gradient(#000 40%, transparent);
 }
 {% endif %}
 

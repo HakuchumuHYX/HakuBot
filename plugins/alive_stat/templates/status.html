@@ -44,15 +44,28 @@ body {
 
 h1 { font-size: 30px; font-weight: 900; }
 
-h1 .dot {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    margin-left: 10px;
+/* 一句话结论：全部正常，或者哪里出了问题 */
+.verdict {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+    padding: 14px 18px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--ok) 14%, transparent);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ok);
+}
+
+.verdict.bad { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+
+.verdict .dot {
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
-    background: var(--ok);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 25%, transparent);
-    vertical-align: middle;
+    background: currentColor;
+    box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 22%, transparent);
 }
 
 .generated { font-size: 14px; color: var(--sub); }
@@ -61,10 +74,8 @@ h1 .dot {
 
 .label {
     margin-bottom: 10px;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
     color: var(--muted);
 }
 
@@ -93,7 +104,7 @@ h1 .dot {
 
 .res {
     display: grid;
-    grid-template-columns: 56px 1fr 64px 130px;
+    grid-template-columns: 56px 1fr 210px;
     align-items: center;
     gap: 12px;
     font-size: 16px;
@@ -107,9 +118,9 @@ h1 .dot {
 
 .fill { height: 100%; border-radius: 7px; background: var(--c); }
 
-.res .pct { text-align: right; font-weight: 700; }
+.res .pct { text-align: right; font-size: 18px; font-weight: 700; }
 
-.res .detail { text-align: right; font-size: 14px; color: var(--muted); }
+.res .pct small { margin-left: 8px; font-size: 14px; font-weight: 400; color: var(--muted); }
 
 .procs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
 
@@ -155,25 +166,34 @@ h1 .dot {
 <body>
 <div class="card">
     <div class="head">
-        <h1>HakuBot Server Status<span class="dot"></span></h1>
+        <h1>HakuBot 运行状态</h1>
         <div class="generated">{{ generated }}</div>
     </div>
 
+    {% set stopped = processes|rejectattr("running")|list %}
+    {% set down = networks|rejectattr("reachable")|list %}
+    <div class="verdict{% if stopped or down %} bad{% endif %}">
+        <span class="dot"></span>
+        {% if stopped %}{{ stopped|length }} 个进程已停止：{{ stopped|map(attribute="name")|join("、") }}
+        {% elif down %}{{ down|map(attribute="host")|join("、") }} 无法连接
+        {% else %}全部进程运行正常{% endif %}
+    </div>
+
     <div class="section">
-        <div class="label">Bot Runtime</div>
+        <div class="label">运行时长</div>
         <div class="bots">
             {% for bot in bots %}
             <div class="bot">
                 <div class="name">{{ bot.name }}</div>
                 <div class="item">
-                    <div class="k">Session</div>
+                    <div class="k">本次启动</div>
                     <div class="v">{{ bot.session_time }}</div>
-                    <div class="since">Since {{ bot.session_since }}</div>
+                    <div class="since">自 {{ bot.session_since }}</div>
                 </div>
                 <div class="item">
-                    <div class="k">Total</div>
+                    <div class="k">累计</div>
                     <div class="v">{{ bot.total_time }}</div>
-                    <div class="since">Since {{ bot.total_since }}</div>
+                    <div class="since">自 {{ bot.total_since }}</div>
                 </div>
             </div>
             {% endfor %}
@@ -181,31 +201,30 @@ h1 .dot {
     </div>
 
     <div class="section server">
-        <div class="label">Server</div>
-        <div class="host">{{ server.hostname }} · Uptime {{ server.uptime }}</div>
-        <div class="cpu">CPU: {{ server.cpu_model }} ({{ server.cpu_cores }} cores)</div>
+        <div class="label">服务器</div>
+        <div class="host">{{ server.hostname }}，已运行 {{ server.uptime }}</div>
+        <div class="cpu">{{ server.cpu_model }}，{{ server.cpu_cores }} 核</div>
     </div>
 
     <div class="section">
-        <div class="label">Resources</div>
+        <div class="label">资源</div>
         {% for res in resources %}
         <div class="res">
             <div class="name">{{ res.name }}</div>
             <div class="track"><div class="fill" style="width: {{ res.percent }}%; --c: var(--{{ res.level }})"></div></div>
-            <div class="pct">{{ "%.1f"|format(res.percent) }}%</div>
-            <div class="detail">{{ res.detail }}</div>
+            <div class="pct">{{ "%.1f"|format(res.percent) }}%{% if res.detail %}<small>{{ res.detail }}</small>{% endif %}</div>
         </div>
         {% endfor %}
     </div>
 
     <div class="section">
-        <div class="label">Processes</div>
+        <div class="label">进程</div>
         <div class="procs">
             {% for proc in processes %}
             <div class="proc{% if not proc.running %} stopped{% endif %}">
                 <span class="led"></span>
                 <span class="pname">{{ proc.name }}</span>
-                <span class="state">{{ "Running" if proc.running else "Stopped" }}</span>
+                <span class="state">{{ "运行中" if proc.running else "已停止" }}</span>
                 <span class="mem">{{ proc.mem }}</span>
             </div>
             {% endfor %}
@@ -213,12 +232,12 @@ h1 .dot {
     </div>
 
     <div class="section">
-        <div class="label">Network</div>
+        <div class="label">网络</div>
         <div class="nets">
             {% for net in networks %}
             <div class="net{% if not net.reachable %} down{% endif %}">
                 {{ net.host }}
-                <b>{% if net.reachable %}✓ {{ "%.0fms"|format(net.latency_ms) if net.latency_ms is not none else "ok" }}{% else %}✗ timeout{% endif %}</b>
+                <b>{% if net.reachable %}{{ "%.0fms"|format(net.latency_ms) if net.latency_ms is not none else "可达" }}{% else %}超时{% endif %}</b>
             </div>
             {% else %}
             <div class="net">N/A</div>

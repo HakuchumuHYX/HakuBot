@@ -1,92 +1,60 @@
 {% extends "base.html" %}
 
 {% block style %}
-.header { display: flex; align-items: flex-end; justify-content: space-between; }
+.total { font-size: 16px; color: var(--sub); text-align: right; }
 
-.header .total { text-align: right; font-size: 16px; opacity: 0.95; }
-
-.header .total b { font-size: 30px; font-weight: 900; margin: 0 4px; }
+.total b { margin: 0 4px 0 12px; font-size: 32px; font-weight: 900; color: var(--ink); }
 
 .grid {
     display: grid;
-    grid-template-columns: repeat({{ cols }}, 200px);
-    gap: 16px;
-    justify-content: center;
-}
-
-.folder {
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
-    background: #fbfcfe;
+    grid-template-columns: repeat({{ cols }}, 1fr);
+    gap: 18px;
 }
 
 .cover {
-    height: 140px;
+    height: 160px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #eef2f9;
-}
-
-.cover img { max-width: 100%; max-height: 140px; }
-
-.cover .empty { font-size: 14px; color: var(--muted); }
-
-.info { padding: 10px 12px 12px; }
-
-.name {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.name b {
-    font-size: 19px;
-    white-space: nowrap;
+    border-radius: 14px;
+    background: #f7f3f6;
     overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-.name span { flex: none; font-size: 14px; color: var(--primary-deep); font-weight: 700; }
+.cover img { max-width: 100%; max-height: 160px; }
 
-.aliases { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+.cover .empty { font-size: 15px; color: var(--muted); }
 
-.aliases span {
-    padding: 1px 8px;
-    border-radius: 999px;
-    background: #e7f5ff;
-    color: var(--primary-deep);
-    font-size: 12px;
-}
+.name { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 8px; }
+
+.name b { font-size: 22px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.name span { flex: none; font-size: 16px; color: var(--accent); font-weight: 700; }
+
+.aliases { margin-top: 2px; font-size: 14px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 {% endblock %}
 
 {% block content %}
-<div class="header">
+<header>
     <div>
-        <h1>贴图库预览</h1>
-        <p>发送「随机&lt;文件夹&gt;」获取表情</p>
+        <h1>贴图库</h1>
+        <p>发送「随机 + 文件夹名或别名」获取表情</p>
     </div>
-    <div class="total"><b>{{ folders|length }}</b>个文件夹<b>{{ total_images }}</b>张图片</div>
-</div>
-<div class="body">
+    <div class="total"><b>{{ folders|length }}</b>个文件夹<b>{{ total_images }}</b>张</div>
+</header>
+<main>
     <div class="grid">
         {% for folder in folders %}
-        <div class="folder">
+        <div>
             <div class="cover">
                 {% if folder.cover %}<img src="{{ folder.cover }}">{% else %}<span class="empty">暂无图片</span>{% endif %}
             </div>
-            <div class="info">
-                <div class="name"><b>{{ folder.name }}</b><span>{{ folder.image_count }} 张</span></div>
-                {% if folder.aliases %}
-                <div class="aliases">{% for alias in folder.aliases %}<span>{{ alias }}</span>{% endfor %}</div>
-                {% endif %}
-            </div>
+            <div class="name"><b>{{ folder.name }}</b><span>{{ folder.image_count }}</span></div>
+            {% if folder.aliases %}<div class="aliases">{{ folder.aliases[:3]|join("、") }}</div>{% endif %}
         </div>
         {% endfor %}
     </div>
-</div>
+</main>
 {% endblock %}
 
-{% block footer %}Data Provided by LunaBot Gallery (by @NeuraXmy) and astrbot_plugin_stickers (by @shiywhh).{% endblock %}
+{% block footer %}数据部分来自 LunaBot Gallery (@NeuraXmy) 与 astrbot_plugin_stickers (@shiywhh){% endblock %}

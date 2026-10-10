@@ -58,7 +58,7 @@ class ImageService:
             items.append({"title": option["title"], "jacket": jacket or ""})
         try:
             return await self._render(
-                "options.html", 640, [self._version_line()], options=items
+                "options.html", 720, [self._version_line()], options=items
             )
         except Exception as e:
             logger.error(f"创建选项图片失败: {e}", exc_info=True)
@@ -82,13 +82,12 @@ class ImageService:
     async def draw_resource_version_image(
         self, stats: Dict[str, int], external_info: str
     ) -> Optional[bytes]:
-        tiles = [
-            ("歌曲总数", stats.get("song_count", 0), "#5b8def"),
-            ("钢琴曲目", stats.get("piano_count", 0), "#f2895f"),
-            ("伴奏音轨", stats.get("acc_count", 0), "#20b2a5"),
-            ("人声音轨", stats.get("vocal_count", 0), "#ff69b4"),
-            ("贝斯音轨", stats.get("bass_count", 0), "#9370db"),
-            ("鼓组音轨", stats.get("drums_count", 0), "#6f7f99"),
+        tracks = [
+            ("钢琴", stats.get("piano_count", 0)),
+            ("伴奏", stats.get("acc_count", 0)),
+            ("人声", stats.get("vocal_count", 0)),
+            ("贝斯", stats.get("bass_count", 0)),
+            ("鼓组", stats.get("drums_count", 0)),
         ]
         footer_lines = [
             "Masterdata acquired from Team-Haruki",
@@ -98,9 +97,10 @@ class ImageService:
         try:
             return await self._render(
                 "resource.html",
-                760,
+                720,
                 footer_lines,
-                stats=tiles,
+                total=("歌曲", stats.get("song_count", 0)),
+                tracks=tracks,
                 data_version=external_info,
             )
         except Exception as e:

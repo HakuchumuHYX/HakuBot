@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block style %}
+.count { font-size: 16px; color: var(--sub); }
+
+.count b { margin-right: 4px; font-size: 32px; font-weight: 900; color: var(--accent); }
+
+section + section { margin-top: 22px; }
+
+h2 { padding-bottom: 8px; border-bottom: 2px solid var(--ink); font-size: 20px; font-weight: 900; }
+
+.pairs { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+
+.pair {
+    display: grid;
+    grid-template-columns: 1fr 24px 1fr;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.eq { text-align: center; font-size: 22px; font-weight: 900; color: var(--muted); }
+
+.thumb {
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: #f7f3f6;
+    overflow: hidden;
+}
+
+.thumb img { max-width: 100%; max-height: 120px; }
+
+.label { margin-top: 6px; font-size: 13.5px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.label b { margin-right: 4px; font-weight: 700; color: var(--keep); }
+
+.right .label b { color: var(--accent); }
+
+.more { margin-top: 12px; font-size: 14px; color: var(--muted); }
+{% endblock %}
+
+{% block content %}
+<header>
+    <div>
+        <h1>{{ title }}</h1>
+        <p>{{ hint }}</p>
+    </div>
+    <div class="count"><b>{{ total }}</b>组</div>
+</header>
+<main>
+    {% for folder_name, pairs in folders %}
+    <section>
+        <h2>{{ folder_name }}</h2>
+        <div class="pairs">
+            {% for left, right in pairs %}
+            <div class="pair">
+                <div>
+                    <div class="thumb"><img src="{{ left.uri }}"></div>
+                    <div class="label"><b>{{ labels[0] }}</b>{{ left.name }}</div>
+                </div>
+                <div class="eq">=</div>
+                <div class="right">
+                    <div class="thumb"><img src="{{ right.uri }}"></div>
+                    <div class="label"><b>{{ labels[1] }}</b>{{ right.name }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+    {% if total > shown %}<div class="more">只展示了前 {{ shown }} 组</div>{% endif %}
+</main>
+{% endblock %}

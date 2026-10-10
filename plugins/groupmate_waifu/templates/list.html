@@ -6,11 +6,14 @@
 {{ font_css | safe }}
 
 :root {
-    --rose: #f06292;
-    --rose-soft: #fde4ee;
-    --ink: #3d2b36;
-    --sub: #8f7584;
-    --line: #f6dbe6;
+    --paper: #fff3f6;
+    --card: #ffffff;
+    --rose: #e8436f;
+    --rose-soft: #fde3ea;
+    --ink: #3a2530;
+    --sub: #8c7280;
+    --muted: #c0a9b4;
+    --line: #f7e3ea;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -18,99 +21,107 @@
 body {
     font-family: Haku, 'Noto Color Emoji', sans-serif;
     color: var(--ink);
-    background: linear-gradient(150deg, #fff0f5 0%, #fdf6ff 60%, #f3f0ff 100%);
-    padding: 26px;
+    background: var(--paper);
+    padding: 30px 30px 22px;
 }
 
-.card {
-    background: rgba(255, 255, 255, 0.92);
-    border-radius: 22px;
-    padding: 24px 26px 18px;
-    box-shadow: 0 10px 28px rgba(240, 98, 146, 0.12);
-}
+h1 { font-size: 32px; font-weight: 900; }
 
-h1 {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    font-size: 28px;
-    font-weight: 900;
-}
+.subtitle { margin-top: 4px; font-size: 15px; color: var(--sub); }
 
-h1::before { content: "♥"; color: var(--rose); }
-
-h1 small { font-size: 16px; font-weight: 400; color: var(--sub); }
-
-.content { margin-top: 18px; }
+.content { margin-top: 18px; padding: 18px 20px; border-radius: 20px; background: var(--card); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .chips span {
-    max-width: 260px;
     padding: 5px 14px;
     border-radius: 999px;
     background: var(--rose-soft);
-    font-size: 17px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 16px;
 }
 
-.row {
-    display: flex;
+.avatar { flex: none; width: 52px; height: 52px; border-radius: 50%; background: var(--line); }
+
+/* CP：两个人对称排开，中间一颗心 */
+.pair {
+    display: grid;
+    grid-template-columns: 1fr 36px 1fr;
+    align-items: center;
+    padding: 10px 0;
+}
+
+.pair + .pair { border-top: 1px solid var(--line); }
+
+.person { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+.person:first-child { flex-direction: row-reverse; text-align: right; }
+
+.person span { font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.heart { text-align: center; font-size: 22px; color: var(--rose); }
+
+.record {
+    display: grid;
+    grid-template-columns: 28px 52px 1fr auto;
     align-items: center;
     gap: 12px;
-    padding: 11px 6px;
-    font-size: 19px;
+    padding: 10px 0;
 }
 
-.row + .row { border-top: 1px solid var(--line); }
+.record + .record { border-top: 1px solid var(--line); }
 
-.row .left, .row .right {
-    flex: 1;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
+.rank { font-size: 18px; font-weight: 900; color: var(--muted); text-align: center; }
 
-.pairs .right { text-align: left; }
+.record:nth-child(-n+3) .rank { color: var(--rose); }
 
-.pairs .heart { flex: none; color: var(--rose); font-size: 20px; }
+.who { min-width: 0; }
 
-.records .right { flex: none; color: var(--sub); font-size: 16px; }
+.who .name { font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.records .right b { color: var(--rose); font-size: 22px; margin: 0 4px; }
+.bar { margin-top: 6px; height: 6px; border-radius: 3px; background: var(--rose-soft); }
 
-.foot {
-    margin-top: 14px;
-    text-align: right;
-    font-size: 12px;
-    color: #cdb4c2;
-}
+.bar span { display: block; height: 100%; border-radius: 3px; background: var(--rose); }
+
+.times { font-size: 15px; color: var(--sub); text-align: right; }
+
+.times b { margin: 0 2px; font-size: 22px; font-weight: 900; color: var(--ink); }
+
+footer { margin-top: 12px; font-size: 13px; color: var(--muted); text-align: right; }
 </style>
 </head>
 <body>
-<div class="card">
-    <h1>{{ title }}{% if subtitle %}<small>{{ subtitle }}</small>{% endif %}</h1>
-    <div class="content">
-        {% if names %}
-        <div class="chips">{% for name in names %}<span>{{ name }}</span>{% endfor %}</div>
-        {% elif pairs %}
-        <div class="pairs">
-            {% for a, b in pairs %}
-            <div class="row"><div class="left" style="text-align: right">{{ a }}</div><div class="heart">♥</div><div class="right">{{ b }}</div></div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="records">
-            {% for name, times in records %}
-            <div class="row"><div class="left">{{ name }}</div><div class="right">{{ action }}<b>{{ times }}</b>次</div></div>
-            {% endfor %}
-        </div>
-        {% endif %}
+{% macro avatar(uid) %}<img class="avatar" src="https://q1.qlogo.cn/g?b=qq&nk={{ uid }}&s=100" onerror="this.style.visibility='hidden'">{% endmacro %}
+
+<h1>{{ title }}</h1>
+{% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+
+<div class="content">
+    {% if names %}
+    <div class="chips">{% for name in names %}<span>{{ name }}</span>{% endfor %}</div>
+    {% elif pairs %}
+    {% for uid_a, name_a, uid_b, name_b in pairs %}
+    <div class="pair">
+        <div class="person">{{ avatar(uid_a) }}<span>{{ name_a }}</span></div>
+        <div class="heart">♥</div>
+        <div class="person">{{ avatar(uid_b) }}<span>{{ name_b }}</span></div>
     </div>
-    <div class="foot">Generated by HakuBot</div>
+    {% endfor %}
+    {% else %}
+    {% set top = records[0][2] if records else 1 %}
+    {% for uid, name, times in records %}
+    <div class="record">
+        <span class="rank">{{ loop.index }}</span>
+        {{ avatar(uid) }}
+        <div class="who">
+            <div class="name">{{ name }}</div>
+            <div class="bar"><span style="width: {{ (times / top * 100)|round(1) }}%"></span></div>
+        </div>
+        <span class="times">{{ action }}<b>{{ times }}</b>次</span>
+    </div>
+    {% endfor %}
+    {% endif %}
 </div>
+
+<footer>HakuBot</footer>
 </body>
 </html>

@@ -217,6 +217,7 @@ async def search_image(
         TEMPLATE_DIR,
         "search.html",
         width=900,
+        query_url=img_url,
         results=results,
         watermark_text=config.get("watermark_text", "").strip(),
     )

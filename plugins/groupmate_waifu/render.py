@@ -82,7 +82,9 @@ async def render_member_pool(
     return await _render_list(title, subtitle=subtitle, names=names)
 
 
-async def render_cp_list(pairs: Iterable[Tuple[str, str]]) -> MessageSegment:
+async def render_cp_list(
+    pairs: Iterable[Tuple[int, str, int, str]],
+) -> MessageSegment:
     return await _render_list("本群CP", pairs=list(pairs))
 
 
@@ -91,6 +93,6 @@ def make_forward_node(name: str, uin: int, content) -> ForwardItem:
 
 
 async def render_yinpa_record(
-    title: str, rows: Iterable[Tuple[str, int]], action: str
+    title: str, rows: Iterable[Tuple[int, str, int]], action: str
 ) -> MessageSegment:
     return await _render_list(title, records=list(rows), action=action)

@@ -86,7 +86,7 @@ async def render_template(
 ) -> bytes:
     """渲染插件自己的 Jinja2 模板。
 
-    模板额外可用 font_css（本地思源黑体，family 名为 Haku）和 dark（是否夜间）；
+    模板额外可用 font_css（本地 MiSans，family 名为 Haku）和 dark（是否夜间）；
     调用方显式传入同名参数时以调用方为准。
     """
     template = _plugin_env(template_dir.resolve()).get_template(name)

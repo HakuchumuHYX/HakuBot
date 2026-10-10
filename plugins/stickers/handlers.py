@@ -37,7 +37,6 @@ from plugins.stickers.statistics import (
 )
 from plugins.stickers.render import (
     render_stickers_preview,
-    render_cleanup_report,
     preview_duplicates_before_cleanup,
 )
 from plugins.stickers.manage import handle_manage_command, is_superuser
@@ -159,27 +158,16 @@ async def handle_clean_confirm(event: GroupMessageEvent):
     rename_count, rename_msg = await batch_rename_stickers()
     logger.info(f"清理后自动重命名: {rename_msg}")
 
-    report_bytes = await render_cleanup_report(removed_count, state["duplicates"])
-
     # 清理状态（在发送消息前）
     del cleanup_state[group_id]
 
-    # 构建完整的结果消息
-    if report_bytes:
-        await clean_confirm_matcher.send(image_segment(report_bytes))
-        # 发送重命名结果
-        if rename_count > 0:
-            await clean_confirm_matcher.finish(f"📝 自动重命名完成：{rename_msg}")
-        else:
-            await clean_confirm_matcher.finish()
-    else:
-        total_pairs = sum(
-            len(duplicates) for duplicates in state["duplicates"].values()
-        )
-        result_msg = f"安全清理完成！检测到{total_pairs}组重复，已移动{removed_count}张图片到备份文件夹"
-        if rename_count > 0:
-            result_msg += f"\n📝 自动重命名完成：{rename_msg}"
-        await clean_confirm_matcher.finish(result_msg)
+    total_pairs = sum(len(duplicates) for duplicates in state["duplicates"].values())
+    result_msg = (
+        f"清理完成：{total_pairs} 组重复，已把 {removed_count} 张图片移到备份文件夹"
+    )
+    if rename_count > 0:
+        result_msg += f"\n📝 自动重命名完成：{rename_msg}"
+    await clean_confirm_matcher.finish(result_msg)
 
 
 @clean_cancel_matcher.handle()

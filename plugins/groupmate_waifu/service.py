@@ -205,26 +205,26 @@ def get_yinpa_record_rows(
     group_id: int,
     member_list: Iterable[Dict[str, Any]],
     record: Dict[int, Dict[int, int]],
-) -> List[Tuple[str, int]]:
+) -> List[Tuple[int, str, int]]:
     group_record = record.get(group_id, {})
     rows = [
-        ((member["card"] or member["nickname"]), times)
+        (member["user_id"], (member["card"] or member["nickname"]), times)
         for member in member_list
         if (times := group_record.get(member["user_id"]))
     ]
-    rows.sort(key=lambda x: x[1], reverse=True)
+    rows.sort(key=lambda x: x[2], reverse=True)
     return rows
 
 
 def get_yinpa_actor_record_rows(
     group_id: int, member_list: Iterable[Dict[str, Any]]
-) -> List[Tuple[str, int]]:
+) -> List[Tuple[int, str, int]]:
     return get_yinpa_record_rows(group_id, member_list, record_yinpa1)
 
 
 def get_yinpa_target_record_rows(
     group_id: int, member_list: Iterable[Dict[str, Any]]
-) -> List[Tuple[str, int]]:
+) -> List[Tuple[int, str, int]]:
     return get_yinpa_record_rows(group_id, member_list, record_yinpa2)
 
 

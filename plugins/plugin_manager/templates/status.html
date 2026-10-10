@@ -6,129 +6,135 @@
 {{ font_css | safe }}
 
 :root {
-    --ink: #1f2f4d;
-    --sub: #62728d;
-    --muted: #a6b1c4;
-    --on: #2fb67c;
-    --on-soft: #e3f7ee;
-    --off: #e5675f;
-    --off-soft: #fdebea;
-    --line: #e7edf6;
+    --paper: #f4f5f3;
+    --ink: #1e2420;
+    --sub: #5d655f;
+    --muted: #a3aaa5;
+    --line: #e1e4e0;
+    --on: #1f9d55;
+    --off: #b9bfbb;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: Haku, sans-serif;
+    font-family: Haku, 'Noto Color Emoji', sans-serif;
     color: var(--ink);
-    background: linear-gradient(135deg, #e6efff 0%, #f5f9ff 100%);
-    padding: 24px;
+    background: var(--paper);
+    padding: 36px 40px 28px;
 }
 
-.head {
+header {
     display: flex;
-    align-items: flex-end;
     justify-content: space-between;
-    margin: 4px 6px 18px;
+    align-items: flex-end;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--ink);
 }
 
-h1 { font-size: 30px; font-weight: 900; }
+h1 { font-size: 36px; font-weight: 900; }
 
 .group { margin-top: 4px; font-size: 16px; color: var(--sub); }
 
-.summary { display: flex; gap: 10px; }
+.summary { display: flex; gap: 22px; font-size: 16px; color: var(--sub); }
 
-.summary span {
-    padding: 6px 14px;
-    border-radius: 999px;
-    font-size: 15px;
-    font-weight: 700;
-}
+.summary b { margin-right: 4px; font-size: 34px; font-weight: 900; color: var(--ink); }
 
-.summary .on { background: var(--on-soft); color: var(--on); }
+.summary .off b { color: var(--muted); }
 
-.summary .off { background: var(--off-soft); color: var(--off); }
+.list { margin-top: 18px; column-count: {{ columns }}; column-gap: 36px; }
 
-.cards { column-count: {{ columns }}; column-gap: 14px; }
-
-.card {
+.plugin {
     break-inside: avoid;
-    margin-bottom: 14px;
-    padding: 6px 16px;
-    background: rgba(255, 255, 255, 0.95);
-    border: 1px solid #dde7f5;
-    border-radius: 16px;
+    padding: 9px 0 10px;
+    border-bottom: 1px solid var(--line);
 }
 
-.row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 0;
-}
+.row { display: flex; align-items: center; gap: 10px; }
 
-.row + .row { border-top: 1px dashed var(--line); }
-
-.row.child { padding-left: 18px; }
-
-.text { flex: 1; min-width: 0; }
-
-.name { font-size: 20px; font-weight: 700; word-break: break-all; }
-
-.child .name { font-size: 17px; font-weight: 400; }
-
-.id { font-size: 13px; color: var(--muted); }
-
-.row.disabled .name { color: var(--muted); }
-
-.pill {
+/* 实心绿点开启，空心灰圈关闭 */
+.dot {
     flex: none;
-    padding: 4px 12px;
-    border-radius: 999px;
-    font-size: 14px;
-    font-weight: 700;
-    color: #fff;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
     background: var(--on);
 }
 
-.disabled .pill { background: var(--off); }
+.disabled > .dot, .feature.disabled .dot { background: none; border: 2px solid var(--off); }
+
+.name { font-size: 18px; font-weight: 700; }
+
+.id { margin-left: auto; font-size: 13px; color: var(--muted); }
+
+.disabled > .name { color: var(--muted); font-weight: 400; }
+
+.features { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 5px 0 0 22px; }
+
+.feature { display: flex; align-items: center; gap: 6px; font-size: 14.5px; color: var(--sub); }
+
+.feature .dot { width: 8px; height: 8px; }
+
+.feature.disabled { color: var(--muted); }
+
+footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: 20px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.legend { display: flex; align-items: center; gap: 6px; }
+
+.legend .dot { width: 9px; height: 9px; }
+
+.legend .dot.hollow { margin-left: 10px; background: none; border: 2px solid var(--off); }
 
 .watermark {
-    margin-top: 4px;
-    font-size: 13px;
-    line-height: 1.6;
-    color: #8697b3;
     white-space: pre-line;
-    text-align: {{ "center" if watermark_position == "bottom" else "right" }};
+    text-align: right;
 }
+
+div.watermark { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; }
 </style>
 </head>
 <body>
-<div class="head">
+<header>
     <div>
         <h1>{{ title }}</h1>
-        <div class="group">Group: {{ group_id }}</div>
+        <div class="group">群 {{ group_id }}</div>
     </div>
     <div class="summary">
-        <span class="on">启用 {{ enabled_count }}</span>
-        <span class="off">禁用 {{ disabled_count }}</span>
+        <span><b>{{ enabled_count }}</b>开启</span>
+        <span class="off"><b>{{ disabled_count }}</b>关闭</span>
     </div>
-</div>
-<div class="cards">
+</header>
+
+<div class="list">
     {% for group in groups %}
-    <div class="card">
-        {% for row in [group.parent] + group.children %}
-        <div class="row{% if row.is_child %} child{% endif %}{% if not row.enabled %} disabled{% endif %}">
-            <div class="text">
-                <div class="name">{{ row.name }}</div>
-                <div class="id">{{ row.plugin_id }}</div>
-            </div>
-            <div class="pill">{{ "ON" if row.enabled else "OFF" }}</div>
+    <div class="plugin">
+        <div class="row{% if not group.parent.enabled %} disabled{% endif %}">
+            <span class="dot"></span>
+            <span class="name">{{ group.parent.name }}</span>
+            <span class="id">{{ group.parent.plugin_id }}</span>
         </div>
-        {% endfor %}
+        {% if group.children %}
+        <div class="features">
+            {% for row in group.children %}
+            <span class="feature{% if not row.enabled %} disabled{% endif %}"><span class="dot"></span>{{ row.name }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>
-{% if watermark_text %}<div class="watermark">{{ watermark_text }}</div>{% endif %}
+
+<footer>
+    <span class="legend"><span class="dot"></span>开启 <span class="dot hollow"></span>关闭</span>
+    {% if watermark_text and watermark_position != "bottom" %}<span class="watermark">{{ watermark_text }}</span>{% endif %}
+</footer>
+{% if watermark_text and watermark_position == "bottom" %}<div class="watermark">{{ watermark_text }}</div>{% endif %}
 </body>
 </html>

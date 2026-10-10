@@ -63,7 +63,8 @@ async def draw_alive_card(
             "running": proc.running,
             "mem": _format_bytes(proc.mem_bytes) if proc.running else "-",
         }
-        for proc in server.processes or []
+        # 停止的进程排在最前面，一眼就能看到
+        for proc in sorted(server.processes or [], key=lambda p: p.running)
     ]
     # watermark 第一行是品牌，第二行是生成时间
     lines = [ln.strip() for ln in watermark.splitlines() if ln.strip()] + ["", ""]

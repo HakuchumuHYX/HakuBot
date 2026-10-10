@@ -70,6 +70,6 @@ async def handle_cp_list(bot: Bot, event: GroupMessageEvent):
         except Exception:
             name_b = str(waifu_id)
 
-        names.append((name_a, name_b))
+        names.append((user_id, name_a, waifu_id, name_b))
 
     await cp_list.finish(await render_cp_list(names))

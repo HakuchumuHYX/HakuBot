@@ -12,14 +12,27 @@ PLUGIN_DIR = Path(__file__).parent.absolute()
 CONFIG_PATH = PluginPaths("help_plugin").config / "config.json"
 
 
+class HelpItem(BaseModel):
+    name: str
+    desc: str
+    # 用户要发送的指令；为空表示自动触发
+    triggers: List[str] = []
+    # 致谢、注意事项等补充说明
+    note: str = ""
+    # 不画进图里，统一用合并转发发出，方便复制
+    links: List[str] = []
+
+
+class HelpSection(BaseModel):
+    title: str
+    items: List[HelpItem]
+
+
 class HelpConfig(BaseModel, extra=Extra.ignore):
-    help_text: List[str] = [
-        "欢迎使用群高性能萝卜子ATRI！",
-        "项目地址：https://github.com/HakuchumuHYX/HakuBot",
-    ]
-    # 如果 config.json 里还有 keywords 和 bot_name，也可以加上定义
-    keywords: List[str] = ["help", "帮助"]
-    bot_name: str = "ATRI帮助文档"
+    bot_name: str = "ATRI"
+    intro: str = "欢迎使用群高性能萝卜子 ATRI！"
+    links: List[str] = ["https://github.com/HakuchumuHYX/HakuBot"]
+    sections: List[HelpSection] = []
 
 
 def load_config() -> HelpConfig:

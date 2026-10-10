@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <style>
 {{ font_css | safe }}
-@font-face { font-family: MiSans; src: url("../assets/MiSans-Regular.ttf"); }
 
 :root {
     --bg: #fff7ee;
@@ -19,7 +18,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: MiSans, Haku, sans-serif;
+    font-family: Haku, 'Noto Color Emoji', sans-serif;
     color: var(--ink);
     background:
         radial-gradient(circle at 12% 8%, #ffe2c6 0, transparent 38%),
@@ -53,7 +52,7 @@ body {
 
 .title { flex: 1; }
 
-.title h1 { font-size: 30px; font-weight: 700; }
+.title h1 { font-size: 30px; font-weight: 900; }
 
 .title p { margin-top: 4px; font-size: 16px; color: var(--sub); }
 
@@ -65,7 +64,7 @@ body {
     color: var(--brown);
 }
 
-.total b { display: block; font-size: 30px; line-height: 1.1; }
+.total b { display: block; font-size: 30px; font-weight: 900; line-height: 1.1; }
 
 .total span { font-size: 13px; }
 
@@ -97,12 +96,12 @@ body {
     left: 6px;
     top: 10px;
     width: 80px;
-    opacity: 0.35;
 }
 
+/* 没签到的格子只留日期，签到的才放鹿，对比才清楚 */
 .day.done { background: #fff0e0; }
 
-.day.done .pipe { opacity: 1; }
+.day.future .num { color: #d8c6b8; }
 
 .day .check {
     position: absolute;
@@ -116,7 +115,7 @@ body {
     left: 8px;
     bottom: 4px;
     font-size: 20px;
-    font-weight: 700;
+    font-weight: 900;
 }
 
 .day .count {
@@ -160,9 +159,11 @@ body {
         <div class="blank"></div>
         {% else %}
         {% set count = deer_map.get(day, 0) %}
-        <div class="day{% if count %} done{% endif %}{% if day == today %} today{% endif %}">
+        <div class="day{% if count %} done{% endif %}{% if day == today %} today{% elif day > today %} future{% endif %}">
+            {% if count %}
             <img class="pipe" src="../assets/deerpipe@100x82.png">
-            {% if count %}<img class="check" src="../assets/check@96x100.png">{% endif %}
+            <img class="check" src="../assets/check@96x100.png">
+            {% endif %}
             <div class="num">{{ day }}</div>
             {% if count > 1 %}<div class="count">x{{ "99+" if count > 99 else count }}</div>{% endif %}
         </div>

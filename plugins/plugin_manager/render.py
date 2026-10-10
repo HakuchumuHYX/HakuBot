@@ -44,8 +44,8 @@ async def render_plugin_status_image(
         title=title,
         group_id=group_id,
         groups=groups,
-        # 行数多时两列，避免图片过长
-        columns=2 if len(rows) > 12 else 1,
+        # 插件多时分两列，避免图片过长
+        columns=2 if len(groups) > 8 else 1,
         enabled_count=enabled_count,
         disabled_count=len(rows) - enabled_count,
         watermark_text=watermark_text.strip(),
