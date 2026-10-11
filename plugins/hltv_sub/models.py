@@ -20,6 +20,8 @@ class EventInfo:
     prize: str = ""
     teams: str = ""
     location: str = ""
+    country: str = ""  # 举办地旗帜代码，只有即将举行的大型赛事有
+    logo: str = ""  # 只有正在进行的赛事卡片带 logo
     is_ongoing: bool = False
 
 
@@ -33,6 +35,8 @@ class MatchInfo:
     team2: str
     team1_id: str
     team2_id: str
+    team1_logo: str = ""
+    team2_logo: str = ""
     maps: str = ""
     rating: int = 0
     event: str = ""
@@ -58,7 +62,7 @@ class MatchTimeHint:
 
 @dataclass
 class ResultInfo:
-    """结果信息"""
+    """结果信息；date 为 YYYY-MM-DD，format 为 bo3/bo5 或 bo1 的地图名。"""
 
     id: str
     date: str
@@ -66,7 +70,19 @@ class ResultInfo:
     team2: str
     score1: str
     score2: str
+    team1_logo: str = ""
+    team2_logo: str = ""
+    format: str = ""
     event: str = ""
+
+
+@dataclass
+class HalfScore:
+    """半场比分；team1_side 为 team1 在该半场的阵营（ct / t），加时可能为空。"""
+
+    score1: str
+    score2: str
+    team1_side: str = ""
 
 
 @dataclass
@@ -74,10 +90,12 @@ class MapStats:
     """地图数据"""
 
     map_name: str
-    pick_by: str  # team1, team2, or decider
+    pick_by: str  # team1 / team2；空串表示 decider
     score_team1: str
     score_team2: str
     stats_id: str = ""  # 用于关联单图详细数据
+    halves: list[HalfScore] = field(default_factory=list)
+    image: str = ""  # HLTV 的地图横幅
 
 
 @dataclass
@@ -93,6 +111,8 @@ class PlayerStats:
     kast: str
     rating: str
     swing: str = ""
+    country: str = ""  # HLTV 旗帜代码，如 SE、EU、WORLD
+    country_name: str = ""
 
 
 @dataclass
@@ -112,6 +132,15 @@ class MatchStats:
     )  # 单图详细数据 {map_name: players}
     vetos: list[str] = field(default_factory=list)
     event: str = ""
+    team1_logo: str = ""
+    team2_logo: str = ""
+    team1_country: str = ""
+    team1_country_name: str = ""
+    team2_country: str = ""
+    team2_country_name: str = ""
+    format_line: str = ""  # 如 "Best of 3 (LAN)"
+    stage: str = ""  # 如 "Semi-final"
+    date: str = ""  # YYYY-MM-DD
 
 
 @dataclass

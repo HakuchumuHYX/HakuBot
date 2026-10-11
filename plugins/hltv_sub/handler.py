@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from typing import Literal, Optional
 
@@ -207,18 +207,13 @@ def _single_map_stats(
     score2_after_map: int,
 ) -> MatchStats:
     map_players = (stats.map_stats_details or {}).get(map_info.map_name) or []
-    return MatchStats(
-        match_id=stats.match_id,
-        team1=stats.team1,
-        team2=stats.team2,
+    return replace(
+        stats,
         score1=str(score1_after_map),
         score2=str(score2_after_map),
-        status=stats.status,
         maps=[map_info],
         players=[],
         map_stats_details={map_info.map_name: map_players},
-        vetos=stats.vetos,
-        event=stats.event,
     )
 
 
@@ -743,14 +738,7 @@ class HLTVHandler:
             return
 
         try:
-            img = await render_reminder(
-                team1=match.team1,
-                team2=match.team2,
-                event_title=event_title,
-                maps=match.maps,
-                is_grand_final=match.is_grand_final,
-                is_third_place=match.is_third_place,
-            )
+            img = await render_reminder(match, event_title)
             msg = image_segment(img)
         except Exception as e:
             logger.warning(f"[HLTV] 渲染提醒图片失败，使用文本消息: {e}")

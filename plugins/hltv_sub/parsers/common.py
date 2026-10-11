@@ -16,6 +16,31 @@ def extract_id_from_url(url: str) -> str:
     return match.group(1) if match else ""
 
 
+def absolute_url(src: str) -> str:
+    return f"https://www.hltv.org{src}" if src.startswith("/") else src
+
+
+def pick_logo(imgs) -> str:
+    """模板是深色底，有 night-only 变体时优先用它。"""
+    imgs = list(imgs)
+    if not imgs:
+        return ""
+    img = next(
+        (i for i in imgs if "night-only" in (i.get("class") or [])), imgs[0]
+    )
+    # 截图按 2 倍缩放，srcset 里的 2x 图更清晰。
+    srcset = img.get("srcset", "")
+    return absolute_url(srcset.split()[0] if srcset else img.get("src", ""))
+
+
+def flag_of(img) -> tuple[str, str]:
+    """从 /img/static/flags/30x20/SE.gif 取旗帜代码；模板按代码拼高清图。"""
+    if img is None:
+        return "", ""
+    match = re.search(r"/flags/[^/]+/([A-Za-z]+)\.", img.get("src", ""))
+    return (match.group(1) if match else ""), img.get("alt", "")
+
+
 def format_date(unix_timestamp: str, tz: pytz.BaseTzInfo) -> str:
     """保留年份；月日展示由渲染层负责。"""
     try:

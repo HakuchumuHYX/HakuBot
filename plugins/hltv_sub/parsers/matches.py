@@ -11,7 +11,9 @@ from nonebot.log import logger
 from plugins.hltv_sub.models import (
     EventMatchesMeta, EventMatchesPage, MatchInfo, MatchTimeHint,
 )
-from plugins.hltv_sub.parsers.common import extract_id_from_url, parse_start_time
+from plugins.hltv_sub.parsers.common import (
+    extract_id_from_url, parse_start_time, pick_logo,
+)
 
 
 def _extract_maps_format(wrapper) -> str:
@@ -108,6 +110,8 @@ def _parse_matches(
                     team2=team2,
                     team1_id=team1_id,
                     team2_id=team2_id,
+                    team1_logo=_team_logo(wrapper, "team1"),
+                    team2_logo=_team_logo(wrapper, "team2"),
                     maps=maps_format,
                     rating=rating,
                     is_live=is_live,
@@ -265,6 +269,11 @@ def _is_third_place_match(wrapper) -> bool:
     return _contains_third_place_marker(
         no_info.get_text(" ", strip=True) if no_info else ""
     )
+
+
+def _team_logo(wrapper, side: str) -> str:
+    block = wrapper.select_one(f"div.match-team.{side}")
+    return pick_logo(block.find_all("img", class_="match-team-logo")) if block else ""
 
 
 def _extract_team_names_from_wrapper(wrapper) -> Tuple[str, str]:

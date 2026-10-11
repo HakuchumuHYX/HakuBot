@@ -7,6 +7,15 @@ from contextlib import asynccontextmanager
 from playwright.async_api import async_playwright
 
 
+def _chrome_user_agent(version: str) -> str:
+    # 默认 UA 带 HeadlessChrome，Cloudflare 会拦下模板里的远程图片（如 HLTV 队标）。
+    major = version.split(".")[0]
+    return (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        f"(KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
+    )
+
+
 class BrowserPool:
     def __init__(self, max_contexts=5, idle_seconds=300):
         self._slots = asyncio.Semaphore(max_contexts)
@@ -40,7 +49,8 @@ class BrowserPool:
                     acquired = True
                     browser = self._browser
                 context = await browser.new_context(
-                    device_scale_factor=device_scale_factor, **options
+                    device_scale_factor=device_scale_factor,
+                    **{"user_agent": _chrome_user_agent(browser.version), **options},
                 )
                 yield await context.new_page()
             finally:

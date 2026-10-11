@@ -1,0 +1,13 @@
+{# 远程图片统一从这里出：show_images 为假时是无图降级版；单张加载失败连同占位一起移除，不留空洞 #}
+
+{% macro logo(url, size, cls="") -%}
+{%- if show_images and url -%}
+<span class="logo-slot {{ cls }}" style="width: {{ size }}px; height: {{ size }}px;"><img src="{{ url }}" alt="" onerror="this.parentNode.remove()"></span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro flag(code, name="") -%}
+{%- if show_images and code -%}
+<img class="flag" src="https://www.hltv.org/img/static/flags/300x200/{{ code }}.png" alt="{{ name }}" onerror="this.remove()">
+{%- endif -%}
+{%- endmacro %}

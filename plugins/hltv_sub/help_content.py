@@ -8,7 +8,7 @@ def build_help_sections():
                     "name": "event列表",
                     "args": "",
                     "aliases": ["赛事列表", "events"],
-                    "desc": "查看近期大型赛事列表（包含进行中/未开始），并标注你已订阅的赛事。",
+                    "desc": "查看近期大型赛事列表（包含进行中/未开始）。",
                     "admin_only": False,
                     "superuser_only": False,
                 },

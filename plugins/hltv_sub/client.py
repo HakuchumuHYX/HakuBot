@@ -115,7 +115,7 @@ class HLTVClient:
             url, cache_key=f"results:{event_id}", ttl=120, force_refresh=force_refresh
         )
 
-        results = parse_event_results(page.text, max_results=max_results)
+        results = parse_event_results(page.text, self._tz, max_results=max_results)
         logger.debug(
             f"[HLTV][RESULTS] parsed event={event_id} count={len(results)} max_results={max_results}"
         )
@@ -138,6 +138,7 @@ class HLTVClient:
         parsed = parse_match_stats(
             page.text,
             match_id=match_id,
+            tz=self._tz,
             team1=team1,
             team2=team2,
             event_title=event_title,

@@ -1,10 +1,13 @@
 """HLTV 图片渲染模块"""
 
+import re
 from pathlib import Path
 from datetime import datetime
 from dataclasses import asdict
 from typing import Optional
 import pytz
+from nonebot.log import logger
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from utils.rendering.engine import render_template
 
@@ -13,24 +16,54 @@ from plugins.hltv_sub.models import EventInfo, MatchInfo, ResultInfo, MatchStats
 
 # 模板目录
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+# 队标、国旗、地图横幅都从 HLTV 远程加载；等不到就改渲染无图版本，不退回文字。
+IMAGE_TIMEOUT_MS = 15_000
+
+VETO_PATTERN = re.compile(r"^\d+\.\s*(.+?)\s+(removed|picked)\s+(.+)$")
+LEFTOVER_PATTERN = re.compile(r"^\d+\.\s*(.+?)\s+was left over$")
 
 
 async def _render(template_name: str, context: dict, width: int) -> bytes:
     tz = pytz.timezone(plugin_config.hltv_timezone)
-    return await render_template(
-        TEMPLATE_DIR,
-        template_name,
-        width=width,
+    context = {
         **context,
-        timestamp=datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S"),
-        watermark_text=plugin_config.hltv_watermark_text,
-    )
+        "timestamp": datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S"),
+        "watermark_text": plugin_config.hltv_watermark_text,
+    }
+    try:
+        return await render_template(
+            TEMPLATE_DIR, template_name, width=width,
+            timeout=IMAGE_TIMEOUT_MS, show_images=True, **context,
+        )
+    except PlaywrightTimeoutError:
+        logger.warning(f"[HLTV] {template_name} 远程图片加载超时，改为渲染无图版本")
+        return await render_template(
+            TEMPLATE_DIR, template_name, width=width, show_images=False, **context
+        )
+
+
+def _veto_steps(stats: MatchStats) -> list[dict]:
+    """把 "3. Spirit picked Dust2" 拆成结构化步骤；认不出的行原样保留。"""
+    sides = {stats.team1.lower(): "team1", stats.team2.lower(): "team2"}
+    steps = []
+    for line in stats.vetos:
+        if match := VETO_PATTERN.match(line):
+            team, action, map_name = match.groups()
+            steps.append({
+                "action": "pick" if action == "picked" else "ban",
+                "side": sides.get(team.lower(), ""),
+                "map": map_name,
+            })
+        elif match := LEFTOVER_PATTERN.match(line):
+            steps.append({"action": "left", "side": "", "map": match.group(1)})
+        else:
+            steps.append({"action": "text", "side": "", "map": line})
+    return steps
 
 
 async def render_events(
     ongoing_events: list[EventInfo],
     upcoming_events: list[EventInfo],
-    subscribed_ids: list[str],
 ) -> bytes:
     """渲染赛事列表图片"""
 
@@ -49,7 +82,6 @@ async def render_events(
         {
             "ongoing_events": ongoing,
             "upcoming_events": upcoming,
-            "subscribed_ids": subscribed_ids,
         },
         width=650,
     )
@@ -86,10 +118,10 @@ async def render_matches(
 async def render_results(results_by_event: dict[str, list[ResultInfo]]) -> bytes:
     """渲染结果列表图片"""
 
-    # 转换数据结构
-    results_dict = {}
-    for event_name, results in results_by_event.items():
-        results_dict[event_name] = [asdict(r) for r in results]
+    results_dict = {
+        event_name: [{**asdict(r), "date": r.date[5:]} for r in results]
+        for event_name, results in results_by_event.items()
+    }
 
     return await _render(
         "results.html",
@@ -113,13 +145,14 @@ async def render_stats(stats: Optional[MatchStats]) -> bytes:
             len(played_maps) == 1 and played_maps[0].map_name in stats.map_stats_details
         )
         stats_dict["show_total_overview"] = not has_single_map_details
+        stats_dict["veto_steps"] = _veto_steps(stats)
 
     return await _render(
         "stats.html",
         {
             "stats": stats_dict,
         },
-        width=800,
+        width=1040,
     )
 
 
@@ -128,24 +161,10 @@ async def render_help(sections: list[dict]) -> bytes:
     return await _render("help.html", {"sections": sections}, width=820)
 
 
-async def render_reminder(
-    team1: str,
-    team2: str,
-    event_title: str,
-    maps: str = "",
-    is_grand_final: bool = False,
-    is_third_place: bool = False,
-) -> bytes:
+async def render_reminder(match: MatchInfo, event_title: str) -> bytes:
     """渲染比赛已开始的提醒。"""
     return await _render(
         "reminder.html",
-        {
-            "team1": team1,
-            "team2": team2,
-            "event_title": event_title,
-            "maps": maps,
-            "is_grand_final": is_grand_final,
-            "is_third_place": is_third_place,
-        },
-        width=550,
+        {"match": asdict(match), "event_title": event_title},
+        width=560,
     )

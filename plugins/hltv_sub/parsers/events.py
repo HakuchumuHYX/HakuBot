@@ -11,7 +11,9 @@ from bs4 import BeautifulSoup
 from nonebot.log import logger
 
 from plugins.hltv_sub.models import EventInfo
-from plugins.hltv_sub.parsers.common import extract_id_from_url, format_date
+from plugins.hltv_sub.parsers.common import (
+    extract_id_from_url, flag_of, format_date, pick_logo,
+)
 
 
 def is_ongoing(start_date: str, end_date: str, tz) -> bool:
@@ -73,6 +75,9 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
                                 title=title,
                                 start_date=start_date,
                                 end_date=end_date,
+                                logo=pick_logo(
+                                    event_elem.find_all("img", class_="logo", limit=2)
+                                ),
                                 is_ongoing=True,
                             )
                         )
@@ -102,6 +107,7 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
                             date_elems[1].get("data-unix", "") or "", tz
                         )
 
+                    location_elem = event_elem.find("span", class_="big-event-location")
                     if event_id and title:
                         events.append(
                             EventInfo(
@@ -109,6 +115,11 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
                                 title=title,
                                 start_date=start_date,
                                 end_date=end_date,
+                                location=(
+                                    location_elem.get_text(strip=True)
+                                    if location_elem else ""
+                                ),
+                                country=flag_of(event_elem.find("img", class_="flag"))[0],
                                 is_ongoing=False,
                             )
                         )

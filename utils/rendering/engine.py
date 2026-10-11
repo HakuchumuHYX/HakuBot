@@ -47,10 +47,14 @@ async def render_html(
     quality: int | None = None,
     timeout: float = 30_000,
 ) -> bytes:
-    """HTML 转图片；base_dir 决定模板里相对路径（CSS、图片）的解析位置。"""
+    """HTML 转图片；base_dir 决定模板里相对路径（CSS、图片）的解析位置。
+
+    timeout 同时限制页面加载（含远程图片）和截图。
+    """
     async with browser_pool.page(
         viewport={"width": width, "height": 10}, device_scale_factor=scale
     ) as page:
+        page.set_default_timeout(timeout)
         page.on("console", lambda msg: logger.debug(f"[Browser Console]: {msg.text}"))
         await page.goto(base_dir.resolve().as_uri() + "/")
         await page.set_content(html, wait_until="load")

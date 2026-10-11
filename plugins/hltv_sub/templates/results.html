@@ -1,178 +1,132 @@
 {% extends "base.html" %}
+{% import "macros.html" as m with context %}
 
 {% block title %}HLTV Results{% endblock %}
 
 {% block extra_styles %}
-.result-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+.fixture {
+    display: grid;
+    grid-template-columns: 60px 1fr 104px 1fr 96px;
+    align-items: center;
+    min-height: 62px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
 }
 
-.result-item {
+.fixture:last-child {
+    border-bottom: none;
+}
+
+.day {
+    font-size: 17px;
+    color: var(--muted);
+}
+
+.side {
     display: flex;
     align-items: center;
-    background: rgba(40, 40, 60, 0.8);
-    border-radius: 8px;
-    padding: 12px 15px;
-    border-left: 3px solid #9b59b6;
+    gap: 12px;
+    min-width: 0;
 }
 
-.result-date {
-    min-width: 80px;
-    text-align: center;
-    font-size: 13px;
-    color: #888;
-}
-
-.result-teams {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    margin: 0 15px;
-}
-
-.team {
-    flex: 1;
-    text-align: center;
-}
-
-.team-name {
-    font-size: 15px;
-    font-weight: 500;
-    color: #fff;
-}
-
-.team-name.winner {
-    color: #27ae60;
-}
-
-.team-name.loser {
-    color: #888;
-}
-
-.score {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 20px;
-    font-weight: 700;
-}
-
-.score-value {
-    min-width: 25px;
-    text-align: center;
-}
-
-.score-value.winner {
-    color: #27ae60;
-}
-
-.score-value.loser {
-    color: #888;
-}
-
-.score-separator {
-    color: #555;
-}
-
-.result-info {
-    min-width: 80px;
+.side.t1 {
+    justify-content: flex-end;
     text-align: right;
 }
 
-.result-id {
-    font-family: 'DejaVu Sans Mono', monospace;
-    font-size: 11px;
-    color: #555;
+.side-name {
+    font-size: 22px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.event-group {
-    margin-bottom: 20px;
+.side.lost .side-name {
+    color: var(--muted);
 }
 
-.event-group-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: #ff9800;
-    margin-bottom: 10px;
-    padding-left: 10px;
-    border-left: 3px solid #ff9800;
+.side.lost .logo-slot {
+    opacity: 0.45;
 }
 
-.empty-message {
+.score {
     text-align: center;
-    padding: 40px 20px;
-    color: #666;
-    font-size: 14px;
+    font-size: 30px;
+    font-weight: 700;
 }
 
-.tip {
-    margin-top: 15px;
-    padding: 12px 15px;
-    background: rgba(155, 89, 182, 0.1);
-    border-radius: 8px;
-    border-left: 3px solid #9b59b6;
-    font-size: 13px;
-    color: #ccc;
+.score .sep {
+    margin: 0 6px;
+    color: var(--line);
+}
+
+.trail {
+    color: var(--muted);
+}
+
+.meta {
+    text-align: right;
+    line-height: 1.25;
+}
+
+.meta .bo {
+    font-size: 19px;
+    font-weight: 600;
+}
+
+.meta .id {
+    font-size: 15px;
+    color: var(--muted);
 }
 {% endblock %}
 
 {% block content %}
-<div class="header">
-    <div class="header-icon">R</div>
-    <div>
-        <div class="header-title">比赛结果</div>
-        <div class="header-subtitle">已订阅赛事的已完成比赛</div>
-    </div>
+{# bo1 时 HLTV 给的是地图缩写 #}
+{% set map_names = {'d2': 'Dust2', 'mrg': 'Mirage', 'inf': 'Inferno', 'nuke': 'Nuke', 'anc': 'Ancient', 'ovp': 'Overpass', 'vtg': 'Vertigo', 'anb': 'Anubis', 'trn': 'Train', 'cch': 'Cache', 'cbl': 'Cobblestone'} %}
+
+<div class="page-head">
+    <div class="page-title">赛果</div>
+    <div class="page-note">已订阅赛事的最近结果</div>
 </div>
 
 {% for event_name, results in results_by_event.items() %}
-<div class="event-group">
-    <div class="event-group-title">{{ event_name }}</div>
-    <div class="result-list">
-        {% for result in results %}
-        {% set score1 = result.score1|int %}
-        {% set score2 = result.score2|int %}
-        {% set team1_won = score1 > score2 %}
-        <div class="result-item">
-            <div class="result-date">{{ result.date }}</div>
-            <div class="result-teams">
-                <div class="team">
-                    <div class="team-name {% if team1_won %}winner{% else %}loser{% endif %}">
-                        {{ result.team1 }}
-                    </div>
-                </div>
-                <div class="score">
-                    <span class="score-value {% if team1_won %}winner{% else %}loser{% endif %}">{{ result.score1 }}</span>
-                    <span class="score-separator">:</span>
-                    <span class="score-value {% if not team1_won %}winner{% else %}loser{% endif %}">{{ result.score2 }}</span>
-                </div>
-                <div class="team">
-                    <div class="team-name {% if not team1_won %}winner{% else %}loser{% endif %}">
-                        {{ result.team2 }}
-                    </div>
-                </div>
-            </div>
-            <div class="result-info">
-                <div class="result-id">#{{ result.id }}</div>
-            </div>
+{% set event_id, _, event_title = event_name.partition(' ') %}
+<div class="group">
+    <div class="group-title"><span class="num">{{ event_id }}</span><span>{{ event_title }}</span></div>
+    {% for result in results %}
+    {% set score1 = result.score1|int %}
+    {% set score2 = result.score2|int %}
+    {% set fmt = result.format|lower %}
+    <div class="fixture">
+        <div class="day num">{{ result.date }}</div>
+        <div class="side t1 {% if score1 < score2 %}lost{% endif %}">
+            <span class="side-name num">{{ result.team1 }}</span>
+            {{ m.logo(result.team1_logo, 32) }}
         </div>
-        {% endfor %}
+        <div class="score num">
+            <span class="{% if score1 < score2 %}trail{% endif %}">{{ result.score1 }}</span><span class="sep">:</span><span class="{% if score2 < score1 %}trail{% endif %}">{{ result.score2 }}</span>
+        </div>
+        <div class="side t2 {% if score2 < score1 %}lost{% endif %}">
+            {{ m.logo(result.team2_logo, 32) }}
+            <span class="side-name num">{{ result.team2 }}</span>
+        </div>
+        <div class="meta">
+            {% if fmt.startswith('bo') %}
+            <div class="bo num">{{ fmt|upper }}</div>
+            {% elif fmt %}
+            <div class="bo num">{{ map_names.get(fmt, result.format) }}</div>
+            {% endif %}
+            <div class="id num">#{{ result.id }}</div>
+        </div>
     </div>
+    {% endfor %}
 </div>
 {% endfor %}
 
 {% if not results_by_event %}
-<div class="empty-message">
-    暂无比赛结果<br>
-    <small>请先订阅赛事</small>
-</div>
+<div class="empty">暂无比赛结果，订阅赛事后再查看</div>
 {% endif %}
 
-<div class="tip">
-    发送 <code>stats [比赛ID]</code> 查看比赛详细数据
-</div>
+<div class="tip">发送 <code>stats 比赛ID</code> 查看单场详细数据</div>
 {% endblock %}

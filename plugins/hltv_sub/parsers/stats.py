@@ -10,8 +10,10 @@ from typing import Dict, List, Optional
 from bs4 import BeautifulSoup, Tag
 from nonebot.log import logger
 
-from plugins.hltv_sub.models import MapStats, MatchStats, PlayerStats
-from plugins.hltv_sub.parsers.common import extract_id_from_url
+from plugins.hltv_sub.models import HalfScore, MapStats, MatchStats, PlayerStats
+from plugins.hltv_sub.parsers.common import (
+    absolute_url, extract_id_from_url, flag_of, format_date, pick_logo,
+)
 
 
 def _parse_player_table(table: Tag, team_idx: int) -> List[PlayerStats]:
@@ -122,6 +124,8 @@ def _parse_player_table(table: Tag, team_idx: int) -> List[PlayerStats]:
             if not deaths.replace("-", "").isdigit():
                 deaths = "0"
 
+            country, country_name = flag_of(row.find("img", class_="flag"))
+
             players.append(
                 PlayerStats(
                     id=player_id,
@@ -133,6 +137,8 @@ def _parse_player_table(table: Tag, team_idx: int) -> List[PlayerStats]:
                     rating=rating,
                     swing=swing,
                     kast=kast,
+                    country=country,
+                    country_name=country_name,
                 )
             )
 
@@ -142,9 +148,43 @@ def _parse_player_table(table: Tag, team_idx: int) -> List[PlayerStats]:
     return players
 
 
+def _parse_halves(map_holder: Tag) -> list[HalfScore]:
+    """半场比分形如 (8:4; 5:3)，每个数字的 class 是该队当时的阵营。"""
+    holder = map_holder.find("div", class_="results-center-half-score")
+    if not holder:
+        return []
+    digits = [
+        span for span in holder.find_all("span")
+        if span.get_text(strip=True).isdigit()
+    ]
+    halves: list[HalfScore] = []
+    for first, second in zip(digits[::2], digits[1::2]):
+        side = next(
+            (c for c in (first.get("class") or []) if c in ("ct", "t")), ""
+        )
+        halves.append(
+            HalfScore(
+                score1=first.get_text(strip=True),
+                score2=second.get_text(strip=True),
+                team1_side=side,
+            )
+        )
+    return halves
+
+
+def _parse_team_box(soup: BeautifulSoup, index: int) -> tuple[str, str, str]:
+    """返回 (队标, 旗帜代码, 国家/地区名)。"""
+    box = soup.select_one(f".teamsBox .team{index}-gradient")
+    if box is None:
+        return "", "", ""
+    country, country_name = flag_of(box.parent.find("img", class_=f"team{index}"))
+    return pick_logo(box.find_all("img", class_="logo")), country, country_name
+
+
 def parse_match_stats(
     html: str,
     match_id: str,
+    tz,
     team1: str = "",
     team2: str = "",
     event_title: str = "",
@@ -184,22 +224,37 @@ def parse_match_stats(
                         score2 = text
                         break
 
+        team1_logo, team1_country, team1_country_name = _parse_team_box(soup, 1)
+        team2_logo, team2_country, team2_country_name = _parse_team_box(soup, 2)
+
         # 获取状态
         status = "完成"
         countdown = soup.find("div", class_="countdown")
         if countdown:
             status = countdown.get_text(strip=True)
 
-        # 解析 Veto/BP
+        date_elem = soup.select_one(".timeAndEvent .date[data-unix]")
+        match_date = format_date(date_elem.get("data-unix", ""), tz) if date_elem else ""
+        if not event_title:
+            event_elem = soup.select_one(".timeAndEvent .event a")
+            event_title = event_elem.get_text(strip=True) if event_elem else ""
+
+        # 第一个 veto-box 是赛制说明（"Best of 3 (LAN)" + "* Semi-final"），其后才是 BP。
         vetos: list[str] = []
-        veto_boxes = soup.find_all("div", class_="veto-box")
-        for box in veto_boxes:
+        format_line = ""
+        stage = ""
+        for box in soup.find_all("div", class_="veto-box"):
             lines = [
                 line.strip() for line in box.get_text("\n").split("\n") if line.strip()
             ]
-            filtered_lines = [l for l in lines if not l.startswith("*")]
-            if filtered_lines:
-                vetos.extend(filtered_lines)
+            if box.find(class_="preformatted-text"):
+                for line in lines:
+                    if line.startswith("*"):
+                        stage = stage or line.lstrip("* ").strip()
+                    else:
+                        format_line = format_line or line
+                continue
+            vetos.extend(line for line in lines if not line.startswith("*"))
 
         # 解析地图列表和 stats id
         maps: list[MapStats] = []
@@ -251,14 +306,14 @@ def parse_match_stats(
                 map_score1 = re.sub(r"[^\d-]", "", map_score1) or "-"
                 map_score2 = re.sub(r"[^\d-]", "", map_score2) or "-"
 
+                # 选图方那一侧带 pick class；两侧都没有就是 decider。
                 pick_by = ""
-                pick_elem = map_holder.find(class_=re.compile(r"pick|picked"))
-                if pick_elem:
-                    pick_text = pick_elem.get_text(strip=True)
-                    if team1 and team1.lower() in pick_text.lower():
-                        pick_by = team1
-                    elif team2 and team2.lower() in pick_text.lower():
-                        pick_by = team2
+                if results_left and "pick" in (results_left.get("class") or []):
+                    pick_by = "team1"
+                elif results_right and "pick" in (results_right.get("class") or []):
+                    pick_by = "team2"
+
+                minimap = map_holder.find("img", class_="minimap")
 
                 maps.append(
                     MapStats(
@@ -267,6 +322,8 @@ def parse_match_stats(
                         score_team1=map_score1,
                         score_team2=map_score2,
                         stats_id=stats_id,
+                        halves=_parse_halves(map_holder),
+                        image=absolute_url(minimap.get("src", "")) if minimap else "",
                     )
                 )
             except Exception as e:
@@ -328,6 +385,15 @@ def parse_match_stats(
             map_stats_details=map_stats_details,
             vetos=vetos,
             event=event_title,
+            team1_logo=team1_logo,
+            team2_logo=team2_logo,
+            team1_country=team1_country,
+            team1_country_name=team1_country_name,
+            team2_country=team2_country,
+            team2_country_name=team2_country_name,
+            format_line=format_line,
+            stage=stage,
+            date=match_date,
         )
 
     except Exception as e:

@@ -2,145 +2,162 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}HLTV{% endblock %}</title>
     <style>
         {{ font_css | safe }}
+
+        /* 比分、队名、数据列用窄体，中文回落到 Haku（MiSans） */
+        @font-face { font-family: "Barlow Condensed"; src: url("fonts/BarlowCondensed-Medium.ttf"); font-weight: 500; }
+        @font-face { font-family: "Barlow Condensed"; src: url("fonts/BarlowCondensed-SemiBold.ttf"); font-weight: 600; }
+        @font-face { font-family: "Barlow Condensed"; src: url("fonts/BarlowCondensed-Bold.ttf"); font-weight: 700; }
+
+        :root {
+            --bg: #20262F;
+            --panel: #2A313C;
+            --line: #3A4350;
+            --text: #E9ECF1;
+            --muted: #8C96A5;
+            --ct: #6E9BD6;
+            --t: #E3A94B;
+            --up: #4FBF7A;
+            --down: #E0625A;
+            --live: #E5484D;
+            --gold: #E8C468;
+            --bronze: #C58B5A;
+            --num: "Barlow Condensed", Haku, sans-serif;
+        }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
-        /* 截图期间若排版跳变导致页面变矮，body 渐变铺不到的区域会露白，用同色纯色兜底 */
+
+        /* 截图期间若排版跳变导致页面变矮，露出的区域也是底色 */
         html {
-            background: #16213e;
+            background: var(--bg);
         }
-        
+
         body {
             font-family: Haku, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #e0e0e0;
-            min-width: 600px;
-            padding: 20px;
+            font-size: 16px;
+            line-height: 1.4;
+            background: var(--bg);
+            color: var(--text);
+            padding: 26px 24px 18px;
         }
-        
-        .container {
-            background: rgba(30, 30, 50, 0.95);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+
+        .num {
+            font-family: var(--num);
+            font-variant-numeric: tabular-nums;
         }
-        
-        .header {
+
+        .page-head {
             display: flex;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #ff9800;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            padding-bottom: 14px;
+            margin-bottom: 18px;
+            border-bottom: 1px solid var(--line);
         }
-        
-        .header-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #ff9800, #f57c00);
-            border-radius: 8px;
+
+        .page-title {
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .page-note {
+            font-size: 15px;
+            color: var(--muted);
+        }
+
+        .group {
+            margin-bottom: 22px;
+        }
+
+        .group-title {
             display: flex;
+            align-items: baseline;
+            gap: 10px;
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .group-title .num {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+
+        /* 图片位固定尺寸：图片缺失或加载失败时版式不变 */
+        .logo-slot {
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            margin-right: 15px;
-            font-weight: bold;
-            font-size: 18px;
-            color: #1a1a2e;
+            flex-shrink: 0;
         }
-        
-        .header-title {
-            font-size: 24px;
-            font-weight: 600;
-            color: #ffffff;
+
+        .logo-slot img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
         }
-        
-        .header-subtitle {
-            font-size: 14px;
-            color: #888;
-            margin-top: 2px;
-        }
-        
-        .section {
-            margin-bottom: 20px;
-        }
-        
-        .section-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #ff9800;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-        }
-        
-        .section-title::before {
-            content: '';
-            width: 4px;
-            height: 16px;
-            background: #ff9800;
-            margin-right: 10px;
-            border-radius: 2px;
-        }
-        
-        .badge {
+
+        .flag {
             display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 500;
-            margin-left: 8px;
+            width: 21px;
+            height: 14px;
+            object-fit: cover;
+            border-radius: 2px;
+            vertical-align: -1px;
+            flex-shrink: 0;
         }
-        
-        .badge-live {
-            background: #e74c3c;
-            color: white;
-            animation: pulse 2s infinite;
-        }
-        
-        .badge-ongoing {
-            background: #27ae60;
-            color: white;
-        }
-        
-        .badge-upcoming {
-            background: #3498db;
-            color: white;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-        
-        .footer {
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 1px solid #333;
+
+        .empty {
+            padding: 40px 0;
             text-align: center;
-            font-size: 12px;
-            color: #666;
+            color: var(--muted);
         }
-        
+
+        .tip {
+            margin-top: 6px;
+            font-size: 15px;
+            color: var(--muted);
+        }
+
+        .tip code {
+            font-family: Haku, sans-serif;
+            color: var(--text);
+        }
+
+        .footer {
+            margin-top: 22px;
+            padding-top: 12px;
+            border-top: 1px solid var(--line);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 16px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .footer .watermark {
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+
         {% block extra_styles %}{% endblock %}
     </style>
 </head>
 <body>
-    <div class="container">
-        {% block content %}{% endblock %}
-        
-        <div class="footer">
-            {% if watermark_text %}
-            <div style="margin-bottom: 8px; white-space: pre-wrap; font-size: 13px; color: #888; line-height: 1.4;">{{ watermark_text }}</div>
-            {% endif %}
-            HLTV SUB PLUGIN • {{ timestamp }}
-        </div>
+    {% block content %}{% endblock %}
+
+    <div class="footer">
+        <div class="watermark">{{ watermark_text }}</div>
+        <div class="num">HLTV {{ timestamp }}</div>
     </div>
 </body>
 </html>

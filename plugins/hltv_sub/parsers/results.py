@@ -10,10 +10,10 @@ from bs4 import BeautifulSoup
 from nonebot.log import logger
 
 from plugins.hltv_sub.models import ResultInfo
-from plugins.hltv_sub.parsers.common import extract_id_from_url
+from plugins.hltv_sub.parsers.common import extract_id_from_url, format_date, pick_logo
 
 
-def parse_event_results(html: str, max_results: int = 20) -> list[ResultInfo]:
+def parse_event_results(html: str, tz, max_results: int = 20) -> list[ResultInfo]:
     """解析 /results?event=xxx 页面"""
     results: list[ResultInfo] = []
     soup = BeautifulSoup(html, "lxml")
@@ -33,12 +33,16 @@ def parse_event_results(html: str, max_results: int = 20) -> list[ResultInfo]:
         team_cells = link.find_all("td", class_="team-cell")
         team1 = ""
         team2 = ""
+        team1_logo = ""
+        team2_logo = ""
 
         if len(team_cells) >= 2:
             team1_elem = team_cells[0].find("div", class_="team")
             team2_elem = team_cells[1].find("div", class_="team")
             team1 = team1_elem.get_text(strip=True) if team1_elem else ""
             team2 = team2_elem.get_text(strip=True) if team2_elem else ""
+            team1_logo = pick_logo(team_cells[0].find_all("img", class_="team-logo"))
+            team2_logo = pick_logo(team_cells[1].find_all("img", class_="team-logo"))
 
         if not team1 or not team2:
             m = re.search(r"/([^/]+)-vs-([^/]+)-", href)
@@ -70,14 +74,21 @@ def parse_event_results(html: str, max_results: int = 20) -> list[ResultInfo]:
 
         if not team1 or not team2 or not score1.isdigit() or not score2.isdigit():
             raise ValueError(f"HLTV 比赛 {match_id} 的结果不完整")
+        # bo1 时这里是地图名，bo3/bo5 时是赛制。
+        format_elem = link.find("div", class_="map-text")
         results.append(
             ResultInfo(
                 id=match_id,
-                date="",
+                date=format_date(
+                    container.get("data-zonedgrouping-entry-unix", ""), tz
+                ),
                 team1=team1,
                 team2=team2,
                 score1=score1,
                 score2=score2,
+                team1_logo=team1_logo,
+                team2_logo=team2_logo,
+                format=format_elem.get_text(strip=True) if format_elem else "",
             )
         )
 
