@@ -740,27 +740,12 @@ class HLTVHandler:
         if not groups:
             return
 
+        # 远程图片超时已在 render 里降级成无图版；走到这里的是渲染本身出错，不标记已推送，下轮重试
         try:
-            img = await render_reminder(match, event_title)
-            msg = image_segment(img)
+            msg = image_segment(await render_reminder(match, event_title))
         except Exception as e:
-            logger.warning(f"[HLTV] 渲染提醒图片失败，使用文本消息: {e}")
-            bo_text = f"BO{match.maps}" if match.maps else ""
-            stage_text = (
-                "GRAND FINAL"
-                if match.is_grand_final
-                else "3RD PLACE"
-                if match.is_third_place
-                else ""
-            )
-            msg = f"""🔴 比赛已开始
-
-🏆 {event_title}
-{stage_text}
-
-⏰ LIVE
-🎮 {match.team1} vs {match.team2}
-{f"📋 {bo_text}" if bo_text else ""}""".strip()
+            logger.error(f"[HLTV] 渲染比赛提醒 {match.id} 失败，下轮将重试: {e}")
+            return
 
         any_success = False
         for group_id in groups:

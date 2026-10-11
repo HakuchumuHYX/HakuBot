@@ -110,8 +110,8 @@ def _parse_matches(
                     team2=team2,
                     team1_id=team1_id,
                     team2_id=team2_id,
-                    team1_logo=_team_logo(wrapper, "team1"),
-                    team2_logo=_team_logo(wrapper, "team2"),
+                    team1_logo=_team_logo(wrapper, 0),
+                    team2_logo=_team_logo(wrapper, 1),
                     maps=maps_format,
                     rating=rating,
                     is_live=is_live,
@@ -271,9 +271,13 @@ def _is_third_place_match(wrapper) -> bool:
     )
 
 
-def _team_logo(wrapper, side: str) -> str:
-    block = wrapper.select_one(f"div.match-team.{side}")
-    return pick_logo(block.find_all("img", class_="match-team-logo")) if block else ""
+def _team_logo(wrapper, index: int) -> str:
+    # 直播中的卡片 match-team 没有 team1/team2 class，只能按 .match-teams 下的顺序取；
+    # 同卡片里比分那两个 match-team 挂在 .match-team-livescore 下，不会混进来。
+    blocks = wrapper.select(".match-teams > div.match-team")
+    if index >= len(blocks):
+        return ""
+    return pick_logo(blocks[index].find_all("img", class_="match-team-logo"))
 
 
 def _extract_team_names_from_wrapper(wrapper) -> Tuple[str, str]:
