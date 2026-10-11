@@ -149,6 +149,11 @@
             line-height: 1.4;
         }
 
+        .footer .source {
+            text-align: right;
+            line-height: 1.4;
+        }
+
         {% block extra_styles %}{% endblock %}
     </style>
 </head>
@@ -157,7 +162,10 @@
 
     <div class="footer">
         <div class="watermark">{{ watermark_text }}</div>
-        <div class="num">HLTV {{ timestamp }}</div>
+        <div class="source">
+            <div>数据来源 HLTV.org</div>
+            <div>生成于 <span class="num">{{ timestamp }}</span></div>
+        </div>
     </div>
 </body>
 </html>

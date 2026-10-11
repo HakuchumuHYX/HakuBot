@@ -10,7 +10,9 @@ from typing import Dict, List, Optional
 from bs4 import BeautifulSoup, Tag
 from nonebot.log import logger
 
-from plugins.hltv_sub.models import HalfScore, MapStats, MatchStats, PlayerStats
+from plugins.hltv_sub.models import (
+    HalfScore, MapStats, MatchStats, PlayerStats, VrsChange,
+)
 from plugins.hltv_sub.parsers.common import (
     absolute_url, extract_id_from_url, flag_of, format_date, pick_logo,
 )
@@ -181,6 +183,38 @@ def _parse_team_box(soup: BeautifulSoup, index: int) -> tuple[str, str, str]:
     return pick_logo(box.find_all("img", class_="logo")), country, country_name
 
 
+def _parse_vrs(soup: BeautifulSoup) -> tuple[VrsChange | None, VrsChange | None]:
+    """赛后的 VRS result 块：左列 before，中列 result，两行依次是 team1、team2。
+
+    赛前/赛中同一个容器是 forecast（current / if wins / if loses），不解析。
+    """
+    container = soup.select_one(".vrs-forecast-container")
+    header = container.select_one(".vrs-forecast-middle .vrs-forecast-header") if container else None
+    if header is None or header.get_text(strip=True).lower() != "result":
+        return None, None
+
+    def numbers(selector: str) -> list[tuple[int, int]]:
+        values = []
+        for wrapper in container.select(f"{selector} .vrs-forecast-numbers-wrapper"):
+            points = re.search(r"[+-]?\d+", wrapper.select_one(".vrs-forecast-points").get_text())
+            rank = re.search(r"\d+", wrapper.select_one(".vrs-forecast-ranking").get_text())
+            # 未上榜的队伍没有数字，这时整块都不显示
+            if not points or not rank:
+                return []
+            values.append((int(points.group()), int(rank.group())))
+        return values
+
+    before = numbers(".vrs-forecast-left-numbers")
+    after = numbers(".vrs-forecast-middle")
+    if len(before) != 2 or len(after) != 2:
+        return None, None
+    team1, team2 = (
+        VrsChange(points_before=b[0], rank_before=b[1], points_delta=a[0], rank_after=a[1])
+        for b, a in zip(before, after)
+    )
+    return team1, team2
+
+
 def parse_match_stats(
     html: str,
     match_id: str,
@@ -226,6 +260,7 @@ def parse_match_stats(
 
         team1_logo, team1_country, team1_country_name = _parse_team_box(soup, 1)
         team2_logo, team2_country, team2_country_name = _parse_team_box(soup, 2)
+        team1_vrs, team2_vrs = _parse_vrs(soup)
 
         # 获取状态
         status = "完成"
@@ -394,6 +429,8 @@ def parse_match_stats(
             format_line=format_line,
             stage=stage,
             date=match_date,
+            team1_vrs=team1_vrs,
+            team2_vrs=team2_vrs,
         )
 
     except Exception as e:

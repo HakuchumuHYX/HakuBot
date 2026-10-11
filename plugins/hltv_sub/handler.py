@@ -214,6 +214,9 @@ def _single_map_stats(
         maps=[map_info],
         players=[],
         map_stats_details={map_info.map_name: map_players},
+        # 末图打完时页面可能已是赛后版，VRS 只留给整场结果图
+        team1_vrs=None,
+        team2_vrs=None,
     )
 
 

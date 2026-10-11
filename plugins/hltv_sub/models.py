@@ -116,6 +116,16 @@ class PlayerStats:
 
 
 @dataclass
+class VrsChange:
+    """赛后 VRS result：HLTV 只按本场胜负估算，正式 VRS 还会计入名次、奖金等。"""
+
+    points_before: int
+    rank_before: int
+    points_delta: int
+    rank_after: int
+
+
+@dataclass
 class MatchStats:
     """比赛详细数据"""
 
@@ -141,6 +151,8 @@ class MatchStats:
     format_line: str = ""  # 如 "Best of 3 (LAN)"
     stage: str = ""  # 如 "Semi-final"
     date: str = ""  # YYYY-MM-DD
+    team1_vrs: VrsChange | None = None  # 仅比赛结束后有
+    team2_vrs: VrsChange | None = None
 
 
 @dataclass

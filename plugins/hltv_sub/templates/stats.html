@@ -109,6 +109,90 @@
     color: var(--muted);
 }
 
+/* VRS 结算挂在比分条下沿，沿用同一套三栏，各队数据落在自己队名正下方 */
+.bug.has-vrs {
+    border-radius: 6px 6px 0 0;
+}
+
+.vrs {
+    display: grid;
+    grid-template-columns: 1fr 200px 1fr;
+    height: 64px;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    border-radius: 0 0 6px 6px;
+    overflow: hidden;
+}
+
+.vrs-team {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 0 20px;
+}
+
+.vrs-team.t2 {
+    align-items: flex-end;
+}
+
+.vrs-rank-line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    line-height: 1;
+}
+
+.vrs-from {
+    font-size: 19px;
+    color: var(--muted);
+}
+
+.vrs-rank {
+    font-size: 30px;
+    font-weight: 700;
+}
+
+.vrs-move {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.vrs-move.dim {
+    font-family: Haku, sans-serif;
+    font-size: 15px;
+    font-weight: 400;
+}
+
+.vrs-points {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 16px;
+    color: var(--muted);
+}
+
+.vrs-points .delta {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+/* 中栏接着比分块的倒梯形继续收窄 */
+.vrs-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    clip-path: polygon(12% 0, 88% 0, 82% 100%, 18% 100%);
+}
+
+.vrs-label .num {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--muted);
+}
+
 .bug-meta {
     display: flex;
     justify-content: center;
@@ -407,7 +491,7 @@
                 {% if top > 0 and rating == top %}<span class="mvp">★</span>{% endif %}
             </div>
             <div class="c">{{ p.kills }}–{{ p.deaths }}</div>
-            <div class="c {% if diff == 0 %}dim{% endif %}">{{ '%+d'|format(diff) if diff else '0' }}</div>
+            <div class="c {% if diff > 0 %}up{% elif diff < 0 %}down{% else %}dim{% endif %}">{{ '%+d'|format(diff) if diff else '0' }}</div>
             <div class="c">{{ p.adr }}</div>
             <div class="c">{{ p.kast }}</div>
             <div class="c {% if swing > 1 %}up{% elif swing < -1 %}down{% endif %}">{{ p.swing }}</div>
@@ -416,6 +500,21 @@
         {% endfor %}
     </div>
     {% endfor %}
+    </div>
+</div>
+{% endmacro %}
+
+{% macro vrs_side(v, cls) %}
+{% set move = v.rank_before - v.rank_after %}
+<div class="vrs-team {{ cls }}">
+    <div class="vrs-rank-line num">
+        <span class="vrs-from">#{{ v.rank_before }} →</span>
+        <span class="vrs-rank">#{{ v.rank_after }}</span>
+        <span class="vrs-move {% if move > 0 %}up{% elif move < 0 %}down{% else %}dim{% endif %}">{% if move > 0 %}▲{{ move }}{% elif move < 0 %}▼{{ -move }}{% else %}持平{% endif %}</span>
+    </div>
+    <div class="vrs-points num">
+        <span>{{ v.points_before }} → {{ v.points_before + v.points_delta }}</span>
+        <span class="delta {% if v.points_delta > 0 %}up{% elif v.points_delta < 0 %}down{% endif %}">{{ '%+d'|format(v.points_delta) }} pt</span>
     </div>
 </div>
 {% endmacro %}
@@ -433,7 +532,7 @@
     {% if s.stage %}<div class="kicker-stage">{{ s.stage }}</div>{% endif %}
 </div>
 
-<div class="bug">
+<div class="bug {% if s.team1_vrs %}has-vrs{% endif %}">
     <div class="bug-team t1 {% if finished and score1 < score2 %}lost{% endif %}">
         {{ m.logo(s.team1_logo, 76) }}
         <div class="bug-info">
@@ -458,6 +557,16 @@
         </div>
     </div>
 </div>
+
+{% if s.team1_vrs %}
+<div class="vrs">
+    {{ vrs_side(s.team1_vrs, 't1') }}
+    <div class="vrs-label">
+        <span class="num">VRS</span>
+    </div>
+    {{ vrs_side(s.team2_vrs, 't2') }}
+</div>
+{% endif %}
 
 <div class="bug-meta">
     {% if s.format_line %}<span>{{ s.format_line }}</span>{% endif %}
