@@ -17,7 +17,13 @@ def extract_id_from_url(url: str) -> str:
 
 
 def absolute_url(src: str) -> str:
-    return f"https://www.hltv.org{src}" if src.startswith("/") else src
+    # 站内相对路径都是 /img/static 下的静态图；www 时常被 Cloudflare 挑战，resources 是同源静态域名。
+    return f"https://resources.hltv.org{src}" if src.startswith("/") else src
+
+
+def is_grand_final_text(text: str) -> bool:
+    """matches 页的阶段标签和 match 页的赛制说明都用这一条规则认决赛。"""
+    return "grand final" in " ".join((text or "").lower().split())
 
 
 def pick_logo(imgs) -> str:

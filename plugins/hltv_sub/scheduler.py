@@ -104,7 +104,8 @@ class HLTVScheduler:
             return result
 
         result = await hltv_handler.run_check_for_event(event_id)
-        if not data_manager.is_subscribed(event_id):
+        sub = data_manager.get_subscription(event_id)
+        if sub is None:
             self.sync_events()
             return result
 
@@ -115,7 +116,8 @@ class HLTVScheduler:
             schedule.last_live_seen_at is not None
             and now - schedule.last_live_seen_at <= timedelta(minutes=POST_LIVE_GRACE_MINUTES)
         )
-        if result.has_error or result.has_live_match or in_grace:
+        watching_mvp = sub.mvp_status == "watching"
+        if result.has_error or result.has_live_match or in_grace or watching_mvp:
             minutes = DEFAULT_INTERVAL_MINUTES
         elif result.next_minutes_hint is None:
             minutes = 360

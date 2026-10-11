@@ -4,15 +4,16 @@ HLTV events 页面解析
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, datetime
 
 from bs4 import BeautifulSoup
 from nonebot.log import logger
 
-from plugins.hltv_sub.models import EventInfo
+from plugins.hltv_sub.models import EventInfo, EventMvp, MvpStat
 from plugins.hltv_sub.parsers.common import (
-    extract_id_from_url, flag_of, format_date, pick_logo,
+    absolute_url, extract_id_from_url, flag_of, format_date, pick_logo,
 )
 
 
@@ -202,7 +203,34 @@ def parse_event_info(
             teams=teams,
             location=location,
             is_ongoing=is_ongoing(start_date, end_date, tz),
+            mvp=parse_event_mvp(soup),
         )
     except Exception as e:
         logger.error(f"[HLTV] 解析赛事信息失败: {e}")
         return None
+
+
+def parse_event_mvp(soup: BeautifulSoup) -> EventMvp | None:
+    """赛后详情页的 MVP 区块；未评出时整块不存在。"""
+    box = soup.select_one("div.standard-box.mvp")
+    if box is None:
+        return None
+    # 名字形如 Mathieu <span class="bold">'ZywOo'</span> Herbaut
+    name = box.select_one(".player-name a")
+    nick = name.find("span")
+    country, country_name = flag_of(box.select_one(".player-name img.flag"))
+    # 各项数据只在柱状图配置里有；按页面给的顺序和名称读，不写死项目。
+    chart = json.loads(box.select_one("[data-chartjs-config]")["data-chartjs-config"])
+    return EventMvp(
+        nickname=nick.get_text(strip=True).strip("'"),
+        first_name="".join(nick.find_previous_siblings(string=True)).strip(),
+        last_name="".join(nick.find_next_siblings(string=True)).strip(),
+        country=country,
+        country_name=country_name,
+        photo=pick_logo(box.select(".mvp-picture img")),
+        medal=absolute_url(box.select_one("img.mvp-coin")["src"]),
+        stats=[
+            MvpStat(item["category"], item["label"], item["value"])
+            for item in chart["data"]["datasets"][0]["data"]
+        ],
+    )

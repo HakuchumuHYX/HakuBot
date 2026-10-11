@@ -17,13 +17,15 @@ from plugins.hltv_sub.client import HLTVFetchError, hltv_client
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.data_manager import EventSubscription, data_manager
 from plugins.hltv_sub.models import (
-    EventCheckResult, EventMatchesPage,
+    EventCheckResult, EventMatchesPage, EventMvp,
     MapStats, MatchInfo, MatchStats, ResultInfo, UpcomingMatch,
 )
-from plugins.hltv_sub.render import render_reminder, render_stats
+from plugins.hltv_sub.render import render_mvp, render_reminder, render_stats
 
 UPCOMING_WINDOW_HOURS = 72
 OVERDUE_THRESHOLD_MINUTES = 30
+# HLTV 通常决赛后一两个小时内公布 MVP；小比赛也有决赛但不评 MVP，到时就停。
+MVP_WATCH_HOURS = 3
 EventState = Literal["ONGOING", "UPCOMING", "NOT_ONGOING", "ENDED", "UNKNOWN"]
 
 
@@ -336,6 +338,11 @@ class HLTVHandler:
                 )
                 result.has_error = True
                 result.errors.append("Bot 尚未连接")
+                return result
+
+            # 决赛已结束，后面没有比赛可查，只等 MVP。
+            if sub.mvp_status == "watching":
+                await self.check_event_mvp(bot, sub)
                 return result
 
             if event_id not in self._initialized_events:
@@ -774,6 +781,7 @@ class HLTVHandler:
             return
 
         any_success = False
+        is_grand_final = False
 
         try:
             try:
@@ -796,6 +804,7 @@ class HLTVHandler:
                 )
                 return
 
+            is_grand_final = stats.is_grand_final
             img = await render_stats(stats)
             score_line = (
                 f"{result.team1} {result.score1}:{result.score2} {result.team2}"
@@ -826,10 +835,53 @@ class HLTVHandler:
 
         if any_success:
             data_manager.add_notified_result(result.id)
+            sub = data_manager.get_subscription(event_id)
+            if is_grand_final and sub is not None and not sub.mvp_status:
+                data_manager.set_mvp_status(event_id, "watching")
+                logger.info(f"[HLTV] 决赛已推送，开始等待 MVP (event={event_id})")
         else:
             logger.warning(
                 f"[HLTV] 比赛结果 {result.id} 所有群发送失败，不标记为已推送，下轮将重试"
             )
+
+    async def check_event_mvp(self, bot: Bot, sub: EventSubscription) -> None:
+        watched = datetime.now() - datetime.fromisoformat(sub.mvp_watch_since)
+        if watched > timedelta(hours=MVP_WATCH_HOURS):
+            data_manager.set_mvp_status(sub.event_id, "expired")
+            logger.info(f"[HLTV] 决赛后 {MVP_WATCH_HOURS} 小时未见 MVP，停止等待 (event={sub.event_id})")
+            return
+        info = await hltv_client.get_event_info(sub.event_id, sub.event_title, max_age=120)
+        if info is None or info.mvp is None:
+            return
+        await self.send_event_mvp(bot, sub, info.mvp)
+
+    async def send_event_mvp(self, bot: Bot, sub: EventSubscription, mvp: EventMvp) -> None:
+        groups = data_manager.get_groups_by_event(sub.event_id)
+        if not groups:
+            return
+
+        try:
+            img = await render_mvp(sub.event_title, mvp)
+        except Exception as e:
+            logger.error(f"[HLTV] 渲染赛事 MVP {sub.event_id} 失败，下轮将重试: {e}")
+            return
+        msg = MessageSegment.text(
+            f"🏆 {sub.event_title} MVP：{mvp.nickname}\n\n"
+        ) + image_segment(img)
+
+        any_success = False
+        for group_id in groups:
+            try:
+                await bot.send_group_msg(group_id=group_id, message=msg)
+                any_success = True
+                logger.info(f"[HLTV] 已发送赛事 MVP 到群 {group_id}: {sub.event_title} {mvp.nickname}")
+            except Exception as e:
+                logger.error(f"[HLTV] 发送赛事 MVP 到群 {group_id} 失败: {e}")
+
+        if any_success:
+            data_manager.set_mvp_status(sub.event_id, "pushed")
+        else:
+            logger.warning(f"[HLTV] 赛事 MVP {sub.event_id} 所有群发送失败，不标记为已推送，下轮将重试")
 
     async def send_completed_map_result(
         self, bot: Bot, completed_map: CompletedMapResult

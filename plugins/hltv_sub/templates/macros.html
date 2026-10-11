@@ -8,6 +8,6 @@
 
 {% macro flag(code, name="") -%}
 {%- if show_images and code -%}
-<img class="flag" src="https://www.hltv.org/img/static/flags/300x200/{{ code }}.png" alt="{{ name }}" onerror="this.remove()">
+<img class="flag" src="https://resources.hltv.org/img/static/flags/300x200/{{ code }}.png" alt="{{ name }}" onerror="this.remove()">
 {%- endif -%}
 {%- endmacro %}

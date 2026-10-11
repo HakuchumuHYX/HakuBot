@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+
+{% block title %}HLTV Event MVP{% endblock %}
+
+{% block extra_styles %}
+/* 现场照片贴满顶部，抵消 body 的内边距 */
+.hero {
+    position: relative;
+    margin: -26px -24px 0;
+    padding: 30px 24px 0;
+}
+
+.hero.has-photo {
+    padding: 0;
+}
+
+.photo {
+    display: block;
+    width: 100%;
+    height: 400px;
+    object-fit: cover;
+    object-position: center 30%;
+}
+
+/* 底部压暗只为让名字读得清，不作装饰 */
+.hero.has-photo::after {
+    content: "";
+    position: absolute;
+    inset: 180px 0 0;
+    background: linear-gradient(to bottom, rgba(32, 38, 47, 0), var(--bg) 96%);
+}
+
+.nameplate {
+    position: relative;
+    z-index: 1;
+    padding-right: 150px;
+}
+
+.hero.has-photo .nameplate {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    bottom: -4px;
+}
+
+.nickname {
+    font-family: var(--num);
+    font-size: 104px;
+    font-weight: 700;
+    line-height: 0.9;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 奖牌骑在照片与正文的交界上 */
+.medal {
+    position: absolute;
+    z-index: 2;
+    right: 22px;
+    bottom: -38px;
+    width: 132px;
+    height: 132px;
+    filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45));
+}
+
+.byline {
+    margin-top: 14px;
+    padding-right: 150px;
+}
+
+.award {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--gold);
+}
+
+.identity {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 4px;
+    font-size: 18px;
+    color: var(--muted);
+}
+
+.identity .flag {
+    width: 27px;
+    height: 18px;
+}
+
+.stats {
+    margin-top: 28px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+}
+
+.stats-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 15px;
+    color: var(--muted);
+}
+
+.stats-note .tick {
+    width: 2px;
+    height: 15px;
+    background: var(--muted);
+}
+
+.stat {
+    display: grid;
+    grid-template-columns: 112px 78px 1fr;
+    align-items: center;
+    column-gap: 14px;
+    height: 44px;
+}
+
+.stat-name {
+    font-family: var(--num);
+    font-size: 21px;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+.stat-value {
+    font-size: 26px;
+    font-weight: 700;
+    text-align: right;
+}
+
+.bar {
+    position: relative;
+    height: 14px;
+    background: var(--panel);
+}
+
+.bar-fill,
+.bar-over {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.bar-fill {
+    left: 0;
+    background: #424C5A;
+}
+
+.bar-over {
+    background: var(--gold);
+}
+
+/* 平均线压在条上，略长出上下沿 */
+.bar-avg {
+    position: absolute;
+    top: -5px;
+    bottom: -5px;
+    width: 2px;
+    background: var(--text);
+}
+{% endblock %}
+
+{% block content %}
+{# 条长按 0 到 top 映射，平均线固定在 1.0；top 至少为 2，平均线不超过中点 #}
+{% set top = ([2.0] + mvp.stats | map(attribute="value") | list) | max %}
+{% set has_photo = show_images and mvp.photo %}
+
+<div class="hero{% if has_photo %} has-photo{% endif %}">
+    {% if has_photo %}
+    <img class="photo" src="{{ mvp.photo }}" alt="" onerror="this.parentNode.classList.remove('has-photo'); this.remove()">
+    {% endif %}
+    <div class="nameplate">
+        <div class="nickname">{{ mvp.nickname }}</div>
+    </div>
+    {% if show_images and mvp.medal %}
+    <img class="medal" src="{{ mvp.medal }}" alt="" onerror="this.remove()">
+    {% endif %}
+</div>
+
+<div class="byline">
+    <div class="award">{{ event_title }} MVP</div>
+    <div class="identity">
+        {{ m.flag(mvp.country, mvp.country_name) }}
+        <span>{{ mvp.first_name }} {{ mvp.last_name }}</span>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stats-note"><span class="tick"></span>竖线为 HLTV 统计的平均水平，金色为超出部分</div>
+    {% for stat in mvp.stats %}
+    {% set fill = [stat.value, 1.0] | min / top * 100 %}
+    <div class="stat">
+        <div class="stat-name">{{ stat.name }}</div>
+        <div class="stat-value num">{{ stat.label }}</div>
+        <div class="bar">
+            <div class="bar-fill" style="width: {{ fill }}%;"></div>
+            {% if stat.value > 1.0 %}
+            <div class="bar-over" style="left: {{ 100 / top }}%; width: {{ (stat.value - 1.0) / top * 100 }}%;"></div>
+            {% endif %}
+            <div class="bar-avg" style="left: calc({{ 100 / top }}% - 1px);"></div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -12,7 +12,7 @@ from plugins.hltv_sub.models import (
     EventMatchesMeta, EventMatchesPage, MatchInfo, MatchTimeHint,
 )
 from plugins.hltv_sub.parsers.common import (
-    extract_id_from_url, parse_start_time, pick_logo,
+    extract_id_from_url, is_grand_final_text, parse_start_time, pick_logo,
 )
 
 
@@ -165,7 +165,7 @@ def _parse_matches(
                         maps="",
                         rating=0,
                         is_live=is_live,
-                        is_grand_final="grand final" in text.lower(),
+                        is_grand_final=is_grand_final_text(text),
                         is_third_place=_contains_third_place_marker(text),
                     )
                 )
@@ -239,13 +239,14 @@ def _is_winner_placeholder(name: str) -> bool:
 def _is_grand_final_match(wrapper) -> bool:
     stage_elem = wrapper.select_one("div.match-stage")
     if stage_elem:
-        stage_text = stage_elem.get_text(" ", strip=True).lower()
         stage_classes = stage_elem.get("class", [])
-        if "match-grand-final" in stage_classes or "grand final" in stage_text:
+        if "match-grand-final" in stage_classes or is_grand_final_text(
+            stage_elem.get_text(" ", strip=True)
+        ):
             return True
 
     no_info = wrapper.select_one("a.match-no-info")
-    if no_info and "grand final" in no_info.get_text(" ", strip=True).lower():
+    if no_info and is_grand_final_text(no_info.get_text(" ", strip=True)):
         return True
 
     return False

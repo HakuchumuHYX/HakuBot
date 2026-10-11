@@ -17,6 +17,9 @@ class EventSubscription:
     event_title: str
     start_date: str
     end_date: str
+    # 决赛结果推送后置为 watching 开始扫 MVP，推送后为 pushed，超时为 expired。
+    mvp_status: str = ""
+    mvp_watch_since: str = ""
 
 
 @dataclass
@@ -40,6 +43,7 @@ class DataManager:
             EventSubscription(
                 item["event_id"], item["event_title"],
                 item["start_date"], item["end_date"],
+                item.get("mvp_status", ""), item.get("mvp_watch_since", ""),
             )
             for item in self._data.get("global_subscriptions", [])
         ]
@@ -143,6 +147,17 @@ class DataManager:
             for s in self._global_subscriptions
         ])
         return True
+
+    def set_mvp_status(self, event_id: str, status: str) -> None:
+        current = self.get_subscription(event_id)
+        if current is None:
+            return
+        since = datetime.now().isoformat() if status == "watching" else current.mvp_watch_since
+        updated = replace(current, mvp_status=status, mvp_watch_since=since)
+        self._save(subscriptions=[
+            updated if s.event_id == event_id else s
+            for s in self._global_subscriptions
+        ])
 
     def add_notified_start(self, match_id: str) -> None:
         self._save(notified_starts={

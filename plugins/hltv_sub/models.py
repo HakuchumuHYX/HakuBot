@@ -10,6 +10,27 @@ from typing import Dict, List
 
 
 @dataclass
+class MvpStat:
+    """value 是相对赛事平均水平的倍数，1.0 即平均；label 是页面展示值。"""
+
+    name: str
+    label: str
+    value: float
+
+
+@dataclass
+class EventMvp:
+    nickname: str
+    first_name: str
+    last_name: str
+    country: str
+    country_name: str
+    photo: str
+    medal: str
+    stats: list[MvpStat] = field(default_factory=list)
+
+
+@dataclass
 class EventInfo:
     """赛事日期使用 YYYY-MM-DD，展示时再格式化。"""
 
@@ -23,6 +44,7 @@ class EventInfo:
     country: str = ""  # 举办地旗帜代码，只有即将举行的大型赛事有
     logo: str = ""  # 只有正在进行的赛事卡片带 logo
     is_ongoing: bool = False
+    mvp: EventMvp | None = None  # 只有详情页在赛后评出 MVP 时有
 
 
 @dataclass
@@ -150,6 +172,7 @@ class MatchStats:
     team2_country_name: str = ""
     format_line: str = ""  # 如 "Best of 3 (LAN)"
     stage: str = ""  # 如 "Semi-final"
+    is_grand_final: bool = False
     date: str = ""  # YYYY-MM-DD
     team1_vrs: VrsChange | None = None  # 仅比赛结束后有
     team2_vrs: VrsChange | None = None

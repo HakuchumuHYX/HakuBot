@@ -94,13 +94,13 @@ class HLTVClient:
         return parse_big_events(page.text, self._tz)
 
     async def get_event_info(
-        self, event_id: str, event_title: str = ""
+        self, event_id: str, event_title: str = "", *, max_age: int = 3600,
     ) -> Optional[EventInfo]:
         """获取赛事详细信息"""
         title_slug = event_title.lower().replace(" ", "-") if event_title else "event"
         url = f"{self.BASE_URL}/events/{event_id}/{title_slug}"
 
-        page = await self._fetch(url, cache_key=f"event:{event_id}", ttl=3600)
+        page = await self._fetch(url, cache_key=f"event:{event_id}", ttl=max_age)
 
         return parse_event_info(
             page.text, event_id=event_id, event_title=event_title, tz=self._tz

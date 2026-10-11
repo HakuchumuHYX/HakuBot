@@ -14,7 +14,8 @@ from plugins.hltv_sub.models import (
     HalfScore, MapStats, MatchStats, PlayerStats, VrsChange,
 )
 from plugins.hltv_sub.parsers.common import (
-    absolute_url, extract_id_from_url, flag_of, format_date, pick_logo,
+    absolute_url, extract_id_from_url, flag_of, format_date,
+    is_grand_final_text, pick_logo,
 )
 
 
@@ -278,6 +279,7 @@ def parse_match_stats(
         vetos: list[str] = []
         format_line = ""
         stage = ""
+        is_grand_final = False
         for box in soup.find_all("div", class_="veto-box"):
             lines = [
                 line.strip() for line in box.get_text("\n").split("\n") if line.strip()
@@ -286,6 +288,8 @@ def parse_match_stats(
                 for line in lines:
                     if line.startswith("*"):
                         stage = stage or line.lstrip("* ").strip()
+                        # 决赛前后可能还有优势图等备注行，逐条认。
+                        is_grand_final = is_grand_final or is_grand_final_text(line)
                     else:
                         format_line = format_line or line
                 continue
@@ -428,6 +432,7 @@ def parse_match_stats(
             team2_country_name=team2_country_name,
             format_line=format_line,
             stage=stage,
+            is_grand_final=is_grand_final,
             date=match_date,
             team1_vrs=team1_vrs,
             team2_vrs=team2_vrs,

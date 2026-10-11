@@ -12,7 +12,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from utils.rendering.engine import render_template
 
 from plugins.hltv_sub.config import plugin_config
-from plugins.hltv_sub.models import EventInfo, MatchInfo, ResultInfo, MatchStats
+from plugins.hltv_sub.models import EventInfo, EventMvp, MatchInfo, ResultInfo, MatchStats
 
 # 模板目录
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -167,4 +167,13 @@ async def render_reminder(match: MatchInfo, event_title: str) -> bytes:
         "reminder.html",
         {"match": asdict(match), "event_title": event_title},
         width=560,
+    )
+
+
+async def render_mvp(event_title: str, mvp: EventMvp) -> bytes:
+    """渲染赛事 MVP 播报。"""
+    return await _render(
+        "mvp.html",
+        {"mvp": asdict(mvp), "event_title": event_title},
+        width=640,
     )
