@@ -10,7 +10,8 @@ class Config(BaseModel):
     # FlareSolverr 会话独立于 Bot 进程，重启 Bot 时继续复用。
     hltv_flaresolverr_url: str = "http://127.0.0.1:8191/v1"
     hltv_flaresolverr_timeout_seconds: int = Field(default=60, gt=0)
-    hltv_request_interval_seconds: float = Field(default=15.0, gt=0)
+    # 请求本就由锁串行，0 表示上一个返回就发下一个；若频繁被 Cloudflare 拦截进入冷却，再调回几秒。
+    hltv_request_interval_seconds: float = Field(default=0.0, ge=0)
     # 同一标签页反复加载 HLTV，Chromium 每次涨十几 MB 且不回收，抓够次数就换会话。
     hltv_session_max_requests: int = Field(default=30, gt=0)
     hltv_block_cooldown_seconds: int = Field(default=600, gt=0)

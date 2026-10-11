@@ -68,6 +68,7 @@ class HLTVClient:
         self._request_count = 0
         # 只记在内存里：Bot 重启后沿用旧会话会从 0 重新计数，最多多用一轮。
         self._session_requests = 0
+        # 记抓取时刻而非过期时刻：同一页面，后台检查要新鲜的，群命令可以接受旧一点的。
         self._cache: OrderedDict[str, tuple[float, FetchResult]] = OrderedDict()
         self._inflight: dict[str, asyncio.Task] = {}
         self._probe: asyncio.Task | None = None
@@ -107,12 +108,13 @@ class HLTVClient:
 
     async def get_event_results(
         self, event_id: str, max_results: int = 20,
-        *, force_refresh: bool = False,
+        *, force_refresh: bool = False, max_age: int = 120,
     ) -> list[ResultInfo]:
         """获取赛事的已结束比赛结果"""
         url = f"{self.BASE_URL}/results?event={event_id}"
         page = await self._fetch(
-            url, cache_key=f"results:{event_id}", ttl=120, force_refresh=force_refresh
+            url, cache_key=f"results:{event_id}", ttl=max_age,
+            force_refresh=force_refresh,
         )
 
         results = parse_event_results(page.text, self._tz, max_results=max_results)
@@ -176,11 +178,11 @@ class HLTVClient:
         )
 
     async def get_event_matches(
-        self, event_id: str, *, include_partial_tbd: bool = False,
+        self, event_id: str, *, include_partial_tbd: bool = False, max_age: int = 120,
     ) -> EventMatchesPage:
         page = await self._fetch(
             f"{self.BASE_URL}/events/{event_id}/matches",
-            cache_key=f"matches:{event_id}", ttl=120,
+            cache_key=f"matches:{event_id}", ttl=max_age,
         )
         return parse_event_matches_page(
             page.text, page.final_url, event_id, self._tz,
@@ -283,17 +285,15 @@ class HLTVClient:
         if self._closed:
             raise HLTVFetchError("客户端已关闭")
         cached = self._cache.get(cache_key)
-        if not force_refresh and cached and cached[0] > time.monotonic():
+        if not force_refresh and cached and time.monotonic() - cached[0] < ttl:
             self._cache.move_to_end(cache_key)
             logger.debug(f"[HLTV] cache_hit page={cache_key}")
             return cached[1]
-        if cached and cached[0] <= time.monotonic():
-            self._cache.pop(cache_key)
         task = self._inflight.get(cache_key)
         if task is not None:
             return await asyncio.shield(task)
         self._check_pause()
-        task = asyncio.create_task(self._fetch_and_cache(url, cache_key, ttl))
+        task = asyncio.create_task(self._fetch_and_cache(url, cache_key))
         self._inflight[cache_key] = task
         # 到期后的第一个调用占用探测权，避免同时排入其他页面。
         if self._blocked_until:
@@ -308,7 +308,7 @@ class HLTVClient:
         if not task.cancelled():
             task.exception()
 
-    async def _fetch_and_cache(self, url: str, key: str, ttl: int) -> FetchResult:
+    async def _fetch_and_cache(self, url: str, key: str) -> FetchResult:
         async with self._lock:
             self._check_pause()
             try:
@@ -331,7 +331,7 @@ class HLTVClient:
                 self._blocked_until = 0
                 self._save_state()
                 logger.info("[HLTV] 恢复访问")
-            self._cache[key] = (time.monotonic() + ttl, result)
+            self._cache[key] = (time.monotonic(), result)
             self._cache.move_to_end(key)
             while len(self._cache) > 256:
                 self._cache.popitem(last=False)

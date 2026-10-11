@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import date, datetime, timedelta
+
+import pytz
 
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
@@ -13,6 +15,7 @@ from nonebot.params import CommandArg
 
 from utils.onebot.media import image_segment
 from plugins.hltv_sub.client import HLTVFetchError, hltv_client
+from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.data_manager import EventSubscription, data_manager
 from plugins.hltv_sub.handler import hltv_handler
 from plugins.hltv_sub.help_content import build_help_sections
@@ -22,6 +25,15 @@ from plugins.hltv_sub.render import (
 from plugins.hltv_sub.scheduler import hltv_scheduler
 
 NO_ACTIVE_HINT = "当前没有进行中的订阅赛事\n使用 我的订阅 查看已订阅赛事的日期"
+# 列表命令接受周期检查留下的 10 分钟内页面，避免每次查询都排队现抓。
+LIST_MAX_AGE_SECONDS = 600
+
+
+def _may_have_matches(sub: EventSubscription) -> bool:
+    """赛事结束后订阅还会保留几天等赛果推送，但赛程页已不再有比赛。
+    欧洲赛事决赛常打到北京时间次日凌晨，结束日之后再留 12 小时。"""
+    now = datetime.now(pytz.timezone(plugin_config.hltv_timezone))
+    return date.fromisoformat(sub.end_date) >= (now - timedelta(hours=12)).date()
 
 
 async def check_permission(bot: Bot, group_id: int, user_id: int) -> bool:
@@ -238,7 +250,9 @@ async def handle_matches_list(bot: Bot, event: GroupMessageEvent):
     if not data_manager.is_enabled(group_id):
         return
 
-    subscriptions = hltv_handler.active_subscriptions()
+    subscriptions = [
+        sub for sub in hltv_handler.active_subscriptions() if _may_have_matches(sub)
+    ]
     if not subscriptions:
         await matches_list.finish(NO_ACTIVE_HINT)
         return
@@ -254,7 +268,9 @@ async def handle_matches_list(bot: Bot, event: GroupMessageEvent):
             subscriptions,
             key=lambda x: int(x.event_id) if x.event_id.isdigit() else x.event_id,
         ):
-            page = await hltv_client.get_event_matches(sub.event_id, include_partial_tbd=True)
+            page = await hltv_client.get_event_matches(
+                sub.event_id, include_partial_tbd=True, max_age=LIST_MAX_AGE_SECONDS,
+            )
             matches = page.matches
 
             if matches:
@@ -309,7 +325,9 @@ async def handle_results_list(bot: Bot, event: GroupMessageEvent):
             subscriptions,
             key=lambda x: int(x.event_id) if x.event_id.isdigit() else x.event_id,
         ):
-            results = await hltv_client.get_event_results(sub.event_id)
+            results = await hltv_client.get_event_results(
+                sub.event_id, max_age=LIST_MAX_AGE_SECONDS,
+            )
             if results:
                 event_key = f"#{sub.event_id} {sub.event_title}"
                 results_by_event[event_key] = results
