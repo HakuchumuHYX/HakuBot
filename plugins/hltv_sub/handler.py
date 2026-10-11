@@ -747,6 +747,13 @@ class HLTVHandler:
         if not groups:
             return
 
+        # matches 页的 PNG 队标只有 50px，换成 match 页的 2x 图；开赛后查单图结果会命中同一份缓存。
+        stats = await hltv_client.get_match_stats(
+            match_id=match.id, team1=match.team1, team2=match.team2, event_title=event_title,
+        )
+        if stats is not None:
+            match = replace(match, team1_logo=stats.team1_logo, team2_logo=stats.team2_logo)
+
         # 远程图片超时已在 render 里降级成无图版；走到这里的是渲染本身出错，不标记已推送，下轮重试
         try:
             msg = image_segment(await render_reminder(match, event_title))

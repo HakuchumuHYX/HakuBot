@@ -33,19 +33,23 @@
     color: var(--muted);
 }
 
-.stage {
-    flex-shrink: 0;
-    font-family: var(--num);
-    font-size: 18px;
-    font-weight: 600;
+/* 决赛、季军赛改写抬头并给对阵面板描边，颜色由 --stage 决定 */
+.grand-final {
+    --stage: var(--gold);
 }
 
-.stage.grand-final {
-    color: var(--gold);
+.third-place {
+    --stage: var(--bronze);
 }
 
-.stage.third-place {
-    color: var(--bronze);
+.grand-final .live-title,
+.third-place .live-title {
+    color: var(--stage);
+}
+
+.grand-final .versus,
+.third-place .versus {
+    box-shadow: inset 0 0 0 2px var(--stage);
 }
 
 /* 两枚队标对峙是整张图的主体 */
@@ -98,33 +102,30 @@
 {% endblock %}
 
 {% block content %}
-<div class="live-head">
-    <span class="live-tag num">LIVE</span>
-    <span class="live-title">比赛开始</span>
-</div>
+<div class="{% if match.is_grand_final %}grand-final{% elif match.is_third_place %}third-place{% endif %}">
+    <div class="live-head">
+        <span class="live-tag num">LIVE</span>
+        <span class="live-title">{% if match.is_grand_final %}总决赛开始{% elif match.is_third_place %}季军赛开始{% else %}比赛开始{% endif %}</span>
+    </div>
 
-<div class="event-line">
-    <span>{{ event_title }}</span>
-    {% if match.is_grand_final %}
-    <span class="stage grand-final">决赛</span>
-    {% elif match.is_third_place %}
-    <span class="stage third-place">季军赛</span>
+    <div class="event-line">
+        <span>{{ event_title }}</span>
+    </div>
+
+    <div class="versus">
+        <div class="team">
+            {{ m.logo(match.team1_logo, 72) }}
+            <div class="team-name num">{{ match.team1 }}</div>
+        </div>
+        <div class="vs">vs</div>
+        <div class="team">
+            {{ m.logo(match.team2_logo, 72) }}
+            <div class="team-name num">{{ match.team2 }}</div>
+        </div>
+    </div>
+
+    {% if match.maps %}
+    <div class="format num">BO{{ match.maps }}{% if match.rating %}<span class="stars">{{ '★' * match.rating }}</span>{% endif %}</div>
     {% endif %}
 </div>
-
-<div class="versus">
-    <div class="team">
-        {{ m.logo(match.team1_logo, 96) }}
-        <div class="team-name num">{{ match.team1 }}</div>
-    </div>
-    <div class="vs">vs</div>
-    <div class="team">
-        {{ m.logo(match.team2_logo, 96) }}
-        <div class="team-name num">{{ match.team2 }}</div>
-    </div>
-</div>
-
-{% if match.maps %}
-<div class="format num">BO{{ match.maps }}{% if match.rating %}<span class="stars">{{ '★' * match.rating }}</span>{% endif %}</div>
-{% endif %}
 {% endblock %}
