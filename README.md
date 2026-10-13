@@ -28,9 +28,8 @@
 ### 🛠️ 实用工具 & 管理
 
 - **[plugin_manager](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/plugin_manager)**: 插件管理核心，基本上把所有的插件以及子功能全部接入了管理。
-- **[ai_assistant](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/ai_assistant)**: 群 AI 助手。目前支持 chat、生图以及点歌服务。
+- **[ai_assistant](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/ai_assistant)**: 群 AI 助手。目前支持 chat 和生图。
   - Chat 和生图功能可以通过加 web 后缀来进行联网搜索信息。
-  - 点歌会调用 LLM 自行决定是否联网搜索信息（由 [astrbot_plugin_music](https://github.com/Zhalslar/astrbot_plugin_music) 重构而来）。
 - **[analysis_bilibili](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/analysis_bilibili)**: B站链接解析。移植自 [nonebot-plugin-analysis-bilibili](https://github.com/mengshouer/nonebot_plugin_analysis_bilibili)。
 - **[daily_message](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/daily_message)**: 群聊定时消息推送。
 - **[help_plugin](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/help_plugin)**: 返回图片形式的帮助文档。
@@ -84,3 +83,13 @@
   - [nonebot-plugin-plus-one](https://github.com/yejue/nonebot-plugin-plus-one)
   - [nonebot-plugin-sticker-saver](https://github.com/colasama/nonebot-plugin-sticker-saver)
   - [astrbot-plugin-stickers](https://github.com/shiywhh/astrbot_plugin_sticker)
+
+## 📄 许可
+
+本仓库以 MIT 许可证发布。移植或修改自其他项目的插件，目录下附有原项目的 LICENSE，以该文件为准：
+
+- **GPL-3.0**：[pjsk_guess_song](plugins/pjsk_guess_song)、[setu_plugin](plugins/setu_plugin)
+- **AGPL-3.0**：[deer_pipe](plugins/deer_pipe)
+- **MIT（保留原作者署名）**：[analysis_bilibili](plugins/analysis_bilibili)、[bili_dyn_sub](plugins/bili_dyn_sub)、
+  [draw_lots](plugins/draw_lots)、[group_daily_analysis](plugins/group_daily_analysis)、[groupmate_waifu](plugins/groupmate_waifu)、
+  [jrrp](plugins/jrrp)、[lunabot_imgexp](plugins/lunabot_imgexp)、[plus_one](plugins/plus_one)、[sticker_saver](plugins/sticker_saver)

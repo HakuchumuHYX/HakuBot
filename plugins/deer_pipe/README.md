@@ -95,3 +95,7 @@ deer_pipe/
 
 - [SamuNatsu](https://github.com/SamuNatsu)
 - 原仓库: https://github.com/SamuNatsu/nonebot-plugin-deer-pipe
+
+## 许可
+
+本插件衍生自原仓库，按原项目的许可证 [GNU AGPL-3.0](LICENSE) 发布，不适用 HakuBot 根目录的 MIT 许可证。
