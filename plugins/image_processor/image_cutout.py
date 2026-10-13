@@ -1,28 +1,28 @@
 # image_cutout.py
+import asyncio
 import os
-
-import io
-import tempfile
-import threading
+import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image
+from nonebot import get_driver
 from nonebot.log import logger
+from PIL import Image
 
+from core.lifecycle import on_plugin_startup
 from utils.concurrency import run_in_pool
+from utils.files import ensure_output_dir, safe_delete_file
+from utils.network.http import download_to_file
 from plugins.image_processor.utils import (
-    IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
-    IMAGE_PROCESSOR_MAX_GIF_BYTES,
-    IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
-    download_to_temp,
+    download_image,
     load_gif_frames,
+    open_static_image,
+    run_command,
     save_gif,
 )
-from utils.files import cleanup_files, ensure_output_dir, safe_delete_file
 
-# ========= 可调参数（面向“贴纸/表情包 + 纯色背景 + 文字”） =========
+# ========= 纯色背景算法参数（面向“贴纸/表情包 + 纯色背景 + 文字”） =========
 # 角落采样块大小（像素）
 SOLID_BG_CORNER_SIZE = 12
 
@@ -42,7 +42,7 @@ EDGE_DILATE_ITERS = 1
 # 边缘屏障：用于阻止“背景连通域”穿过主体边缘渗入内部（解决头顶高光被挖洞）
 EDGE_BARRIER_ITERS = 2
 
-# 渗漏检测：若边缘屏障区域被判为背景的比例过高，则认为纯色抠图失败，回退 rembg
+# 渗漏检测：若边缘屏障区域被判为背景的比例过高，则认为纯色抠图失败，交给模型
 EDGE_BG_LEAK_MAX_RATIO = 0.12
 
 # 形态学平滑（填小洞 + 连接细笔画）
@@ -56,112 +56,48 @@ ALPHA_FEATHER_SIGMA = 1.0
 MIN_FOREGROUND_RATIO = 0.01
 MAX_FOREGROUND_RATIO = 0.98
 
-# GIF 抠图限制，避免逐帧 rembg 拖垮 bot
-CUTOUT_GIF_MAX_FRAMES = int(os.getenv("HAKUBOT_CUTOUT_GIF_MAX_FRAMES", "80"))
-CUTOUT_GIF_REMBG_MAX_FRAMES = int(
-    os.getenv("HAKUBOT_CUTOUT_GIF_REMBG_MAX_FRAMES", "12")
-)
-
 # 已有透明图快速返回阈值
-EXISTING_ALPHA_TRANSPARENT_RATIO = float(
-    os.getenv("HAKUBOT_CUTOUT_EXISTING_ALPHA_RATIO", "0.01")
+EXISTING_ALPHA_TRANSPARENT_RATIO = 0.01
+
+# GIF 逐帧只走传统算法，帧数限制避免拖垮 bot
+CUTOUT_GIF_MAX_FRAMES = int(os.getenv("HAKUBOT_CUTOUT_GIF_MAX_FRAMES", "80"))
+
+# ========= 模型 =========
+# 换模型要同步改 isnet_worker.py 的预处理参数
+MODEL_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "data"
+    / "shared"
+    / "rembg_models"
+    / "isnet-anime.onnx"
 )
-
-# rembg 输入可选放大（提升细节保留）；设置为 1 表示禁用
-REMBG_UPSCALE = 2
-REMBG_UPSCALE_MAX_SIDE = 1600
-
-# rembg 模型：
-# - 对二次元/线稿类图片，isnet-anime 往往比 isnet-general-use 更稳
-# - 纯色背景贴纸通常会走 solid-bg，不太依赖 rembg
-REMBG_MODEL_PRIMARY = os.getenv("HAKUBOT_REMBG_MODEL", "isnet-anime").strip().lower()
-REMBG_MODEL_FALLBACK = (
-    os.getenv("HAKUBOT_REMBG_MODEL_FALLBACK", "isnet-general-use").strip().lower()
+MODEL_URL = (
+    "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-anime.onnx"
 )
-
-# rembg 推理设备选择：
-# - auto: 有 CUDAExecutionProvider 就用 GPU，否则 CPU
-# - cpu: 强制 CPU
-# - cuda/gpu: 强制 GPU（若不可用会回退 CPU）
-REMBG_DEVICE = os.getenv("HAKUBOT_REMBG_DEVICE", "auto").strip().lower()
-_REMBG_SESSION_CACHE = {}
-# 线程池并发访问 session 缓存时的保护锁
-_REMBG_SESSION_LOCK = threading.Lock()
-
-# rembg 质量检测：alpha 太“边缘化/过小”就尝试 fallback 模型
-REMBG_MIN_FG_RATIO = 0.03
-REMBG_MIN_CORE_RATIO = 0.012
-
-# 线稿/描边类 fallback（适用于“背景和主体很接近，但黑色描边明显”的表情包）
-LINEART_MIN_AREA_RATIO = 0.03
-LINEART_MAX_AREA_RATIO = 0.98
-LINEART_MIN_CONTOUR_AREA = 200
-LINEART_EDGE_CLOSE_ITERS = 2
-LINEART_EDGE_DILATE_ITERS = 2
+WORKER_PATH = Path(__file__).parent / "isnet_worker.py"
+ISNET_TIMEOUT = 60
+# 每次推理峰值约 1GB，小机器上同时只跑一个，后来的请求排队
+_ISNET_LOCK = asyncio.Lock()
 
 
-def _select_onnx_providers() -> list[str]:
-    """为 rembg/new_session 选择 onnxruntime providers（支持 CUDA 自动探测）。"""
-    try:
-        import onnxruntime as ort  # type: ignore
-
-        available = set(ort.get_available_providers())
-    except Exception as e:
-        logger.warning(f"onnxruntime providers 探测失败，将使用 CPU: {e}")
-        return ["CPUExecutionProvider"]
-
-    if REMBG_DEVICE in ("cpu",):
-        # 这两行可显著避免某些环境里误加载 CUDA 相关 DLL
-        os.environ["ORT_DISABLE_CUDA"] = "1"
-        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-        return ["CPUExecutionProvider"]
-
-    if REMBG_DEVICE in ("cuda", "gpu"):
-        if "CUDAExecutionProvider" in available:
-            # GPU 优先，CPU 兜底
-            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        logger.warning("当前 onnxruntime 未提供 CUDAExecutionProvider，已回退到 CPU")
-        return ["CPUExecutionProvider"]
-
-    # auto
-    if "CUDAExecutionProvider" in available:
-        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
-    return ["CPUExecutionProvider"]
-
-
-async def download_image(
-    url: str, *, max_bytes: int = IMAGE_PROCESSOR_MAX_IMAGE_BYTES
-) -> str:
-    """下载图片到临时目录"""
-    return await download_to_temp(
-        url,
-        ext="png",
-        prefix="temp_img",
-        max_bytes=max_bytes,
-        timeout_total=IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
+# 挂在 cutout 功能上：下载失败只让抠图不可用，bot 照常启动
+@on_plugin_startup(get_driver(), "image_processor:cutout")
+async def _ensure_model() -> None:
+    # download_to_file 先写临时文件再替换，文件存在即完整
+    if MODEL_PATH.exists():
+        return
+    logger.info(f"下载抠图模型: {MODEL_URL}")
+    await download_to_file(
+        MODEL_URL, MODEL_PATH, max_bytes=300 * 1024 * 1024, timeout=600
     )
+    logger.info(f"抠图模型下载完成: {MODEL_PATH}")
 
 
-def _read_cv_bgr(image_path: str) -> np.ndarray:
-    """
-    读取图片为 BGR（uint8）。
-    - 如果源图带 alpha，会先按 alpha 合成到白底，保证颜色特征稳定（尤其是贴纸）。
-    """
-    img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
-    if img is None:
-        raise Exception("无法读取图像")
-
-    if img.ndim == 2:
-        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-
-    if img.shape[2] == 4:
-        bgr = img[:, :, :3].astype(np.float32)
-        alpha = (img[:, :, 3:4].astype(np.float32)) / 255.0
-        white = np.full_like(bgr, 255.0)
-        comp = bgr * alpha + white * (1.0 - alpha)
-        return comp.clip(0, 255).astype(np.uint8)
-
-    return img[:, :, :3]
+def _to_bgr(img: Image.Image) -> np.ndarray:
+    """带透明的图先合到白底，保证颜色特征稳定（尤其是贴纸）"""
+    white = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    rgb = Image.alpha_composite(white, img.convert("RGBA")).convert("RGB")
+    return cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2BGR)
 
 
 def _estimate_bg_lab(img_bgr: np.ndarray) -> tuple[np.ndarray, bool]:
@@ -236,15 +172,11 @@ def _connected_bg_from_border(bg_candidate: np.ndarray) -> np.ndarray:
         # 没有任何候选与边界连通，说明阈值过严，返回全 0（让上层判失败）
         return np.zeros_like(bg_candidate)
 
-    bg = np.isin(labels, border_labels).astype(np.uint8)
-    return bg
+    return np.isin(labels, border_labels).astype(np.uint8)
 
 
-def _mask_to_rgba(img_bgr: np.ndarray, fg_mask: np.ndarray) -> np.ndarray:
-    """
-    fg_mask: uint8 {0,1}
-    返回 BGRA uint8
-    """
+def _mask_to_rgba(img_bgr: np.ndarray, fg_mask: np.ndarray) -> Image.Image:
+    """fg_mask: uint8 {0,1}"""
     fg = (fg_mask > 0).astype(np.uint8)
 
     # 形态学：连接细笔画、填小洞
@@ -255,539 +187,156 @@ def _mask_to_rgba(img_bgr: np.ndarray, fg_mask: np.ndarray) -> np.ndarray:
         fg = cv2.dilate(fg, kernel, iterations=MORPH_DILATE_ITERS)
 
     alpha = (fg * 255).astype(np.uint8)
-    if ALPHA_FEATHER_SIGMA and ALPHA_FEATHER_SIGMA > 0:
+    if ALPHA_FEATHER_SIGMA > 0:
         alpha = cv2.GaussianBlur(alpha, (0, 0), sigmaX=ALPHA_FEATHER_SIGMA)
 
-    bgra = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2BGRA)
-    bgra[:, :, 3] = alpha
-    return bgra
+    rgba = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGBA)
+    rgba[:, :, 3] = alpha
+    return Image.fromarray(rgba, "RGBA")
 
 
-def _alpha_quality_from_png_path(png_path: str) -> tuple[float, float]:
+def _solid_bg_cutout(img: Image.Image) -> Image.Image | None:
     """
-    对输出 PNG 的 alpha 做一个粗略“质量评估”，用于检测“只剩描边/前景过小”。
-    返回：(fg_ratio, core_ratio)
-      - fg_ratio: alpha>8 的比例
-      - core_ratio: 对 fg 侵蚀 3 次后仍为前景的比例（越大越像“有实体填充”）
+    贴纸/表情包专用：针对近纯色背景的高保真抠图，细小文字/描边保留得比模型好。
+    背景不是纯色或判定不可靠时返回 None。
     """
-    try:
-        im_out = Image.open(png_path).convert("RGBA")
-        alpha = np.array(im_out)[:, :, 3]
-        fg = (alpha > 8).astype(np.uint8)
-        fg_ratio = float(fg.mean())
-        core = fg
-        if fg_ratio > 0:
-            core = cv2.erode(core, np.ones((3, 3), np.uint8), iterations=3)
-        core_ratio = float(core.mean())
-        return fg_ratio, core_ratio
-    except Exception:
-        return 0.0, 0.0
+    img_bgr = _to_bgr(img)
+    h, w = img_bgr.shape[:2]
 
+    bg_lab, is_solid = _estimate_bg_lab(img_bgr)
+    if not is_solid:
+        return None
 
-def _remove_background_lineart_sync(image_path: str) -> str:
-    """
-    线稿/描边类表情包兜底（同步重活，在线程池中执行）：
-    - 当 rembg 也只抠出线条时，用“线条作墙 + flood fill”把封闭区域填成前景。
-    适用于：背景与主体颜色接近、但黑色/深色描边很明显的图。
-    """
-    try:
-        img_bgr = _read_cv_bgr(image_path)
-        h, w = img_bgr.shape[:2]
+    # 先做边缘检测，构造“边缘屏障”，防止背景连通域从抗锯齿边缘渗入前景内部
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
 
-        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-
-        # 用自适应阈值抓“深色描边”（比单纯 Canny 稳定一些）
-        line = cv2.adaptiveThreshold(
-            gray,
-            255,
-            cv2.ADAPTIVE_THRESH_MEAN_C,
-            cv2.THRESH_BINARY_INV,
-            15,
-            8,
+    edge_kernel = np.ones((3, 3), np.uint8)
+    edge_barrier = edges
+    if EDGE_BARRIER_ITERS > 0:
+        edge_barrier = cv2.dilate(
+            edge_barrier, edge_kernel, iterations=EDGE_BARRIER_ITERS
         )
+    edge_barrier = (edge_barrier > 0).astype(np.uint8)
 
-        # 再叠加一点边缘，补一些断开的线
-        edges = cv2.Canny(gray, 50, 150)
-        walls = cv2.bitwise_or(line, edges)
+    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    dist = np.linalg.norm(lab - bg_lab.reshape(1, 1, 3), axis=2)
 
-        kernel = np.ones((3, 3), np.uint8)
+    # 低对比场景检测：如果主体也接近背景色，纯色阈值分割会“只剩描边”
+    # 用中心区域（通常是主体所在）做对比度判定
+    ch, cw = max(1, h // 4), max(1, w // 4)
+    center = dist[ch : h - ch, cw : w - cw]
+    if center.size > 0:
+        # 中心区域如果连 90 分位都不够“远离背景”，说明前景/背景不可分
+        p90 = float(np.percentile(center, 90))
+        if p90 < SOLID_BG_DIST_THRESHOLD * 1.25:
+            return None
 
-        if LINEART_EDGE_CLOSE_ITERS and LINEART_EDGE_CLOSE_ITERS > 0:
-            walls = cv2.morphologyEx(
-                walls, cv2.MORPH_CLOSE, kernel, iterations=LINEART_EDGE_CLOSE_ITERS
-            )
-        if LINEART_EDGE_DILATE_ITERS and LINEART_EDGE_DILATE_ITERS > 0:
-            walls = cv2.dilate(walls, kernel, iterations=LINEART_EDGE_DILATE_ITERS)
+    bg_candidate = (dist < SOLID_BG_DIST_THRESHOLD).astype(np.uint8)
 
-        walls = (walls > 0).astype(np.uint8)
+    # 关键：边缘作为“墙”，不允许 bg_candidate 通过边缘连通到主体内部
+    bg_candidate = (bg_candidate & (1 - edge_barrier)).astype(np.uint8)
 
-        # free: 255 表示可通行区域（非墙），0 表示墙
-        free = ((1 - walls) * 255).astype(np.uint8)
+    bg = _connected_bg_from_border(bg_candidate)
 
-        # flood fill：从图像边界把外部区域填成 0，剩下的 255 就是“被墙围起来的内部”
-        mask = np.zeros((h + 2, w + 2), np.uint8)
+    # 渗漏检测：如果边缘屏障区域大量被判成背景，说明发生了“穿透”，交给模型
+    if int(edge_barrier.sum()) > 0:
+        leak_ratio = float(bg[edge_barrier > 0].mean())
+        if leak_ratio > EDGE_BG_LEAK_MAX_RATIO:
+            return None
 
-        # 多个种子点，提高鲁棒性
-        seeds = [
-            (0, 0),
-            (w - 1, 0),
-            (0, h - 1),
-            (w - 1, h - 1),
-            (w // 2, 0),
-            (w // 2, h - 1),
-        ]
-        for x, y in seeds:
-            if free[y, x] == 255:
-                cv2.floodFill(free, mask, (x, y), 0)
+    fg = (1 - bg).astype(np.uint8)
 
-        inside = (free == 255).astype(np.uint8)
+    # 边缘保护：把明显边缘像素强制视为前景，避免阈值误杀细笔画/浅色字边缘
+    protect = edges
+    if EDGE_DILATE_ITERS > 0:
+        protect = cv2.dilate(protect, edge_kernel, iterations=EDGE_DILATE_ITERS)
+    protect_bin = (protect > 0).astype(np.uint8)
+    fg = np.maximum(fg, protect_bin)
 
-        # 前景 = inside + walls
-        fg = np.maximum(inside, walls).astype(np.uint8)
+    # “只剩描边”检测：如果去掉边缘保护后，核心前景几乎没有，交给模型
+    core = (fg & (1 - protect_bin)).astype(np.uint8)
+    if float(core.mean()) < 0.02:
+        return None
 
-        area_ratio = float(fg.mean())
-        if not (LINEART_MIN_AREA_RATIO <= area_ratio <= LINEART_MAX_AREA_RATIO):
-            return ""
+    fg_ratio = float(fg.mean())
+    if fg_ratio < MIN_FOREGROUND_RATIO or fg_ratio > MAX_FOREGROUND_RATIO:
+        return None
 
-        rgba = _mask_to_rgba(img_bgr, fg)
-
-        output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
-        output_dir.mkdir(exist_ok=True)
-        output_path = output_dir / f"cutout_lineart_{os.urandom(4).hex()}.png"
-        cv2.imwrite(str(output_path), rgba)
-        return str(output_path)
-
-    except Exception as e:
-        logger.error(f"线稿兜底抠图错误: {e}")
-        return ""
+    return _mask_to_rgba(img_bgr, fg)
 
 
-async def remove_background_lineart(image_path: str) -> str:
-    """线稿/描边类表情包兜底（线程池中执行同步计算）"""
-    return await run_in_pool(_remove_background_lineart_sync, image_path)
+def _existing_alpha(img: Image.Image) -> Image.Image | None:
+    """已经抠好的透明图直接返回"""
+    if img.mode not in ("RGBA", "LA", "P"):
+        return None
+    rgba = img.convert("RGBA")
+    transparent_ratio = float((np.asarray(rgba)[:, :, 3] < 250).mean())
+    if transparent_ratio < EXISTING_ALPHA_TRANSPARENT_RATIO:
+        return None
+    return rgba
 
 
-def _remove_background_solid_bg_sync(image_path: str) -> str:
-    """
-    贴纸/表情包专用（同步重活，在线程池中执行）：针对近纯色背景的高保真抠图。
-    能显著提升“细小文字/描边”保留率，解决 u2net 容易把字抠没的问题。
-    """
-    try:
-        img_bgr = _read_cv_bgr(image_path)
-        h, w = img_bgr.shape[:2]
-
-        bg_lab, is_solid = _estimate_bg_lab(img_bgr)
-        if not is_solid:
-            return ""
-
-        # 先做边缘检测，构造“边缘屏障”，防止背景连通域从抗锯齿边缘渗入前景内部
-        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, 50, 150)
-
-        edge_kernel = np.ones((3, 3), np.uint8)
-        edge_barrier = edges
-        if EDGE_BARRIER_ITERS and EDGE_BARRIER_ITERS > 0:
-            edge_barrier = cv2.dilate(
-                edge_barrier, edge_kernel, iterations=EDGE_BARRIER_ITERS
-            )
-        edge_barrier = (edge_barrier > 0).astype(np.uint8)
-
-        lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
-        dist = np.linalg.norm(lab - bg_lab.reshape(1, 1, 3), axis=2)
-
-        # 低对比场景检测：如果主体也接近背景色，纯色阈值分割会“只剩描边”
-        # 用中心区域（通常是主体所在）做对比度判定
-        ch, cw = max(1, h // 4), max(1, w // 4)
-        center = dist[ch : h - ch, cw : w - cw]
-        if center.size > 0:
-            # 中心区域如果连 90 分位都不够“远离背景”，说明前景/背景不可分
-            p90 = float(np.percentile(center, 90))
-            if p90 < SOLID_BG_DIST_THRESHOLD * 1.25:
-                return ""
-
-        bg_candidate = (dist < SOLID_BG_DIST_THRESHOLD).astype(np.uint8)
-
-        # 关键：边缘作为“墙”，不允许 bg_candidate 通过边缘连通到主体内部
-        bg_candidate = (bg_candidate & (1 - edge_barrier)).astype(np.uint8)
-
-        bg = _connected_bg_from_border(bg_candidate)
-
-        # 渗漏检测：如果边缘屏障区域大量被判成背景，说明发生了“穿透”，直接失败回退 rembg
-        barrier_pixels = int(edge_barrier.sum())
-        if barrier_pixels > 0:
-            leak_ratio = float(bg[edge_barrier > 0].mean())
-            if leak_ratio > EDGE_BG_LEAK_MAX_RATIO:
-                return ""
-
-        fg = (1 - bg).astype(np.uint8)
-
-        # 边缘保护：把明显边缘像素强制视为前景，避免阈值误杀细笔画/浅色字边缘
-        protect = edges
-        if EDGE_DILATE_ITERS and EDGE_DILATE_ITERS > 0:
-            protect = cv2.dilate(protect, edge_kernel, iterations=EDGE_DILATE_ITERS)
-        protect_bin = (protect > 0).astype(np.uint8)
-        fg = np.maximum(fg, protect_bin)
-
-        # “只剩描边”检测：如果去掉边缘保护后，核心前景几乎没有，则认为失败回退 rembg
-        core = (fg & (1 - protect_bin)).astype(np.uint8)
-        if float(core.mean()) < 0.02:
-            return ""
-
-        fg_ratio = float(fg.mean())
-        if fg_ratio < MIN_FOREGROUND_RATIO or fg_ratio > MAX_FOREGROUND_RATIO:
-            return ""
-
-        rgba = _mask_to_rgba(img_bgr, fg)
-
-        output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
-        output_dir.mkdir(exist_ok=True)
-        output_path = output_dir / f"cutout_solid_{os.urandom(4).hex()}.png"
-        cv2.imwrite(str(output_path), rgba)
-
-        return str(output_path)
-    except Exception as e:
-        logger.error(f"纯色背景抠图错误: {e}")
-        return ""
+def _cutout_frame(img: Image.Image) -> Image.Image | None:
+    """已有透明 → 纯色背景；都不适用时返回 None"""
+    return _existing_alpha(img) or _solid_bg_cutout(img)
 
 
-async def remove_background_solid_bg(image_path: str) -> str:
-    """贴纸/表情包专用：针对近纯色背景的高保真抠图（线程池中执行同步计算）"""
-    return await run_in_pool(_remove_background_solid_bg_sync, image_path)
+def _cutout_static_file(image_path: str, output_path: Path) -> bool:
+    """传统算法能处理就写出结果；返回 False 表示要交给模型"""
+    result = _cutout_frame(open_static_image(image_path))
+    if result is None:
+        return False
+    result.save(output_path, "PNG")
+    return True
 
 
-def _remove_background_rembg_sync(image_path: str) -> str:
-    """
-    rembg 抠图的同步重活（在线程池中执行）：
-    输入预处理(PIL resize/encode) + primary 推理 + 打分 + 可能的 fallback 推理 + 缩回原尺寸。
-    """
-    try:
-        from rembg import remove
-        from rembg.session_factory import new_session
+def _cutout_gif_file(image_path: str) -> str:
+    frames, durations, meta = load_gif_frames(image_path)
+    if len(frames) > CUTOUT_GIF_MAX_FRAMES:
+        raise Exception(f"GIF帧数过多: {len(frames)} > {CUTOUT_GIF_MAX_FRAMES}")
 
-        providers = _select_onnx_providers()
-        logger.info(f"rembg providers: {providers} (device={REMBG_DEVICE})")
+    results = []
+    for frame in frames:
+        result = _cutout_frame(frame)
+        if result is None:
+            raise Exception("GIF 背景不是纯色，无法抠图")
+        results.append(result)
 
-        # 可选：放大输入以保留细节（对文字/线条更友好）
-        with Image.open(image_path) as im:
-            im = im.convert("RGBA")
-            orig_size = im.size
-
-            upscale = int(max(1, REMBG_UPSCALE))
-            if upscale > 1:
-                max_side = max(orig_size)
-                if max_side * upscale > REMBG_UPSCALE_MAX_SIDE:
-                    upscale = max(1, int(REMBG_UPSCALE_MAX_SIDE / max_side))
-
-            if upscale > 1:
-                im = im.resize(
-                    (orig_size[0] * upscale, orig_size[1] * upscale), Image.LANCZOS
-                )
-
-            buf = io.BytesIO()
-            im.save(buf, format="PNG")
-            input_data = buf.getvalue()
-
-        def _run_model(model_name: str) -> bytes:
-            logger.info(f"rembg model: {model_name}")
-            key = (model_name, tuple(providers))
-            # double-check：先无锁 get，miss 后加锁再 get-or-create，避免并发重复建 session
-            session = _REMBG_SESSION_CACHE.get(key)
-            if session is None:
-                with _REMBG_SESSION_LOCK:
-                    session = _REMBG_SESSION_CACHE.get(key)
-                    if session is None:
-                        session = new_session(model_name, providers=providers)
-                        _REMBG_SESSION_CACHE[key] = session
-            return remove(input_data, session=session)
-
-        def _score_alpha(png_bytes: bytes) -> tuple[float, float]:
-            """返回 (fg_ratio, core_ratio)"""
-            im_out = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-            alpha = np.array(im_out)[:, :, 3]
-            fg = (alpha > 8).astype(np.uint8)
-            fg_ratio = float(fg.mean())
-
-            # core: 侵蚀后仍为前景的比例，用于检测“只剩描边”
-            core = fg
-            if fg_ratio > 0:
-                core = cv2.erode(core, np.ones((3, 3), np.uint8), iterations=3)
-            core_ratio = float(core.mean())
-            return fg_ratio, core_ratio
-
-        # 第一次：primary
-        out1 = _run_model(REMBG_MODEL_PRIMARY)
-        fg1, core1 = _score_alpha(out1)
-
-        # 如果出现“只剩描边/前景过小”，再跑 fallback
-        out_best, best = out1, (fg1, core1)
-        if fg1 < REMBG_MIN_FG_RATIO or core1 < REMBG_MIN_CORE_RATIO:
-            out2 = _run_model(REMBG_MODEL_FALLBACK)
-            fg2, core2 = _score_alpha(out2)
-
-            # 选择 core 更大的结果（更像“有实体填充”），core 相同时选 fg 更大的
-            if (core2, fg2) > (best[1], best[0]):
-                out_best, best = out2, (fg2, core2)
-
-        output_data = out_best
-
-        # 如果做过放大，需要缩回去
-        if upscale > 1:
-            out_im = Image.open(io.BytesIO(output_data)).convert("RGBA")
-            out_im = out_im.resize(orig_size, Image.LANCZOS)
-            out_buf = io.BytesIO()
-            out_im.save(out_buf, format="PNG")
-            output_data = out_buf.getvalue()
-
-        output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
-        output_dir.mkdir(exist_ok=True)
-        output_path = output_dir / f"cutout_rembg_{os.urandom(4).hex()}.png"
-
-        with open(output_path, "wb") as output_file:
-            output_file.write(output_data)
-
-        return str(output_path)
-
-    except ImportError:
-        logger.error("rembg未安装，请安装: pip install rembg onnxruntime")
-        return ""
-    except Exception as e:
-        logger.error(f"rembg抠图错误: {e}")
-        return ""
+    output_dir = ensure_output_dir("nonebot_image_cutout")
+    output_path = output_dir / f"cutout_gif_{os.urandom(4).hex()}.gif"
+    save_gif(results, output_path, durations=durations, loop=int(meta["loop"]))
+    return str(output_path)
 
 
-async def remove_background_rembg(image_path: str) -> str:
-    """使用 rembg 背景移除（用于非纯色背景兜底，线程池中执行推理）"""
-    return await run_in_pool(_remove_background_rembg_sync, image_path)
-
-
-def _remove_background_opencv_sync(image_path: str) -> str:
-    """使用 OpenCV 的 GrabCut（同步重活，在线程池中执行）"""
-    try:
-        img_bgr = _read_cv_bgr(image_path)
-        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-
-        mask = np.zeros(img_rgb.shape[:2], np.uint8)
-        bgd_model = np.zeros((1, 65), np.float64)
-        fgd_model = np.zeros((1, 65), np.float64)
-
-        height, width = img_rgb.shape[:2]
-        rect = (
-            int(width * 0.08),
-            int(height * 0.08),
-            int(width * 0.84),
-            int(height * 0.84),
+async def _isnet_cutout(image_path: str, output_path: Path) -> None:
+    async with _ISNET_LOCK:
+        logger.info("抠图: 走 isnet-anime 模型推理")
+        await run_command(
+            [
+                sys.executable,
+                str(WORKER_PATH),
+                str(MODEL_PATH),
+                image_path,
+                str(output_path),
+            ],
+            timeout=ISNET_TIMEOUT,
+            label="模型推理",
         )
-
-        cv2.grabCut(img_rgb, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
-
-        # 0/2 是背景，1/3 是前景
-        fg = np.where((mask == 0) | (mask == 2), 0, 1).astype("uint8")
-
-        fg_ratio = float(fg.mean())
-        if fg_ratio < MIN_FOREGROUND_RATIO or fg_ratio > MAX_FOREGROUND_RATIO:
-            return ""
-
-        rgba = _mask_to_rgba(cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR), fg)
-
-        output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
-        output_dir.mkdir(exist_ok=True)
-        output_path = output_dir / f"cutout_cv_{os.urandom(4).hex()}.png"
-        cv2.imwrite(str(output_path), rgba)
-
-        return str(output_path)
-    except Exception as e:
-        logger.error(f"OpenCV抠图错误: {e}")
-        return ""
-
-
-async def remove_background_opencv(image_path: str) -> str:
-    """使用 OpenCV 的 GrabCut（最终兜底，线程池中执行同步计算）"""
-    return await run_in_pool(_remove_background_opencv_sync, image_path)
-
-
-def _remove_background_simple_sync(image_path: str) -> str:
-    """
-    最简方案兜底（同步重活，在线程池中执行，尽量不要走到这里）
-    通过检测近白背景并保留边缘。
-    """
-    try:
-        img = Image.open(image_path).convert("RGBA")
-        img_array = np.array(img)
-
-        r, g, b, a = (
-            img_array[:, :, 0],
-            img_array[:, :, 1],
-            img_array[:, :, 2],
-            img_array[:, :, 3],
-        )
-
-        white_threshold = 235
-        white_mask = (
-            (r > white_threshold) & (g > white_threshold) & (b > white_threshold)
-        )
-
-        gray = cv2.cvtColor(img_array[:, :, :3], cv2.COLOR_RGB2GRAY)
-        edges = cv2.Canny(gray, 50, 150)
-        edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
-        edge_mask = edges > 0
-
-        background_mask = white_mask & ~edge_mask
-        img_array[background_mask] = [0, 0, 0, 0]
-
-        result_img = Image.fromarray(img_array, "RGBA")
-
-        output_dir = Path(tempfile.gettempdir()) / "nonebot_image_cutout"
-        output_dir.mkdir(exist_ok=True)
-        output_path = output_dir / f"cutout_simple_{os.urandom(4).hex()}.png"
-        result_img.save(output_path, "PNG")
-
-        return str(output_path)
-    except Exception as e:
-        logger.error(f"简单抠图错误: {e}")
-        return ""
-
-
-async def remove_background_simple(image_path: str) -> str:
-    """最简方案兜底（线程池中执行同步计算）"""
-    return await run_in_pool(_remove_background_simple_sync, image_path)
-
-
-def _preserve_existing_alpha(image_path: str) -> str:
-    try:
-        with Image.open(image_path) as im:
-            if im.mode not in ("RGBA", "LA", "P"):
-                return ""
-            rgba = im.convert("RGBA")
-            alpha = np.array(rgba)[:, :, 3]
-            transparent_ratio = float((alpha < 250).mean())
-            if transparent_ratio < EXISTING_ALPHA_TRANSPARENT_RATIO:
-                return ""
-
-            output_dir = ensure_output_dir("nonebot_image_cutout")
-            output_path = output_dir / f"cutout_alpha_{os.urandom(4).hex()}.png"
-            rgba.save(output_path, "PNG")
-            return str(output_path)
-    except Exception:
-        return ""
-
-
-async def remove_background_file(image_path: str, *, allow_rembg: bool = True) -> str:
-    """对本地文件做抠图：已有透明优先 -> 纯色背景 -> rembg -> grabcut -> simple"""
-    alpha = await run_in_pool(_preserve_existing_alpha, image_path)
-    if alpha and os.path.exists(alpha):
-        return alpha
-
-    solid = await remove_background_solid_bg(image_path)
-    if solid and os.path.exists(solid):
-        return solid
-
-    if allow_rembg:
-        rem = await remove_background_rembg(image_path)
-        if rem and os.path.exists(rem):
-            fg_ratio, core_ratio = await run_in_pool(_alpha_quality_from_png_path, rem)
-            if fg_ratio < REMBG_MIN_FG_RATIO or core_ratio < REMBG_MIN_CORE_RATIO:
-                lineart = await remove_background_lineart(image_path)
-                if lineart and os.path.exists(lineart):
-                    await safe_delete_file(rem)
-                    return lineart
-            return rem
-
-    cvp = await remove_background_opencv(image_path)
-    if cvp and os.path.exists(cvp):
-        return cvp
-
-    simp = await remove_background_simple(image_path)
-    if simp and os.path.exists(simp):
-        return simp
-
-    return ""
-
-
-def _load_frame_rgba(path: str) -> Image.Image:
-    """读取处理后的单帧并转为 RGBA（同步，在线程池中执行）"""
-    with Image.open(path) as processed_frame:
-        return processed_frame.convert("RGBA").copy()
-
-
-async def remove_background_gif(image_path: str) -> str:
-    """处理 GIF 抠图 - 逐帧处理（复用同样的策略）"""
-    try:
-        source_frames, durations, meta = await run_in_pool(load_gif_frames, image_path)
-        if not source_frames:
-            raise Exception("没有成功读取的帧")
-        if len(source_frames) > CUTOUT_GIF_MAX_FRAMES:
-            raise Exception(
-                f"GIF帧数过多: {len(source_frames)} > {CUTOUT_GIF_MAX_FRAMES}"
-            )
-
-        allow_rembg = len(source_frames) <= CUTOUT_GIF_REMBG_MAX_FRAMES
-        frames: list[Image.Image] = []
-
-        for frame_rgba in source_frames:
-            temp_frame_path = os.path.join(
-                tempfile.gettempdir(), f"temp_frame_{os.urandom(4).hex()}.png"
-            )
-            processed_frame_path = ""
-            try:
-                await run_in_pool(frame_rgba.save, temp_frame_path, "PNG")
-                processed_frame_path = await remove_background_file(
-                    temp_frame_path, allow_rembg=allow_rembg
-                )
-                if processed_frame_path and os.path.exists(processed_frame_path):
-                    frames.append(
-                        await run_in_pool(_load_frame_rgba, processed_frame_path)
-                    )
-            finally:
-                await cleanup_files(temp_frame_path, processed_frame_path)
-
-        if not frames:
-            raise Exception("没有成功处理的帧")
-
-        output_dir = ensure_output_dir("nonebot_image_cutout")
-        output_path = output_dir / f"cutout_gif_{os.urandom(4).hex()}.gif"
-        await run_in_pool(
-            save_gif,
-            frames,
-            output_path,
-            durations=durations[: len(frames)],
-            loop=int(meta.get("loop", 0)),
-        )
-        return str(output_path)
-
-    except Exception as e:
-        logger.error(f"GIF抠图错误: {e}")
-        return await remove_background_file(image_path, allow_rembg=False)
 
 
 async def remove_background(image_url: str) -> str:
-    """主抠图函数 - 支持静态图片和 GIF"""
-    image_path = ""
-    try:
-        image_path = await download_image(
-            image_url, max_bytes=IMAGE_PROCESSOR_MAX_GIF_BYTES
-        )
+    """主抠图函数：静态图 已有透明 → 纯色背景 → isnet-anime；GIF 只走前两步"""
+    async with download_image(image_url) as (image_path, animated):
+        if animated:
+            return await run_in_pool(_cutout_gif_file, image_path)
 
-        # 是否为 GIF
-        is_gif = False
+        output_dir = ensure_output_dir("nonebot_image_cutout")
+        output_path = output_dir / f"cutout_{os.urandom(4).hex()}.png"
         try:
-            with Image.open(image_path) as img:
-                is_gif = bool(getattr(img, "is_animated", False))
-        except Exception:
-            is_gif = False
-
-        if is_gif:
-            result_path = await remove_background_gif(image_path)
-        else:
-            result_path = await remove_background_file(image_path)
-
-        return result_path if result_path and os.path.exists(result_path) else ""
-
-    except Exception as e:
-        logger.error(f"抠图处理错误: {e}")
-        return ""
-    finally:
-        if image_path and os.path.exists(image_path):
-            try:
-                os.unlink(image_path)
-            except Exception:
-                pass
+            if not await run_in_pool(_cutout_static_file, image_path, output_path):
+                await _isnet_cutout(image_path, output_path)
+        except BaseException:
+            await safe_delete_file(output_path)
+            raise
+        return str(output_path)

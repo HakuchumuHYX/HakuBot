@@ -1,23 +1,19 @@
-from utils.network.http import download_to_file
-from utils.files import safe_delete_file, guess_ext_from_url
 import asyncio
+import math
 import os
-import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Iterable
-from urllib.parse import urlparse
 
 import aiohttp
-from PIL import Image, ImageSequence
 from nonebot.log import logger
+from PIL import Image, ImageOps, ImageSequence, UnidentifiedImageError
 
-from utils.network.http import INSECURE_SSL, get_client_session, get_effective_proxy
+from utils.concurrency import run_in_pool
+from utils.network.http import DownloadTooLarge, HttpError, temporary_download
 
+# 静态图和 GIF 共用一个上限：QQ 图片链接没有扩展名，下载前分不出是不是 GIF
 IMAGE_PROCESSOR_MAX_IMAGE_BYTES = int(
-    os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_IMAGE_BYTES", str(20 * 1024 * 1024))
-)
-IMAGE_PROCESSOR_MAX_GIF_BYTES = int(
-    os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_GIF_BYTES", str(50 * 1024 * 1024))
+    os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_IMAGE_BYTES", str(50 * 1024 * 1024))
 )
 IMAGE_PROCESSOR_MAX_VIDEO_BYTES = int(
     os.getenv("HAKUBOT_IMAGE_PROCESSOR_MAX_VIDEO_BYTES", str(200 * 1024 * 1024))
@@ -33,36 +29,80 @@ GIF_MIN_DURATION_MS = int(
 )
 
 
-async def download_to_temp(
-    url: str,
-    *,
-    ext: str = "tmp",
-    prefix: str = "download",
-    max_bytes: int = IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
-    timeout_total: float = IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
-    headers: dict[str, str] | None = None,
-    proxy: str | None = None,
-    allowed_statuses: Iterable[int] = (200, 206),
-) -> str:
-    suffix = ext.lstrip(".") or guess_ext_from_url(url)
-    descriptor, filename = tempfile.mkstemp(prefix=prefix + "_", suffix="." + suffix)
-    os.close(descriptor)
-    path = Path(filename)
+@asynccontextmanager
+async def download_temp(
+    url: str, *, ext: str, max_bytes: int, timeout: float, **options
+):
+    """下载到临时文件，退出时删除；下载层异常转成能直接回给用户的文案"""
     try:
-        await download_to_file(
+        async with temporary_download(
             url,
-            path,
+            ext=ext,
             max_bytes=max_bytes,
-            timeout=timeout_total,
-            headers=headers,
-            proxy=proxy,
-            allowed_statuses=allowed_statuses,
+            timeout=timeout,
+            allowed_statuses=(200, 206),
             attempts=1,
-        )
-        return str(path)
-    except BaseException:
-        path.unlink(missing_ok=True)
-        raise
+            **options,
+        ) as path:
+            yield str(path)
+    except DownloadTooLarge as e:
+        raise Exception(f"文件超过 {max_bytes // 1024 // 1024}MB 上限") from e
+    except HttpError as e:
+        raise Exception(f"下载失败（HTTP {e.status_code}）") from e
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        raise Exception("下载失败（网络错误或超时）") from e
+
+
+def _is_animated(image_path: str) -> bool:
+    try:
+        with Image.open(image_path) as img:
+            return bool(getattr(img, "is_animated", False))
+    except UnidentifiedImageError as e:
+        raise Exception("无法识别的图片格式") from e
+
+
+@asynccontextmanager
+async def download_image(url: str):
+    """产出 (临时路径, 是否动图)"""
+    async with download_temp(
+        url,
+        ext="img",
+        max_bytes=IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
+        timeout=IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
+    ) as path:
+        yield path, await run_in_pool(_is_animated, path)
+
+
+async def run_command(cmd: list[str], *, timeout: float, label: str) -> bytes:
+    process = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        raise Exception(f"{label}超时（>{timeout:g} 秒）")
+    if process.returncode != 0:
+        logger.error(f"{label}失败: {stderr.decode(errors='replace')[-1000:]}")
+        raise Exception(f"{label}失败")
+    return stdout
+
+
+def open_static_image(image_path: str) -> Image.Image:
+    """手机照片的方向写在 EXIF 里，不转正的话处理完再丢掉 EXIF 方向就错了"""
+    with Image.open(image_path) as img:
+        return ImageOps.exif_transpose(img)
+
+
+def convert_to_supported_mode(img: Image.Image) -> Image.Image:
+    if img.mode == "P":
+        return img.convert("RGBA" if "transparency" in img.info else "RGB")
+    if img.mode == "LA":
+        return img.convert("RGBA")
+    if img.mode not in ["RGB", "RGBA"]:
+        return img.convert("RGB")
+    return img.copy()
 
 
 def _normalize_durations(durations: list[int], frame_count: int) -> list[int]:
@@ -103,16 +143,18 @@ def _has_transparency(frames: list[Image.Image]) -> bool:
 
 
 def _rgba_to_transparent_p(frame: Image.Image) -> Image.Image:
+    # GIF 只有全透明/不透明：半透明边缘按 128 二值化并保留原色，
+    # 先合到黑底再量化会让边缘变成一圈黑边
     rgba = frame.convert("RGBA")
     alpha = rgba.getchannel("A")
-    rgb = Image.new("RGB", rgba.size, (0, 0, 0))
-    rgb.paste(rgba.convert("RGB"), mask=alpha)
-    paletted = rgb.convert("P", palette=Image.Palette.ADAPTIVE, colors=255)
+    paletted = rgba.convert("RGB").convert(
+        "P", palette=Image.Palette.ADAPTIVE, colors=255
+    )
     palette = paletted.getpalette() or []
     palette = (palette + [0] * 768)[:768]
     palette[255 * 3 : 255 * 3 + 3] = [0, 0, 0]
     paletted.putpalette(palette)
-    transparent_mask = alpha.point(lambda a: 255 if a <= 0 else 0)
+    transparent_mask = alpha.point(lambda a: 255 if a < 128 else 0)
     paletted.paste(255, mask=transparent_mask)
     paletted.info["transparency"] = 255
     return paletted
@@ -179,32 +221,6 @@ def save_gif(
     return True
 
 
-def _round_durations(
-    values: list[float], target_total: float, min_duration_ms: int
-) -> list[int]:
-    rounded = [max(min_duration_ms, int(round(v))) for v in values]
-    diff = int(round(target_total)) - sum(rounded)
-
-    if diff > 0:
-        i = 0
-        while diff > 0 and rounded:
-            rounded[i % len(rounded)] += 1
-            diff -= 1
-            i += 1
-    elif diff < 0:
-        i = 0
-        attempts = 0
-        while diff < 0 and rounded and attempts < len(rounded) * max(1, abs(diff) + 1):
-            idx = i % len(rounded)
-            if rounded[idx] > min_duration_ms:
-                rounded[idx] -= 1
-                diff += 1
-            i += 1
-            attempts += 1
-
-    return rounded
-
-
 def retime_frames_for_speed(
     frames: list[Image.Image],
     durations: list[int],
@@ -212,54 +228,24 @@ def retime_frames_for_speed(
     *,
     min_duration_ms: int = GIF_MIN_DURATION_MS,
 ) -> tuple[list[Image.Image], list[int]]:
-    if not frames:
-        return [], []
+    # GIF 帧时长以 10ms 为单位，Pillow 写入时直接截断，逐帧取整会累积误差：
+    # 先算每帧的结束时间点再对齐到 10ms 网格，不足最短时长的帧丢掉，由下一帧补上
+    min_cs = math.ceil(min_duration_ms / 10)
+    new_frames: list[Image.Image] = []
+    new_durations: list[int] = []
+    elapsed = 0
+    start_cs = 0
+    for frame, duration in zip(frames, durations):
+        elapsed += duration
+        end_cs = round(elapsed / speed_factor / 10)
+        if end_cs - start_cs < min_cs:
+            continue
+        new_frames.append(frame)
+        new_durations.append((end_cs - start_cs) * 10)
+        start_cs = end_cs
 
-    speed = max(0.01, float(speed_factor))
-    source_durations = _normalize_durations(durations, len(frames))
-    raw_durations = [d / speed for d in source_durations]
-
-    if min(raw_durations) >= min_duration_ms:
-        return [frame.copy() for frame in frames], _round_durations(
-            raw_durations, sum(raw_durations), min_duration_ms
-        )
-
-    original_total = sum(source_durations)
-    target_total = max(float(min_duration_ms), original_total / speed)
-    target_frame_count = max(1, int(round(target_total / min_duration_ms)))
-    target_frame_count = min(target_frame_count, len(frames))
-
-    cumulative: list[int] = []
-    total = 0
-    for duration in source_durations:
-        total += duration
-        cumulative.append(total)
-
-    sampled_frames: list[Image.Image] = []
-    for i in range(target_frame_count):
-        source_time = (i * target_total / target_frame_count) * speed
-        source_time = min(source_time, original_total - 1)
-        source_index = 0
-        while (
-            source_index < len(cumulative) - 1
-            and source_time >= cumulative[source_index]
-        ):
-            source_index += 1
-        sampled_frames.append(frames[source_index].copy())
-
-    base_duration = target_total / target_frame_count
-    sampled_durations = _round_durations(
-        [base_duration] * target_frame_count, target_total, min_duration_ms
-    )
-    return sampled_frames, sampled_durations
-
-
-def fix_frame_for_gif(im: Image.Image) -> Image.Image:
-    if im.mode == "RGBA" and im.getextrema()[3][0] < 255:
-        return _rgba_to_transparent_p(im)
-    if im.mode == "RGBA":
-        return im.convert("RGB")
-    if im.mode == "P" and getattr(im.palette, "mode", None) == "RGBA":
-        rgb_palette = im.getpalette()
-        im.putpalette(rgb_palette)
-    return im
+    total_cs = round(elapsed / speed_factor / 10)
+    if not new_frames:
+        return [frames[0]], [max(min_cs, total_cs) * 10]
+    new_durations[-1] += (total_cs - start_cs) * 10
+    return new_frames, new_durations

@@ -1,29 +1,18 @@
 # image_symmetry.py
 import os
 
-from nonebot.log import logger
 from PIL import Image
+from nonebot.log import logger
 
 from utils.concurrency import run_in_pool
 from plugins.image_processor.utils import (
-    IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
-    IMAGE_PROCESSOR_MAX_GIF_BYTES,
-    IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
-    download_to_temp,
+    convert_to_supported_mode,
+    download_image,
     load_gif_frames,
+    open_static_image,
     save_gif,
 )
-from utils.files import ensure_output_dir, guess_ext_from_url, safe_delete_file
-
-
-def convert_to_supported_mode(img: Image.Image) -> Image.Image:
-    if img.mode == "P":
-        return img.convert("RGBA" if "transparency" in img.info else "RGB")
-    if img.mode == "LA":
-        return img.convert("RGBA")
-    if img.mode not in ["RGB", "RGBA"]:
-        return img.convert("RGB")
-    return img.copy()
+from utils.files import ensure_output_dir
 
 
 def _left_symmetry_image(img: Image.Image) -> Image.Image:
@@ -126,51 +115,6 @@ def _symmetry_image(img: Image.Image, symmetry_type: str) -> Image.Image:
     return _left_symmetry_image(img)
 
 
-def _process_symmetry_file(image_path: str, symmetry_type: str) -> Image.Image:
-    with Image.open(image_path) as img:
-        return _symmetry_image(img, symmetry_type)
-
-
-async def process_left_symmetry(image_path: str) -> Image.Image | None:
-    try:
-        return await run_in_pool(_process_symmetry_file, image_path, "left")
-    except Exception as e:
-        logger.error(f"左对称处理错误: {e}")
-        return None
-
-
-async def process_right_symmetry(image_path: str) -> Image.Image | None:
-    try:
-        return await run_in_pool(_process_symmetry_file, image_path, "right")
-    except Exception as e:
-        logger.error(f"右对称处理错误: {e}")
-        return None
-
-
-async def process_center_symmetry(image_path: str) -> Image.Image | None:
-    try:
-        return await run_in_pool(_process_symmetry_file, image_path, "center")
-    except Exception as e:
-        logger.error(f"中心对称处理错误: {e}")
-        return None
-
-
-async def process_top_symmetry(image_path: str) -> Image.Image | None:
-    try:
-        return await run_in_pool(_process_symmetry_file, image_path, "top")
-    except Exception as e:
-        logger.error(f"上对称处理错误: {e}")
-        return None
-
-
-async def process_bottom_symmetry(image_path: str) -> Image.Image | None:
-    try:
-        return await run_in_pool(_process_symmetry_file, image_path, "bottom")
-    except Exception as e:
-        logger.error(f"下对称处理错误: {e}")
-        return None
-
-
 def _process_gif_symmetry_file(image_path: str, symmetry_type: str) -> str:
     frames, durations, meta = load_gif_frames(image_path)
     if not frames:
@@ -189,16 +133,8 @@ def _process_gif_symmetry_file(image_path: str, symmetry_type: str) -> str:
     return str(output_path)
 
 
-async def process_gif_symmetry(image_path: str, symmetry_type: str) -> str:
-    try:
-        return await run_in_pool(_process_gif_symmetry_file, image_path, symmetry_type)
-    except Exception as e:
-        logger.error(f"GIF对称处理错误: {e}")
-        return ""
-
-
 def _process_static_symmetry_file(image_path: str, symmetry_type: str) -> str:
-    processed_image = _process_symmetry_file(image_path, symmetry_type)
+    processed_image = _symmetry_image(open_static_image(image_path), symmetry_type)
     output_dir = ensure_output_dir("nonebot_image_symmetry")
     output_path = output_dir / f"symmetry_{symmetry_type}_{os.urandom(4).hex()}.png"
     processed_image.save(output_path, "PNG")
@@ -206,46 +142,8 @@ def _process_static_symmetry_file(image_path: str, symmetry_type: str) -> str:
 
 
 async def process_image_symmetry(image_url: str, symmetry_type: str) -> str:
-    image_path = ""
-    try:
-        logger.info(f"开始处理对称图片: {symmetry_type}, URL: {image_url[:100]}...")
-        ext = guess_ext_from_url(image_url, "jpg")
-        max_bytes = (
-            IMAGE_PROCESSOR_MAX_GIF_BYTES
-            if ext == "gif"
-            else IMAGE_PROCESSOR_MAX_IMAGE_BYTES
+    async with download_image(image_url) as (image_path, animated):
+        process = (
+            _process_gif_symmetry_file if animated else _process_static_symmetry_file
         )
-        image_path = await download_to_temp(
-            image_url,
-            ext=ext,
-            prefix="temp_img",
-            max_bytes=max_bytes,
-            timeout_total=IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
-        )
-
-        is_gif = False
-        try:
-            with Image.open(image_path) as img:
-                is_gif = bool(getattr(img, "is_animated", False))
-        except Exception as img_error:
-            logger.error(f"检查图片格式时出错: {img_error}")
-
-        if is_gif:
-            result_path = await process_gif_symmetry(image_path, symmetry_type)
-        else:
-            result_path = await run_in_pool(
-                _process_static_symmetry_file, image_path, symmetry_type
-            )
-
-        if result_path and os.path.exists(result_path):
-            logger.info(
-                f"对称处理成功: {result_path}, 大小: {os.path.getsize(result_path)}"
-            )
-            return result_path
-        logger.error("对称处理失败: 未生成有效输出文件")
-        return ""
-    except Exception as e:
-        logger.error(f"对称处理过程出错: {e}")
-        return ""
-    finally:
-        await safe_delete_file(image_path)
+        return await run_in_pool(process, image_path, symmetry_type)

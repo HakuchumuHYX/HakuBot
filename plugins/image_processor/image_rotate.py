@@ -7,17 +7,20 @@ from PIL import Image
 
 from utils.concurrency import run_in_pool
 from plugins.image_processor.utils import (
-    IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
-    IMAGE_PROCESSOR_MAX_GIF_BYTES,
-    IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
-    download_to_temp,
+    download_image,
     load_gif_frames,
+    open_static_image,
     save_gif,
 )
-from utils.files import ensure_output_dir, guess_ext_from_url, safe_delete_file
+from utils.files import ensure_output_dir
+
+# 转圈图不需要原图分辨率，大图逐帧旋转又慢又大（1280² 原来要 30 秒、19MB）
+ROTATE_MAX_SIDE = 400
 
 
 def make_square_canvas(img: Image.Image) -> Image.Image:
+    img = img.copy()
+    img.thumbnail((ROTATE_MAX_SIDE, ROTATE_MAX_SIDE), Image.Resampling.LANCZOS)
     width, height = img.size
     diagonal = int(math.sqrt(width**2 + height**2)) + 2
     canvas = Image.new("RGBA", (diagonal, diagonal), (0, 0, 0, 0))
@@ -28,8 +31,9 @@ def make_square_canvas(img: Image.Image) -> Image.Image:
     return canvas
 
 
-def _process_rotate_file(image_path: str, direction: str, speed: float) -> str:
-    speed = max(0.1, min(float(speed), 5.0))
+def _process_rotate_file(
+    image_path: str, animated: bool, direction: str, speed: float
+) -> str:
     frames_per_circle = max(4, min(200, int(40 / speed)))
     step_angle = 360.0 / frames_per_circle
     if direction == "clockwise":
@@ -39,31 +43,19 @@ def _process_rotate_file(image_path: str, direction: str, speed: float) -> str:
         f"旋转参数: 倍速{speed}, 总帧数{frames_per_circle}, 步进{step_angle:.2f}度"
     )
 
-    with Image.open(image_path) as input_img:
-        if bool(getattr(input_img, "is_animated", False)):
-            original_frames, _, _ = load_gif_frames(image_path)
-        else:
-            original_frames = [input_img.convert("RGBA").copy()]
+    if animated:
+        original_frames, _, _ = load_gif_frames(image_path)
+    else:
+        original_frames = [open_static_image(image_path)]
 
-    if not original_frames:
-        raise Exception("没有可处理的图片帧")
-
-    base_frame = original_frames[0]
-    w, h = base_frame.size
-    diagonal = int(math.sqrt(w**2 + h**2)) + 2
-    canvas_size = (diagonal, diagonal)
-    output_frames = []
-
-    for i in range(frames_per_circle):
-        current_angle = i * step_angle
-        source_frame = original_frames[i % len(original_frames)].convert("RGBA")
-        frame_canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
-        offset_x = (diagonal - source_frame.size[0]) // 2
-        offset_y = (diagonal - source_frame.size[1]) // 2
-        frame_canvas.paste(source_frame, (offset_x, offset_y), source_frame)
-        output_frames.append(
-            frame_canvas.rotate(current_angle, resample=Image.Resampling.BICUBIC)
-        )
+    # 预乘 alpha 后再插值，否则透明角落的黑色会混进边缘
+    canvases = [make_square_canvas(frame).convert("RGBa") for frame in original_frames]
+    output_frames = [
+        canvases[i % len(canvases)]
+        .rotate(i * step_angle, resample=Image.Resampling.BICUBIC)
+        .convert("RGBA")
+        for i in range(frames_per_circle)
+    ]
 
     output_dir = ensure_output_dir("nonebot_image_rotate")
     output_path = output_dir / f"rotate_{direction}_{speed}x_{os.urandom(4).hex()}.gif"
@@ -77,39 +69,8 @@ def _process_rotate_file(image_path: str, direction: str, speed: float) -> str:
     return str(output_path)
 
 
-async def process_rotate(image_path: str, direction: str, speed: float) -> str:
-    try:
-        return await run_in_pool(_process_rotate_file, image_path, direction, speed)
-    except Exception as e:
-        logger.error(f"旋转处理错误: {e}")
-        return ""
-
-
 async def process_image_rotate(image_url: str, direction: str, speed: float) -> str:
-    image_path = ""
-    try:
-        ext = guess_ext_from_url(image_url, "jpg")
-        max_bytes = (
-            IMAGE_PROCESSOR_MAX_GIF_BYTES
-            if ext == "gif"
-            else IMAGE_PROCESSOR_MAX_IMAGE_BYTES
+    async with download_image(image_url) as (image_path, animated):
+        return await run_in_pool(
+            _process_rotate_file, image_path, animated, direction, speed
         )
-        image_path = await download_to_temp(
-            image_url,
-            ext=ext,
-            prefix="temp_img",
-            max_bytes=max_bytes,
-            timeout_total=IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
-        )
-        result_path = await process_rotate(image_path, direction, speed)
-        if result_path and os.path.exists(result_path):
-            logger.info(
-                f"旋转成功: {result_path}, 大小: {os.path.getsize(result_path)}"
-            )
-            return result_path
-        return ""
-    except Exception as e:
-        logger.error(f"主旋转函数出错: {e}")
-        return ""
-    finally:
-        await safe_delete_file(image_path)

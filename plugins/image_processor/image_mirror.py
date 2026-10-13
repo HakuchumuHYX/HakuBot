@@ -1,29 +1,17 @@
 # image_mirror.py
 import os
 
-from nonebot.log import logger
 from PIL import Image
 
 from utils.concurrency import run_in_pool
 from plugins.image_processor.utils import (
-    IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
-    IMAGE_PROCESSOR_MAX_GIF_BYTES,
-    IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
-    download_to_temp,
+    convert_to_supported_mode,
+    download_image,
     load_gif_frames,
+    open_static_image,
     save_gif,
 )
-from utils.files import ensure_output_dir, guess_ext_from_url, safe_delete_file
-
-
-def convert_to_supported_mode(img: Image.Image) -> Image.Image:
-    if img.mode == "P":
-        return img.convert("RGBA" if "transparency" in img.info else "RGB")
-    if img.mode == "LA":
-        return img.convert("RGBA")
-    if img.mode not in ["RGB", "RGBA"]:
-        return img.convert("RGB")
-    return img.copy()
+from utils.files import ensure_output_dir
 
 
 def get_transpose_method(direction: str):
@@ -33,14 +21,13 @@ def get_transpose_method(direction: str):
 
 
 def _process_static_mirror_file(image_path: str, direction: str) -> str:
-    with Image.open(image_path) as img:
-        processed_image = convert_to_supported_mode(img).transpose(
-            get_transpose_method(direction)
-        )
-        output_dir = ensure_output_dir("nonebot_image_mirror")
-        output_path = output_dir / f"mirror_{direction}_{os.urandom(4).hex()}.png"
-        processed_image.save(output_path, "PNG")
-        return str(output_path)
+    processed_image = convert_to_supported_mode(
+        open_static_image(image_path)
+    ).transpose(get_transpose_method(direction))
+    output_dir = ensure_output_dir("nonebot_image_mirror")
+    output_path = output_dir / f"mirror_{direction}_{os.urandom(4).hex()}.png"
+    processed_image.save(output_path, "PNG")
+    return str(output_path)
 
 
 def _process_gif_mirror_file(image_path: str, direction: str) -> str:
@@ -61,55 +48,7 @@ def _process_gif_mirror_file(image_path: str, direction: str) -> str:
     return str(output_path)
 
 
-async def process_static_mirror(image_path: str, direction: str) -> str:
-    try:
-        return await run_in_pool(_process_static_mirror_file, image_path, direction)
-    except Exception as e:
-        logger.error(f"静态图片镜像处理错误: {e}")
-        return ""
-
-
-async def process_gif_mirror(image_path: str, direction: str) -> str:
-    try:
-        return await run_in_pool(_process_gif_mirror_file, image_path, direction)
-    except Exception as e:
-        logger.error(f"GIF镜像处理错误: {e}")
-        return ""
-
-
 async def process_image_mirror(image_url: str, direction: str) -> str:
-    image_path = ""
-    try:
-        logger.info(f"开始处理镜像图片: {direction}...")
-        ext = guess_ext_from_url(image_url, "jpg")
-        max_bytes = (
-            IMAGE_PROCESSOR_MAX_GIF_BYTES
-            if ext == "gif"
-            else IMAGE_PROCESSOR_MAX_IMAGE_BYTES
-        )
-        image_path = await download_to_temp(
-            image_url,
-            ext=ext,
-            prefix="temp_img",
-            max_bytes=max_bytes,
-            timeout_total=IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
-        )
-
-        is_gif = False
-        try:
-            with Image.open(image_path) as img:
-                is_gif = bool(getattr(img, "is_animated", False))
-        except Exception:
-            is_gif = False
-
-        result_path = (
-            await process_gif_mirror(image_path, direction)
-            if is_gif
-            else await process_static_mirror(image_path, direction)
-        )
-        return result_path if result_path and os.path.exists(result_path) else ""
-    except Exception as e:
-        logger.error(f"镜像处理出错: {e}")
-        return ""
-    finally:
-        await safe_delete_file(image_path)
+    async with download_image(image_url) as (image_path, animated):
+        process = _process_gif_mirror_file if animated else _process_static_mirror_file
+        return await run_in_pool(process, image_path, direction)
