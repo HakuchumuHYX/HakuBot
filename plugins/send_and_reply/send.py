@@ -36,9 +36,6 @@ async def get_user_info(bot: Bot, user_id: str) -> str:
     try:
         user_info = await bot.get_stranger_info(user_id=int(user_id))
         return f"{user_info['nickname']}({user_id})"
-    except ValueError as e:
-        logger.warning(f"用户ID格式错误: {user_id}, 错误: {e}")
-        return f"用户{user_id}"
     except Exception as e:
         logger.warning(f"获取用户 {user_id} 信息失败: {get_exc_desc(e)}")
         return f"用户{user_id}"
@@ -47,12 +44,8 @@ async def get_user_info(bot: Bot, user_id: str) -> str:
 async def get_group_info(bot: Bot, group_id: str) -> str:
     """获取群组信息"""
     try:
-        group_id_int = int(group_id)
-        group_info = await bot.get_group_info(group_id=group_id_int)
+        group_info = await bot.get_group_info(group_id=int(group_id))
         return f"{group_info['group_name']}({group_id})"
-    except ValueError as e:
-        logger.warning(f"群组ID格式错误: {group_id}, 错误: {e}")
-        return f"群组{group_id}"
     except Exception as e:
         logger.warning(f"获取群组 {group_id} 信息失败: {get_exc_desc(e)}")
         return f"群组{group_id}"
@@ -150,10 +143,6 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
 
             success_count += 1
             logger.debug(f"消息成功发送给超级用户 {superuser_id}")
-        except ValueError as e:
-            error_msg = f"超级用户ID格式错误: {superuser_id}, 错误: {e}"
-            logger.error(error_msg)
-            failed_users.append((superuser_id, error_msg))
         except Exception as e:
             error_msg = f"发送消息给超级用户 {superuser_id} 失败: {e}"
             logger.warning(f"发送消息给超级用户 {superuser_id} 失败: {get_exc_desc(e)}")

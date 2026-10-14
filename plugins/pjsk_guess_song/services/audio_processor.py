@@ -21,14 +21,7 @@ from nonebot import logger
 
 from utils.logging import get_exc_desc
 
-try:
-    from pydub import AudioSegment
-
-    PYDUB_AVAILABLE = True
-except ImportError:
-    AudioSegment = None
-    PYDUB_AVAILABLE = False
-    logger.warning("Pydub not installed, audio processing features will be limited.")
+from pydub import AudioSegment
 
 from plugins.pjsk_guess_song.services.cache_service import CacheService
 
@@ -115,11 +108,8 @@ class AudioProcessor:
 
     def process_audio_with_pydub(
         self, audio_data: Union[str, Path, io.BytesIO], audio_format: str, options: dict
-    ) -> Optional["AudioSegment"]:
+    ) -> Optional[AudioSegment]:
         """[同步] 在线程池中执行的同步pydub处理逻辑"""
-        if not PYDUB_AVAILABLE:
-            logger.error("Pydub 未安装，无法执行慢速路径处理。")
-            return None
         try:
             audio = AudioSegment.from_file(audio_data, format=audio_format)
             preprocessed_mode = options.get("preprocessed_mode")

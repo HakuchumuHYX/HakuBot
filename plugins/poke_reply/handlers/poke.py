@@ -20,26 +20,6 @@ from utils.onebot.media import image_segment
 poke = on_notice()
 
 
-def cache_message_direct(
-    group_id: int,
-    message_id: int,
-    content: str,
-    message_type: str = "text",
-    image_hash: str = "",
-):
-    """直接缓存消息（不依赖消息结果）"""
-    try:
-        message_cache.add_message(
-            group_id=group_id,
-            message_id=message_id,
-            content=content,
-            message_type=message_type,
-            image_hash=image_hash,
-        )
-    except Exception as e:
-        logger.opt(exception=True).warning(f"直接缓存消息失败: {e}")
-
-
 @poke.handle()
 async def handle_poke(bot: Bot, event: PokeNotifyEvent):
     """处理戳一戳事件"""
@@ -110,7 +90,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
                         group_id=group_id,
                         original_text=selected_text,
                     )
-                    cache_message_direct(
+                    message_cache.add_message(
                         group_id=group_id,
                         message_id=result["message_id"],
                         content=selected_text,
@@ -121,7 +101,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
                     result = await bot.send_group_msg(
                         group_id=group_id, message=selected_text
                     )
-                    cache_message_direct(
+                    message_cache.add_message(
                         group_id=group_id,
                         message_id=result["message_id"],
                         content=selected_text,
@@ -131,7 +111,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
                 result = await bot.send_group_msg(
                     group_id=group_id, message=selected_text
                 )
-                cache_message_direct(
+                message_cache.add_message(
                     group_id=group_id,
                     message_id=result["message_id"],
                     content=selected_text,
@@ -144,7 +124,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
                     group_id=group_id, message=Message(image_segment(image_path))
                 )
                 filename = os.path.basename(image_path)
-                cache_message_direct(
+                message_cache.add_message(
                     group_id=group_id,
                     message_id=result["message_id"],
                     content=filename,
@@ -156,7 +136,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
                 result = await bot.send_group_msg(
                     group_id=group_id, message=selected_text
                 )
-                cache_message_direct(
+                message_cache.add_message(
                     group_id=group_id,
                     message_id=result["message_id"],
                     content=selected_text,

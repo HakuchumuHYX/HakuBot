@@ -33,13 +33,8 @@ from plugins.lunabot_imgexp.image_utils import (
 )
 from utils.onebot.media import image_segment, outbound_media_path, video_segment
 
-try:
-    from core.access import is_feature_enabled
-    from core.cooldown import check_cd, update_cd
-
-    MANAGER_AVAILABLE = True
-except ImportError:
-    MANAGER_AVAILABLE = False
+from core.access import is_feature_enabled
+from core.cooldown import check_cd, update_cd
 
 PLUGIN_NAME = "lunabot_imgexp"
 
@@ -123,19 +118,17 @@ ximg = on_command("ximg", aliases={"x img", "tw img", "推图"}, priority=5, blo
 async def _(
     bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message = CommandArg()
 ):
-    # 插件管理检查
-    if MANAGER_AVAILABLE:
-        group_id = str(event.group_id)
-        user_id = str(event.user_id)
+    group_id = str(event.group_id)
+    user_id = str(event.user_id)
 
-        # 检查功能开关
-        if not is_feature_enabled(PLUGIN_NAME, "ximg", group_id, user_id):
-            await ximg.finish()
+    # 检查功能开关
+    if not is_feature_enabled(PLUGIN_NAME, "ximg", group_id, user_id):
+        await ximg.finish()
 
-        cd_key = f"{PLUGIN_NAME}:ximg"
-        cd_remain = check_cd(cd_key, group_id, user_id)
-        if cd_remain > 0:
-            await ximg.finish(f"功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
+    cd_key = f"{PLUGIN_NAME}:ximg"
+    cd_remain = check_cd(cd_key, group_id, user_id)
+    if cd_remain > 0:
+        await ximg.finish(f"功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
     raw_args = args.extract_plain_text().strip().split()
 
@@ -265,5 +258,4 @@ async def _(
         await ximg.send(video_segment(path))
 
     # 发送成功后再更新 CD
-    if MANAGER_AVAILABLE:
-        update_cd(f"{PLUGIN_NAME}:ximg", str(event.group_id), str(event.user_id))
+    update_cd(cd_key, group_id, user_id)

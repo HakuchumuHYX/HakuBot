@@ -20,11 +20,8 @@ DHASH_SIZE: int = 8
 # 汉明距离阈值，<= 此值认为图片相似
 HAMMING_THRESHOLD: int = 5
 
-# MSE 验证阈值（使用 numpy 时）
+# MSE 验证阈值
 MSE_THRESHOLD_NUMPY: float = 100.0
-
-# 平均差异阈值（纯 Python 时）
-AVG_DIFF_THRESHOLD_PYTHON: float = 150.0
 
 
 # ==================== 缓存配置 ====================

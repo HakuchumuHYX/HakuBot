@@ -21,14 +21,8 @@ from utils.network.http import download_image
 from utils.onebot.media import image_segment
 from plugins.lunabot_imgexp import twitter
 
-try:
-    from core.access import is_feature_enabled
-    from core.cooldown import check_cd, update_cd
-
-    MANAGER_AVAILABLE = True
-except ImportError:
-    logger.warning("未找到 plugin_manager 插件，将跳过管理功能检查。")
-    MANAGER_AVAILABLE = False
+from core.access import is_feature_enabled
+from core.cooldown import check_cd, update_cd
 
 PLUGIN_NAME = "lunabot_imgexp"
 
@@ -45,7 +39,7 @@ async def _(
     matcher: Matcher,
     arg: Message = CommandArg(),
 ):
-    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
+    if isinstance(event, GroupMessageEvent):
         group_id = str(event.group_id)
         user_id = str(event.user_id)
 
@@ -128,11 +122,7 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
             await send_forward_msg(bot, event, items=forward_messages)
 
             # 发送成功后再更新 CD（仅群聊，多张图只扣一次）
-            if (
-                not cd_updated
-                and MANAGER_AVAILABLE
-                and isinstance(event, GroupMessageEvent)
-            ):
+            if not cd_updated and isinstance(event, GroupMessageEvent):
                 update_cd(
                     f"{PLUGIN_NAME}:search", str(event.group_id), str(event.user_id)
                 )

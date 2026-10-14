@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import random
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -34,6 +35,7 @@ class HLTVScheduler:
         self._end_grace_days = max(0, plugin_config.hltv_auto_unsub_delay_days)
         self._events: dict[str, _Schedule] = {}
         self._had_receivers = False
+        self._round_lock = asyncio.Lock()
 
     def start(self) -> None:
         self.sync_events()
@@ -41,7 +43,8 @@ class HLTVScheduler:
         scheduler.add_job(
             self.check_due_events, "interval", minutes=1,
             id="hltv_check_due", replace_existing=True,
-            max_instances=1, coalesce=True,
+            # 第二拍要能进来，由 check_due_events 自己判断跳过，否则 apscheduler 每次记 WARNING
+            max_instances=2, coalesce=True,
         )
         scheduler.add_job(
             self.daily_maintenance, "cron", hour=4, minute=30,
@@ -69,6 +72,15 @@ class HLTVScheduler:
         hltv_handler.cleanup_unsubscribed()
 
     async def check_due_events(self) -> None:
+        # 所有页面排队走同一个 FlareSolverr，大赛期间一轮常超过 1 分钟；
+        # 跳过这一拍不会漏检，没轮到的赛事下一拍按 next_check_at 照样查。
+        if self._round_lock.locked():
+            logger.debug("[HLTV] 上一轮检查还没结束，跳过本拍")
+            return
+        async with self._round_lock:
+            await self._check_due_events()
+
+    async def _check_due_events(self) -> None:
         if not data_manager.has_enabled_groups():
             self._had_receivers = False
             return

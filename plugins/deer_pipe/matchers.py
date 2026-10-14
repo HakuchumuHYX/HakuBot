@@ -12,6 +12,8 @@ from nonebot_plugin_alconna import Alconna, AlconnaMatcher, Args, Match, on_alco
 from nonebot_plugin_alconna.uniseg import At, UniMessage
 from nonebot_plugin_userinfo import EventUserInfo, UserInfo
 
+from core.access import is_plugin_enabled
+from core.cooldown import check_cd, update_cd
 from plugins.deer_pipe.config import config
 from plugins.deer_pipe.constants import PLUGIN_ID, PLUGIN_VERSION
 from plugins.deer_pipe.database import (
@@ -23,37 +25,6 @@ from plugins.deer_pipe.database import (
 )
 from plugins.deer_pipe.image import render_calendar
 from utils.onebot.media import prepare_image_source
-
-# 导入插件管理器
-try:
-    from core.access import is_plugin_enabled
-    from core.cooldown import check_cd, update_cd
-
-    _has_plugin_manager = True
-except ImportError:
-    _has_plugin_manager = False
-    logger.warning("deer_pipe: 未找到 plugin_manager，插件开关和CD功能将不可用")
-
-
-def _is_enabled(group_id: str, user_id: str) -> bool:
-    """检查插件是否启用"""
-    if not _has_plugin_manager:
-        return True
-    return is_plugin_enabled(PLUGIN_ID, group_id, user_id)
-
-
-def _check_cd(group_id: str, user_id: str) -> int:
-    """检查CD剩余时间"""
-    if not _has_plugin_manager:
-        return 0
-    return check_cd(PLUGIN_ID, group_id, user_id)
-
-
-def _update_cd(group_id: str, user_id: str) -> None:
-    """更新CD"""
-    if _has_plugin_manager:
-        update_cd(PLUGIN_ID, group_id, user_id)
-
 
 # ==================== 命令定义 ====================
 
@@ -101,11 +72,11 @@ async def handle_deer(
             group_id = str(event.group_id)
 
             # 检查插件是否启用
-            if not _is_enabled(group_id, caller_user_id):
+            if not is_plugin_enabled(PLUGIN_ID, group_id, caller_user_id):
                 await deer.finish()
 
             # 检查CD
-            remaining_cd = _check_cd(group_id, caller_user_id)
+            remaining_cd = check_cd(PLUGIN_ID, group_id, caller_user_id)
             if remaining_cd > 0:
                 await deer.finish(config.cd_message.format(remaining=remaining_cd))
 
@@ -140,7 +111,7 @@ async def handle_deer(
 
         # 更新CD（仅在群聊中）
         if is_group:
-            _update_cd(group_id, caller_user_id)
+            update_cd(PLUGIN_ID, group_id, caller_user_id)
 
         # 发送结果
         if target.available:
@@ -185,11 +156,11 @@ async def handle_deer_past(
             group_id = str(event.group_id)
 
             # 检查插件是否启用
-            if not _is_enabled(group_id, caller_user_id):
+            if not is_plugin_enabled(PLUGIN_ID, group_id, caller_user_id):
                 await deer_past.finish()
 
             # 检查CD
-            remaining_cd = _check_cd(group_id, caller_user_id)
+            remaining_cd = check_cd(PLUGIN_ID, group_id, caller_user_id)
             if remaining_cd > 0:
                 await deer_past.finish(config.cd_message.format(remaining=remaining_cd))
 
@@ -219,7 +190,7 @@ async def handle_deer_past(
 
         # 补签成功时更新CD
         if success and is_group:
-            _update_cd(group_id, caller_user_id)
+            update_cd(PLUGIN_ID, group_id, caller_user_id)
 
         # 发送结果
         if success:
@@ -258,7 +229,7 @@ async def handle_deer_calendar(
             group_id = str(event.group_id)
 
             # 检查插件是否启用
-            if not _is_enabled(group_id, caller_user_id):
+            if not is_plugin_enabled(PLUGIN_ID, group_id, caller_user_id):
                 await deer_calendar.finish()
 
         now = datetime.now()
@@ -305,7 +276,7 @@ async def handle_deer_help(event: Event):
             caller_user_id = str(event.get_user_id())
 
             # 检查插件是否启用
-            if not _is_enabled(group_id, caller_user_id):
+            if not is_plugin_enabled(PLUGIN_ID, group_id, caller_user_id):
                 await deer_help.finish()
 
         help_text = (

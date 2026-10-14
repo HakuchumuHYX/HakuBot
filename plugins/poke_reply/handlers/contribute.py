@@ -44,26 +44,6 @@ convert_to_text = on_message(
 )
 
 
-# --- 辅助函数：缓存 ---
-def cache_message_direct(
-    group_id: int,
-    message_id: int,
-    content: str,
-    message_type: str = "text",
-    image_hash: str = "",
-):
-    try:
-        message_cache.add_message(
-            group_id=group_id,
-            message_id=message_id,
-            content=content,
-            message_type=message_type,
-            image_hash=image_hash,
-        )
-    except Exception as e:
-        logger.opt(exception=True).warning(f"直接缓存消息失败: {e}")
-
-
 # --- 投稿处理器 ---
 
 
@@ -126,7 +106,7 @@ async def process_text_contribution(
         if not is_superuser:
             update_cd(plugin_id, str(group_id), user_id)
         result = await bot.send_group_msg(group_id=group_id, message=message)
-        cache_message_direct(
+        message_cache.add_message(
             group_id=group_id,
             message_id=result["message_id"],
             content=text,
@@ -152,7 +132,7 @@ async def process_image_contribution(
             update_cd(plugin_id, str(group_id), user_id)
         result = await bot.send_group_msg(group_id=group_id, message=message)
         content_info = f"图片投稿: {', '.join(saved_filenames)}"
-        cache_message_direct(
+        message_cache.add_message(
             group_id=group_id,
             message_id=result["message_id"],
             content=content_info,
@@ -189,7 +169,7 @@ async def handle_mention_message(bot: Bot, event: GroupMessageEvent):
                 ]
             )
             if not is_command:
-                cache_message_direct(
+                message_cache.add_message(
                     group_id=group_id,
                     message_id=message_id,
                     content=message_text,

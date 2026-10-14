@@ -44,28 +44,25 @@ async def _end_game_session(session_id: str, reason_msg: str):
     if not game_data or game_data.get("type") == "listen":
         return
 
-    try:
-        current_task = asyncio.current_task()
+    current_task = asyncio.current_task()
 
-        main_timeout_task = game_data.get("timeout_task")
-        if (
-            main_timeout_task
-            and not main_timeout_task.done()
-            and main_timeout_task is not current_task
-        ):
-            main_timeout_task.cancel()
-            logger.debug(f"已取消游戏 {session_id} 的主要超时任务。")
+    main_timeout_task = game_data.get("timeout_task")
+    if (
+        main_timeout_task
+        and not main_timeout_task.done()
+        and main_timeout_task is not current_task
+    ):
+        main_timeout_task.cancel()
+        logger.debug(f"已取消游戏 {session_id} 的主要超时任务。")
 
-        bonus_timeout_task = game_data.get("bonus_task")
-        if (
-            bonus_timeout_task
-            and not bonus_timeout_task.done()
-            and bonus_timeout_task is not current_task
-        ):
-            bonus_timeout_task.cancel()
-            logger.debug(f"已取消游戏 {session_id} 的奖励时间任务。")
-    except Exception as e:
-        logger.exception(f"取消游戏 {session_id} 的任务时出错: {e}")
+    bonus_timeout_task = game_data.get("bonus_task")
+    if (
+        bonus_timeout_task
+        and not bonus_timeout_task.done()
+        and bonus_timeout_task is not current_task
+    ):
+        bonus_timeout_task.cancel()
+        logger.debug(f"已取消游戏 {session_id} 的奖励时间任务。")
 
     last_game_end_time[session_id] = time.time()
 

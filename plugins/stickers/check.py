@@ -5,6 +5,7 @@ import asyncio
 import warnings
 from pathlib import Path
 from typing import List, Tuple, Dict, Set
+import numpy as np
 from PIL import Image
 
 # 忽略 PIL 的 EXIF 损坏警告（不影响图片处理）
@@ -25,7 +26,6 @@ from plugins.stickers.config import (
     DHASH_SIZE,
     HAMMING_THRESHOLD,
     MSE_THRESHOLD_NUMPY,
-    AVG_DIFF_THRESHOLD_PYTHON,
     BATCH_SIZE,
 )
 from plugins.stickers.cache_db import (
@@ -35,15 +35,6 @@ from plugins.stickers.cache_db import (
     clear_all_cache,
     get_cache_stats,
 )
-
-# numpy 可选，用于加速像素比较
-try:
-    import numpy as np
-
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
-    logger.warning("numpy 未安装，将使用纯 Python 模式进行图片比较")
 
 # ==================== dHash 算法实现 ====================
 
@@ -317,27 +308,10 @@ def _verify_duplicate_sync(img1: Path, img2: Path) -> bool:
             image1 = image1.resize(size, Image.Resampling.LANCZOS)
             image2 = image2.resize(size, Image.Resampling.LANCZOS)
 
-            if HAS_NUMPY:
-                arr1 = np.array(image1)
-                arr2 = np.array(image2)
-                mse = np.mean((arr1.astype(float) - arr2.astype(float)) ** 2)
-                return mse < MSE_THRESHOLD_NUMPY
-            else:
-                pixels1 = list(image1.getdata())
-                pixels2 = list(image2.getdata())
-
-                if len(pixels1) != len(pixels2):
-                    return False
-
-                total_diff = 0
-                for p1, p2 in zip(pixels1, pixels2):
-                    if isinstance(p1, int):
-                        total_diff += abs(p1 - p2)
-                    else:
-                        total_diff += sum(abs(c1 - c2) for c1, c2 in zip(p1, p2))
-
-                avg_diff = total_diff / len(pixels1)
-                return avg_diff < AVG_DIFF_THRESHOLD_PYTHON
+            arr1 = np.array(image1)
+            arr2 = np.array(image2)
+            mse = np.mean((arr1.astype(float) - arr2.astype(float)) ** 2)
+            return mse < MSE_THRESHOLD_NUMPY
 
     except Exception as e:
         logger.opt(exception=True).warning(f"验证重复图片失败 {img1} vs {img2}: {e}")

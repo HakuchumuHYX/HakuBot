@@ -125,10 +125,7 @@ async def handle_list_files_command(bot: Bot, event: PrivateMessageEvent):
 
         file_list = []
         for i, file in enumerate(files):
-            try:
-                size_str = format_file_size(file.stat().st_size)
-            except Exception:
-                size_str = "未知大小"
+            size_str = format_file_size(file.stat().st_size)
             file_list.append(f"{i + 1}. {file.name} ({size_str})")
 
         message = f"已上传的文件 (共 {len(files)} 个):\n" + "\n".join(file_list)

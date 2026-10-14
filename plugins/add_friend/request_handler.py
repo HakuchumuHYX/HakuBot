@@ -8,7 +8,6 @@ from plugins.add_friend.config import (
     AUTO_APPROVE_GROUPS,
     WELCOME_MESSAGE,
     REQUEST_NOTIFICATION_TEMPLATE,
-    REJECT_MESSAGE,
     MANUAL_REVIEW,
 )
 from plugins.add_friend.data_manager import request_manager
@@ -116,18 +115,5 @@ async def process_reject_request(bot: Bot, user_id: int, flag: str):
         # 拒绝好友请求
         await bot.set_friend_add_request(flag=flag, approve=False)
         logger.info(f"已拒绝用户 {user_id} 的好友请求")
-
-        # 等待一小段时间，确保好友请求已被处理
-        import asyncio
-
-        await asyncio.sleep(1)
-
-        # 尝试发送拒绝消息（注意：对方可能设置了不允许陌生人消息）
-        try:
-            await bot.send_private_msg(user_id=user_id, message=REJECT_MESSAGE)
-            logger.debug(f"已向用户 {user_id} 发送拒绝消息")
-        except Exception as e:
-            logger.info(f"拒绝消息发送失败: {get_exc_desc(e)}")
-
     except Exception as e:
         logger.exception(f"拒绝好友请求失败: {e}")

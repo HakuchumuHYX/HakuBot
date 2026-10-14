@@ -153,12 +153,8 @@ async def update_avatar(user_id: str, avatar: bytes | None) -> None:
 
 async def get_deer_map(user_id: str, now: datetime) -> dict[int, int]:
     """获取用户当月签到记录"""
-    try:
-        async with get_session() as session:
-            return await _get_deer_map(session, user_id, now)
-    except Exception as e:
-        logger.exception(f"获取签到记录失败 (user_id={user_id}): {e}")
-        return {}
+    async with get_session() as session:
+        return await _get_deer_map(session, user_id, now)
 
 
 async def _get_deer_map(
@@ -180,74 +176,65 @@ async def _get_deer_map(
 
 async def attend(user_id: str, now: datetime) -> dict[int, int]:
     """执行签到操作"""
-    try:
-        async with get_session() as session:
-            # 获取当前签到记录
-            deer_map = await _get_deer_map(session, user_id, now)
+    async with get_session() as session:
+        # 获取当前签到记录
+        deer_map = await _get_deer_map(session, user_id, now)
 
-            # 更新签到次数
-            if now.day in deer_map:
-                deer_map[now.day] += 1
-                await session.execute(
-                    update(UserDeer)
-                    .where(
-                        UserDeer.user_id == user_id,
-                        UserDeer.year == now.year,
-                        UserDeer.month == now.month,
-                        UserDeer.day == now.day,
-                    )
-                    .values(count=deer_map[now.day])
+        # 更新签到次数
+        if now.day in deer_map:
+            deer_map[now.day] += 1
+            await session.execute(
+                update(UserDeer)
+                .where(
+                    UserDeer.user_id == user_id,
+                    UserDeer.year == now.year,
+                    UserDeer.month == now.month,
+                    UserDeer.day == now.day,
                 )
-                logger.debug(f"用户 {user_id} 重复签到，当日次数: {deer_map[now.day]}")
-            else:
-                deer_map[now.day] = 1
-                session.add(
-                    UserDeer(
-                        user_id=user_id,
-                        year=now.year,
-                        month=now.month,
-                        day=now.day,
-                    )
+                .values(count=deer_map[now.day])
+            )
+            logger.debug(f"用户 {user_id} 重复签到，当日次数: {deer_map[now.day]}")
+        else:
+            deer_map[now.day] = 1
+            session.add(
+                UserDeer(
+                    user_id=user_id,
+                    year=now.year,
+                    month=now.month,
+                    day=now.day,
                 )
-                logger.debug(f"用户 {user_id} 首次签到")
+            )
+            logger.debug(f"用户 {user_id} 首次签到")
 
-            await session.commit()
-            return deer_map
-
-    except Exception as e:
-        logger.exception(f"签到失败 (user_id={user_id}): {e}")
-        return {}
+        await session.commit()
+        return deer_map
 
 
 async def attend_past(
     user_id: str, now: datetime, day: int
 ) -> tuple[bool, dict[int, int]]:
     """执行补签操作"""
-    try:
-        async with get_session() as session:
-            # 获取当前签到记录
-            deer_map = await _get_deer_map(session, user_id, now)
+    async with get_session() as session:
+        # 获取当前签到记录
+        deer_map = await _get_deer_map(session, user_id, now)
 
-            # 检查是否已签到
-            if day in deer_map:
-                logger.debug(f"用户 {user_id} 尝试补签已签到的日期: {day}")
-                return (False, deer_map)
+        # 检查是否已签到
+        if day in deer_map:
+            logger.debug(f"用户 {user_id} 尝试补签已签到的日期: {day}")
+            return (False, deer_map)
 
-            # 添加补签记录
-            deer_map[day] = 1
-            session.add(
-                UserDeer(
-                    user_id=user_id,
-                    year=now.year,
-                    month=now.month,
-                    day=day,
-                )
+        # 添加补签记录
+        deer_map[day] = 1
+        session.add(
+            UserDeer(
+                user_id=user_id,
+                year=now.year,
+                month=now.month,
+                day=day,
             )
-            await session.commit()
-            logger.debug(f"用户 {user_id} 补签成功: {now.month}月{day}日")
+        )
+        await session.commit()
+        logger.debug(f"用户 {user_id} 补签成功: {now.month}月{day}日")
 
-            return (True, deer_map)
+        return (True, deer_map)
 
-    except Exception as e:
-        logger.exception(f"补签失败 (user_id={user_id}, day={day}): {e}")
-        return (False, {})

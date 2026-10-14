@@ -1,6 +1,5 @@
 import re
 from typing import List, Tuple, Union
-from nonebot import logger
 from nonebot.adapters.onebot.v11 import Message, GroupMessageEvent, MessageSegment, Bot
 from nonebot.rule import Rule
 from utils.onebot.media import image_segment
@@ -44,26 +43,22 @@ async def create_forward_message(
     创建合并转发条目（支持文本和共享本地图片）
     messages: 列表，元素为 (发送者名称, "text"或"image", 内容或图片段)
     """
-    try:
-        forward_items = []
-        for sender_name, msg_type, content in messages:
-            if msg_type == "text":
-                node_content = MessageSegment.text(str(content))
-            elif msg_type == "image":
-                node_content = (
-                    content
-                    if isinstance(content, MessageSegment)
-                    else image_segment(content)
-                )
-            else:
-                node_content = MessageSegment.text(str(content))
-            forward_items.append(
-                ForwardItem(node_content, name=sender_name, uin=bot.self_id)
+    forward_items = []
+    for sender_name, msg_type, content in messages:
+        if msg_type == "text":
+            node_content = MessageSegment.text(str(content))
+        elif msg_type == "image":
+            node_content = (
+                content
+                if isinstance(content, MessageSegment)
+                else image_segment(content)
             )
-        return forward_items
-    except Exception as e:
-        logger.exception(f"创建合并转发消息失败: {e}")
-        return [ForwardItem("合并转发消息创建失败", name="错误", uin=bot.self_id)]
+        else:
+            node_content = MessageSegment.text(str(content))
+        forward_items.append(
+            ForwardItem(node_content, name=sender_name, uin=bot.self_id)
+        )
+    return forward_items
 
 
 def extract_image_data(message: Message) -> Tuple[bool, list]:

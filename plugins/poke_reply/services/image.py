@@ -6,15 +6,8 @@ import time
 from pathlib import Path
 from typing import Tuple, Dict, Optional, List, Set
 from PIL import Image
+import numpy as np
 from nonebot import logger
-
-try:
-    import numpy as np
-
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
-    logger.warning("Numpy 未安装，将使用纯Python模式进行图片比较")
 
 from plugins.poke_reply.config import (
     IMAGE_HASH_CACHE_FILE,
@@ -201,22 +194,10 @@ def _verify_duplicate_check_sync(img1: Image.Image, img2: Image.Image) -> bool:
         image1 = img1.resize((100, 100), Image.Resampling.LANCZOS)
         image2 = img2.resize((100, 100), Image.Resampling.LANCZOS)
 
-        if HAS_NUMPY:
-            arr1 = np.array(image1)
-            arr2 = np.array(image2)
-            mse = np.mean((arr1 - arr2) ** 2)
-            return mse < IMAGE_SIMILARITY_THRESHOLD
-        else:
-            pixels1 = list(image1.getdata())
-            pixels2 = list(image2.getdata())
-            if len(pixels1) != len(pixels2):
-                return False
-            total_diff = sum(
-                sum(abs(c1 - c2) for c1, c2 in zip(p1, p2))
-                for p1, p2 in zip(pixels1, pixels2)
-            )
-            avg_diff = total_diff / len(pixels1) / 3
-            return avg_diff < IMAGE_SIMILARITY_THRESHOLD * 2
+        arr1 = np.array(image1)
+        arr2 = np.array(image2)
+        mse = np.mean((arr1 - arr2) ** 2)
+        return mse < IMAGE_SIMILARITY_THRESHOLD
     except Exception as e:
         logger.opt(exception=True).warning(f"验证重复图片时出错: {e}")
         return False
