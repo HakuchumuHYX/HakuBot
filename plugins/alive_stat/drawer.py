@@ -24,7 +24,8 @@ def _format_bytes(b: int) -> str:
 
 
 def _resource(name: str, percent: float, detail: str) -> dict:
-    level = "bad" if percent >= 90 else "warn" if percent >= 75 else "accent"
+    # 阈值与 webconsole 的负载条一致
+    level = "critical" if percent >= 90 else "high" if percent >= 80 else ""
     return {"name": name, "percent": percent, "detail": detail, "level": level}
 
 
@@ -40,7 +41,7 @@ async def draw_alive_card(
     resources = [
         _resource("CPU", res.cpu_percent, ""),
         _resource(
-            "Mem",
+            "内存",
             res.mem_percent,
             f"{_format_bytes(res.mem_used)}/{_format_bytes(res.mem_total)}",
         ),
@@ -52,7 +53,7 @@ async def draw_alive_card(
             else "N/A",
         ),
         _resource(
-            "Disk",
+            "磁盘",
             res.disk_percent,
             f"{_format_bytes(res.disk_used)}/{_format_bytes(res.disk_total)}",
         ),

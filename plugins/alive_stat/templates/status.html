@@ -5,247 +5,248 @@
 <style>
 {{ font_css | safe }}
 
+/* 色板照抄 webconsole/web/style.css，两边保持同一套暖中性色；
+   状态色只留给异常，正常状态一律灰。面板靠底色和细线区分，不用阴影。 */
 :root {
 {% if dark %}
-    --bg1: #121826; --bg2: #22304a;
-    --card: rgba(26, 32, 46, 0.94); --block: #222b3e; --border: #33415c;
-    --ink: #ecf3fb; --sub: #a9bdd3; --muted: #73859c;
-    --accent: #78e6d2; --bar: #33415c;
-    --ok: #50d282; --warn: #e0b43c; --bad: #f05a50;
+    --bg: #1b1a18; --panel: #242321; --line: #33322e;
+    --text: #ecebe6; --muted: #a6a39a; --faint: #77746b;
+    --success: #93b886; --warning: #e2a955; --danger: #f07a72;
 {% else %}
-    --bg1: #dff3ff; --bg2: #fbfdff;
-    --card: rgba(255, 255, 255, 0.94); --block: #f1f8fe; --border: #cfe3f2;
-    --ink: #19374b; --sub: #50788c; --muted: #8aa3b3;
-    --accent: #237daf; --bar: #dceaf4;
-    --ok: #32aa5a; --warn: #e6aa32; --bad: #dc503c;
+    --bg: #f4f2eb; --panel: #fdfcf9; --line: #e4e0d5;
+    --text: #141413; --muted: #66645d; --faint: #95928a;
+    --success: #4b7a40; --warning: #96620f; --danger: #b3261e;
 {% endif %}
+    --serif: 'Noto Serif CJK SC', serif;
+    --mono: 'Noto Sans Mono CJK SC', 'DejaVu Sans Mono', monospace;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: Haku, 'Noto Color Emoji', sans-serif;
-    color: var(--ink);
-    background:
-        radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--accent) 22%, transparent) 0, transparent 35%),
-        radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--accent) 16%, transparent) 0, transparent 35%),
-        linear-gradient(135deg, var(--bg1), var(--bg2));
     padding: 28px;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 Haku, 'Noto Color Emoji', sans-serif;
+    font-variant-numeric: tabular-nums;
 }
 
-.card {
-    background: var(--card);
-    border: 2px solid var(--border);
-    border-radius: 28px;
-    padding: 30px 32px 22px;
+.mono { font-family: var(--mono); }
+
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+
+.wordmark { font: 400 32px/1.2 var(--serif); letter-spacing: 0.04em; }
+
+.clock { color: var(--faint); font: 14px var(--mono); }
+
+.panel {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
 }
 
-.head { display: flex; align-items: baseline; justify-content: space-between; }
-
-h1 { font-size: 30px; font-weight: 900; }
-
-/* 一句话结论：全部正常，或者哪里出了问题 */
+/* 结论行是整张图唯一的重点：正常时安静，异常时整条变色 */
 .verdict {
+    --status: var(--success);
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     margin-top: 18px;
-    padding: 14px 18px;
-    border-radius: 16px;
-    background: color-mix(in srgb, var(--ok) 14%, transparent);
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--ok);
+    padding: 14px 20px;
+    font-size: 20px;
+    font-weight: 600;
 }
 
-.verdict.bad { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.verdict.bad {
+    --status: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+    background: color-mix(in srgb, var(--danger) 10%, var(--panel));
+    color: var(--danger);
+}
 
-.verdict .dot {
-    width: 14px;
-    height: 14px;
+.dot {
+    flex: none;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
-    background: currentColor;
-    box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 22%, transparent);
+    background: var(--status);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--status) 22%, transparent);
 }
 
-.generated { font-size: 14px; color: var(--sub); }
+.bots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
 
-.section { margin-top: 24px; }
+.padded { padding: 16px 20px 6px; }
 
-.label {
-    margin-bottom: 10px;
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--muted);
+.title { font-size: 16px; font-weight: 600; }
+
+.facts { margin-top: 10px; }
+
+.facts > div {
+    display: grid;
+    grid-template-columns: 3.2em minmax(0, 1fr);
+    gap: 12px;
+    padding: 9px 0;
+    border-top: 1px solid var(--line);
 }
 
-.bots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.facts dt { color: var(--muted); }
 
-.bot {
-    padding: 16px 18px;
-    background: var(--block);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-}
+.facts dd { overflow-wrap: anywhere; }
 
-.bot .name { font-size: 18px; font-weight: 700; color: var(--sub); }
+.duration { font: 500 17px/1.5 var(--mono); }
 
-.bot .item { margin-top: 10px; }
+.since { color: var(--faint); font: 13px var(--mono); }
 
-.bot .k { font-size: 13px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 16px; margin-top: 16px; }
 
-.bot .v { font-size: 22px; font-weight: 900; color: var(--accent); line-height: 1.3; }
-
-.bot .since { font-size: 12px; color: var(--muted); }
-
-.server .host { font-size: 17px; color: var(--sub); }
-
-.server .cpu { margin-top: 4px; font-size: 14px; color: var(--muted); }
+.stack { display: flex; flex-direction: column; gap: 16px; }
 
 .res {
     display: grid;
-    grid-template-columns: 56px 1fr 210px;
+    grid-template-columns: 3em minmax(0, 1fr) 7.6em 4.2em;
     align-items: center;
-    gap: 12px;
-    font-size: 16px;
+    gap: 14px;
+    padding: 11px 0;
+    border-top: 1px solid var(--line);
 }
 
-.res + .res { margin-top: 10px; }
+.res:first-of-type { margin-top: 10px; }
 
-.res .name { color: var(--sub); }
+.res .name { color: var(--muted); }
 
-.track { height: 14px; border-radius: 7px; background: var(--bar); overflow: hidden; }
+.meter { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 
-.fill { height: 100%; border-radius: 7px; background: var(--c); }
+.meter span { display: block; height: 100%; background: var(--muted); }
 
-.res .pct { text-align: right; font-size: 18px; font-weight: 700; }
+.meter .high { background: var(--warning); }
 
-.res .pct small { margin-left: 8px; font-size: 14px; font-weight: 400; color: var(--muted); }
+.meter .critical { background: var(--danger); }
 
-.procs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+.res .value { font: 500 16px var(--mono); text-align: right; }
 
-.proc {
+.res .detail { color: var(--faint); font: 13px var(--mono); text-align: right; }
+
+.res .value.high { color: var(--warning); }
+
+.res .value.critical { color: var(--danger); }
+
+.procs { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; margin-top: 10px; }
+
+.row {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 12px;
-    border-radius: 12px;
-    background: var(--block);
-    font-size: 15px;
+    padding: 9px 0;
+    border-top: 1px solid var(--line);
 }
 
-.proc .led { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
+.row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.proc.stopped .led { background: var(--bad); }
+.row .num { color: var(--muted); font: 14px var(--mono); }
 
-.proc .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proc .dot { width: 7px; height: 7px; background: var(--faint); box-shadow: none; }
 
-.proc .state { color: var(--ok); }
+.proc.stopped { --status: var(--danger); color: var(--danger); }
 
-.proc.stopped .state { color: var(--bad); }
+.proc.stopped .dot { width: 9px; height: 9px; background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent); }
 
-.proc .mem { width: 64px; text-align: right; color: var(--muted); font-size: 13px; }
+.proc.stopped .num, .net.down .num { color: var(--danger); font-family: inherit; font-weight: 600; }
 
-.nets { display: flex; flex-wrap: wrap; gap: 8px; }
+.host .facts > div { grid-template-columns: 3.5em minmax(0, 1fr); }
 
-.net {
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: var(--block);
-    font-size: 14px;
-    color: var(--sub);
-}
+.host .facts { margin-bottom: 14px; }
 
-.net b { margin-left: 6px; color: var(--ok); }
+.nets { margin-top: 10px; }
 
-.net.down b { color: var(--bad); }
-
-.foot { margin-top: 18px; text-align: right; font-size: 13px; color: var(--muted); }
+.foot { margin-top: 14px; color: var(--faint); font-size: 13px; text-align: right; }
 </style>
 </head>
 <body>
-<div class="card">
-    <div class="head">
-        <h1>HakuBot 运行状态</h1>
-        <div class="generated">{{ generated }}</div>
-    </div>
+<header class="head">
+    <h1 class="wordmark">运行状态</h1>
+    <span class="clock">{{ generated }}</span>
+</header>
 
-    {% set stopped = processes|rejectattr("running")|list %}
-    {% set down = networks|rejectattr("reachable")|list %}
-    <div class="verdict{% if stopped or down %} bad{% endif %}">
-        <span class="dot"></span>
+{% set stopped = processes|rejectattr("running")|list %}
+{% set down = networks|rejectattr("reachable")|list %}
+<div class="verdict panel{% if stopped or down %} bad{% endif %}">
+    <span class="dot"></span>
+    <span>
         {% if stopped %}{{ stopped|length }} 个进程已停止：{{ stopped|map(attribute="name")|join("、") }}
         {% elif down %}{{ down|map(attribute="host")|join("、") }} 无法连接
         {% else %}全部进程运行正常{% endif %}
-    </div>
+    </span>
+</div>
 
-    <div class="section">
-        <div class="label">运行时长</div>
-        <div class="bots">
-            {% for bot in bots %}
-            <div class="bot">
-                <div class="name">{{ bot.name }}</div>
-                <div class="item">
-                    <div class="k">本次启动</div>
-                    <div class="v">{{ bot.session_time }}</div>
-                    <div class="since">自 {{ bot.session_since }}</div>
-                </div>
-                <div class="item">
-                    <div class="k">累计</div>
-                    <div class="v">{{ bot.total_time }}</div>
-                    <div class="since">自 {{ bot.total_since }}</div>
-                </div>
+<div class="bots">
+    {% for bot in bots %}
+    <section class="panel padded">
+        <h2 class="title">{{ bot.name }}</h2>
+        <dl class="facts">
+            <div>
+                <dt>本次</dt>
+                <dd><div class="duration">{{ bot.session_time }}</div><div class="since">自 {{ bot.session_since }}</div></dd>
+            </div>
+            <div>
+                <dt>累计</dt>
+                <dd><div class="duration">{{ bot.total_time }}</div><div class="since">自 {{ bot.total_since }}</div></dd>
+            </div>
+        </dl>
+    </section>
+    {% endfor %}
+</div>
+
+<div class="grid">
+    <div class="stack">
+        <section class="panel padded">
+            <h2 class="title">资源</h2>
+            {% for res in resources %}
+            <div class="res">
+                <span class="name">{{ res.name }}</span>
+                <span class="meter"><span class="{{ res.level }}" style="width: {{ res.percent }}%"></span></span>
+                <span class="detail">{{ res.detail }}</span>
+                <span class="value {{ res.level }}">{{ "%.1f"|format(res.percent) }}%</span>
             </div>
             {% endfor %}
-        </div>
-    </div>
+        </section>
 
-    <div class="section server">
-        <div class="label">服务器</div>
-        <div class="host">{{ server.hostname }}，已运行 {{ server.uptime }}</div>
-        <div class="cpu">{{ server.cpu_model }}，{{ server.cpu_cores }} 核</div>
-    </div>
-
-    <div class="section">
-        <div class="label">资源</div>
-        {% for res in resources %}
-        <div class="res">
-            <div class="name">{{ res.name }}</div>
-            <div class="track"><div class="fill" style="width: {{ res.percent }}%; --c: var(--{{ res.level }})"></div></div>
-            <div class="pct">{{ "%.1f"|format(res.percent) }}%{% if res.detail %}<small>{{ res.detail }}</small>{% endif %}</div>
-        </div>
-        {% endfor %}
-    </div>
-
-    <div class="section">
-        <div class="label">进程</div>
-        <div class="procs">
-            {% for proc in processes %}
-            <div class="proc{% if not proc.running %} stopped{% endif %}">
-                <span class="led"></span>
-                <span class="pname">{{ proc.name }}</span>
-                <span class="state">{{ "运行中" if proc.running else "已停止" }}</span>
-                <span class="mem">{{ proc.mem }}</span>
+        <section class="panel padded">
+            <h2 class="title">进程</h2>
+            <div class="procs">
+                {% for proc in processes %}
+                <div class="row proc{% if not proc.running %} stopped{% endif %}">
+                    <span class="dot"></span>
+                    <span class="name">{{ proc.name }}</span>
+                    <span class="num">{{ proc.mem if proc.running else "已停止" }}</span>
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
-        </div>
+        </section>
     </div>
 
-    <div class="section">
-        <div class="label">网络</div>
+    <section class="panel padded host">
+        <h2 class="title">主机</h2>
+        <dl class="facts">
+            <div><dt>名称</dt><dd>{{ server.hostname }}</dd></div>
+            <div><dt>已运行</dt><dd class="mono">{{ server.uptime }}</dd></div>
+            <div><dt>CPU</dt><dd>{{ server.cpu_model }}</dd></div>
+            <div><dt>核心</dt><dd>{{ server.cpu_cores }} 核</dd></div>
+        </dl>
+
+        <h2 class="title">网络</h2>
         <div class="nets">
             {% for net in networks %}
-            <div class="net{% if not net.reachable %} down{% endif %}">
-                {{ net.host }}
-                <b>{% if net.reachable %}{{ "%.0fms"|format(net.latency_ms) if net.latency_ms is not none else "可达" }}{% else %}超时{% endif %}</b>
+            <div class="row net{% if not net.reachable %} down{% endif %}">
+                <span class="name">{{ net.host }}</span>
+                <span class="num">{% if net.reachable %}{{ "%.0fms"|format(net.latency_ms) if net.latency_ms is not none else "可达" }}{% else %}超时{% endif %}</span>
             </div>
             {% else %}
-            <div class="net">N/A</div>
+            <div class="row"><span class="name">未配置</span></div>
             {% endfor %}
         </div>
-    </div>
-
-    {% if brand %}<div class="foot">{{ brand }}</div>{% endif %}
+    </section>
 </div>
+
+{% if brand %}<div class="foot">{{ brand }}</div>{% endif %}
 </body>
 </html>
