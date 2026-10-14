@@ -6,7 +6,7 @@ from datetime import datetime
 from dataclasses import asdict
 from typing import Optional
 import pytz
-from nonebot.log import logger
+from nonebot import logger
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from utils.rendering.engine import render_template

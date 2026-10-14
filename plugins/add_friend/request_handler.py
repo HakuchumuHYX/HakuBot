@@ -1,7 +1,8 @@
-from nonebot import on_request, get_driver
+from nonebot import on_request, get_driver, logger
 from nonebot.adapters.onebot.v11 import Bot, FriendRequestEvent
-from nonebot.log import logger
 import time
+
+from utils.logging import get_exc_desc
 
 from plugins.add_friend.config import (
     AUTO_APPROVE_GROUPS,
@@ -43,7 +44,7 @@ async def handle_friend_request(bot: Bot, event: FriendRequestEvent):
 
     # 如果这个请求最近已经处理过，直接返回
     if request_key in processed_requests:
-        logger.info(f"忽略已处理的好友请求: 用户{user_id}, flag: {flag}")
+        logger.debug(f"忽略已处理的好友请求: 用户{user_id}, flag: {flag}")
         return
 
     # 标记这个请求为已处理
@@ -79,10 +80,10 @@ async def process_auto_approve(bot: Bot, user_id: int, flag: str):
         try:
             await bot.send_private_msg(user_id=user_id, message=WELCOME_MESSAGE)
         except Exception as e:
-            logger.warning(f"欢迎消息发送失败: {e}")
+            logger.warning(f"欢迎消息发送失败: {get_exc_desc(e)}")
 
     except Exception as e:
-        logger.error(f"自动同意好友请求失败: {e}")
+        logger.exception(f"自动同意好友请求失败: {e}")
 
 
 async def process_manual_review(
@@ -124,9 +125,9 @@ async def process_reject_request(bot: Bot, user_id: int, flag: str):
         # 尝试发送拒绝消息（注意：对方可能设置了不允许陌生人消息）
         try:
             await bot.send_private_msg(user_id=user_id, message=REJECT_MESSAGE)
-            logger.info(f"已向用户 {user_id} 发送拒绝消息")
+            logger.debug(f"已向用户 {user_id} 发送拒绝消息")
         except Exception as e:
-            logger.warning(f"拒绝消息发送失败: {e}")
+            logger.info(f"拒绝消息发送失败: {get_exc_desc(e)}")
 
     except Exception as e:
-        logger.error(f"拒绝好友请求失败: {e}")
+        logger.exception(f"拒绝好友请求失败: {e}")

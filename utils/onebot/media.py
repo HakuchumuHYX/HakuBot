@@ -16,9 +16,8 @@ from threading import Lock
 from typing import TypeAlias
 from urllib.parse import unquote, urlparse
 
-from nonebot import get_driver
+from nonebot import get_driver, logger
 from nonebot.adapters.onebot.v11 import MessageSegment
-from nonebot.log import logger
 
 
 ImageSource: TypeAlias = str | Path | bytes | bytearray | BytesIO

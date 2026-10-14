@@ -15,3 +15,23 @@
 帮助图也由各插件自己的模板渲染；全局菜单继续手写，渲染失败时发送同源文本。`utils/rendering/templates/` 只保留通用的 Markdown / 纯文本转图模板。
 
 群日报和早报各用自己的 LLM 配置，不读取其他插件的配置作为回退。正常运行使用 `uv run python bot.py`。
+
+## 日志
+
+统一 `from nonebot import logger`；`webconsole_bridge` 直接用 loguru（挂 sink、`webconsole_bridge_internal` 防回环）。
+
+日志有两个读者：`bot.py` 的 stdout（`output.log`）里 nonebot 内核、uvicorn、websockets 只出 WARNING 起，其余来源跟 `log_level`；
+webconsole bridge 自己的 sink 只收 WARNING 起，并按级别判定一次响应——出现 ERROR 记失败，出现 WARNING 留完整诊断。所以级别按这个语义用：
+
+| 级别 | 放什么 |
+| --- | --- |
+| ERROR | 这件事没办成：用户没拿到结果、推送没送达、任务整个失败 |
+| WARNING | 办成了但降级了，或外部依赖异常、下轮会重试 |
+| INFO | 结果和状态变化：推送送达、订阅变更、定时任务结论 |
+| DEBUG | 过程细节，排查时才开 |
+
+- 同一状态只在进入和恢复时各记一次，不要每轮都报。
+- 发送失败（风控 1200、超时等）按最终结果定级：下轮会重试或只是部分群没发出去记 WARNING，放弃了、彻底没送到记 ERROR。
+- 意料之外的异常用 `logger.exception`；意料之中的（超时、风控 1200）一行 `warning`，用 `utils.logging.get_exc_desc(e)`。
+- 已降级兜底、但原因可能是代码 bug 时，用 `logger.opt(exception=True).warning`：保留 traceback，又不被控制台记成失败。
+- loguru 不认 `exc_info=True`：不会带 traceback，异常文本里有 `{}` 时日志调用本身会抛 `KeyError`。

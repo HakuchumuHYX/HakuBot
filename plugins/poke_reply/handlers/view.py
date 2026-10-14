@@ -3,6 +3,7 @@ from typing import List
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, Bot
 from nonebot.rule import to_me
+from nonebot.exception import FinishedException
 
 from plugins.poke_reply.models.data import data_manager
 from plugins.poke_reply.utils.common import ensure_at_me, create_forward_message
@@ -75,7 +76,7 @@ async def send_text_forward_message(
                 await asyncio.sleep(1)
         return True
     except Exception as e:
-        logger.error(f"发送文本合并转发消息失败: {e}")
+        logger.exception(f"发送文本合并转发消息失败: {e}")
         return False
 
 
@@ -114,7 +115,7 @@ async def send_image_forward_message(
                 await asyncio.sleep(1)
         return True
     except Exception as e:
-        logger.error(f"发送图片合并转发消息失败: {e}")
+        logger.exception(f"发送图片合并转发消息失败: {e}")
         return False
 
 
@@ -139,9 +140,11 @@ async def handle_view_all_contributions(bot: Bot, event: GroupMessageEvent):
                 bot, group_id, images, "所有投稿图片"
             ):
                 return
-        logger.info(f"用户 {event.user_id} 查看了群 {group_id} 的所有投稿")
+        logger.debug(f"用户 {event.user_id} 查看了群 {group_id} 的所有投稿")
+    except FinishedException:
+        raise
     except Exception as e:
-        logger.error(f"查看所有投稿时出错: {e}")
+        logger.exception(f"查看所有投稿时出错: {e}")
         await view_all_contributions.finish("查看投稿失败，请稍后重试喵！")
 
 
@@ -153,9 +156,11 @@ async def handle_view_all_texts(bot: Bot, event: GroupMessageEvent):
             await view_all_texts.finish("数据加载失败，无法查看文本喵！")
         texts = data_manager.group_texts.get(group_id, [])
         if await send_text_forward_message(bot, group_id, texts, "所有文本投稿"):
-            logger.info(f"用户 {event.user_id} 查看了群 {group_id} 的所有文本投稿")
+            logger.debug(f"用户 {event.user_id} 查看了群 {group_id} 的所有文本投稿")
+    except FinishedException:
+        raise
     except Exception as e:
-        logger.error(f"查看所有文本时出错: {e}")
+        logger.exception(f"查看所有文本时出错: {e}")
         await view_all_texts.finish("查看文本失败，请稍后重试喵！")
 
 
@@ -167,7 +172,9 @@ async def handle_view_all_images(bot: Bot, event: GroupMessageEvent):
             await view_all_images.finish("数据加载失败，无法查看图片喵！")
         images = data_manager.group_images.get(group_id, [])
         if await send_image_forward_message(bot, group_id, images, "所有图片投稿"):
-            logger.info(f"用户 {event.user_id} 查看了群 {group_id} 的所有图片投稿")
+            logger.debug(f"用户 {event.user_id} 查看了群 {group_id} 的所有图片投稿")
+    except FinishedException:
+        raise
     except Exception as e:
-        logger.error(f"查看所有图片时出错: {e}")
+        logger.exception(f"查看所有图片时出错: {e}")
         await view_all_images.finish("查看图片失败，请稍后重试喵！")

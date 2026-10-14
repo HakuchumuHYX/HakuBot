@@ -2,7 +2,7 @@ import json
 import asyncio
 from collections import Counter
 from typing import Callable, Any
-from nonebot.log import logger
+from nonebot import logger
 from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.models import SummaryTopic, GoldenQuote, TokenUsage
 from plugins.group_daily_analysis.utils.llm import call_chat_completion
@@ -48,14 +48,14 @@ class TopicsAnalysis:
                     messages, topics_single, topics_merge
                 )
             except Exception:
-                logger.exception("话题分析失败，保留其他分析结果并使用本地降级")
+                logger.opt(exception=True).warning("话题分析失败，保留其他分析结果并使用本地降级")
         if quotes_enabled:
             try:
                 quotes, quote_usage = await self._analyze_with_strategy(
                     messages, quotes_single, quotes_merge
                 )
             except Exception:
-                logger.exception("金句分析失败，保留其他分析结果并使用本地降级")
+                logger.opt(exception=True).warning("金句分析失败，保留其他分析结果并使用本地降级")
 
         total_usage = TokenUsage(
             prompt_tokens=topic_usage.prompt_tokens + quote_usage.prompt_tokens,
@@ -98,13 +98,13 @@ class TopicsAnalysis:
                 last_error = e
                 if attempt < max_retries - 1:
                     delay = 2.0 * (attempt + 1)
-                    logger.warning(
+                    logger.info(
                         f"分片 {chunk_index} 失败 ({e})，{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})..."
                     )
                     await asyncio.sleep(delay)
 
         # 所有重试都失败
-        logger.error(
+        logger.warning(
             f"分片 {chunk_index} 在 {max_retries} 次尝试后仍失败: {last_error}"
         )
         return [], TokenUsage()

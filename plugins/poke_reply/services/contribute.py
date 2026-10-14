@@ -5,6 +5,7 @@ from nonebot.exception import FinishedException
 from plugins.poke_reply.models.data import data_manager
 from plugins.poke_reply.services import image as image_service
 from plugins.poke_reply.services import text as text_service
+from utils.logging import get_exc_desc
 from utils.network.images import fetch_image
 from plugins.poke_reply.config import get_group_image_dir, MAX_TEXT_LENGTH
 
@@ -61,8 +62,8 @@ async def handle_image_contribution(
             try:
                 downloaded = await fetch_image(img_data)
                 image_bytes, extension = downloaded.data, downloaded.extension
-            except Exception:
-                logger.error(f"下载图片失败: {img_data}")
+            except Exception as e:
+                logger.warning(f"下载图片失败: {img_data}: {get_exc_desc(e)}")
                 return False, "图片投稿失败，下载图片时出错喵", []
 
             try:
@@ -75,7 +76,7 @@ async def handle_image_contribution(
 
                 images_to_save.append((image_bytes, extension))
             except Exception as e:
-                logger.error(f"图片查重时发生错误: {e}，默认放行")
+                logger.opt(exception=True).warning(f"图片查重时发生错误: {e}，默认放行")
                 images_to_save.append((image_bytes, extension))
 
         elif img_type == "face":
@@ -97,9 +98,7 @@ async def handle_image_contribution(
                 if p_hash and f_hash:
                     image_service.update_hash_cache(new_file_path, p_hash, f_hash)
             except Exception as e:
-                logger.error(f"更新新图片 {filename} 的哈希缓存失败: {e}")
-        else:
-            logger.error(f"保存图片 {filename} 失败")
+                logger.opt(exception=True).warning(f"更新新图片 {filename} 的哈希缓存失败: {e}")
 
     if success_count > 0:
         text_count = data_manager.get_text_count(group_id)

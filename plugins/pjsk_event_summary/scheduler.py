@@ -1,19 +1,17 @@
 from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 
-from nonebot import get_driver, require
+from nonebot import get_driver, require, logger
 
 from plugins.pjsk_event_summary.services.index import (
     INITIAL_REBUILD_DELAY_SECONDS,
     REBUILD_INTERVAL_HOURS,
     rebuild_event_index,
 )
-from utils.logging import get_logger
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-logger = get_logger("pjsk_event_summary.scheduler")
 driver = get_driver()
 
 

@@ -6,11 +6,8 @@ import re
 from pathlib import Path
 from typing import Tuple, Optional, Dict, List
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
-from nonebot import get_driver
+from nonebot import get_driver, logger
 
-from utils.logging import get_logger
-
-logger = get_logger("stickers.manage")
 
 from plugins.stickers import send
 from plugins.stickers.send import (

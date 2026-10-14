@@ -6,7 +6,7 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.stickers.send import get_folder_display_info, get_random_sticker
 from utils.rendering.engine import render_template
@@ -48,7 +48,7 @@ async def _render_duplicates(
             shown=shown,
         )
     except Exception as e:
-        logger.error(f"生成重复图片报告失败: {e}")
+        logger.opt(exception=True).warning(f"生成重复图片报告失败: {e}")
         return None
 
 
@@ -97,5 +97,5 @@ async def render_stickers_preview() -> Optional[bytes]:
             total_images=sum(folder["image_count"] for folder in folders),
         )
     except Exception as e:
-        logger.error(f"生成贴图预览图片失败: {e}")
+        logger.opt(exception=True).warning(f"生成贴图预览图片失败: {e}")
         return None

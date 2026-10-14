@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.buaa_msm.config import plugin_config
 

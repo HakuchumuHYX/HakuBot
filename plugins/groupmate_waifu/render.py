@@ -10,8 +10,9 @@ from typing import Iterable, Mapping, Sequence, Tuple
 
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed
-from nonebot.log import logger
+from nonebot import logger
 
+from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 from utils.onebot.forward import ForwardItem
 from utils.rendering.engine import render_template
@@ -39,10 +40,7 @@ async def build_avatar_message(prefix: str, user_id: int, suffix: str = "") -> t
 
 
 def _log_send_fallback(e: ActionFailed):
-    logger.warning(
-        f"发送图片消息失败，降级为文本: retcode={getattr(e, 'retcode', None)} "
-        f"wording={getattr(e, 'wording', None)}"
-    )
+    logger.warning(f"发送图片消息失败，降级为文本: {get_exc_desc(e)}")
 
 
 async def send_with_fallback(matcher, message, fallback: str, **kwargs):

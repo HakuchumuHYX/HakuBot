@@ -10,9 +10,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
 
-from utils.logging import get_exc_desc, get_logger
+from nonebot import logger
 
-logger = get_logger("moesekai_hub")
+from utils.logging import get_exc_desc
 
 REPO_DIR = Path("/opt/moesekai-hub")
 INDEX_DIR = Path("/opt/moesekai-hub-index")

@@ -46,11 +46,11 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
     # 首次使用时初始化数据库
     if not _initialized:
-        logger.info("初始化 deer_pipe 数据库...")
+        logger.debug("初始化 deer_pipe 数据库...")
         async with engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
         _initialized = True
-        logger.success("deer_pipe 数据库初始化完成")
+        logger.debug("deer_pipe 数据库初始化完成")
 
     # 创建并返回会话
     async with AsyncSession(engine) as session:
@@ -66,7 +66,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def cleanup() -> None:
     """清理过期的签到数据（保留当前月份的数据）"""
     now = datetime.now()
-    logger.info(f"开始清理 deer_pipe 过期数据，当前时间: {now.year}-{now.month}")
+    logger.debug(f"开始清理 deer_pipe 过期数据，当前时间: {now.year}-{now.month}")
 
     try:
         async with get_session() as session:
@@ -101,10 +101,10 @@ async def cleanup() -> None:
                 logger.info(f"清理了 {len(orphaned_users)} 个无效用户头像数据")
 
             await session.commit()
-            logger.success("deer_pipe 数据清理完成")
+            logger.debug("deer_pipe 数据清理完成")
 
     except Exception as e:
-        logger.error(f"deer_pipe 数据清理失败: {e}")
+        logger.exception(f"deer_pipe 数据清理失败: {e}")
 
 
 async def get_avatar(user_id: str) -> bytes | None:
@@ -157,7 +157,7 @@ async def get_deer_map(user_id: str, now: datetime) -> dict[int, int]:
         async with get_session() as session:
             return await _get_deer_map(session, user_id, now)
     except Exception as e:
-        logger.error(f"获取签到记录失败 (user_id={user_id}): {e}")
+        logger.exception(f"获取签到记录失败 (user_id={user_id}): {e}")
         return {}
 
 
@@ -215,7 +215,7 @@ async def attend(user_id: str, now: datetime) -> dict[int, int]:
             return deer_map
 
     except Exception as e:
-        logger.error(f"签到失败 (user_id={user_id}): {e}")
+        logger.exception(f"签到失败 (user_id={user_id}): {e}")
         return {}
 
 
@@ -249,5 +249,5 @@ async def attend_past(
             return (True, deer_map)
 
     except Exception as e:
-        logger.error(f"补签失败 (user_id={user_id}, day={day}): {e}")
+        logger.exception(f"补签失败 (user_id={user_id}, day={day}): {e}")
         return (False, {})

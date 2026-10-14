@@ -37,7 +37,7 @@ def cache_message_direct(
             image_hash=image_hash,
         )
     except Exception as e:
-        logger.error(f"直接缓存消息失败: {e}")
+        logger.opt(exception=True).warning(f"直接缓存消息失败: {e}")
 
 
 @poke.handle()
@@ -66,7 +66,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
     if not is_superuser:
         remaining_time = check_cd(PLUGIN_ID, str(group_id), str(user_id))
         if remaining_time > 0:
-            logger.info(
+            logger.debug(
                 f"群 {group_id} 用户 {user_id} 戳一戳CD中，剩余 {remaining_time}秒"
             )
             return
@@ -169,4 +169,4 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"处理戳一戳事件时发生错误: {e}")
+        logger.exception(f"处理戳一戳事件时发生错误: {e}")

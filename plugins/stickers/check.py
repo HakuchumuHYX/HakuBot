@@ -10,7 +10,7 @@ from PIL import Image
 # 忽略 PIL 的 EXIF 损坏警告（不影响图片处理）
 warnings.filterwarnings("ignore", message="Corrupt EXIF data")
 from nonebot.adapters.onebot.v11 import MessageSegment
-from nonebot.log import logger
+from nonebot import logger
 from plugins.stickers.send import (
     sticker_folders,
     sticker_dir,
@@ -92,7 +92,7 @@ def calculate_dhash(image_path: Path) -> str:
             return dhash
 
     except Exception as e:
-        logger.error(f"计算 dHash 失败 {image_path}: {e}")
+        logger.opt(exception=True).warning(f"计算 dHash 失败 {image_path}: {e}")
         return ""
 
 
@@ -115,7 +115,7 @@ async def batch_calculate_hashes(image_files: List[Path]) -> Dict[Path, str]:
     results: Dict[Path, str] = {}
     total = len(image_files)
 
-    logger.info(f"开始批量计算哈希，共 {total} 张图片")
+    logger.debug(f"开始批量计算哈希，共 {total} 张图片")
     start_time = time.time()
 
     # 分批处理
@@ -139,10 +139,10 @@ async def batch_calculate_hashes(image_files: List[Path]) -> Dict[Path, str]:
         processed = min(i + BATCH_SIZE, total)
         if processed % 500 == 0 or processed == total:
             elapsed = time.time() - start_time
-            logger.info(f"哈希计算进度: {processed}/{total} ({elapsed:.1f}s)")
+            logger.debug(f"哈希计算进度: {processed}/{total} ({elapsed:.1f}s)")
 
     elapsed = time.time() - start_time
-    logger.info(f"哈希计算完成，耗时 {elapsed:.1f}s，有效结果 {len(results)} 个")
+    logger.debug(f"哈希计算完成，耗时 {elapsed:.1f}s，有效结果 {len(results)} 个")
 
     return results
 
@@ -174,7 +174,7 @@ async def check_duplicate_images(
 
     existing_list = list(existing_images)
 
-    logger.info(
+    logger.debug(
         f"开始查重: {folder_name}, 现有图片: {len(existing_list)}, 新图片: {len(new_images)}"
     )
 
@@ -205,12 +205,12 @@ async def check_duplicate_images(
                 # 找到相似图片，进行最终验证
                 if await verify_duplicate(existing_path, new_img):
                     duplicates.append((existing_path, new_img))
-                    logger.info(
+                    logger.debug(
                         f"发现重复: {existing_path.name} <-> {new_img.name} (距离: {distance})"
                     )
                     break  # 找到一个重复即可
 
-    logger.info(
+    logger.debug(
         f"查重完成: 检查了 {len(new_images)} 张新图片，发现 {len(duplicates)} 个重复"
     )
 
@@ -237,7 +237,7 @@ async def find_folder_duplicates(folder_name: str) -> List[Tuple[Path, Path]]:
 
     image_list = list(image_files)
 
-    logger.info(f"在文件夹 {folder_name} 中找到 {len(image_list)} 张图片")
+    logger.debug(f"在文件夹 {folder_name} 中找到 {len(image_list)} 张图片")
 
     if len(image_list) < 2:
         return []
@@ -270,11 +270,11 @@ async def find_folder_duplicates(folder_name: str) -> List[Tuple[Path, Path]]:
                 if await verify_duplicate(path1, path2):
                     duplicates.append((path1, path2))
                     processed.add(path2)  # 标记为已处理
-                    logger.info(
+                    logger.debug(
                         f"发现重复: {path1.name} <-> {path2.name} (距离: {distance})"
                     )
 
-    logger.info(f"在文件夹 {folder_name} 中发现 {len(duplicates)} 组重复图片")
+    logger.debug(f"在文件夹 {folder_name} 中发现 {len(duplicates)} 组重复图片")
     return duplicates
 
 
@@ -340,7 +340,7 @@ def _verify_duplicate_sync(img1: Path, img2: Path) -> bool:
                 return avg_diff < AVG_DIFF_THRESHOLD_PYTHON
 
     except Exception as e:
-        logger.error(f"验证重复图片失败 {img1} vs {img2}: {e}")
+        logger.opt(exception=True).warning(f"验证重复图片失败 {img1} vs {img2}: {e}")
         return False
 
 
@@ -373,7 +373,7 @@ async def remove_duplicates(duplicates: Dict[str, List[Tuple[Path, Path]]]) -> i
                     invalidate_cache(duplicate_img)
 
             except Exception as e:
-                logger.error(f"删除重复图片失败 {duplicate_img}: {e}")
+                logger.warning(f"删除重复图片失败 {duplicate_img}: {e}")
 
     return removed_count
 
@@ -390,7 +390,7 @@ async def safe_remove_duplicates(
     backup_dir.mkdir(exist_ok=True)
 
     for folder_name, folder_duplicates in duplicates.items():
-        logger.info(
+        logger.debug(
             f"安全模式：处理文件夹 {folder_name} 的 {len(folder_duplicates)} 组重复图片"
         )
 
@@ -420,7 +420,7 @@ async def safe_remove_duplicates(
                     invalidate_cache(duplicate_img)
 
             except Exception as e:
-                logger.error(f"安全删除失败 {duplicate_img}: {e}")
+                logger.warning(f"安全删除失败 {duplicate_img}: {e}")
 
     # 使受影响文件夹的计数缓存失效
     for folder_name in affected_folders:
@@ -458,7 +458,7 @@ def _batch_rename_stickers_sync() -> Tuple[int, str]:
     if not folder_configs:
         return 0, "没有找到文件夹配置"
 
-    logger.info(f"开始批量重命名，共 {len(folder_configs)} 个文件夹配置")
+    logger.debug(f"开始批量重命名，共 {len(folder_configs)} 个文件夹配置")
 
     # 收集所有待处理的文件路径，保持顺序
     all_files_ordered: List[Path] = []
@@ -484,13 +484,13 @@ def _batch_rename_stickers_sync() -> Tuple[int, str]:
         all_files_ordered.extend(files_in_folder)
 
     total_files = len(all_files_ordered)
-    logger.info(f"扫描到 {total_files} 张图片待重命名")
+    logger.debug(f"扫描到 {total_files} 张图片待重命名")
 
     if total_files == 0:
         return 0, "没有找到任何图片"
 
     # Step 1: 先将所有文件重命名为临时 UUID（避免命名冲突）
-    logger.info("Step 1: 将所有文件重命名为临时 UUID...")
+    logger.debug("Step 1: 将所有文件重命名为临时 UUID...")
     temp_map: List[Path] = []
 
     for file_path in all_files_ordered:
@@ -503,12 +503,12 @@ def _batch_rename_stickers_sync() -> Tuple[int, str]:
             # 清除旧路径的缓存
             invalidate_cache(file_path)
         except Exception as e:
-            logger.error(f"重命名临时文件失败 {file_path}: {e}")
+            logger.exception(f"重命名临时文件失败 {file_path}: {e}")
             # 尝试回滚已重命名的文件
             return len(temp_map), f"重命名过程中出错: {e}"
 
     # Step 2: 按顺序赋予新编号
-    logger.info("Step 2: 按顺序赋予新编号...")
+    logger.debug("Step 2: 按顺序赋予新编号...")
     current_id = 1
     renamed_count = 0
 
@@ -523,7 +523,7 @@ def _batch_rename_stickers_sync() -> Tuple[int, str]:
             # 清除临时路径的缓存
             invalidate_cache(temp_path)
         except Exception as e:
-            logger.error(f"重命名最终文件失败 {temp_path} -> {final_name}: {e}")
+            logger.exception(f"重命名最终文件失败 {temp_path} -> {final_name}: {e}")
 
     logger.info(
         f"批量重命名完成！共重命名 {renamed_count} 张图片（编号 1 至 {current_id - 1}）"

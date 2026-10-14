@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.buaa_msm.domain.constants import SITE_ID_MAP
 
@@ -25,11 +25,11 @@ from plugins.buaa_msm.domain.constants import SITE_ID_MAP
 def parse_map(user_data: Dict[str, Any]) -> Optional[Dict[str, List]]:
     """从解密的字典数据中解析地图采集点信息。"""
     if "updatedResources" not in user_data:
-        logger.error("Error: 'updatedResources' not found in decrypted data.")
+        logger.warning("Error: 'updatedResources' not found in decrypted data.")
         return None
 
     if "userMysekaiHarvestMaps" not in user_data.get("updatedResources", {}):
-        logger.error("Error: 'userMysekaiHarvestMaps' not found in decrypted data.")
+        logger.warning("Error: 'userMysekaiHarvestMaps' not found in decrypted data.")
         return None
 
     try:
@@ -66,8 +66,8 @@ def parse_map(user_data: Dict[str, Any]) -> Optional[Dict[str, List]]:
                     break
 
             processed_map[str(site_name)] = mp_detail
-    except Exception as e:
-        logger.error(f"Error decoding map data: {e}")
+    except Exception:
+        logger.exception("Error decoding map data")
         return None
 
     return processed_map

@@ -1,7 +1,7 @@
 import asyncio
 import re
 from typing import Callable, Any
-from nonebot.log import logger
+from nonebot import logger
 from core.access import is_feature_enabled
 from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.models import (
@@ -72,7 +72,7 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
         dynamic_quotes = min(10, plugin_config.max_golden_quotes + msg_count // 500)
         dynamic_titles = min(15, plugin_config.max_user_titles + msg_count // 500)
 
-        logger.info(
+        logger.debug(
             f"自适应数量计算：话题 {dynamic_topics}，称号 {dynamic_titles}，金句 {dynamic_quotes} (有效消息数: {msg_count})"
         )
 
@@ -116,12 +116,12 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
                 raise result
 
         if isinstance(topics_result, Exception):
-            logger.error(f"话题、金句分析异常: {topics_result}")
+            logger.opt(exception=topics_result).warning(f"话题、金句分析异常: {topics_result}")
         else:
             (topics, golden_quotes), combined_usage = topics_result
 
         if isinstance(titles_result, Exception):
-            logger.error(f"用户称号分析异常: {titles_result}")
+            logger.opt(exception=titles_result).warning(f"用户称号分析异常: {titles_result}")
         else:
             user_titles, user_title_usage = titles_result
 
@@ -213,7 +213,7 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
             )
 
         # Map-Reduce Mode
-        logger.info(f"消息长度 ({total_len}) 超过阈值，启用 Map-Reduce 分段分析...")
+        logger.debug(f"消息长度 ({total_len}) 超过阈值，启用 Map-Reduce 分段分析...")
         chunks = self._split_messages(messages, plugin_config.max_input_length)
 
         # Map Phase: 并发处理所有分片
@@ -249,7 +249,7 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
                 logger.warning(f"Map 分片 {i} 最终失败: {res}")
                 fail_count += 1
 
-        logger.info(
+        logger.debug(
             f"Map 阶段完成: {success_count}/{len(chunks)} 分片成功, {fail_count} 失败, 收集到 {len(flattened)} 条结果"
         )
 
@@ -260,7 +260,7 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
 
         # Reduce Phase
         if merge_func and flattened:
-            logger.info(f"开始 Reduce 阶段，合并 {len(flattened)} 条结果...")
+            logger.debug(f"开始 Reduce 阶段，合并 {len(flattened)} 条结果...")
             try:
                 data, usage = await merge_func(flattened)
                 if isinstance(usage, TokenUsage):

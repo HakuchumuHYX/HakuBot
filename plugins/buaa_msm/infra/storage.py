@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 from typing import Dict
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.buaa_msm.config import plugin_config
 
@@ -53,8 +53,8 @@ def _persist_user_latest_files() -> None:
             json.dumps(serializable, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-    except Exception as e:
-        logger.error(f"持久化 user_latest_files 失败: {e}")
+    except Exception:
+        logger.exception("持久化 user_latest_files 失败")
 
 
 def _load_user_latest_files_index() -> Dict[str, Path]:
@@ -75,8 +75,8 @@ def _load_user_latest_files_index() -> Dict[str, Path]:
             if p.exists() and p.is_file() and p.suffix.lower() == ".bin":
                 loaded[user_id] = p
         return loaded
-    except Exception as e:
-        logger.error(f"加载 user_latest_files 索引失败: {e}")
+    except Exception:
+        logger.exception("加载 user_latest_files 索引失败")
         return {}
 
 
@@ -85,18 +85,18 @@ def _delete_user_file(user_id: str, file_path: Path):
     try:
         file_stem = file_path.stem
         file_path.unlink()
-        logger.info(f"删除用户 {user_id} 的旧文件: {file_path.name}")
+        logger.debug(f"删除用户 {user_id} 的旧文件: {file_path.name}")
 
         # 删除关联的JSON文件
         user_output_dir = file_storage_dir / f"output_{user_id}"
         json_to_delete = user_output_dir / f"{file_stem}_decrypted.json"
         if json_to_delete.exists():
             json_to_delete.unlink()
-            logger.info(f"删除用户 {user_id} 的旧JSON: {json_to_delete.name}")
+            logger.debug(f"删除用户 {user_id} 的旧JSON: {json_to_delete.name}")
     except FileNotFoundError:
         logger.warning(f"尝试删除的文件 {file_path.name} 已不存在")
     except Exception as e:
-        logger.error(f"删除文件失败: {e}")
+        logger.warning(f"删除文件失败: {e}")
 
 
 def update_user_latest_file(user_id: str, file_path: Path):
@@ -122,9 +122,9 @@ def update_user_latest_file(user_id: str, file_path: Path):
             # 删除刚上传的旧文件
             try:
                 file_path.unlink()
-                logger.info(f"删除了刚上传的旧文件: {file_path.name}")
+                logger.debug(f"删除了刚上传的旧文件: {file_path.name}")
             except Exception as e:
-                logger.error(f"删除刚上传的旧文件失败: {e}")
+                logger.warning(f"删除刚上传的旧文件失败: {e}")
     except FileNotFoundError:
         logger.warning(f"文件 {user_latest_files[user_id].name} 在检查时已不存在")
         user_latest_files[user_id] = file_path
@@ -152,7 +152,7 @@ def remove_old_user_files(user_id: str, keep_file: Path):
                 deleted_count += 1
 
     if deleted_count > 0:
-        logger.info(f"为用户 {user_id} 删除了 {deleted_count} 个旧文件")
+        logger.debug(f"为用户 {user_id} 删除了 {deleted_count} 个旧文件")
 
 
 def clear_user_latest_files() -> None:
@@ -182,14 +182,11 @@ def load_user_latest_files():
                             user_latest_files[user_id] = file_path
                         else:
                             old = user_latest_files[user_id]
-                            try:
-                                if file_path.stat().st_mtime > old.stat().st_mtime:
-                                    user_latest_files[user_id] = file_path
-                            except Exception:
-                                pass
-        except Exception as e:
-            logger.error(f"扫描用户文件记录失败: {e}")
+                            if file_path.stat().st_mtime > old.stat().st_mtime:
+                                user_latest_files[user_id] = file_path
+        except Exception:
+            logger.exception("扫描用户文件记录失败")
 
     # 3) 回写规范化后的索引
     _persist_user_latest_files()
-    logger.info(f"已加载 {len(user_latest_files)} 个用户的文件记录")
+    logger.debug(f"已加载 {len(user_latest_files)} 个用户的文件记录")

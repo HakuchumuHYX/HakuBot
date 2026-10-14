@@ -46,4 +46,4 @@ __plugin_meta__ = PluginMetadata(
     },
 )
 
-logger.info(f"deer_pipe 插件 v{PLUGIN_VERSION} 加载完成")
+logger.debug(f"deer_pipe 插件 v{PLUGIN_VERSION} 加载完成")

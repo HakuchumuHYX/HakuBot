@@ -2,7 +2,7 @@
 import os
 
 from PIL import Image
-from nonebot.log import logger
+from nonebot import logger
 
 from utils.concurrency import run_in_pool
 from plugins.image_processor.utils import (
@@ -129,7 +129,7 @@ def _process_gif_symmetry_file(image_path: str, symmetry_type: str) -> str:
         durations=durations,
         loop=int(meta.get("loop", 0)),
     )
-    logger.info(f"GIF对称处理完成: {len(processed_frames)}帧, 保存到 {output_path}")
+    logger.debug(f"GIF对称处理完成: {len(processed_frames)}帧, 保存到 {output_path}")
     return str(output_path)
 
 

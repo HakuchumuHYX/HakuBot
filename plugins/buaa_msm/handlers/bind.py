@@ -11,14 +11,13 @@ from utils.json_io import atomic_write_json
 import json
 from typing import Dict, Optional
 
-from nonebot import get_driver, on_command
+from nonebot import get_driver, on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
     Message,
     PrivateMessageEvent,
 )
-from nonebot.log import logger
 from nonebot.params import CommandArg
 
 from plugins.buaa_msm.config import plugin_config
@@ -48,12 +47,12 @@ class BindManager:
             if plugin_config.bind_data_file.exists():
                 with open(plugin_config.bind_data_file, "r", encoding="utf-8") as f:
                     self._data = json.load(f)
-                logger.success(f"已加载 {len(self._data)} 条绑定记录")
+                logger.debug(f"已加载 {len(self._data)} 条绑定记录")
             else:
                 self._data = {}
-                logger.info("绑定数据文件不存在，将创建新文件")
-        except Exception as e:
-            logger.error(f"加载绑定数据失败: {e}")
+                logger.debug("绑定数据文件不存在，将创建新文件")
+        except Exception:
+            logger.exception("加载绑定数据失败")
             self._data = {}
 
     def _save(self) -> bool:
@@ -64,8 +63,8 @@ class BindManager:
             )
             logger.debug("绑定数据已保存")
             return True
-        except Exception as e:
-            logger.error(f"保存绑定数据失败: {e}")
+        except Exception:
+            logger.exception("保存绑定数据失败")
             return False
 
     def get(self, user_id: str) -> Optional[str]:

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict
 from contextlib import contextmanager
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.stickers.send import sticker_dir
 from plugins.stickers.config import CACHE_VERSION, CACHE_TTL
@@ -64,7 +64,7 @@ def init_database():
         if _initialized:
             return
 
-        logger.info(f"初始化哈希缓存数据库: {DB_FILE}")
+        logger.debug(f"初始化哈希缓存数据库: {DB_FILE}")
 
         with get_db() as conn:
             # 创建主表
@@ -108,7 +108,7 @@ def init_database():
                     "INSERT INTO cache_meta (key, value) VALUES ('version', ?)",
                     (CACHE_VERSION,),
                 )
-                logger.info(f"新建缓存数据库，版本: {CACHE_VERSION}")
+                logger.debug(f"新建缓存数据库，版本: {CACHE_VERSION}")
             elif row["value"] != CACHE_VERSION:
                 # 版本不匹配，清空缓存
                 old_version = row["value"]
@@ -122,7 +122,7 @@ def init_database():
                 )
 
         _initialized = True
-        logger.info("哈希缓存数据库初始化完成")
+        logger.debug("哈希缓存数据库初始化完成")
 
 
 def _get_file_key(file_path: Path) -> tuple:

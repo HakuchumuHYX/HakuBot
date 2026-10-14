@@ -1,7 +1,4 @@
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import nonebot
-from nonebot import get_driver
-from nonebot.log import logger
 
 # 导入各个模块
 from plugins.add_friend import config
@@ -22,17 +19,6 @@ __plugin_usage__ = """
 /添加白名单群组 [群号] - 添加群组到白名单
 /移除白名单群组 [群号] - 从白名单移除群组
 """.strip()
-
-
-# 插件加载成功提示
-@on_plugin_startup(get_driver(), "add_friend")
-async def init_plugin():
-    """插件初始化"""
-    logger.success("好友请求处理插件加载成功")
-    logger.info(f"配置了 {len(config.AUTO_APPROVE_GROUPS)} 个自动同意群组")
-    logger.info(
-        f"当前有 {len(data_manager.request_manager.get_all_pending_requests())} 个待处理请求"
-    )
 
 
 # 导出模块，便于其他插件引用

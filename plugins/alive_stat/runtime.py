@@ -12,9 +12,7 @@ from pathlib import Path
 
 from plugins.alive_stat.config import config
 
-from utils.logging import get_logger
-
-logger = get_logger("alive_stat.runtime")
+from nonebot import logger
 
 # ================= 数据目录 =================
 

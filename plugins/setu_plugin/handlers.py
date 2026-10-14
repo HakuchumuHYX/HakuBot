@@ -8,7 +8,7 @@ from typing import Optional, Any
 
 import httpx
 
-from nonebot import on_command, get_driver, require
+from nonebot import on_command, get_driver, require, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     MessageEvent,
@@ -17,7 +17,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 from nonebot.exception import FinishedException
-from nonebot.log import logger
 from nonebot.params import CommandArg
 
 require("nonebot_plugin_localstore")
@@ -127,7 +126,7 @@ def _get_lzst_semaphore() -> asyncio.Semaphore:
         if concurrency < 1:
             concurrency = 1
         _lzst_semaphore = asyncio.Semaphore(concurrency)
-        logger.info(f"[setu_plugin] concurrency limit = {concurrency}")
+        logger.debug(f"[setu_plugin] concurrency limit = {concurrency}")
     return _lzst_semaphore
 
 
@@ -206,7 +205,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                 await lzst.finish("请求涩图失败，请稍后再试")
 
             if not result or not result.display_url:
-                logger.warning(f"[setu_plugin] empty result. tag={tag!r}")
+                logger.info(f"[setu_plugin] empty result. tag={tag!r}")
                 await lzst.finish("没有合适的涩图呢...")
 
             cache_path = None
@@ -220,7 +219,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code if e.response else None
                 if status == 404:
-                    logger.warning(
+                    logger.info(
                         f"[setu_plugin] image 404, refetch another one ({attempt + 1}/{max_refetch}) url={result.display_url}"
                     )
 
@@ -237,11 +236,11 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                         except httpx.HTTPStatusError as e2:
                             status2 = e2.response.status_code if e2.response else None
                             if status2 == 404:
-                                logger.warning(
+                                logger.info(
                                     f"[setu_plugin] original url also 404, refetch another one ({attempt + 1}/{max_refetch}) url={result.url}"
                                 )
                             else:
-                                logger.exception(
+                                logger.opt(exception=True).warning(
                                     f"[setu_plugin] cache image failed: {e2} url={result.url}"
                                 )
                                 # 非 404 错误：不继续换图，走后续降级逻辑
@@ -252,7 +251,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                             )
                             break
                         except Exception as e2:
-                            logger.exception(
+                            logger.opt(exception=True).warning(
                                 f"[setu_plugin] cache image failed: {e2} url={result.url}"
                             )
                             break
@@ -261,9 +260,12 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                     if not (cache_path and cache_path.exists()):
                         if attempt < max_refetch - 1:
                             continue
+                        logger.warning(
+                            f"[setu_plugin] 连续 {max_refetch} 次图源 404，放弃 tag={tag!r}"
+                        )
                         await lzst.finish("抽到的图源已失效(404)，请重新发送 lzst")
                 else:
-                    logger.exception(
+                    logger.opt(exception=True).warning(
                         f"[setu_plugin] cache image failed: {e} url={result.display_url}"
                     )
             except ValueError as e:
@@ -272,7 +274,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                     f"[setu_plugin] skip cache image: {e} url={result.display_url}"
                 )
             except Exception as e:
-                logger.exception(
+                logger.opt(exception=True).warning(
                     f"[setu_plugin] cache image failed: {e} url={result.display_url}"
                 )
 
@@ -304,7 +306,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         except FinishedException:
             raise
         except Exception as e:
-            logger.exception(f"[setu_plugin] send forward failed: {e}")
+            logger.opt(exception=True).warning(f"[setu_plugin] send forward failed: {e}")
 
         # 公共转发器已处理明确失败时的逐条补发；仍失败则最后仅发链接。
         if not sent_ok:

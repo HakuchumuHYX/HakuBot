@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, Optional
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.buaa_msm.domain.models import UserDataContext, UserDataResult
 from plugins.buaa_msm.infra.cache import cache_manager
@@ -65,14 +65,12 @@ async def get_user_context(user_id: str) -> UserDataResult:
 
     # load pre-decrypted
     if json_output_file.exists():
-        logger.info(f"正在加载预解密文件: {json_output_file.name}")
+        logger.debug(f"正在加载预解密文件: {json_output_file.name}")
         decrypted_data = load_decrypted_json(json_output_file)
-        if decrypted_data is None:
-            logger.warning(f"加载预解密文件 {json_output_file.name} 失败")
 
     # decrypt now
     if decrypted_data is None:
-        logger.info(f"正在即时解密: {latest_file_path.name}")
+        logger.debug(f"正在即时解密: {latest_file_path.name}")
         decrypted_data = await asyncio.to_thread(
             decrypt_and_save,
             bin_file_path=latest_file_path,

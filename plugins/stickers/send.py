@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 from nonebot_plugin_localstore import get_data_dir
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.stickers.config import IMAGE_EXTENSIONS
 
@@ -94,7 +94,7 @@ def refresh_max_id() -> None:
     """
     global current_max_id
 
-    logger.info("正在初始化全局图片编号计数器...")
+    logger.debug("正在初始化全局图片编号计数器...")
 
     try:
         max_id = 0
@@ -123,10 +123,10 @@ def refresh_max_id() -> None:
             if max_id > current_max_id:
                 current_max_id = max_id
 
-        logger.info(f"编号初始化完成，当前最大编号: {current_max_id}")
+        logger.debug(f"编号初始化完成，当前最大编号: {current_max_id}")
 
     except Exception as e:
-        logger.error(f"初始化编号计数器失败: {e}")
+        logger.exception(f"初始化编号计数器失败: {e}")
 
 
 def get_next_image_id() -> int:
@@ -176,7 +176,7 @@ def load_sticker_list() -> None:
             logger.debug(f"别名映射: {alias_to_folder}")
 
         except Exception as e:
-            logger.error(f"加载 list.json 失败: {e}")
+            logger.opt(exception=True).warning(f"加载 list.json 失败: {e}")
             scan_sticker_folders_fallback()
     else:
         create_default_list_json()
@@ -206,9 +206,9 @@ def create_default_list_json() -> None:
 
     try:
         atomic_write_json(list_json_path, default_data, ensure_ascii=False, indent=2)
-        logger.success("已创建默认 list.json 文件")
+        logger.info("已创建默认 list.json 文件")
     except Exception as e:
-        logger.error(f"创建默认 list.json 失败: {e}")
+        logger.exception(f"创建默认 list.json 失败: {e}")
 
 
 # ==================== 文件夹解析 ====================

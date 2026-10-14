@@ -2,13 +2,13 @@
 import asyncio
 import re
 from typing import Optional
-from nonebot import on_message, on_command, get_bot
+from nonebot import on_message, on_command, get_bot, logger
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment, Bot
-from nonebot.log import logger
 from nonebot.params import CommandArg
 from nonebot.exception import FinishedException
 
 from utils.onebot.rules import create_exact_command_rule
+from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 from core.access import (
     get_status_override,
@@ -104,7 +104,6 @@ async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[
         if not all_duplicates:
             # 即使没有重复，也执行批量重命名
             rename_count, rename_msg = await batch_rename_stickers()
-            logger.info(f"无重复图片，自动重命名: {rename_msg}")
             if rename_count > 0:
                 return f"未检测到重复图片\n📝 自动重命名完成：{rename_msg}"
             return "未检测到重复图片"
@@ -156,7 +155,6 @@ async def handle_clean_confirm(event: GroupMessageEvent):
 
     # 清理完成后自动执行批量重命名
     rename_count, rename_msg = await batch_rename_stickers()
-    logger.info(f"清理后自动重命名: {rename_msg}")
 
     # 清理状态（在发送消息前）
     del cleanup_state[group_id]
@@ -226,7 +224,7 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                 await sticker_matcher.send(image_segment(pic_bytes))
                 return  # 使用 return 而不是 finish
         except Exception as e:
-            logger.error(f"生成或发送贴图预览图片失败: {e}")
+            logger.warning(f"发送贴图预览图片失败，改发文本: {get_exc_desc(e)}")
 
         # 如果图片生成或发送失败，使用文本统计
         statistics_info = get_sticker_statistics()
@@ -276,7 +274,7 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                 except FinishedException:
                     raise
                 except Exception as e:
-                    logger.error(f"发送多图随机贴图失败: {e}")
+                    logger.error(f"发送多图随机贴图失败: {get_exc_desc(e)}")
             return
 
         # 如果不是多图随机命令，处理单图随机命令
@@ -299,4 +297,4 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                 except FinishedException:
                     raise
                 except Exception as e:
-                    logger.error(f"发送随机贴图失败: {e}")
+                    logger.error(f"发送随机贴图失败: {get_exc_desc(e)}")

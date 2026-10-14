@@ -14,8 +14,6 @@ BUAA MSM 插件 - Project Sekai MySekai 数据分析工具
 
 from __future__ import annotations
 
-from nonebot.log import logger
-
 from plugins.buaa_msm.infra.storage import load_user_latest_files
 
 # 初始化：加载历史上传文件索引
@@ -27,5 +25,3 @@ from plugins.buaa_msm.handlers import bind as _bind
 from plugins.buaa_msm.handlers import help as _help
 from plugins.buaa_msm.handlers import msr as _msr
 from plugins.buaa_msm.handlers import upload as _upload
-
-logger.success("BUAA MSM 插件加载成功！")

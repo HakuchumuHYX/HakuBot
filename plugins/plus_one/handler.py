@@ -1,3 +1,5 @@
+from nonebot import logger
+from nonebot.exception import ActionFailed, NetworkError
 from nonebot.plugin import on_message
 from nonebot.rule import regex
 from nonebot.adapters import Event, Message, Bot
@@ -5,6 +7,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from plugins.plus_one.config import config
 from core.access import is_plugin_enabled
+from utils.logging import get_exc_desc
 
 plus = on_message(rule=regex(""), priority=config.plus_one_priority, block=False)
 msg_dict = {}
@@ -101,4 +104,8 @@ async def plush_handler(bot: Bot, event: Event):
     msg_dict[group_id] = (msg, count)
 
     if count == 2:
-        await plus.send(msg)
+        try:
+            await plus.send(msg)
+        except (ActionFailed, NetworkError) as e:
+            # 复读发不出去（风控、表情不在当前目录等）无关紧要，不算故障
+            logger.warning(f"复读发送失败: {get_exc_desc(e)}")

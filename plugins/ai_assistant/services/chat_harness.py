@@ -4,7 +4,7 @@ from typing import Awaitable, Callable, List, Optional, Tuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import re
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.services.search.evidence import format_chat_evidence_pack

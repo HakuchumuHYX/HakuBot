@@ -3,7 +3,7 @@ import json
 import os
 from collections import defaultdict
 from pathlib import Path
-from nonebot.log import logger
+from nonebot import logger
 
 # 默认源文件目录（独立运行时使用）
 DEFAULT_SOURCE_DIR = os.path.abspath(
@@ -41,7 +41,7 @@ def generate(source_dir: str, output_path: str) -> bool:
     :param output_path: 输出文件的完整路径
     :return: 是否成功
     """
-    logger.info(f"[generate_guess_song] 从 {source_dir} 读取数据...")
+    logger.debug(f"[generate_guess_song] 从 {source_dir} 读取数据...")
 
     musics_data = _load_json(source_dir, "musics.json")
     music_tags_data = _load_json(source_dir, "musicTags.json")
@@ -103,7 +103,7 @@ def generate(source_dir: str, output_path: str) -> bool:
 
     atomic_write_json(output_path, guess_song_list, indent=2, ensure_ascii=False)
 
-    logger.info(
+    logger.debug(
         f"[generate_guess_song] 成功生成 {output_path}，共 {len(guess_song_list)} 首歌曲。"
     )
     return True

@@ -1,9 +1,8 @@
-from nonebot import on_command, get_loaded_plugins, get_driver
+from nonebot import on_command, get_loaded_plugins, get_driver, logger
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
 from typing import Optional
-from utils.logging import get_logger
 from utils.onebot.media import image_segment
 from core.registry import get_plugin_catalog
 from core.access_state import (
@@ -26,8 +25,6 @@ from core.access import (
     is_feature_enabled,
     set_feature_status,
 )
-
-logger = get_logger("plugin_manager")
 
 enable_plugin = on_command("启用", permission=SUPERUSER, priority=1, block=True)
 
@@ -210,7 +207,7 @@ async def handle_list(bot: Bot, event: MessageEvent):
         # finish() 会抛 FinishedException 用于中断流程；不要当作渲染失败处理
         raise
     except Exception as e:
-        logger.exception(f"渲染插件开关状态图片失败: {e}")
+        logger.opt(exception=True).warning(f"渲染插件开关状态图片失败: {e}")
         await list_plugins.finish(message)
 
 

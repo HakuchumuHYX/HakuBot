@@ -27,14 +27,13 @@ from types import ModuleType
 from typing import Any, Optional
 
 import aiohttp
+from nonebot import logger
 
 from utils.network.http import get_client_session, get_effective_proxy
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from utils.text import truncate
 from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.credential import credential_manager
-
-logger = get_logger("bili_dyn_sub.api")
 
 # ============================ 常量 ============================ #
 

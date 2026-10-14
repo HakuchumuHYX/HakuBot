@@ -3,7 +3,7 @@ from typing import List, Set
 import json
 import os
 from pathlib import Path
-from nonebot.log import logger
+from nonebot import logger
 
 from utils.json_io import atomic_write_json
 
@@ -24,7 +24,7 @@ def load_auto_approve_groups() -> Set[str]:
             logger.warning("配置文件不存在，使用空的自动同意群组列表")
             return set()
     except Exception as e:
-        logger.error(f"加载配置文件失败: {e}，使用默认配置")
+        logger.exception(f"加载配置文件失败: {e}，使用默认配置")
         return set()
 
 
@@ -37,7 +37,7 @@ def load_manual_review() -> bool:
                 return bool(config_data.get("manual_review", False))
         return False
     except Exception as e:
-        logger.error(f"加载配置文件失败: {e}，manual_review 使用默认值 False")
+        logger.exception(f"加载配置文件失败: {e}，manual_review 使用默认值 False")
         return False
 
 
@@ -58,7 +58,7 @@ def save_auto_approve_groups(groups: Set[str]) -> bool:
         logger.info(f"已保存 {len(groups)} 个自动同意群组到配置文件")
         return True
     except Exception as e:
-        logger.error(f"保存配置文件失败: {e}")
+        logger.exception(f"保存配置文件失败: {e}")
         return False
 
 

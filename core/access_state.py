@@ -1,12 +1,10 @@
 """Group access state, initialized explicitly by the application."""
 import json
 from typing import Dict, Any
+from nonebot import logger
 
 from utils.json_io import atomic_write_json, load_json
-from utils.logging import get_logger
 from utils.paths import PluginPaths
-
-logger = get_logger("plugin_manager")
 
 # --- 路径定义 ---
 DATA_DIR = PluginPaths("plugin_manager").data

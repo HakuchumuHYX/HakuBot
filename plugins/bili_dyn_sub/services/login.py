@@ -61,7 +61,7 @@ async def _handle_login_transition(status: _state.LoginStatus) -> None:
 
     if status.is_login:
         if _state._last_known_login is False:
-            _state.logger.info(
+            _state.logger.debug(
                 f"B 站登录态已恢复（uname={status.uname or '-'}），无需再提醒超管"
             )
         _state._last_known_login = True
@@ -71,7 +71,7 @@ async def _handle_login_transition(status: _state.LoginStatus) -> None:
     if _state._last_known_login is False:
         _state.logger.debug("B 站登录态仍处于失效状态，已提醒过超管，不重复打扰")
         return
-    _state.logger.warning(
+    _state.logger.info(
         "B 站登录态失效：取数已退化为匿名请求（功能不中断但更易被风控），正在私聊提醒超管更换 sessdata"
     )
     if await _notify_superusers_login_expired(status):
@@ -121,17 +121,12 @@ async def _startup_login_check() -> None:
         status = await check_login_status()
     except Exception as e:
         # 后台任务边界：任何意外都不能变成「Task exception was never retrieved」
-        _state.logger.error(f"启动时校验 B 站登录态失败: {_state.get_exc_desc(e)}")
+        _state.logger.opt(exception=True).warning(
+            f"启动时校验 B 站登录态失败: {_state.get_exc_desc(e)}"
+        )
         return
+    # 配了 sessdata 时结论已由 credential 按跃迁记过，这里只补「未配置」这一种
     if not status.configured:
         _state.logger.info(
             "未配置 sessdata，B 站动态订阅将以匿名方式取数（风控概率略高）"
-        )
-    elif status.error:
-        _state.logger.warning(f"启动时无法确认 B 站登录态：{status.summary()}")
-    elif status.is_login:
-        _state.logger.info(f"B 站登录态有效，账号={status.uname or '-'}")
-    else:
-        _state.logger.warning(
-            "已配置 sessdata 但登录态无效，将退化为匿名取数（已提醒超管更换）"
         )

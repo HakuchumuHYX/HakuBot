@@ -28,7 +28,7 @@ def load_config():
                 config_data = json.load(f)
                 bot_config["nicknames"] = config_data.get("bot_nicknames", [])
                 bot_config["reply_texts"] = config_data.get("reply_texts", [])
-            logger.info(
+            logger.debug(
                 f"配置文件加载成功，昵称: {bot_config['nicknames']}, 回复文本: {len(bot_config['reply_texts'])} 条"
             )
         else:
@@ -45,7 +45,7 @@ def load_config():
             bot_config = default_config
             logger.info("创建默认配置文件成功")
     except Exception as e:
-        logger.error(f"加载配置文件失败: {e}")
+        logger.exception(f"加载配置文件失败: {e}")
 
 
 def is_calling_bot(event: MessageEvent) -> bool:
@@ -79,7 +79,7 @@ async def handle_call_reply(event: MessageEvent):
         # 忽略 FinishedException，这是正常的结束流程
         raise
     except Exception as e:
-        logger.error(f"处理呼叫回复时出错: {e}")
+        logger.exception(f"处理呼叫回复时出错: {e}")
 
 
 # 插件启动时加载配置
@@ -87,7 +87,7 @@ async def handle_call_reply(event: MessageEvent):
 async def init_plugin():
     """插件初始化"""
     load_config()
-    logger.info("简单呼叫回复插件初始化完成")
+    logger.debug("简单呼叫回复插件初始化完成")
 
 
 # 重新加载配置的命令（可选功能）

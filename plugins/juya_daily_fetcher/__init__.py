@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, Event, PrivateMessageEvent
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from plugins.juya_daily_fetcher.config import Config, plugin_config
 from plugins.juya_daily_fetcher import scheduler as _scheduler
 from plugins.juya_daily_fetcher.scheduler import run_debug
-
-logger = get_logger("juya_daily_fetcher")
 
 __plugin_meta__ = PluginMetadata(
     name="橘鸦 AI 早报",

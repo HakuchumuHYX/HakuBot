@@ -1,9 +1,10 @@
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.log import logger
+
+from utils.logging import get_exc_desc
 
 from plugins.add_friend.config import (
     COMMAND_PRIORITY,
@@ -43,7 +44,7 @@ async def approve_friend_handler(
         await matcher.finish("请提供要同意的好友QQ号，格式：/同意好友 [QQ号]")
 
     # 记录当前所有待处理请求，用于调试
-    logger.info(f"当前待处理请求: {request_manager.get_all_pending_requests()}")
+    logger.debug(f"当前待处理请求: {request_manager.get_all_pending_requests()}")
 
     if not request_manager.has_pending_request(user_id_str):
         await matcher.finish(
@@ -60,8 +61,8 @@ async def approve_friend_handler(
             await bot.send_private_msg(
                 user_id=request_data["user_id"], message=FRIEND_APPROVED_MESSAGE
             )
-        except Exception:
-            logger.warning("无法发送欢迎消息给新好友")
+        except Exception as e:
+            logger.warning(f"无法发送欢迎消息给新好友: {get_exc_desc(e)}")
 
         # 清理记录
         request_manager.remove_request(user_id_str)
@@ -70,7 +71,7 @@ async def approve_friend_handler(
         await matcher.send(f"已同意 {user_id_str} 的好友申请")
 
     except Exception as e:
-        logger.error(f"同意好友请求时出错: {e}")
+        logger.exception(f"同意好友请求时出错: {e}")
         await matcher.send(f"处理失败：{str(e)}")
 
 
@@ -84,7 +85,7 @@ async def reject_friend_handler(
         await matcher.finish("请提供要拒绝的好友QQ号，格式：/拒绝好友 [QQ号]")
 
     # 记录当前所有待处理请求，用于调试
-    logger.info(f"当前待处理请求: {request_manager.get_all_pending_requests()}")
+    logger.debug(f"当前待处理请求: {request_manager.get_all_pending_requests()}")
 
     if not request_manager.has_pending_request(user_id_str):
         await matcher.finish(
@@ -103,7 +104,7 @@ async def reject_friend_handler(
         await matcher.send(f"已拒绝 {user_id_str} 的好友申请")
 
     except Exception as e:
-        logger.error(f"拒绝好友请求时出错: {e}")
+        logger.exception(f"拒绝好友请求时出错: {e}")
         await matcher.send(f"处理失败：{str(e)}")
 
 

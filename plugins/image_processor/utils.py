@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aiohttp
-from nonebot.log import logger
+from nonebot import logger
 from PIL import Image, ImageOps, ImageSequence, UnidentifiedImageError
 
 from utils.concurrency import run_in_pool
@@ -29,6 +29,10 @@ GIF_MIN_DURATION_MS = int(
 )
 
 
+class UserInputError(Exception):
+    """用户给的素材不合要求（格式、大小、时长等）：文案直接回给用户，不算故障"""
+
+
 @asynccontextmanager
 async def download_temp(
     url: str, *, ext: str, max_bytes: int, timeout: float, **options
@@ -46,7 +50,7 @@ async def download_temp(
         ) as path:
             yield str(path)
     except DownloadTooLarge as e:
-        raise Exception(f"文件超过 {max_bytes // 1024 // 1024}MB 上限") from e
+        raise UserInputError(f"文件超过 {max_bytes // 1024 // 1024}MB 上限") from e
     except HttpError as e:
         raise Exception(f"下载失败（HTTP {e.status_code}）") from e
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
@@ -58,7 +62,7 @@ def _is_animated(image_path: str) -> bool:
         with Image.open(image_path) as img:
             return bool(getattr(img, "is_animated", False))
     except UnidentifiedImageError as e:
-        raise Exception("无法识别的图片格式") from e
+        raise UserInputError("无法识别的图片格式") from e
 
 
 @asynccontextmanager
@@ -84,7 +88,7 @@ async def run_command(cmd: list[str], *, timeout: float, label: str) -> bytes:
         await process.wait()
         raise Exception(f"{label}超时（>{timeout:g} 秒）")
     if process.returncode != 0:
-        logger.error(f"{label}失败: {stderr.decode(errors='replace')[-1000:]}")
+        logger.warning(f"{label}失败: {stderr.decode(errors='replace')[-1000:]}")
         raise Exception(f"{label}失败")
     return stdout
 

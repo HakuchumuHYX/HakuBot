@@ -1,9 +1,8 @@
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.log import logger
 
 from plugins.plus_one.config import config
 

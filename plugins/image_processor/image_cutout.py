@@ -6,8 +6,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from nonebot import get_driver
-from nonebot.log import logger
+from nonebot import get_driver, logger
 from PIL import Image
 
 from core.lifecycle import on_plugin_startup
@@ -15,6 +14,7 @@ from utils.concurrency import run_in_pool
 from utils.files import ensure_output_dir, safe_delete_file
 from utils.network.http import download_to_file
 from plugins.image_processor.utils import (
+    UserInputError,
     download_image,
     load_gif_frames,
     open_static_image,
@@ -294,13 +294,13 @@ def _cutout_static_file(image_path: str, output_path: Path) -> bool:
 def _cutout_gif_file(image_path: str) -> str:
     frames, durations, meta = load_gif_frames(image_path)
     if len(frames) > CUTOUT_GIF_MAX_FRAMES:
-        raise Exception(f"GIF帧数过多: {len(frames)} > {CUTOUT_GIF_MAX_FRAMES}")
+        raise UserInputError(f"GIF帧数过多: {len(frames)} > {CUTOUT_GIF_MAX_FRAMES}")
 
     results = []
     for frame in frames:
         result = _cutout_frame(frame)
         if result is None:
-            raise Exception("GIF 背景不是纯色，无法抠图")
+            raise UserInputError("GIF 背景不是纯色，无法抠图")
         results.append(result)
 
     output_dir = ensure_output_dir("nonebot_image_cutout")
@@ -311,7 +311,7 @@ def _cutout_gif_file(image_path: str) -> str:
 
 async def _isnet_cutout(image_path: str, output_path: Path) -> None:
     async with _ISNET_LOCK:
-        logger.info("抠图: 走 isnet-anime 模型推理")
+        logger.debug("抠图: 走 isnet-anime 模型推理")
         await run_command(
             [
                 sys.executable,

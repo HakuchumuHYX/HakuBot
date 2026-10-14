@@ -1,9 +1,9 @@
-from nonebot import on_message
+from nonebot import on_message, logger
 from nonebot.adapters import Event
 from nonebot.rule import to_me
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent
-from nonebot.log import logger
 from core.access import is_feature_enabled
+from utils.logging import get_exc_desc
 
 recall = on_message(rule=to_me(), priority=10)
 
@@ -47,5 +47,5 @@ async def handle_recall(bot: Bot, event: Event):
         await bot.delete_msg(message_id=reply_msg_id)
         logger.info(f"消息 {reply_msg_id} 已撤回")
     except Exception as e:
-        logger.error(f"撤回消息失败: {e}")
+        logger.warning(f"撤回消息失败: {get_exc_desc(e)}")
         await recall.finish("撤回消息失败")

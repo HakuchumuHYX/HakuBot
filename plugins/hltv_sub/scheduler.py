@@ -7,8 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
 import pytz
-from nonebot import require
-from nonebot.log import logger
+from nonebot import logger, require
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler

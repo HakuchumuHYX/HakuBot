@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from nonebot import logger
 
 from utils.llm.client import LLMClientConfig, chat_completion
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from plugins.juya_daily_fetcher.config import plugin_config
-
-logger = get_logger("juya_daily_fetcher.summary")
 
 
 def directory_prompt(directory: list[dict[str, Any]], summary_date: str) -> str:

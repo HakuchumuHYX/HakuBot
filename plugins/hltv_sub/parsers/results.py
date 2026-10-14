@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 
 from bs4 import BeautifulSoup
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.hltv_sub.models import ResultInfo
 from plugins.hltv_sub.parsers.common import extract_id_from_url, format_date, pick_logo

@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from datetime import timedelta
 from typing import Union
-from nonebot.log import logger
+from nonebot import logger
 
 _delayed_tasks: set[asyncio.Task] = set()
 

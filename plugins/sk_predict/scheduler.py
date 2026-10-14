@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import time
 
-from nonebot import require
-from nonebot.log import logger
+from nonebot import logger, require
 
 from plugins.sk_predict.config import DATA_DIR, FILE_CLEAN_SECONDS
 
@@ -13,7 +12,7 @@ from nonebot_plugin_apscheduler import scheduler
 
 @scheduler.scheduled_job("cron", hour=4, minute=0, id="clean_sekai_cache")
 async def clean_cache() -> None:
-    logger.info("开始清理 cnsk_predict 缓存...")
+    logger.debug("开始清理 cnsk_predict 缓存...")
     count = 0
     current_time = time.time()
     for file in DATA_DIR.iterdir():

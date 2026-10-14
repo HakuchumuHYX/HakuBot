@@ -2,7 +2,7 @@ from utils.paths import PluginPaths
 import json
 from pathlib import Path
 from pydantic import BaseModel
-from nonebot.log import logger
+from nonebot import logger
 
 
 class PluginConfig(BaseModel, extra="ignore"):
@@ -25,7 +25,7 @@ CONFIG_FILE_PATH = PluginPaths("pjsk_guess_card").config / "config.json"
 def load_plugin_config() -> PluginConfig:
     """加载插件配置，文件不存在时使用内存默认值。"""
     if CONFIG_FILE_PATH.exists():
-        logger.info(f"正在从 {CONFIG_FILE_PATH} 加载猜卡面插件配置...")
+        logger.debug(f"正在从 {CONFIG_FILE_PATH} 加载猜卡面插件配置...")
         try:
             with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
                 config_data = json.load(f)

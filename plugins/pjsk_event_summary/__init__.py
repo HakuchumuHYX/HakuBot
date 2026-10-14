@@ -1,6 +1,5 @@
 from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
-from nonebot import get_driver, on_command, require
-from nonebot.log import logger
+from nonebot import get_driver, on_command, require, logger
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11 import Message, GroupMessageEvent
@@ -31,7 +30,7 @@ pjsk_detail = on_command("剧情总结", priority=5, block=True)
 async def init_plugin():
     state = load_state()
     last_success = state.get("last_success_at", "从未")
-    logger.info(
+    logger.debug(
         f"pjsk_event_summary 插件已加载，MoeSekai-Hub 最近成功重建索引时间: {last_success}"
     )
 

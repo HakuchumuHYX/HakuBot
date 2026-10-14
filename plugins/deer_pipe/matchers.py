@@ -161,7 +161,7 @@ async def handle_deer(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"签到处理失败: {e}")
+        logger.exception(f"签到处理失败: {e}")
         await deer.finish("签到失败，请稍后重试")
 
 
@@ -209,7 +209,7 @@ async def handle_deer_past(
         )
         await update_avatar(target_user_id, avatar)
 
-        logger.info(f"用户 {target_user_id} 尝试补签 {now.month}月{target_day}日")
+        logger.debug(f"用户 {target_user_id} 尝试补签 {now.month}月{target_day}日")
 
         # 执行补签
         success, deer_map = await attend_past(target_user_id, now, target_day)
@@ -238,7 +238,7 @@ async def handle_deer_past(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"补签处理失败: {e}")
+        logger.exception(f"补签处理失败: {e}")
         await deer_past.finish("补签失败，请稍后重试")
 
 
@@ -289,7 +289,7 @@ async def handle_deer_calendar(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"查看日历失败: {e}")
+        logger.exception(f"查看日历失败: {e}")
         await deer_calendar.finish("获取日历失败，请稍后重试")
 
 
@@ -326,5 +326,5 @@ async def handle_deer_help(event: Event):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"显示帮助失败: {e}")
+        logger.exception(f"显示帮助失败: {e}")
         await deer_help.finish("获取帮助信息失败")

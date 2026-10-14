@@ -12,13 +12,12 @@ from zoneinfo import ZoneInfo
 
 import jinja2
 import markdown
+from nonebot import logger
 
-from utils.logging import get_logger
 from utils.paths import project_root
 from utils.rendering.browser import browser_pool
 from utils.rendering.fonts import font_css
 
-logger = get_logger("rendering")
 TEMPLATES_PATH = Path(__file__).parent / "templates"
 
 # 通用转换器的模板输入本身就是 HTML（markdown 产物、bison 文本卡片），不能转义。

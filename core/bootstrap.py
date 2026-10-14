@@ -1,6 +1,7 @@
 """Application assembly; module imports do not register lifecycle callbacks."""
 
 import asyncio
+from nonebot import logger
 from utils.paths import project_root
 from core import access_state
 from core.lifecycle import runtime
@@ -27,6 +28,11 @@ def configure(driver):
     runtime.closers.extend(
         (close_pool, close_sessions, browser_pool.close, close_temporary_files)
     )
+
+    # NoneBot 自己的 "Bot N connected" 是 INFO，被 bot.py 的 stdout 过滤掉了，这里补一行
+    @driver.on_bot_connect
+    async def log_bot_connect(bot):
+        logger.info(f"Bot {bot.self_id} 已连接")
 
     @driver.on_startup
     async def start_shared_resources():

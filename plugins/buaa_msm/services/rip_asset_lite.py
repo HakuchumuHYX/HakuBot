@@ -6,7 +6,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 from urllib.parse import urlsplit
 
 import aiohttp
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.buaa_msm.analysis import AggregatedData
 from plugins.buaa_msm.config import plugin_config
@@ -269,7 +269,7 @@ class RipAssetLite:
             )
             if data is None:
                 if errors:
-                    logger.warning(
+                    logger.debug(
                         f"MySekai icon 下载失败 [{category}:{item_id}]，候选={len(candidates)}，"
                         f"错误示例: {errors[:2]}"
                     )
@@ -314,7 +314,7 @@ class RipAssetLite:
         async with aiohttp.ClientSession() as session:
             await asyncio.gather(*[_one(session, c, i) for c, i in wanted])
 
-        logger.info(f"MySekai 动态 icon 预取完成: {len(result)}/{len(wanted)}")
+        logger.debug(f"MySekai 动态 icon 预取完成: {len(result)}/{len(wanted)}")
         if failed:
             logger.warning(
                 f"MySekai 动态 icon 预取失败数: {len(failed)}，失败示例: {failed[:5]}"
@@ -345,7 +345,7 @@ class RipAssetLite:
             await asyncio.gather(*[_one(session, fid) for fid in wanted])
 
         # 该类别不进行远程下载；这里统计“本地可用命中”（缓存 + data 静态 + resources 静态）。
-        logger.info(
+        logger.debug(
             f"MySekai harvest fixture icon 本地可用命中: {len(result)}/{len(wanted)}"
         )
         return result

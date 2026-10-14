@@ -1,6 +1,7 @@
+import asyncio
 import re
 from typing import List, Union
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import ClientError, ClientSession, ClientTimeout
 from nonebot import on_regex, logger, require, on_message
 from nonebot.adapters import Event
 from nonebot.rule import Rule
@@ -13,6 +14,7 @@ from plugins.analysis_bilibili.analysis_bilibili import (
     extract_share_url,
 )
 from core.access import is_plugin_enabled
+from utils.logging import get_exc_desc
 from utils.onebot.media import prepare_image_source
 
 require("nonebot_plugin_saa")
@@ -161,9 +163,8 @@ async def send_msg(msg_list: List[Union[List[str], str, bool]]) -> None:
         await MessageFactory(format_msg(msg_list)).send()
     except RuntimeError:
         await analysis_bili.send(format_msg(msg_list, is_plain_text=True))
-    except Exception as e:
-        logger.exception(e)
-        logger.warning(f"错误的内容：{msg_list}\n此次解析的内容可能被风控！")
+    except Exception:
+        logger.exception(f"发送解析结果失败（可能被风控）: {msg_list}")
 
 
 async def get_msg(
@@ -188,7 +189,12 @@ async def get_msg(
                 text = share_url
             if re.search(r"(b23.tv)|(bili(22|23|33|2233).cn)", text, re.I):
                 # 提前处理短链接，避免解析到其他的
-                text = await b23_extract(text, session=session)
+                try:
+                    text = await b23_extract(text, session=session)
+                except (ClientError, asyncio.TimeoutError) as e:
+                    # 被动解析，外部超时不回复
+                    logger.warning(f"解析 b23 短链失败: {get_exc_desc(e)}")
+                    return False
 
         msg = await bili_keyword(group_id, text, session=session)
 

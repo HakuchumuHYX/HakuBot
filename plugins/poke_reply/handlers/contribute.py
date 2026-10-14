@@ -61,7 +61,7 @@ def cache_message_direct(
             image_hash=image_hash,
         )
     except Exception as e:
-        logger.error(f"直接缓存消息失败: {e}")
+        logger.opt(exception=True).warning(f"直接缓存消息失败: {e}")
 
 
 # --- 投稿处理器 ---
@@ -196,7 +196,7 @@ async def handle_mention_message(bot: Bot, event: GroupMessageEvent):
                     message_type="mention_text",
                 )
     except Exception as e:
-        logger.error(f"处理提及消息缓存时出错: {e}")
+        logger.exception(f"处理提及消息缓存时出错: {e}")
 
 
 # --- 转文字 ---
@@ -247,5 +247,5 @@ async def handle_convert_to_text(bot: Bot, event: GroupMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"处理转文字命令时出错: {e}")
+        logger.exception(f"处理转文字命令时出错: {e}")
         await convert_to_text.finish("转换失败，请稍后重试喵！")

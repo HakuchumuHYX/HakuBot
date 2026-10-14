@@ -19,12 +19,10 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
+from nonebot import logger
 
 from utils.json_io import atomic_write_json
-from utils.logging import get_logger
 from plugins.bili_dyn_sub.config import STATE_FILE, plugin_config
-
-logger = get_logger("bili_dyn_sub.store")
 
 # 动态分类（设计文档 §7 的 categories 映射）
 DEFAULT_CATEGORIES: list[int] = [1, 2, 3, 4, 5, 6]

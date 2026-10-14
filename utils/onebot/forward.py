@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Union, Optional, Sequence, List
 from nonebot.adapters.onebot.v11 import Bot, Event, Message, MessageSegment
 from nonebot.exception import NetworkError, ActionFailed
-from nonebot.log import logger
+from nonebot import logger
 from utils.logging import get_exc_desc
 
 

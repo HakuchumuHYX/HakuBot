@@ -15,7 +15,7 @@ from typing import Any, Callable
 import aiohttp
 from PIL import Image
 from nonebot.exception import FinishedException
-from nonebot.log import logger
+from nonebot import logger
 from utils.onebot.media import image_segment
 
 from plugins.buaa_msm import analysis
@@ -115,11 +115,10 @@ async def _fetch_jacket_images(
     except FinishedException:
         raise
     except Exception as e:
-        logger.warning(f"封面批量下载出错: {e}")
         raise AssetDownloadError(str(e)) from e
 
     ok_cnt = len(result)
-    logger.info(f"封面下载完成: {ok_cnt}/{len(url_map)} 张成功")
+    logger.debug(f"封面下载完成: {ok_cnt}/{len(url_map)} 张成功")
     if ok_cnt == 0 and url_map:
         raise RenderError("封面下载全部失败")
     return result
@@ -215,7 +214,7 @@ async def _execute_msr_analysis(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"MSR summary 生成/发送失败: {e}")
+        logger.opt(exception=True).warning("MSR summary 生成/发送失败")
         try:
             await send_func("统计图生成失败，已跳过。")
         except FinishedException:
@@ -232,7 +231,7 @@ async def _execute_msr_analysis(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"MSR map 生成/发送失败: {e}")
+        logger.opt(exception=True).warning("MSR map 生成/发送失败")
         try:
             await send_func("位置图生成失败，已跳过。")
         except FinishedException:
@@ -280,12 +279,11 @@ async def run_msr(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"MSR 执行失败: {e}")
+        logger.exception("MSR 执行失败")
         try:
             await send_func("抱歉，分析生成失败。")
         except FinishedException:
             raise
         except Exception as send_err:
-            logger.error(f"发送失败提示消息失败: {send_err}")
             raise SendError(str(send_err)) from e
         return False

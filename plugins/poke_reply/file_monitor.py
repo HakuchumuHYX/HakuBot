@@ -138,10 +138,10 @@ class FileMonitor:
 
             self.observer.start()
             self.is_monitoring = True
-            logger.info("文件监听器已启动")
+            logger.debug("文件监听器已启动")
             return True
         except Exception as e:
-            logger.error(f"启动文件监听器失败: {e}")
+            logger.exception(f"启动文件监听器失败: {e}")
             return False
 
     def stop_monitoring(self):
@@ -151,10 +151,10 @@ class FileMonitor:
                 self.observer.stop()
                 self.observer.join()
                 self.is_monitoring = False
-                logger.info("文件监听器已停止")
+                logger.debug("文件监听器已停止")
                 return True
         except Exception as e:
-            logger.error(f"停止文件监听器失败: {e}")
+            logger.exception(f"停止文件监听器失败: {e}")
         return False
 
     def is_alive(self):

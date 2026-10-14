@@ -4,13 +4,11 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from nonebot import logger
 
 from utils.json_io import atomic_write_json
-from utils.logging import get_logger
 from plugins.juya_daily_fetcher.config import STATE_FILE, plugin_config
 from plugins.juya_daily_fetcher.parser import now_iso
-
-logger = get_logger("juya_daily_fetcher.store")
 
 _STALE_STATE_KEYS = ("migrated_from",)
 

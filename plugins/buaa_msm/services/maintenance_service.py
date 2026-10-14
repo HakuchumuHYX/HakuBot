@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.buaa_msm.infra.cache import cache_manager
 from plugins.buaa_msm.infra.storage import clear_user_latest_files, file_storage_dir
@@ -35,12 +35,12 @@ def cleanup_all_files() -> int:
     """
 
     if not file_storage_dir.exists():
-        logger.info("文件存储目录不存在，无需清理")
+        logger.debug("文件存储目录不存在，无需清理")
         return 0
 
     items = list(file_storage_dir.iterdir())
     if not items:
-        logger.info("文件存储目录为空，无需清理")
+        logger.debug("文件存储目录为空，无需清理")
         return 0
 
     deleted_count = 0
@@ -53,10 +53,10 @@ def cleanup_all_files() -> int:
                 shutil.rmtree(item_path)
                 deleted_count += 1
         except Exception as e:
-            logger.error(f"删除失败 {item_path}: {e}")
+            logger.warning(f"删除失败 {item_path}: {e}")
 
     clear_user_latest_files()
-    logger.success(f"清理完成，删除了 {deleted_count} 个文件/目录")
+    logger.info(f"清理完成，删除了 {deleted_count} 个文件/目录")
     return deleted_count
 
 

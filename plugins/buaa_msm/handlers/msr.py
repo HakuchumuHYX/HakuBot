@@ -7,7 +7,7 @@ MSR 命令入口（私聊/群聊）：
 
 from __future__ import annotations
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
@@ -15,9 +15,9 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 from nonebot.exception import FinishedException
-from nonebot.log import logger
 from nonebot.params import CommandArg
 
+from plugins.buaa_msm.exceptions import DataLoadError
 from plugins.buaa_msm.services.msr_service import run_msr
 from plugins.buaa_msm.services.processing_guard import is_processing, set_processing
 
@@ -51,8 +51,11 @@ async def handle_msr_command(
         )
     except FinishedException:
         raise
+    except DataLoadError as e:
+        logger.info(f"buaamsr 无法读取用户数据: {e}")
+        await msr_cmd.finish(f"处理失败: {str(e)}")
     except Exception as e:
-        logger.error(f"处理 buaamsr 命令失败: {e}")
+        logger.exception("处理 buaamsr 命令失败")
         await msr_cmd.finish(f"处理失败: {str(e)}")
     finally:
         await set_processing(user_id, False)

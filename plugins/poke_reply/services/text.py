@@ -78,5 +78,5 @@ async def convert_text_to_image(text: str, group_id: int) -> Tuple[bool, bytes]:
         )
         return True, image_data
     except Exception as e:
-        logger.error(f"Markdown 文本转图片失败: {e}")
+        logger.opt(exception=True).warning(f"Markdown 文本转图片失败: {e}")
         return False, b""

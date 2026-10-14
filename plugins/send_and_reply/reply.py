@@ -1,7 +1,5 @@
-import logging
-from nonebot import get_driver, on_message
+from nonebot import get_driver, on_message, logger
 from nonebot.adapters.onebot.v11 import Bot, PrivateMessageEvent, MessageSegment
-from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
 
@@ -36,19 +34,19 @@ reply_message = on_message(
 async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
     """处理超级用户直接回复的消息"""
 
-    logger.info(f"收到超级用户 {event.get_user_id()} 的消息，检查是否为回复消息")
+    logger.debug(f"收到超级用户 {event.get_user_id()} 的消息，检查是否为回复消息")
 
     # 检查是否是回复消息
     if not event.reply:
-        logger.info("不是回复消息，跳过处理")
+        logger.debug("不是回复消息，跳过处理")
         return
 
     replied_msg_id = event.reply.message_id
-    logger.info(f"检测到回复消息，被回复的消息ID: {replied_msg_id}")
+    logger.debug(f"检测到回复消息，被回复的消息ID: {replied_msg_id}")
 
     # 检查回复的消息是否在我们的上下文中
     if replied_msg_id not in message_context:
-        logger.warning(
+        logger.debug(
             f"回复的消息ID {replied_msg_id} 不在上下文中，可用的上下文键: {list(message_context.keys())}"
         )
         return
@@ -59,7 +57,7 @@ async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
     superuser_id = event.get_user_id()
     superuser_info = await get_user_info(bot, superuser_id)
 
-    logger.info(
+    logger.debug(
         f"找到消息上下文: 用户 {user_id}, 原消息来自 {'群聊' if 'group_id' in context else '私聊'}"
     )
 
@@ -98,5 +96,5 @@ async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
         # 忽略 FinishedException，这是正常的结束流程
         raise
     except Exception as e:
-        logger.error(f"发送回复失败: {e}", exc_info=True)
+        logger.exception(f"发送回复失败: {e}")
         await reply_message.finish(f"回复发送失败: {e}")

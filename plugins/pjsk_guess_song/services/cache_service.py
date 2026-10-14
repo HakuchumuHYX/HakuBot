@@ -11,7 +11,7 @@ from collections import defaultdict
 import aiohttp
 
 # --- Nonebot Imports ---
-from nonebot.log import logger
+from nonebot import logger
 from plugins.pjsk_guess_song.config import PluginConfig
 
 
@@ -58,7 +58,7 @@ class CacheService:
         self._load_song_aliases()
 
         if not self.config.full_mode:
-            logger.info(
+            logger.debug(
                 "当前为 Light 模式，跳过预处理音轨 manifest 加载。仅支持普通猜歌/听歌。"
             )
         elif self.use_local_resources:
@@ -97,7 +97,7 @@ class CacheService:
                                 self.char_id_to_anov_songs[char_id].append(song)
                                 processed_chars.add(char_id)
 
-            logger.info(f"成功加载 {len(self.song_data)} 首歌曲数据。")
+            logger.debug(f"成功加载 {len(self.song_data)} 首歌曲数据。")
             return True
         except FileNotFoundError as e:
             logger.error(
@@ -130,7 +130,7 @@ class CacheService:
                 for char_id, char_info in self.character_data.items()
                 if char_info.get("name")
             }
-            logger.info(f"成功加载 {len(self.character_data)} 个角色数据。")
+            logger.debug(f"成功加载 {len(self.character_data)} 个角色数据。")
             return True
         except (json.JSONDecodeError, IOError) as e:
             logger.error(f"加载或解析角色数据失败: {e}")
@@ -155,7 +155,7 @@ class CacheService:
                     for alias in aliases:
                         self.song_aliases[alias.lower()] = song_id
 
-            logger.info(f"成功加载 {len(self.song_aliases)} 个歌曲别名。")
+            logger.debug(f"成功加载 {len(self.song_aliases)} 个歌曲别名。")
             return True
         except (json.JSONDecodeError, IOError) as e:
             logger.error(f"加载或解析 song_aliases.json 失败: {e}")
@@ -163,13 +163,13 @@ class CacheService:
 
     def _load_local_manifest(self):
         """同步加载本地资源清单。"""
-        logger.info("使用本地资源模式，开始扫描文件系统...")
+        logger.debug("使用本地资源模式，开始扫描文件系统...")
         for mode in ["accompaniment", "bass_only", "drums_only", "vocals_only"]:
             mode_dir = self.resources_dir / mode
             if mode_dir.exists():
                 for mp3_file in mode_dir.glob("*.mp3"):
                     self.preprocessed_tracks[mode].add(mp3_file.stem)
-                logger.info(
+                logger.debug(
                     f"成功加载 {len(self.preprocessed_tracks[mode])} 个 '{mode}' 模式的本地音轨。"
                 )
 
@@ -177,13 +177,13 @@ class CacheService:
         if trimmed_mp3_dir.exists():
             for mp3_path in trimmed_mp3_dir.glob("**/*.mp3"):
                 self.available_piano_songs_bundles.add(mp3_path.parent.name)
-            logger.info(
+            logger.debug(
                 f"成功加载 {len(self.available_piano_songs_bundles)} 个钢琴模式的本地音轨。"
             )
 
     async def _load_remote_manifest(self):
         """异步加载远程资源清单。"""
-        logger.info("使用远程资源模式，开始获取 manifest.json...")
+        logger.debug("使用远程资源模式，开始获取 manifest.json...")
         manifest_url = self.get_resource_path_or_url("manifest.json")
         if not manifest_url or not isinstance(manifest_url, str):
             logger.error(
@@ -206,21 +206,20 @@ class CacheService:
                         self.preprocessed_tracks[mode] = set(
                             manifest_data.get(mode, [])
                         )
-                        logger.info(
+                        logger.debug(
                             f"成功从 manifest 加载 {len(self.preprocessed_tracks[mode])} 个 '{mode}' 模式的音轨。"
                         )
 
                     self.available_piano_songs_bundles = set(
                         manifest_data.get("songs_piano_trimmed_mp3", [])
                     )
-                    logger.info(
+                    logger.debug(
                         f"成功从 manifest 加载 {len(self.available_piano_songs_bundles)} 个钢琴模式的音轨。"
                     )
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"获取或解析远程 manifest.json 失败: {e}。插件将无法使用预处理音轨模式。",
-                exc_info=True,
             )
 
     def _populate_song_lists(self):
@@ -259,7 +258,7 @@ class CacheService:
                     self.available_piano_songs.append(song)
                     piano_processed_ids.add(song["id"])
 
-        logger.info(
+        logger.debug(
             f"填充可用歌曲列表完成。钢琴: {len(self.available_piano_songs)} 首, "
             f"伴奏: {len(self.available_accompaniment_songs)} 首, "
             f"人声: {len(self.available_vocals_songs)} 首."
@@ -270,7 +269,7 @@ class CacheService:
         cleanup_interval_seconds = 3600
         while True:
             await asyncio.sleep(cleanup_interval_seconds)
-            logger.info("开始周期性清理 output 目录...")
+            logger.debug("开始周期性清理 output 目录...")
             self.cleanup_output_dir()
 
     def cleanup_output_dir(self, max_age_seconds: int = 3600):
@@ -288,7 +287,7 @@ class CacheService:
                         os.remove(file_path)
                         logger.debug(f"已清理旧的输出文件: {filename}")
         except Exception as e:
-            logger.error(f"清理 output 目录时出错: {e}")
+            logger.exception(f"清理 output 目录时出错: {e}")
 
     def _build_asset_url(self, relative_path: str) -> Optional[str]:
         """根据 asset 站 URL 格式，将插件内部的相对路径映射为 asset 站的实际 URL。"""
@@ -409,7 +408,7 @@ class CacheService:
         if matches:
             best_match_name = matches[0]
             target_id = candidates[best_match_name]
-            logger.info(
+            logger.debug(
                 f"模糊搜索命中: '{query}' -> '{best_match_name}' (ID: {target_id})"
             )
             return next((s for s in target_pool if s["id"] == target_id), None)
@@ -418,5 +417,5 @@ class CacheService:
 
     async def terminate(self):
         """关闭缓存服务，目前无需特殊操作"""
-        logger.info("CacheService shutting down.")
+        logger.debug("CacheService shutting down.")
         pass

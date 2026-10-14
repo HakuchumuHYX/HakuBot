@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from nonebot import get_driver, on_command, require
+from nonebot import get_driver, on_command, require, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
@@ -17,7 +17,6 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.adapters.onebot.v11.exception import ActionFailed, NetworkError
 from nonebot.exception import FinishedException
-from nonebot.log import logger
 from nonebot.params import CommandArg
 
 require("nonebot_plugin_localstore")
@@ -42,13 +41,8 @@ from plugins.pixiv_id_fetcher.formatter import (
 )
 from plugins.pixiv_id_fetcher.models import PixivIllust, PixivPage
 
-try:
-    from core.cooldown import check_cd, update_cd
-    from core.access import is_plugin_enabled
-
-    MANAGER_AVAILABLE = True
-except Exception:
-    MANAGER_AVAILABLE = False
+from core.cooldown import check_cd, update_cd
+from core.access import is_plugin_enabled
 
 
 PLUGIN_ID = "pixiv_id_fetcher"
@@ -337,15 +331,14 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
 
     if isinstance(event, GroupMessageEvent):
         group_id = str(event.group_id)
-        if MANAGER_AVAILABLE:
-            if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
-                await pixiv_cmd.finish()
+        if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
+            await pixiv_cmd.finish()
 
-            remaining = check_cd(PLUGIN_ID, group_id, user_id)
-            if remaining > 0:
-                await pixiv_cmd.finish(
-                    f"功能冷却中，请等待 {remaining} 秒", at_sender=True
-                )
+        remaining = check_cd(PLUGIN_ID, group_id, user_id)
+        if remaining > 0:
+            await pixiv_cmd.finish(
+                f"功能冷却中，请等待 {remaining} 秒", at_sender=True
+            )
 
     pid = parse_pid(args.extract_plain_text())
     if pid is None:
@@ -405,7 +398,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                     pid=illust.pid,
                 )
 
-            if group_id and MANAGER_AVAILABLE:
+            if group_id:
                 update_cd(PLUGIN_ID, group_id, user_id)
 
     except FinishedException:

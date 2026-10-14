@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Message,
     MessageSegment,
@@ -9,7 +9,6 @@ from nonebot.adapters.onebot.v11 import (
     Event,
 )
 from nonebot.params import CommandArg
-from nonebot.log import logger
 
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
@@ -60,12 +59,15 @@ async def handle_predict_command(
         img_bytes = await refresh_prediction_cache(region, force=force_reload)
     except Exception as e:
         err = str(e)
-        logger.exception(f"获取 {region_name} 预测线失败: {err}")
         if cache_file.exists():
+            logger.opt(exception=True).warning(
+                f"获取 {region_name} 预测线失败，回退旧缓存: {err}"
+            )
             await matcher.finish(
                 Message(f"获取最新数据失败 ({err})，显示旧缓存：\n")
                 + image_segment(cache_file)
             )
+        logger.exception(f"获取 {region_name} 预测线失败: {err}")
         await matcher.finish(f"获取失败。\n错误信息: {err}")
 
     await matcher.finish(image_segment(img_bytes))

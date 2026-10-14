@@ -1,9 +1,8 @@
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.log import logger
 
 from plugins.daily_message.config_manager import load_config, save_config
 
@@ -45,5 +44,5 @@ async def reload_schedules_handler(matcher: Matcher):
         reload_schedule_config()
         await matcher.send("已重新加载定时任务配置")
     except Exception as e:
-        logger.error(f"重新加载定时任务失败: {e}")
+        logger.exception("重新加载定时任务失败")
         await matcher.send(f"重新加载失败: {e}")

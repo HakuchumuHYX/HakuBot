@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import List
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
-from nonebot.log import logger
+from utils.logging import get_exc_desc
 from utils.onebot.forward import send_forward_msg
 
 # 群聊帮助文本
@@ -60,7 +60,7 @@ async def handle_private_help(bot: Bot, event: PrivateMessageEvent):
 
         await send_forward_msg(bot, user_id=event.user_id, items=nodes)
     except Exception as e:
-        logger.error(f"发送私聊帮助失败: {e}")
+        logger.warning(f"发送私聊帮助失败，改发纯文本: {get_exc_desc(e)}")
         await help_cmd.send(PRIVATE_HELP_TEXT)
 
     await help_cmd.finish()
@@ -74,7 +74,7 @@ async def handle_group_help(bot: Bot, event: GroupMessageEvent):
 
         await send_forward_msg(bot, group_id=event.group_id, items=nodes)
     except Exception as e:
-        logger.error(f"发送群聊帮助失败: {e}")
+        logger.warning(f"发送群聊帮助失败，改发纯文本: {get_exc_desc(e)}")
         await help_cmd.send(GROUP_HELP_TEXT)
 
     await help_cmd.finish()

@@ -4,9 +4,7 @@ from pathlib import Path
 import json
 from typing import List
 
-from utils.logging import get_logger
-
-logger = get_logger("help_plugin.config")
+from nonebot import logger
 
 PLUGIN_DIR = Path(__file__).parent.absolute()
 CONFIG_PATH = PluginPaths("help_plugin").config / "config.json"

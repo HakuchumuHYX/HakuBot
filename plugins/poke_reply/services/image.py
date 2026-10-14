@@ -52,7 +52,7 @@ def load_hash_cache() -> Dict:
             )
             cache_data = result.data
             if not result.success:
-                logger.error(f"加载图片哈希缓存失败: {result.error}，创建新缓存")
+                logger.warning(f"加载图片哈希缓存失败: {result.error}，创建新缓存")
                 _hash_cache = {"version": CACHE_VERSION, "entries": {}}
                 return _hash_cache
             if cache_data.get("version") != CACHE_VERSION:
@@ -60,7 +60,7 @@ def load_hash_cache() -> Dict:
             else:
                 _hash_cache = cache_data
         except Exception as e:
-            logger.error(f"加载图片哈希缓存失败: {e}，创建新缓存")
+            logger.opt(exception=True).warning(f"加载图片哈希缓存失败: {e}，创建新缓存")
             _hash_cache = {"version": CACHE_VERSION, "entries": {}}
         return _hash_cache
 
@@ -73,7 +73,7 @@ def save_hash_cache():
         try:
             atomic_write_json(IMAGE_HASH_CACHE_FILE, _hash_cache, expected_type=dict)
         except Exception as e:
-            logger.error(f"保存图片哈希缓存失败: {e}")
+            logger.opt(exception=True).warning(f"保存图片哈希缓存失败: {e}")
 
 
 def clean_expired_hash_cache(now: Optional[float] = None) -> int:
@@ -139,7 +139,7 @@ def invalidate_cache_for_file(image_path: Path):
         if cache_key in cache["entries"]:
             del cache["entries"][cache_key]
             save_hash_cache()
-            logger.info(f"已使 {image_path.name} 的哈希缓存失效")
+            logger.debug(f"已使 {image_path.name} 的哈希缓存失效")
 
 
 # --- 哈希计算 ---
@@ -174,7 +174,7 @@ def get_hashes_from_path(image_path: Path) -> Tuple[Optional[str], Optional[str]
         update_hash_cache(image_path, perceptual_hash, file_hash)
         return perceptual_hash, file_hash
     except Exception as e:
-        logger.error(f"计算哈希失败 {image_path}: {e}")
+        logger.opt(exception=True).warning(f"计算哈希失败 {image_path}: {e}")
         return None, None
 
 
@@ -185,7 +185,7 @@ def get_hashes_from_bytes(image_bytes: bytes) -> Tuple[Optional[str], Optional[s
             perceptual_hash = calculate_perceptual_hash(img)
         return perceptual_hash, file_hash
     except Exception as e:
-        logger.error(f"从bytes计算哈希失败: {e}")
+        logger.opt(exception=True).warning(f"从bytes计算哈希失败: {e}")
         return None, None
 
 
@@ -218,7 +218,7 @@ def _verify_duplicate_check_sync(img1: Image.Image, img2: Image.Image) -> bool:
             avg_diff = total_diff / len(pixels1) / 3
             return avg_diff < IMAGE_SIMILARITY_THRESHOLD * 2
     except Exception as e:
-        logger.error(f"验证重复图片时出错: {e}")
+        logger.opt(exception=True).warning(f"验证重复图片时出错: {e}")
         return False
 
 
@@ -232,7 +232,7 @@ def _verify_duplicate_bytes_vs_path_sync(img_path_1: Path, img_bytes_2: bytes) -
         ):
             return _verify_duplicate_check_sync(image1, image2)
     except Exception as e:
-        logger.error(f"验证(Path vs Bytes)失败: {e}")
+        logger.opt(exception=True).warning(f"验证(Path vs Bytes)失败: {e}")
         return False
 
 
@@ -245,7 +245,7 @@ def _verify_duplicate_path_vs_path_sync(img_path_1: Path, img_path_2: Path) -> b
         with Image.open(img_path_1) as image1, Image.open(img_path_2) as image2:
             return _verify_duplicate_check_sync(image1, image2)
     except Exception as e:
-        logger.error(f"验证(Path vs Path)失败: {e}")
+        logger.opt(exception=True).warning(f"验证(Path vs Path)失败: {e}")
         return False
 
 
@@ -275,13 +275,13 @@ def _check_duplicate_image_sync(
             if p_hash not in existing_perceptual_hashes:
                 existing_perceptual_hashes[p_hash] = img_path
             if f_hash == new_f_hash:
-                logger.info(f"发现重复 (文件哈希): {img_path.name}")
+                logger.debug(f"发现重复 (文件哈希): {img_path.name}")
                 return True, filename
 
     if new_p_hash in existing_perceptual_hashes:
         existing_img_path = existing_perceptual_hashes[new_p_hash]
         if _verify_duplicate_bytes_vs_path_sync(existing_img_path, new_image_bytes):
-            logger.info("二次验证通过，确认为重复")
+            logger.debug("二次验证通过，确认为重复")
             return True, existing_img_path.name
 
     return False, None

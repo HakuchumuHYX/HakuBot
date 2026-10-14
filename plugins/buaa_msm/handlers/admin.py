@@ -15,9 +15,9 @@
 
 from __future__ import annotations
 
-from nonebot import on_command, require
+from nonebot import logger, on_command, require
 from nonebot.adapters.onebot.v11 import Bot, PrivateMessageEvent
-from nonebot.log import logger
+from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type
 
@@ -47,7 +47,7 @@ from nonebot_plugin_apscheduler import scheduler
 )
 async def cleanup_files_morning():
     """早上清理任务：清文件 + 清缓存 + 清访问记录"""
-    logger.info(f"执行 {plugin_config.cleanup.morning_hour}:00 文件清理任务")
+    logger.debug(f"执行 {plugin_config.cleanup.morning_hour}:00 文件清理任务")
     await cleanup_with_cache(clear_visit_history=True)
 
 
@@ -59,7 +59,7 @@ async def cleanup_files_morning():
 )
 async def cleanup_files_afternoon():
     """下午清理任务：清文件 + 清缓存（不清访问记录）"""
-    logger.info(f"执行 {plugin_config.cleanup.afternoon_hour}:00 文件清理任务")
+    logger.debug(f"执行 {plugin_config.cleanup.afternoon_hour}:00 文件清理任务")
     await cleanup_with_cache(clear_visit_history=False)
 
 
@@ -74,8 +74,10 @@ async def handle_cleanup_command(bot: Bot, event):
     try:
         await cleanup_with_cache(clear_visit_history=True)
         await cleanup_cmd.finish("文件及访问历史清理完成")
+    except FinishedException:
+        raise
     except Exception as e:
-        logger.error(f"手动清理文件失败: {e}")
+        logger.exception("手动清理文件失败")
         await cleanup_cmd.finish(f"文件清理失败: {str(e)}")
 
 
@@ -96,8 +98,10 @@ async def handle_stats_command(bot: Bot, event):
 
         stats = collect_file_stats()
         await stats_cmd.finish(build_stats_message(stats))
+    except FinishedException:
+        raise
     except Exception as e:
-        logger.error(f"获取文件统计失败: {e}")
+        logger.exception("获取文件统计失败")
         await stats_cmd.finish(f"获取文件统计失败: {str(e)}")
 
 
@@ -129,6 +133,8 @@ async def handle_list_files_command(bot: Bot, event: PrivateMessageEvent):
 
         message = f"已上传的文件 (共 {len(files)} 个):\n" + "\n".join(file_list)
         await list_files_cmd.finish(message)
-    except Exception as e:
-        logger.error(f"列出文件失败: {e}")
+    except FinishedException:
+        raise
+    except Exception:
+        logger.exception("列出文件失败")
         await list_files_cmd.finish("列出文件失败。")

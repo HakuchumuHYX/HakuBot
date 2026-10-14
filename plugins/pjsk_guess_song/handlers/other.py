@@ -7,8 +7,7 @@ from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 import json
 from pathlib import Path
-from nonebot import on_command
-from nonebot.log import logger
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     MessageEvent,
     MessageSegment,
@@ -170,7 +169,7 @@ async def _(bot: Bot, event: MessageEvent):
             except Exception as e:
                 logger.warning(f"发送别名获取结果通知失败: {e}")
         except Exception as e:
-            logger.error(f"后台获取别名任务出错: {e}", exc_info=True)
+            logger.exception(f"后台获取别名任务出错: {e}")
         finally:
             _alias_task_running = False
 

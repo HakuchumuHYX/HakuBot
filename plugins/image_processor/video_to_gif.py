@@ -5,13 +5,13 @@ import random
 import shutil
 import urllib.parse
 
-from nonebot import get_driver
-from nonebot.log import logger
+from nonebot import get_driver, logger
 
 from core.lifecycle import on_plugin_startup
 from plugins.image_processor.utils import (
     IMAGE_PROCESSOR_MAX_VIDEO_BYTES,
     IMAGE_PROCESSOR_VIDEO_DOWNLOAD_TIMEOUT,
+    UserInputError,
     download_temp,
     run_command,
 )
@@ -56,11 +56,11 @@ async def get_video_info(video_path: str) -> tuple[float, float, int, int]:
     )
     info = json.loads(output)
     if not info.get("streams"):
-        raise Exception("文件里没有视频流")
+        raise UserInputError("文件里没有视频流")
     stream = info["streams"][0]
     duration = float(info.get("format", {}).get("duration") or 0)
     if duration <= 0:
-        raise Exception("无法读取视频时长")
+        raise UserInputError("无法读取视频时长")
     num, _, den = stream.get("avg_frame_rate", "0/0").partition("/")
     fps = float(num) / float(den) if den and float(den) else 0.0
     return duration, fps, int(stream["width"]), int(stream["height"])
@@ -90,7 +90,7 @@ async def convert_video_to_gif(
     video_url: str, file_name: str = "", expected_size: int = 0
 ) -> str:
     if expected_size > IMAGE_PROCESSOR_MAX_VIDEO_BYTES:
-        raise Exception(
+        raise UserInputError(
             f"视频文件过大（{expected_size // 1024 // 1024}MB），"
             f"上限 {IMAGE_PROCESSOR_MAX_VIDEO_BYTES // 1024 // 1024}MB"
         )
@@ -118,17 +118,17 @@ async def convert_video_to_gif(
         size = os.path.getsize(video_path)
         # 失效的群文件链接也会返回 200，只能靠消息里带的大小识别
         if expected_size > 0 and size < expected_size * 0.9:
-            raise Exception(
+            raise UserInputError(
                 f"下载的视频不完整（{size}/{expected_size} bytes），群文件链接可能已失效"
             )
 
         duration, source_fps, width, height = await get_video_info(video_path)
         if duration > VIDEO_MAX_DURATION:
-            raise Exception(
+            raise UserInputError(
                 f"视频时长超过限制（{duration:.1f} 秒 > {VIDEO_MAX_DURATION} 秒），请选择较短的视频"
             )
         fps, max_side = gif_parameters(duration, source_fps, width, height)
-        logger.info(
+        logger.debug(
             f"视频转GIF: 时长{duration:.1f}s, 原帧率{source_fps:.1f} -> {fps}, "
             f"原尺寸{width}x{height}, 长边 -> {max_side}"
         )
@@ -161,5 +161,5 @@ async def convert_video_to_gif(
             await safe_delete_file(output_path)
             raise
 
-    logger.info(f"视频转GIF成功: {output_path}, 大小: {os.path.getsize(output_path)}")
+    logger.debug(f"视频转GIF成功: {output_path}, 大小: {os.path.getsize(output_path)}")
     return str(output_path)

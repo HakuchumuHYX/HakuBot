@@ -21,12 +21,12 @@ class DailyRecordManager:
             if self.records_file.exists():
                 with open(self.records_file, "r", encoding="utf-8") as f:
                     self.records_data = json.load(f)
-                logger.info(f"每日记录加载成功，共 {len(self.records_data)} 条记录")
+                logger.debug(f"每日记录加载成功，共 {len(self.records_data)} 条记录")
             else:
                 self.records_data = {}
                 self.save_records()
         except Exception as e:
-            logger.error(f"加载每日记录失败: {e}")
+            logger.exception(f"加载每日记录失败: {e}")
             self.records_data = {}
 
     def save_records(self):
@@ -37,7 +37,7 @@ class DailyRecordManager:
                 self.records_file, self.records_data, ensure_ascii=False, indent=2
             )
         except Exception as e:
-            logger.error(f"保存每日记录失败: {e}")
+            logger.exception(f"保存每日记录失败: {e}")
 
     def get_today_key(self) -> str:
         """获取今天的日期键"""
@@ -83,7 +83,7 @@ class DailyRecordManager:
             selected_image = random.choice(image_files)
             return str(selected_image)
         except Exception as e:
-            logger.error(f"获取随机图片失败: {e}")
+            logger.exception(f"获取随机图片失败: {e}")
             return ""
 
     def cleanup_old_records(self, days_to_keep: int = 3):
@@ -116,7 +116,7 @@ class DailyRecordManager:
                 logger.info(f"清理了 {len(dates_to_remove)} 天的旧记录")
 
         except Exception as e:
-            logger.error(f"清理旧记录失败: {e}")
+            logger.exception(f"清理旧记录失败: {e}")
 
 
 # 全局实例

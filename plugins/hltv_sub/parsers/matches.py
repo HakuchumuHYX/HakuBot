@@ -6,7 +6,7 @@ import re
 from typing import Tuple
 
 from bs4 import BeautifulSoup
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.hltv_sub.models import (
     EventMatchesMeta, EventMatchesPage, MatchInfo, MatchTimeHint,
@@ -216,7 +216,7 @@ def parse_event_matches_page(
     meta = _analyze_matches_meta(event_id, final_url, soup)
     # 页面不可用时停止解析，避免从通用 matches 页误抓其他赛事。
     if meta.is_unavailable:
-        logger.warning(
+        logger.debug(
             f"[HLTV] 赛事 matches 页面不可用: event={event_id}, "
             f"final_url={meta.final_url}, title={meta.page_title}, "
             f"reason={meta.unavailable_reason}"

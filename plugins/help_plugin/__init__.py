@@ -1,8 +1,7 @@
 from pathlib import Path
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
-from nonebot.log import logger
 from nonebot.matcher import Matcher
 
 from plugins.help_plugin.config import HelpConfig, load_config
@@ -46,7 +45,7 @@ async def handle_help(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
         await matcher.send(image_segment(image))
     except Exception:
         # 全局菜单是手写文本，渲染失败时改发文字版
-        logger.exception("帮助图片渲染失败，改发文本")
+        logger.opt(exception=True).warning("帮助图片渲染失败，改发文本")
         await matcher.send(_help_as_text(config))
 
     links = [

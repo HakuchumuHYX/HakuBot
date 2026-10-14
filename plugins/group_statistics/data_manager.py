@@ -2,13 +2,11 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, List, Set
+from nonebot import logger
 
 from plugins.group_statistics.config import STATS_FILE
 
 from utils.json_io import atomic_write_json
-from utils.logging import get_logger
-
-logger = get_logger("group_statistics.data_manager")
 
 
 class GroupStatisticsData:

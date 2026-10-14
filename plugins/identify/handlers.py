@@ -77,7 +77,7 @@ async def create_identify_message(
         ]
 
     except Exception as e:
-        logger.error(f"创建鉴定消息失败: {e}")
+        logger.opt(exception=True).warning(f"创建鉴定消息失败: {e}")
         # 失败时返回简单的文本消息格式
         return [
             ForwardItem(
@@ -147,7 +147,7 @@ async def handle_identify(bot: Bot, event: GroupMessageEvent):
         # 忽略 FinishedException，这是正常的结束流程
         raise
     except Exception as e:
-        logger.error(f"处理鉴定命令时出错: {e}")
+        logger.exception(f"处理鉴定命令时出错: {e}")
         await identify.finish("鉴定失败，请稍后再试喵~")
 
 
@@ -207,7 +207,7 @@ async def handle_identify_other(bot: Bot, event: GroupMessageEvent):
         # 忽略 FinishedException，这是正常的结束流程
         raise
     except Exception as e:
-        logger.error(f"处理鉴定别人命令时出错: {e}")
+        logger.exception(f"处理鉴定别人命令时出错: {e}")
         await identify_other.finish("鉴定失败，请稍后再试喵~")
 
 
@@ -216,9 +216,9 @@ async def daily_cleanup():
     """每日清理任务"""
     try:
         daily_record_manager.cleanup_old_records()
-        logger.info("已执行每日鉴定记录清理")
+        logger.debug("已执行每日鉴定记录清理")
     except Exception as e:
-        logger.error(f"每日清理任务出错: {e}")
+        logger.exception(f"每日清理任务出错: {e}")
 
 
 # 插件启动时初始化
@@ -228,11 +228,11 @@ async def init_plugin():
     # 清理旧记录
     daily_record_manager.cleanup_old_records()
 
-    logger.info("鉴定插件初始化完成")
+    logger.debug("鉴定插件初始化完成")
 
 
 # 机器人关闭时的处理
 @on_plugin_shutdown(get_driver(), "identify")
 async def shutdown_plugin():
     """插件关闭"""
-    logger.info("鉴定插件已关闭")
+    logger.debug("鉴定插件已关闭")

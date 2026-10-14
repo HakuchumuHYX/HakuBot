@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.pjsk_guess_song.config import PluginConfig
 from plugins.pjsk_guess_song.services.cache_service import CacheService
@@ -61,7 +61,7 @@ class ImageService:
                 "options.html", 720, [self._version_line()], options=items
             )
         except Exception as e:
-            logger.error(f"创建选项图片失败: {e}", exc_info=True)
+            logger.exception(f"创建选项图片失败: {e}")
             return None
 
     async def draw_leaderboard_image(
@@ -76,7 +76,7 @@ class ImageService:
                 rows=leaderboard_data,
             )
         except Exception as e:
-            logger.error(f"生成排行榜图片时出错: {e}", exc_info=True)
+            logger.opt(exception=True).warning(f"生成排行榜图片时出错: {e}")
             return None
 
     async def draw_resource_version_image(
@@ -104,7 +104,7 @@ class ImageService:
                 data_version=external_info,
             )
         except Exception as e:
-            logger.error(f"资源版本图片生成失败: {e}", exc_info=True)
+            logger.opt(exception=True).warning(f"资源版本图片生成失败: {e}")
             return None
 
     async def draw_help_image(self, game_modes: Dict[str, Dict]) -> bytes:

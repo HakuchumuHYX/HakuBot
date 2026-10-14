@@ -17,7 +17,9 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
-from nonebot.log import logger
+from nonebot import logger
+
+from utils.logging import get_exc_desc
 
 try:
     from pydub import AudioSegment
@@ -85,7 +87,7 @@ class AudioProcessor:
             logger.error("ffmpeg 未安装或不在系统路径中。无法执行静音检测。")
             raise  # 抛出异常，让上层处理
         except Exception as e:
-            logger.error(f"执行ffmpeg volumedetect时出错: {e}")
+            logger.opt(exception=True).warning(f"执行ffmpeg volumedetect时出错: {e}")
             return -999.0
 
     def get_duration_ms_ffprobe_sync(
@@ -108,7 +110,7 @@ class AudioProcessor:
             )
             return float(result.stdout.strip()) * 1000
         except (FileNotFoundError, subprocess.CalledProcessError, ValueError) as e:
-            logger.error(f"使用 ffprobe 获取时长失败 ({type(e).__name__}): {e}")
+            logger.warning(f"使用 ffprobe 获取时长失败 ({type(e).__name__}): {e}")
             return None
 
     def process_audio_with_pydub(
@@ -164,7 +166,7 @@ class AudioProcessor:
                 clip = clip.high_pass_filter(low_freq).low_pass_filter(high_freq) + 6
             return clip
         except Exception as e:
-            logger.error(f"Pydub processing in executor failed: {e}", exc_info=True)
+            logger.opt(exception=True).warning(f"Pydub processing in executor failed: {e}")
             return None
 
     async def process_anvo_audio(self, song: Dict, vocal_info: Dict) -> Optional[str]:
@@ -175,10 +177,10 @@ class AudioProcessor:
         output_path = self.output_dir / output_filename
 
         if output_path.exists():
-            logger.info(f"使用已缓存的ANVO文件: {output_filename}")
+            logger.debug(f"使用已缓存的ANVO文件: {output_filename}")
             return str(output_path)
 
-        logger.info(f"缓存文件 {output_filename} 不存在，正在创建...")
+        logger.debug(f"缓存文件 {output_filename} 不存在，正在创建...")
         mp3_source = self.cache_service.get_resource_path_or_url(
             f"songs/{vocal_info['vocalAssetbundleName']}/{vocal_info['vocalAssetbundleName']}.mp3"
         )
@@ -215,7 +217,7 @@ class AudioProcessor:
                 return None
             return str(output_path)
         except Exception as e:
-            logger.error(f"FFmpeg执行失败: {e}", exc_info=True)
+            logger.exception(f"FFmpeg执行失败: {e}")
             return None
 
     async def clip_audio_ffmpeg_fast(
@@ -245,7 +247,6 @@ class AudioProcessor:
                 command,
                 capture_output=True,
                 text=True,
-                check=True,
                 encoding="utf-8",
             )
             result = await asyncio.get_running_loop().run_in_executor(
@@ -277,7 +278,7 @@ class AudioProcessor:
             else:
                 return audio_source
         except Exception as e:
-            logger.error(f"获取音频数据 {audio_source} 失败: {e}")
+            logger.warning(f"获取音频数据 {audio_source} 失败: {get_exc_desc(e)}")
             return None
 
     async def terminate(self):

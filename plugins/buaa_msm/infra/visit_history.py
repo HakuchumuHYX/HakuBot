@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.buaa_msm.config import plugin_config
 
@@ -40,8 +40,8 @@ class VisitHistoryManager:
             return {}
         try:
             return json.loads(visit_history_file.read_text(encoding="utf-8"))
-        except Exception as e:
-            logger.error(f"加载访问历史失败: {e}")
+        except Exception:
+            logger.exception("加载访问历史失败")
             return {}
 
     def _save(self, data: Dict[str, List[Dict[str, Any]]]):
@@ -51,8 +51,8 @@ class VisitHistoryManager:
             visit_history_file.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-        except Exception as e:
-            logger.error(f"保存访问历史失败: {e}")
+        except Exception:
+            logger.exception("保存访问历史失败")
 
     def get_data(self) -> Dict[str, List[Dict[str, Any]]]:
         """获取访问历史数据（优先使用缓存）"""
@@ -102,12 +102,12 @@ class VisitHistoryManager:
             if record.get("period_key") == current_period:
                 data[user_id][i] = new_record
                 period_found = True
-                logger.info(f"覆盖用户 {user_id} 在 {current_period} 时段的访问记录")
+                logger.debug(f"覆盖用户 {user_id} 在 {current_period} 时段的访问记录")
                 break
 
         if not period_found:
             data[user_id].append(new_record)
-            logger.info(f"新增用户 {user_id} 在 {current_period} 时段的访问记录")
+            logger.debug(f"新增用户 {user_id} 在 {current_period} 时段的访问记录")
 
         self._dirty = True
         self.save_if_dirty()
@@ -145,9 +145,9 @@ class VisitHistoryManager:
             visit_history_file.write_text("{}", encoding="utf-8")
             self._cache = {}
             self._dirty = False
-            logger.success("已清空角色访问历史")
-        except Exception as e:
-            logger.error(f"清空访问历史失败: {e}")
+            logger.debug("已清空角色访问历史")
+        except Exception:
+            logger.exception("清空访问历史失败")
 
 
 # 全局访问历史管理器实例

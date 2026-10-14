@@ -2,8 +2,7 @@ from core.lifecycle import runtime as app_runtime, on_plugin_startup, on_plugin_
 import asyncio
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from nonebot import get_driver
-from nonebot.log import logger
+from nonebot import get_driver, logger
 from nonebot.plugin import PluginMetadata
 from plugins.pjsk_guess_song.config import plugin_config, data_dir
 from plugins.pjsk_guess_song.services.db_service import DBService
@@ -51,12 +50,16 @@ async def _on_startup():
         )
         if not success:
             logger.warning("guess_song.json 生成失败，将尝试使用已有文件。")
-    except Exception as e:
-        logger.warning(f"生成 guess_song.json 时出错: {e}，将尝试使用已有文件。")
+    except Exception:
+        logger.opt(exception=True).warning("生成 guess_song.json 时出错，将尝试使用已有文件。")
 
     await cache_service.load_resources_and_manifest()
     app_runtime.spawn(cache_service.periodic_cleanup_task(), name="pjsk_guess_song")
-    logger.info("PJSK 猜歌插件服务已启动。")
+    logger.info(
+        f"PJSK 猜歌已启动：{len(cache_service.song_data)} 首歌曲、"
+        f"{len(cache_service.song_aliases)} 个别名，"
+        f"{'Full' if plugin_config.full_mode else 'Light'} 模式"
+    )
 
 
 @on_plugin_shutdown(driver, "pjsk_guess_song")
@@ -65,7 +68,7 @@ async def _on_shutdown():
     await audio_processor.terminate()
     await cache_service.terminate()
     executor.shutdown(wait=False)
-    logger.info("PJSK 猜歌插件服务已终止。")
+    logger.debug("PJSK 猜歌插件服务已终止。")
 
 
 # --- 5. 导入处理器模块以注册 Matcher ---

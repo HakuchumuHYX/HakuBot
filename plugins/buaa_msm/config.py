@@ -14,8 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Sequence
 
 from pydantic import BaseModel
-from nonebot import require
-from nonebot.log import logger
+from nonebot import require, logger
 
 # 声明依赖并导入 nonebot-plugin-localstore
 require("nonebot_plugin_localstore")
@@ -70,7 +69,7 @@ class PluginConfig:
         self.master_data_dir: Path = Path(final_master_data_dir)
 
         if env_master_data_dir:
-            logger.info("BUAA_MSM 配置来源: BUAA_MSM_MASTER_DATA_DIR (env)")
+            logger.debug("BUAA_MSM 配置来源: BUAA_MSM_MASTER_DATA_DIR (env)")
         if not self.master_data_dir.exists():
             logger.warning(
                 f"BUAA_MSM master_data_dir 不存在: {self._mask_path(self.master_data_dir)}，"
@@ -182,7 +181,7 @@ class PluginConfig:
     def _load_local_json_config(self) -> dict[str, Any]:
         """加载 config/plugins/buaa_msm/config.json（可选）。"""
         if not self.local_config_file.exists():
-            logger.info("BUAA_MSM 未发现本地 config.json，使用默认值/环境变量。")
+            logger.debug("BUAA_MSM 未发现本地 config.json，使用默认值/环境变量。")
             return {}
 
         try:
@@ -192,7 +191,7 @@ class PluginConfig:
                     "BUAA_MSM config.json 顶层不是对象，已忽略并回退默认值。"
                 )
                 return {}
-            logger.info("BUAA_MSM 已加载本地 config.json。")
+            logger.debug("BUAA_MSM 已加载本地 config.json。")
             return data
         except Exception as e:
             logger.warning(

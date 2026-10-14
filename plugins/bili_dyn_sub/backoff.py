@@ -22,9 +22,7 @@ import time
 from dataclasses import dataclass, replace
 from typing import Literal, Optional
 
-from utils.logging import get_logger
-
-logger = get_logger("bili_dyn_sub.backoff")
+from nonebot import logger
 
 # 352 风控：前 2 次只强制刷新 cookie 重试，之后才进入指数退避
 MAX_REFRESH_COUNT = 2

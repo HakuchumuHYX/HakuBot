@@ -4,11 +4,10 @@ from pathlib import Path
 import time
 from collections import defaultdict
 
-from nonebot import require, on_command, on_message, on_type, get_bot
+from nonebot import require, on_command, on_message, on_type, get_bot, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.adapters.onebot.v11.event import Event as OneBotEvent
 from nonebot.plugin import PluginMetadata
-from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
 
@@ -228,7 +227,7 @@ async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = 
 
     这样可以避免渲染失败时重新执行 LLM 分析（浪费 token）。
     """
-    logger.info(f"开始分析群 {group_id} 的每日总结 (Debug={debug})...")
+    logger.debug(f"开始分析群 {group_id} 的每日总结 (Debug={debug})...")
 
     # === 阶段 1: 获取消息 ===
     messages = None
@@ -236,31 +235,30 @@ async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = 
     for i in range(retries):
         try:
             if i > 0:
-                logger.info(f"第 {i + 1} 次重试获取群 {group_id} 消息...")
+                logger.debug(f"第 {i + 1} 次重试获取群 {group_id} 消息...")
 
             fetcher = MessageFetcher()
             messages = await fetcher.fetch_messages(bot, group_id)
             break  # 成功则跳出
 
         except Exception as e:
-            logger.warning(f"获取群 {group_id} 消息失败 (尝试 {i + 1}/{retries}): {e}")
+            logger.info(f"获取群 {group_id} 消息失败 (尝试 {i + 1}/{retries}): {e}")
             fetch_error = e
             await asyncio.sleep(1 * (i + 1))
 
     if messages is None:
-        logger.error(f"群 {group_id} 消息获取最终失败")
         if fetch_error:
             raise fetch_error
         return None
 
     # Debug 模式下忽略消息数量限制
     if not debug and len(messages) < plugin_config.min_messages_threshold:
-        logger.warning(
+        logger.info(
             f"群 {group_id} 消息数量不足 ({len(messages)} < {plugin_config.min_messages_threshold})，跳过分析"
         )
         return None
 
-    logger.info(f"群 {group_id} 获取到 {len(messages)} 条消息")
+    logger.debug(f"群 {group_id} 获取到 {len(messages)} 条消息")
 
     # === 阶段 2: LLM 分析 ===
     # 请求和分片负责重试；分析器保留成功项并处理降级，不重放整个分析流程。
@@ -272,6 +270,7 @@ async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = 
     # 记录分析结果统计
     logger.info(
         f"群 {group_id} 分析完成: "
+        f"消息={len(messages)}, "
         f"话题={len(analysis_result.topics)}, "
         f"称号={len(analysis_result.user_titles)}, "
         f"金句={len(analysis_result.golden_quotes)}"
@@ -283,19 +282,18 @@ async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = 
     for i in range(retries):
         try:
             if i > 0:
-                logger.info(f"第 {i + 1} 次重试群 {group_id} 的报告渲染...")
+                logger.debug(f"第 {i + 1} 次重试群 {group_id} 的报告渲染...")
 
             renderer = ReportRenderer()
             image_bytes = await renderer.render_to_image(analysis_result, str(group_id))
             break  # 成功则跳出
 
         except Exception as e:
-            logger.warning(f"群 {group_id} 报告渲染失败 (尝试 {i + 1}/{retries}): {e}")
+            logger.info(f"群 {group_id} 报告渲染失败 (尝试 {i + 1}/{retries}): {e}")
             render_error = e
             await asyncio.sleep(1 * (i + 1))
 
     if image_bytes is None:
-        logger.error(f"群 {group_id} 报告渲染最终失败")
         if render_error:
             raise render_error
         return None
@@ -332,7 +330,7 @@ async def handle_analysis(bot: Bot, event: GroupMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"生成总结失败: {e}")
+        logger.exception(f"生成总结失败: {e}")
         await analysis_cmd.finish(f"生成总结失败，请稍后重试。")
 
 
@@ -352,7 +350,7 @@ async def handle_debug_analysis(bot: Bot, event: GroupMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"Debug 分析失败: {e}")
+        logger.exception(f"Debug 分析失败: {e}")
         await debug_analysis_cmd.finish(f"Debug 分析失败: {e}")
 
 
@@ -412,12 +410,12 @@ async def auto_run_daily_analysis():
     if not plugin_config.enable_auto_analysis:
         return
 
-    logger.info("开始运行每日自动总结任务...")
+    logger.debug("开始运行每日自动总结任务...")
 
     # 1. 清理过期消息 (保留7天)
     # 注意：清理失败不应中断自动总结流程
     try:
-        logger.info("正在清理过期消息...")
+        logger.debug("正在清理过期消息...")
         db.cleanup_old_messages(retention_days=7)
     except Exception as e:
         logger.warning(f"清理过期消息失败(将继续执行自动总结): {e}")
@@ -460,7 +458,7 @@ async def auto_run_daily_analysis():
             await asyncio.sleep(10)
 
         except Exception as e:
-            logger.error(f"群 {group_id_str} 自动总结失败: {e}")
+            logger.exception(f"群 {group_id_str} 自动总结失败: {e}")
 
 
 def cleanup_old_messages_job():
@@ -481,7 +479,7 @@ scheduler.add_job(
     id="group_daily_analysis_cleanup_job",
     replace_existing=True,
 )
-logger.info("已注册 group_daily_analysis 消息清理定时任务: 04:00 (保留7天)")
+logger.debug("已注册 group_daily_analysis 消息清理定时任务: 04:00 (保留7天)")
 
 # 注册：自动总结任务
 if plugin_config.enable_auto_analysis:

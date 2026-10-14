@@ -1,6 +1,5 @@
 import time
-import logging
-from nonebot import on_command, get_driver
+from nonebot import on_command, get_driver, logger
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -10,7 +9,8 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.params import CommandArg
 from nonebot.rule import to_me
-from nonebot.log import logger
+
+from utils.logging import get_exc_desc
 
 # 导入共享上下文
 from plugins.send_and_reply.content import message_context, prune_message_context
@@ -40,7 +40,7 @@ async def get_user_info(bot: Bot, user_id: str) -> str:
         logger.warning(f"用户ID格式错误: {user_id}, 错误: {e}")
         return f"用户{user_id}"
     except Exception as e:
-        logger.error(f"获取用户 {user_id} 信息失败: {e}", exc_info=True)
+        logger.warning(f"获取用户 {user_id} 信息失败: {get_exc_desc(e)}")
         return f"用户{user_id}"
 
 
@@ -54,7 +54,7 @@ async def get_group_info(bot: Bot, group_id: str) -> str:
         logger.warning(f"群组ID格式错误: {group_id}, 错误: {e}")
         return f"群组{group_id}"
     except Exception as e:
-        logger.error(f"获取群组 {group_id} 信息失败: {e}", exc_info=True)
+        logger.warning(f"获取群组 {group_id} 信息失败: {get_exc_desc(e)}")
         return f"群组{group_id}"
 
 
@@ -105,7 +105,7 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
             context_info["group_info"] = group_info
             message_header = f"来自群聊 {group_info} 的用户 {user_info} 的消息："
         except Exception as e:
-            logger.error(f"构建群消息头失败: {e}", exc_info=True)
+            logger.opt(exception=True).warning(f"构建群消息头失败: {e}")
             context_info["group_id"] = str(event.group_id)
             context_info["group_info"] = f"群组{event.group_id}"
             message_header = f"来自群聊的用户 {user_info} 的消息："
@@ -116,7 +116,7 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
     full_message = f"{message_header}\n\n{text}\n\n请直接回复此消息进行回复"
 
     # 记录消息发送尝试
-    logger.info(f"用户 {user_id} 尝试发送消息给超级用户: {text[:50]}...")
+    logger.debug(f"用户 {user_id} 尝试发送消息给超级用户: {text[:50]}...")
 
     # 存入新条目前先清理过期上下文，防止内存泄漏
     prune_message_context()
@@ -136,35 +136,33 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
             if hasattr(result, "message_id"):
                 message_id = result.message_id
                 message_context[message_id] = context_info
-                logger.info(
+                logger.debug(
                     f"存储消息上下文成功，消息ID: {message_id}, 用户ID: {user_id}"
                 )
             elif isinstance(result, dict) and "message_id" in result:
                 message_id = result["message_id"]
                 message_context[message_id] = context_info
-                logger.info(
+                logger.debug(
                     f"存储消息上下文成功，消息ID: {message_id}, 用户ID: {user_id}"
                 )
             else:
                 logger.warning(f"无法获取消息ID，结果类型: {type(result)}")
 
             success_count += 1
-            logger.info(f"消息成功发送给超级用户 {superuser_id}")
+            logger.debug(f"消息成功发送给超级用户 {superuser_id}")
         except ValueError as e:
             error_msg = f"超级用户ID格式错误: {superuser_id}, 错误: {e}"
             logger.error(error_msg)
             failed_users.append((superuser_id, error_msg))
         except Exception as e:
             error_msg = f"发送消息给超级用户 {superuser_id} 失败: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.warning(f"发送消息给超级用户 {superuser_id} 失败: {get_exc_desc(e)}")
             failed_users.append((superuser_id, error_msg))
 
     # 记录发送结果
     if success_count > 0:
         result_msg = f"消息已发送给 {success_count} 位超级用户"
         logger.info(f"消息发送成功: {result_msg}")
-        if failed_users:
-            logger.warning(f"部分发送失败: {failed_users}")
         await send_to_superuser.finish(f"消息已发送，请静待回复~")
     else:
         error_msg = "所有消息发送尝试均失败"

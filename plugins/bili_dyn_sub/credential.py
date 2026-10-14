@@ -42,14 +42,13 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 import aiohttp
+from nonebot import logger
 
 from utils.json_io import atomic_write_json
 from utils.network.http import get_client_session, get_effective_proxy
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from utils.text import truncate
 from plugins.bili_dyn_sub.config import CREDENTIAL_FILE, plugin_config
-
-logger = get_logger("bili_dyn_sub.credential")
 
 # ============================ 常量 ============================ #
 
@@ -326,10 +325,10 @@ class CredentialManager:
         try:
             raw = json.loads(self._cache_file.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
-            logger.error(f"读取 cookie 缓存失败，将重新生成: {get_exc_desc(e)}")
+            logger.warning(f"读取 cookie 缓存失败，将重新生成: {get_exc_desc(e)}")
             return
         if not isinstance(raw, dict):
-            logger.error("cookie 缓存顶层不是对象，将重新生成")
+            logger.warning("cookie 缓存顶层不是对象，将重新生成")
             return
 
         cookies = raw.get("cookies")
@@ -367,7 +366,7 @@ class CredentialManager:
             await asyncio.to_thread(atomic_write_json, self._cache_file, payload)
             self._last_save_ts = time.time()
         except (OSError, TypeError, ValueError) as e:
-            logger.error(
+            logger.warning(
                 f"写入 cookie 缓存失败，本次 cookie 仅存在内存中: {get_exc_desc(e)}"
             )
 
@@ -683,7 +682,7 @@ class CredentialManager:
                 f"各级 cookie 生成均失败，沿用上一次缓存（可能已过期），{int(FAILED_RETRY_SECONDS)}s 后再试"
             )
         else:
-            logger.error(
+            logger.warning(
                 f"各级 cookie 生成均失败且无历史缓存，本轮取数大概率 -352，{int(FAILED_RETRY_SECONDS)}s 后再试"
             )
         return False

@@ -2,7 +2,7 @@ from utils.json_io import atomic_write_json
 from utils.paths import PluginPaths
 import json
 from pathlib import Path
-from nonebot.log import logger
+from nonebot import logger
 
 # 配置文件路径
 CONFIG_FILE = PluginPaths("daily_message").config / "config.json"
@@ -15,7 +15,7 @@ def load_config():
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         else:
-            logger.error("配置文件不存在")
+            logger.warning("配置文件不存在")
             return {"schedules": []}
     except Exception as e:
         logger.error(f"加载配置文件失败: {e}")

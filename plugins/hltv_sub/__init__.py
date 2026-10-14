@@ -4,8 +4,7 @@ HLTV 订阅插件入口
 
 import asyncio
 
-from nonebot import get_driver
-from nonebot.log import logger
+from nonebot import get_driver, logger
 from nonebot.plugin import PluginMetadata
 
 from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown

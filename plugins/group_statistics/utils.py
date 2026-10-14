@@ -6,9 +6,7 @@ from plugins.group_statistics.config import (
     MESSAGE_THRESHOLDS,
     DEFAULT_THRESHOLD_TEXT,
 )
-from utils.logging import get_logger
-
-logger = get_logger("group_statistics.utils")
+from nonebot import logger
 
 
 def get_top_users(
@@ -52,4 +50,4 @@ def reset_daily_stats():
     data_manager.group_stats = {}
     data_manager.user_info = {}
     data_manager.save_stats()
-    logger.info("已重置每日统计数据")
+    logger.debug("已重置每日统计数据")

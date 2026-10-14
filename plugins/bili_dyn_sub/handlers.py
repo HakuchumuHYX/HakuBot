@@ -16,7 +16,7 @@ import asyncio
 import re
 from typing import Any, Optional
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
@@ -29,7 +29,7 @@ from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from utils.text import truncate
 from plugins.bili_dyn_sub import api
 from plugins.bili_dyn_sub.backoff import backoff_manager
@@ -43,8 +43,6 @@ from plugins.bili_dyn_sub.store import store
 from plugins.bili_dyn_sub import scheduler as _scheduler
 from plugins.bili_dyn_sub.services.delivery import SendTarget
 from plugins.bili_dyn_sub.services.delivery import dispatch_segments
-
-logger = get_logger("bili_dyn_sub")
 
 __plugin_meta__ = PluginMetadata(
     name="B站动态订阅",
@@ -245,7 +243,7 @@ async def do_subscribe(uid: str, group_id: int, *, note: str = "") -> str:
         name = await api.fetch_user_name(uid)
     except Exception as e:
         # fetch_user_name 内部已兜底，这里只防御意外异常，避免命令直接崩
-        logger.error(f"查询 UID {uid} 昵称失败: {get_exc_desc(e)}")
+        logger.opt(exception=True).warning(f"查询 UID {uid} 昵称失败: {get_exc_desc(e)}")
         name = None
 
     if not name:

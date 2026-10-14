@@ -3,13 +3,13 @@ import asyncio
 import time
 from dataclasses import dataclass
 from typing import Any, NamedTuple, Optional
-from nonebot import get_bot, get_driver, require
+from nonebot import get_bot, get_driver, require, logger
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.exception import ActionFailed, NetworkError
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler as apscheduler
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from utils.concurrency import run_in_pool
 from utils.onebot.forward import send_forward_msg
 from plugins.bili_dyn_sub import api
@@ -20,8 +20,6 @@ from plugins.bili_dyn_sub.parser import ParsedDynamic, parse_feed, should_skip
 from plugins.bili_dyn_sub.render import build_messages
 from plugins.bili_dyn_sub.store import dyn_id_to_int, store
 
-
-logger = get_logger("bili_dyn_sub.scheduler")
 
 POLL_JOB_ID = "bili_dyn_sub_poll"
 

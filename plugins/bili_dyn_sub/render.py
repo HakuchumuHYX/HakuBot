@@ -25,18 +25,17 @@ from typing import Optional, Union
 
 import aiohttp
 from nonebot.adapters.onebot.v11 import MessageSegment
+from nonebot import logger
 from PIL import Image
 from PIL.Image import Image as PILImage
 
 from utils.rendering.engine import render_text
 from utils.onebot.media import image_segment
 from utils.network.http import HttpError, download_bytes
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from utils.concurrency import run_in_pool
 from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.parser import DELETED_SOURCE_TIPS, ParsedDynamic
-
-logger = get_logger("bili_dyn_sub.render")
 
 # ---------------------------------------------------------------- 常量
 
@@ -319,7 +318,7 @@ async def build_messages(parsed: ParsedDynamic) -> list[MessageSegment]:
         card = await render_text_image(text)
     except Exception as e:
         # 渲染链路（Playwright / 模板 / PIL 校验）任意环节失败都降级，不能因此漏推
-        logger.error(
+        logger.opt(exception=True).warning(
             f"动态 {parsed.dyn_id} 文字卡片渲染失败，降级为纯文本: {get_exc_desc(e)}"
         )
         segments.append(MessageSegment.text(text))

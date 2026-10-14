@@ -62,7 +62,7 @@ async def create_forward_message(
             )
         return forward_items
     except Exception as e:
-        logger.error(f"创建合并转发消息失败: {e}")
+        logger.exception(f"创建合并转发消息失败: {e}")
         return [ForwardItem("合并转发消息创建失败", name="错误", uin=bot.self_id)]
 
 

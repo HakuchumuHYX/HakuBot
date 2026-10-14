@@ -4,7 +4,7 @@ import threading
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from nonebot.log import logger
+from nonebot import logger
 
 # 数据目录
 DATA_DIR = PluginPaths("group_daily_analysis").data
@@ -57,7 +57,7 @@ class DatabaseManager:
                 )
                 conn.commit()
         except Exception as e:
-            logger.error(f"初始化数据库失败: {e}")
+            logger.exception(f"初始化数据库失败: {e}")
 
     def add_message(
         self,
@@ -90,7 +90,7 @@ class DatabaseManager:
                 )
                 conn.commit()
         except Exception as e:
-            logger.error(f"写入消息失败: {e}")
+            logger.exception(f"写入消息失败: {e}")
 
     def get_messages(
         self, group_id: str, start_ts: int, end_ts: int
@@ -112,7 +112,7 @@ class DatabaseManager:
                 rows = cursor.fetchall()
                 return [dict(row) for row in rows]
         except Exception as e:
-            logger.error(f"查询消息失败: {e}")
+            logger.exception(f"查询消息失败: {e}")
             return []
 
     def cleanup_old_messages(self, retention_days: int = 7):
@@ -131,7 +131,7 @@ class DatabaseManager:
                     # 整理碎片（VACUUM 必须在无活动事务时执行，上方已 commit）
                     cursor.execute("VACUUM")
         except Exception as e:
-            logger.error(f"清理旧消息失败: {e}")
+            logger.exception(f"清理旧消息失败: {e}")
 
 
 db = DatabaseManager()

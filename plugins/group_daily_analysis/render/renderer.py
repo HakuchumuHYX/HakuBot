@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime
 import base64
-from nonebot.log import logger
+from nonebot import logger
 from utils.rendering.engine import render_html
 from jinja2 import Environment, FileSystemLoader
 from utils.onebot.avatar import download_avatar
@@ -25,19 +25,14 @@ class ReportRenderer:
         """生成图片报告"""
         render_data = await self._prepare_render_data(analysis_result)
 
-        try:
-            # 1. 渲染主模板
-            template = self.env.get_template("image_template.html")
-            html_content = template.render(**render_data)
+        # 1. 渲染主模板
+        template = self.env.get_template("image_template.html")
+        html_content = template.render(**render_data)
 
-            # 2. 转换为图片，模板目录用于解析 CSS/JS 等相对路径资源
-            image_bytes = await render_html(
-                html_content, base_dir=self.template_path, width=800
-            )
-            return image_bytes
-        except Exception as e:
-            logger.error(f"渲染图片失败: {e}")
-            raise
+        # 2. 转换为图片，模板目录用于解析 CSS/JS 等相对路径资源
+        return await render_html(
+            html_content, base_dir=self.template_path, width=800
+        )
 
     async def _prepare_render_data(self, result: AnalysisResult) -> dict:
         stats = result.statistics

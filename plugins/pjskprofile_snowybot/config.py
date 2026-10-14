@@ -2,7 +2,7 @@ from utils.paths import PluginPaths
 import json
 from pathlib import Path
 from pydantic import BaseModel
-from nonebot.log import logger
+from nonebot import logger
 
 CONFIG_FILE_PATH = PluginPaths("pjskprofile_snowybot").config / "config.json"
 
@@ -24,7 +24,7 @@ def load_config() -> ConfigModel:
             data = json.load(f)
         return ConfigModel(**data)
     except Exception as e:
-        logger.error(f"加载 PJSK Profile 配置文件失败: {e}")
+        logger.exception(f"加载 PJSK Profile 配置文件失败: {e}")
         return ConfigModel(url="", token="", watermark="")
 
 

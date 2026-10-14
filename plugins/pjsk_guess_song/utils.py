@@ -7,8 +7,8 @@ import time
 from datetime import datetime
 from typing import Tuple, Optional
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
-from nonebot import get_bot
-from nonebot.log import logger
+from nonebot import get_bot, logger
+from utils.logging import get_exc_desc
 
 # 导入服务和配置
 from plugins.pjsk_guess_song.runtime import db_service, plugin_config
@@ -47,7 +47,7 @@ async def _is_group_allowed(event: MessageEvent) -> bool:
                 # 尝试发送消息，失败也无妨
                 await get_bot().send(event, "本群未启用猜歌功能")
             except Exception as e:
-                logger.error(f"发送非白名单群聊消息失败: {e}")
+                logger.warning(f"发送非白名单群聊消息失败: {get_exc_desc(e)}")
         return is_in_whitelist
 
     return True  # 私聊默认允许

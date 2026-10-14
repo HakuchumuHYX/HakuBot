@@ -37,7 +37,7 @@ def load_config():
                 plugin_config["error_responses"] = config_data.get(
                     "error_responses", []
                 )
-            logger.info(
+            logger.debug(
                 f"二择插件配置加载成功，关键词: {len(plugin_config['keywords'])} 个，回复模板: {len(plugin_config['responses'])} 个"
             )
         else:
@@ -59,7 +59,7 @@ def load_config():
             plugin_config = default_config
             logger.info("创建默认配置文件成功")
     except Exception as e:
-        logger.error(f"加载配置文件失败: {e}")
+        logger.exception(f"加载配置文件失败: {e}")
 
 
 def _strip_1d_prefix(text: str) -> Optional[str]:
@@ -246,7 +246,7 @@ async def handle_two_choice(event: MessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"处理二择问题时出错: {e}")
+        logger.exception(f"处理二择问题时出错: {e}")
         await two_choice.finish("出现了一些问题，请稍后再试~")
 
 
@@ -255,7 +255,7 @@ async def handle_two_choice(event: MessageEvent):
 async def init_plugin():
     """插件初始化"""
     load_config()
-    logger.info("二择插件初始化完成")
+    logger.debug("二择插件初始化完成")
 
 
 # 重新加载配置的命令

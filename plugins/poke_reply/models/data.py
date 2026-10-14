@@ -62,7 +62,7 @@ class TextDataManager:
                 self._backup_corrupt_text_file(text_file_path, group_id)
                 return False
             except Exception as e:
-                logger.error(f"群 {group_id} 的文本文件加载失败: {e}")
+                logger.exception(f"群 {group_id} 的文本文件加载失败: {e}")
                 return False
 
     def _backup_corrupt_text_file(self, text_file_path, group_id: int) -> None:
@@ -78,7 +78,7 @@ class TextDataManager:
             self._corrupt_backup_keys.add(backup_key)
             logger.warning(f"群 {group_id} 的异常文本文件已备份到: {backup_path}")
         except Exception as e:
-            logger.error(f"备份群 {group_id} 的异常文本文件失败: {e}")
+            logger.exception(f"备份群 {group_id} 的异常文本文件失败: {e}")
 
     def load_image_data(self, group_id: int) -> bool:
         with self._lock:
@@ -128,7 +128,6 @@ class TextDataManager:
                 return True
             except (OSError, ValueError, TypeError):
                 logger.exception(f"保存群 {group_id} 文本失败")
-            logger.error(f"保存群 {group_id} 的文本文件失败")
             return False
 
     def save_image_data(self, group_id: int) -> bool:
@@ -143,7 +142,6 @@ class TextDataManager:
                 return True
             except (OSError, ValueError, TypeError):
                 logger.exception(f"保存群 {group_id} 图片列表失败")
-            logger.error(f"保存群 {group_id} 的图片列表失败")
             return False
 
     def add_text(self, group_id: int, text: str) -> bool:
@@ -201,8 +199,8 @@ class TextDataManager:
                     if image_path.exists():
                         image_path.unlink()
                 except Exception as cleanup_error:
-                    logger.error(f"清理保存失败的图片文件失败: {cleanup_error}")
-                logger.error(f"保存图片文件失败: {e}")
+                    logger.warning(f"清理保存失败的图片文件失败: {cleanup_error}")
+                logger.exception(f"保存图片文件失败: {e}")
                 return False, ""
 
     def remove_image(self, group_id: int, filename: str) -> bool:
@@ -225,7 +223,7 @@ class TextDataManager:
                 if image_path.exists():
                     image_path.unlink()
             except Exception as e:
-                logger.error(f"删除图片文件失败 {image_path}: {e}")
+                logger.warning(f"删除图片文件失败 {image_path}: {e}")
             return True
 
     def get_random_text(self, group_id: int) -> str:

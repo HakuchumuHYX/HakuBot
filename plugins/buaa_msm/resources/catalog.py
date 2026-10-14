@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 from PIL import Image, ImageFont
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.buaa_msm.config import plugin_config
 from plugins.buaa_msm.domain.constants import SCENE_KEY_TO_NAME

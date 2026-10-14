@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.buaa_msm.domain.constants import (
     CHARACTER_NAMES,
@@ -133,8 +133,8 @@ def get_visiting_group_counts(
             final_group_counts[group_id] = {"name": name, "count": visit_count}
 
         return final_group_counts
-    except Exception as e:
-        logger.error(f"解析来访角色组合失败: {e}")
+    except Exception:
+        logger.opt(exception=True).warning("解析来访角色组合失败")
         return {}
 
 
@@ -149,9 +149,9 @@ def parse_owned_music_records(decrypted_data: dict[str, Any]) -> set[str]:
             record_id = record.get("mysekaiMusicRecordId")
             if record_id:
                 owned_ids.add(str(record_id))
-        logger.info(f"解析到 {len(owned_ids)} 条已获得的唱片记录。")
-    except Exception as e:
-        logger.error(f"解析已获得唱片列表失败: {e}")
+        logger.debug(f"解析到 {len(owned_ids)} 条已获得的唱片记录。")
+    except Exception:
+        logger.opt(exception=True).warning("解析已获得唱片列表失败")
     return owned_ids
 
 

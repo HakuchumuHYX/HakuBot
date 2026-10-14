@@ -79,7 +79,7 @@ def load_config():
         )
         if result.success:
             TEXT_TO_IMAGE_ENABLED_GROUPS = set(result.data)
-            logger.info(
+            logger.debug(
                 f"已加载文本转图片群组配置: {len(TEXT_TO_IMAGE_ENABLED_GROUPS)} 个群组"
             )
         else:
@@ -101,7 +101,7 @@ def save_text_to_image_groups():
             f"已保存文本转图片群组配置: {len(TEXT_TO_IMAGE_ENABLED_GROUPS)} 个群组"
         )
     except Exception as e:
-        logger.error(f"保存文本转图片群组配置失败: {e}")
+        logger.exception(f"保存文本转图片群组配置失败: {e}")
 
 
 # --- 路径获取辅助函数 ---

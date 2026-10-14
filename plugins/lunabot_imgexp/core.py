@@ -7,11 +7,11 @@ from typing import Any, List, Optional, Tuple
 from urllib.parse import quote, urlencode
 
 import aiohttp
+from nonebot import logger
 from PicImageSearch import Network, SauceNAO
 from PicImageSearch.model import Ascii2DResponse
 
 from plugins.lunabot_imgexp.config import config
-from utils.logging import get_logger
 from utils.network.http import (
     DEFAULT_TIMEOUT,
     DownloadTooLarge,
@@ -22,7 +22,6 @@ from utils.network.http import (
 from utils.network.images import fetch_image
 from utils.rendering.engine import render_template
 
-logger = get_logger("ImgExp")
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
@@ -121,7 +120,7 @@ async def search_saucenao(
     try:
         if limit == 0:
             return ImageSearchResult(source="SauceNAO", results=[])
-        logger.info("开始从 SauceNAO 搜索图片...")
+        logger.debug("开始从 SauceNAO 搜索图片...")
 
         saucenao = SauceNAO(
             client=client,
@@ -158,7 +157,7 @@ async def search_saucenao(
             )
             for (url, item, via), thumbnail in zip(picked, thumbnails)
         ]
-        logger.info(f"从 SauceNAO 搜索到 {len(items)} 个结果")
+        logger.debug(f"从 SauceNAO 搜索到 {len(items)} 个结果")
         return ImageSearchResult(source="SauceNAO", results=items)
 
     except Exception as e:
@@ -182,7 +181,7 @@ async def search_ascii2d(img_url: str, limit: int = 3) -> ImageSearchResult:
             return ImageSearchResult(
                 source="Ascii2D", results=[], error="未配置 FlareSolverr"
             )
-        logger.info("开始从 Ascii2D 搜索图片...")
+        logger.debug("开始从 Ascii2D 搜索图片...")
 
         # Ascii2D 在 Cloudflare 后面，拿到 clearance 后上传文件接口仍会被质询，
         # 只能让 FlareSolverr 的浏览器走按链接搜索（color 检索）
@@ -228,7 +227,7 @@ async def search_ascii2d(img_url: str, limit: int = 3) -> ImageSearchResult:
             )
             for item, thumbnail in zip(results, thumbnails)
         ]
-        logger.info(f"从 Ascii2D 搜索到 {len(items)} 个结果")
+        logger.debug(f"从 Ascii2D 搜索到 {len(items)} 个结果")
         return ImageSearchResult(source="Ascii2D", results=items)
 
     except Exception as e:
@@ -243,7 +242,7 @@ async def search_googlelens(
     try:
         if limit == 0:
             return ImageSearchResult(source="GoogleLens", results=[])
-        logger.info("开始从 GoogleLens 搜索图片...")
+        logger.debug("开始从 GoogleLens 搜索图片...")
 
         serp_apikey = config.get("serp_apikey")
         if not serp_apikey:
@@ -295,7 +294,7 @@ async def search_googlelens(
                 )
             ]
 
-            logger.info(f"从 GoogleLens 搜索到 {len(items)} 个结果")
+            logger.debug(f"从 GoogleLens 搜索到 {len(items)} 个结果")
             return ImageSearchResult(source="GoogleLens", results=items)
 
     except Exception as e:

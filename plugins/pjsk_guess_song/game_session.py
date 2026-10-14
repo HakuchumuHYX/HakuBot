@@ -8,8 +8,7 @@ import asyncio
 import time
 from pathlib import Path
 from typing import Dict
-from nonebot import on_message, get_bot
-from nonebot.log import logger
+from nonebot import on_message, get_bot, logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 from nonebot.adapters.onebot.v11 import (
@@ -19,6 +18,8 @@ from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
 )
+
+from utils.logging import get_exc_desc
 
 # 导入服务和配置
 from plugins.pjsk_guess_song.runtime import plugin_config, db_service
@@ -64,7 +65,7 @@ async def _end_game_session(session_id: str, reason_msg: str):
             bonus_timeout_task.cancel()
             logger.debug(f"已取消游戏 {session_id} 的奖励时间任务。")
     except Exception as e:
-        logger.error(f"取消游戏 {session_id} 的任务时出错: {e}")
+        logger.exception(f"取消游戏 {session_id} 的任务时出错: {e}")
 
     last_game_end_time[session_id] = time.time()
 
@@ -90,7 +91,7 @@ async def _end_game_session(session_id: str, reason_msg: str):
                     f"已为群 {group_id} 的 {len(score_tasks)} 名玩家记录 {score_to_add} 分。"
                 )
     except Exception as e:
-        logger.error(f"记录分数时出错: {e}", exc_info=True)
+        logger.exception(f"记录分数时出错: {e}")
 
     if correct_players:
         winner_names = "、".join(player["name"] for player in correct_players.values())
@@ -107,7 +108,7 @@ async def _end_game_session(session_id: str, reason_msg: str):
         # 发送答案
         await bot.send(event, game_data["answer_reveal_messages"])
     except Exception as e:
-        logger.error(f"发送游戏结果失败: {e}")
+        logger.error(f"发送游戏结果失败: {get_exc_desc(e)}")
 
 
 async def _game_timeout_task(session_id: str, timeout: int):
@@ -123,7 +124,7 @@ async def _game_timeout_task(session_id: str, timeout: int):
 
         reason_msg = "时间到！"
 
-        logger.info(f"游戏 {session_id} 超时结束。")
+        logger.debug(f"游戏 {session_id} 超时结束。")
         await _end_game_session(session_id, reason_msg)
 
 
@@ -145,7 +146,7 @@ async def _run_game_session(
         await bot.send(event, intro_messages)
 
         if debug_mode:
-            logger.info("[猜歌插件] 调试模式已启用，立即显示答案")
+            logger.debug("[猜歌插件] 调试模式已启用，立即显示答案")
             await bot.send(event, answer_reveal_messages)
             last_game_end_time[session_id] = time.time()
             if session_id in active_game_sessions:
@@ -172,7 +173,7 @@ async def _run_game_session(
         active_game_sessions[session_id]["timeout_task"] = timeout_task
 
     except Exception as e:
-        logger.error(f"发送消息失败: {e}. 游戏中断。", exc_info=True)
+        logger.exception(f"发送消息失败: {e}. 游戏中断。")
         if session_id in active_game_sessions:
             active_game_sessions.pop(session_id)
         last_game_end_time[session_id] = time.time()
@@ -242,7 +243,7 @@ async def handle_game_answer(
                     async def _bonus_time_end_task(sid, delay):
                         await asyncio.sleep(delay)
                         if sid in active_game_sessions:
-                            logger.info(f"游戏 {sid} 奖励时间到，提前结束。")
+                            logger.debug(f"游戏 {sid} 奖励时间到，提前结束。")
                             await _end_game_session(sid, "奖励时间到！")
 
                     bonus_task = runtime.spawn(

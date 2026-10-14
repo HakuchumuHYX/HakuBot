@@ -1,6 +1,6 @@
 import math
 from typing import Any, Tuple, Optional, List
-from nonebot.log import logger
+from nonebot import logger
 from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.services.search import client as _client
 from plugins.ai_assistant.services.search import queries as _queries

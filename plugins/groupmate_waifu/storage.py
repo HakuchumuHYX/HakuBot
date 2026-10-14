@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Set
 
-from nonebot.log import logger
+from nonebot import logger
 
 from utils.json_io import atomic_write_json
 
@@ -74,8 +74,8 @@ def _load_json(file: Path, default: Any = None) -> Any:
     except json.JSONDecodeError as e:
         logger.error(f"加载 {file} 失败 (JSON 解析错误): {e}。返回默认值。")
         return default
-    except Exception as e:
-        logger.error(f"加载 {file} 失败: {e}。返回默认值。")
+    except Exception:
+        logger.exception(f"加载 {file} 失败，返回默认值")
         return default
 
 
@@ -83,11 +83,7 @@ def _should_reset_file(file: Path, zero_timestamp: float) -> bool:
     if not file.exists():
         return False
 
-    try:
-        file_mtime = os.path.getmtime(file)
-        return file_mtime <= zero_timestamp
-    except Exception:
-        return False
+    return os.path.getmtime(file) <= zero_timestamp
 
 
 def _load_record(
@@ -113,5 +109,5 @@ def _save_json(file: Path, data: Any):
             serializable_data = data
 
         atomic_write_json(file, serializable_data)
-    except Exception as e:
-        logger.error(f"保存 {file} 失败: {e}")
+    except Exception:
+        logger.exception(f"保存 {file} 失败")

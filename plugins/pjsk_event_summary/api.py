@@ -1,15 +1,14 @@
 import json
 from typing import List, Union
+from nonebot import logger
 
 from plugins.pjsk_event_summary.services.index import (
     ensure_event_detail_path,
     ensure_event_index_ready,
     load_event_index,
 )
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from plugins.pjsk_event_summary.models import EventSimple, EventDetail
-
-logger = get_logger("pjsk_event_summary.api")
 
 
 async def fetch_event_list(limit: int = 20) -> List[EventSimple]:

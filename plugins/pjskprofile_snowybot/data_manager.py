@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Dict, Optional
 import nonebot_plugin_localstore as store
-from nonebot.log import logger
+from nonebot import logger
 
 DATA_FILE = "pjsk_bindings.json"
 
@@ -27,7 +27,7 @@ def load_data() -> Dict[str, Dict[str, str]]:
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        logger.error(f"加载 PJSK 绑定数据失败: {e}")
+        logger.exception(f"加载 PJSK 绑定数据失败: {e}")
         return {}
 
 
@@ -37,7 +37,7 @@ def save_data(data: Dict[str, Dict[str, str]]):
     try:
         atomic_write_json(file_path, data, indent=4, ensure_ascii=False)
     except Exception as e:
-        logger.error(f"保存 PJSK 绑定数据失败: {e}")
+        logger.exception(f"保存 PJSK 绑定数据失败: {e}")
 
 
 def update_binding(user_id: str, server: str, pjsk_id: str) -> bool:

@@ -1,13 +1,10 @@
 from nonebot import get_driver
 from typing import Optional
-from utils.logging import get_logger
 from core.registry import get_plugin_catalog
 from core.access_state import (
     plugin_status,
     save_plugin_status,
 )
-
-logger = get_logger("access")
 
 
 def get_status_override(status_key: str, group_id: str) -> Optional[bool]:

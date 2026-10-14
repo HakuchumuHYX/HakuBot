@@ -1,5 +1,5 @@
 from typing import List, Union
-from nonebot import on_command, on_message
+from nonebot import on_command, on_message, logger
 from nonebot.adapters.onebot.v11 import (
     Message,
     MessageSegment,
@@ -16,7 +16,6 @@ from nonebot.rule import to_me
 
 from plugins.lunabot_imgexp.core import search_image
 from plugins.lunabot_imgexp.config import config
-from utils.logging import get_logger
 from utils.onebot.forward import send_forward_msg
 from utils.network.http import download_image
 from utils.onebot.media import image_segment
@@ -28,14 +27,10 @@ try:
 
     MANAGER_AVAILABLE = True
 except ImportError:
-    logger = get_logger(
-        "ImgExp"
-    )  # logger 在 try 块前定义可能更好，但这里为了保持 diff 简洁
     logger.warning("未找到 plugin_manager 插件，将跳过管理功能检查。")
     MANAGER_AVAILABLE = False
 
 PLUGIN_NAME = "lunabot_imgexp"
-logger = get_logger("ImgExp")
 
 imgexp = on_command(
     "搜图", aliases={"以图搜图", "imgexp", "search"}, priority=5, block=True
@@ -144,8 +139,5 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
                 cd_updated = True
 
         except Exception as e:
-            logger.error(f"搜图失败: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.exception("搜图失败")
             await imgexp.send(f"搜图失败: {e}")

@@ -1,7 +1,7 @@
 from utils.paths import PluginPaths
 import json
 from pathlib import Path
-from nonebot.log import logger
+from nonebot import logger
 from typing import Set
 
 # 配置文件路径

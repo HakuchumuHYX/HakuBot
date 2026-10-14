@@ -1,9 +1,8 @@
 import time
 from typing import Dict, Any
-from nonebot import on_command, get_driver
+from nonebot import on_command, get_driver, logger
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.permission import SUPERUSER
-from utils.logging import get_logger
 from utils.onebot.forward import send_forward_msg
 from core.registry import get_plugin_catalog
 from core.access_state import (
@@ -14,8 +13,6 @@ from core.access_state import (
 )
 
 from core.cooldown import get_plugin_cd_duration, check_cd, update_cd, set_plugin_cd
-
-logger = get_logger("plugin_manager")
 
 enable_cd = on_command("启用CD", permission=SUPERUSER, priority=1, block=True)
 
@@ -173,5 +170,5 @@ async def handle_list_cd(bot: Bot, event: MessageEvent):
     try:
         await send_forward_msg(bot, event, items=[message])
     except Exception as e:
-        logger.exception(f"合并转发失败: {e}")
+        logger.opt(exception=True).warning(f"合并转发失败: {e}")
         await list_cd.finish(message)

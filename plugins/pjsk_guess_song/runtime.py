@@ -1,8 +1,7 @@
 import asyncio
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from nonebot import get_driver
-from nonebot.log import logger
+from nonebot import get_driver, logger
 from nonebot.plugin import PluginMetadata
 from plugins.pjsk_guess_song.config import plugin_config, data_dir
 from plugins.pjsk_guess_song.services.db_service import DBService

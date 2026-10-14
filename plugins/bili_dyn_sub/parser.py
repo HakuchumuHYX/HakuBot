@@ -27,9 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, NamedTuple, Optional
 from urllib.parse import urlsplit, urlunsplit
 
-from utils.logging import get_logger
-
-logger = get_logger("bili_dyn_sub.parser")
+from nonebot import logger
 
 # ---------------------------------------------------------------- 常量
 
@@ -482,7 +480,7 @@ def parse_item(item: Any) -> Optional[ParsedDynamic]:
         return _build_dynamic(item, dyn_id, depth=0)
     except Exception as e:
         # 兜底：任何未预期异常都降级为「只有链接的空动态」，宁可丑不可漏
-        logger.exception(f"解析动态 {dyn_id} 失败，降级为占位内容: {e!r}")
+        logger.opt(exception=True).warning(f"解析动态 {dyn_id} 失败，降级为占位内容: {e!r}")
         return ParsedDynamic(
             dyn_id=dyn_id,
             dyn_type=_as_str(_dget(item, "type", "")),

@@ -3,7 +3,7 @@
 import asyncio
 import inspect
 from functools import wraps
-from nonebot.log import logger
+from nonebot import logger
 
 
 class Lifecycle:

@@ -7,8 +7,7 @@ import time
 from pathlib import Path
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from typing import Optional
-from nonebot import on_command
-from nonebot.log import logger
+from nonebot import on_command, logger
 from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.exception import FinishedException
@@ -145,7 +144,7 @@ async def _handle_listen_command(
         # 忽略 FinishedException，这是正常的结束流程
         raise
     except Exception as e:
-        logger.error(f"处理听歌功能(模式: {mode})时出错: {e}", exc_info=True)
+        logger.exception(f"处理听歌功能(模式: {mode})时出错: {e}")
         await matcher.send("......播放时出错了，请联系管理员。")
     finally:
         if session_id in active_game_sessions:
@@ -322,7 +321,7 @@ async def _(
         # 忽略 FinishedException，这是正常的结束流程
         raise
     except Exception as e:
-        logger.error(f"处理 听歌 功能时出错: {e}", exc_info=True)
+        logger.exception(f"处理 听歌 功能时出错: {e}")
         await matcher.send("......播放时出错了，请联系管理员。")
     finally:
         if session_id in active_game_sessions:
@@ -480,7 +479,7 @@ async def _(
         # 忽略 FinishedException，这是正常的结束流程
         raise
     except Exception as e:
-        logger.error(f"处理听anvo功能时出错: {e}", exc_info=True)
+        logger.exception(f"处理听anvo功能时出错: {e}")
         await matcher.send("......播放时出错了，请联系管理员。")
     finally:
         if session_id in active_game_sessions:

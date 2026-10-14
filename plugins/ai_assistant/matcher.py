@@ -4,7 +4,8 @@ import time
 from pathlib import Path
 
 import aiofiles
-from nonebot import get_driver, on_command
+from openai import BadRequestError
+from nonebot import get_driver, on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
@@ -13,13 +14,13 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 from nonebot.exception import FinishedException
-from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
 from utils.rendering.engine import render_markdown, read_tpl
 from utils.onebot.media import image_segment
+from utils.logging import get_exc_desc
 from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.utils import (
     extract_pure_text,
@@ -38,14 +39,8 @@ from plugins.ai_assistant.services.search.visual import (
 )
 from plugins.ai_assistant.services.search.workflow import web_image_search_with_rewrite
 
-try:
-    from core.access import is_feature_enabled
-    from core.cooldown import check_cd, update_cd
-
-    MANAGER_AVAILABLE = True
-except ImportError:
-    logger.warning("未找到 plugin_manager 插件，将跳过管理功能检查。")
-    MANAGER_AVAILABLE = False
+from core.access import is_feature_enabled
+from core.cooldown import check_cd, update_cd
 
 PLUGIN_NAME = "ai_assistant"
 
@@ -79,9 +74,9 @@ html, body, .markdown-body {{
         async with aiofiles.open(CUSTOM_CSS_PATH, "w", encoding="utf-8") as f:
             await f.write(custom_css)
 
-        logger.info(f"已生成自定义 Markdown 背景颜色 CSS，背景色: {bg_color}")
-    except Exception as e:
-        logger.error(f"生成自定义 CSS 失败: {e}")
+        logger.debug(f"已生成自定义 Markdown 背景颜色 CSS，背景色: {bg_color}")
+    except Exception:
+        logger.opt(exception=True).warning("生成自定义 CSS 失败，使用默认样式")
 
 
 # 注册命令
@@ -112,7 +107,7 @@ async def _enforce_group_access(
     display_name: str,
 ) -> None:
     """Apply the plugin-manager feature gate and cooldown for group commands."""
-    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
+    if isinstance(event, GroupMessageEvent):
         group_id = str(event.group_id)
         user_id = str(event.user_id)
 
@@ -130,7 +125,7 @@ async def _enforce_group_access(
 
 def _update_group_cd(event: MessageEvent, feature: str) -> None:
     """成功执行后再更新群聊 CD。"""
-    if MANAGER_AVAILABLE and isinstance(event, GroupMessageEvent):
+    if isinstance(event, GroupMessageEvent):
         update_cd(f"{PLUGIN_NAME}:{feature}", str(event.group_id), str(event.user_id))
 
 
@@ -151,8 +146,8 @@ async def _render_chat_reply(
         css_path = str(CUSTOM_CSS_PATH.absolute()) if CUSTOM_CSS_PATH.exists() else ""
         img_bytes = await render_markdown(md=md_content, width=800, css_path=css_path)
         return image_segment(img_bytes)
-    except Exception as exc:
-        logger.error(f"渲染 Markdown 失败: {exc}")
+    except Exception:
+        logger.opt(exception=True).warning("渲染 Markdown 失败，改发纯文本")
         return Message(remove_markdown(reply_text) + f"\n\n{stat_text}")
 
 
@@ -224,6 +219,10 @@ async def _handle_chat_command(
 
     except FinishedException:
         raise
+    except BadRequestError as exc:
+        # 上游拒绝这条请求（内容审核、输入过长等），是对用户输入的判定，不算故障
+        logger.warning(f"{log_context}: 请求被上游拒绝: {get_exc_desc(exc)}")
+        await matcher.finish(f"{error_prefix}: {exc}")
     except Exception as exc:
         logger.exception(log_context)
         await matcher.finish(f"{error_prefix}: {exc}")
@@ -300,6 +299,10 @@ async def _handle_draw_command(
 
     except FinishedException:
         raise
+    except BadRequestError as exc:
+        # 上游拒绝这条请求（内容审核、输入过长等），是对用户输入的判定，不算故障
+        logger.warning(f"{log_context}: 请求被上游拒绝: {get_exc_desc(exc)}")
+        await matcher.finish(f"{error_prefix}: {exc}")
     except Exception as exc:
         logger.exception(log_context)
         await matcher.finish(f"{error_prefix}: {exc}")

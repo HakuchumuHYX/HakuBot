@@ -1,8 +1,7 @@
 from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 
-from nonebot import get_driver, require
-from nonebot.log import logger
+from nonebot import get_driver, require, logger
 
 require("nonebot_plugin_apscheduler")
 # 注意：本包有同名子模块 scheduler.py，import 子模块时会覆盖包命名空间里的
@@ -25,7 +24,7 @@ from plugins.group_statistics.scheduler import daily_statistics_task
 @on_plugin_startup(get_driver(), "group_statistics")
 async def init_plugin():
     """插件初始化"""
-    logger.info("群聊消息统计插件已加载")
+    logger.debug("群聊消息统计插件已加载")
 
 
 # 定期落盘（record_user_message 只打脏标记，不再每条消息同步写盘）
@@ -40,4 +39,4 @@ async def flush_stats():
 async def shutdown_plugin():
     """插件关闭时保存数据"""
     data_manager.save_stats()
-    logger.info("群聊消息统计插件数据已保存")
+    logger.debug("群聊消息统计插件数据已保存")

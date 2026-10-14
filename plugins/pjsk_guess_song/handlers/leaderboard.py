@@ -4,8 +4,7 @@
 存放排行榜指令
 """
 
-from nonebot import on_command
-from nonebot.log import logger
+from nonebot import on_command, logger
 from nonebot.matcher import Matcher
 from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import (
@@ -70,7 +69,7 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
         # 忽略 FinishedException，这是正常的结束流程
         raise
     except Exception as e:
-        logger.error(f"获取或绘制排行榜失败: {e}", exc_info=True)
+        logger.exception(f"获取或绘制排行榜失败: {e}")
         await matcher.send("...获取排行榜时出错，请联系管理员。")
 
 

@@ -4,18 +4,17 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from nonebot import get_driver
+from nonebot import get_driver, logger
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.exception import ActionFailed, NetworkError
 
 from utils.onebot.media import image_segment
 from utils.onebot.forward import ForwardItem, ForwardStatus, send_forward_msg
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from plugins.juya_daily_fetcher.config import plugin_config
 from plugins.juya_daily_fetcher.parser import now_iso
 from plugins.juya_daily_fetcher.store import save_state
 
-logger = get_logger("juya_daily_fetcher.deliver")
 FORWARD_NAME = "JUYA AI DAILY"
 SEND_RETRY_TIMES = 3
 SEND_INTERVAL_SECONDS = 1.5
@@ -53,7 +52,7 @@ async def get_group_bot_map() -> dict[str, Bot]:
         try:
             groups = await bot.get_group_list()
         except Exception as exc:
-            logger.error(f"获取机器人 {bot.self_id} 的群列表失败: {get_exc_desc(exc)}")
+            logger.warning(f"获取机器人 {bot.self_id} 的群列表失败: {get_exc_desc(exc)}")
             continue
         for group in groups:
             if not isinstance(group, dict) or "group_id" not in group:
@@ -87,13 +86,13 @@ async def _send_group_text(bot: Bot, group_id: int, text: str) -> None:
                     f"群 {group_id} 发送摘要超时，服务端可能已处理，跳过重试避免重复推送"
                 )
                 return
-            logger.warning(
+            logger.info(
                 f"群 {group_id} 发送摘要网络错误（第 {attempt}/{attempts} 次）: {last_error}"
             )
         except (ActionFailed, ValueError, asyncio.TimeoutError) as exc:
             last_error = get_exc_desc(exc)
             await asyncio.sleep(SEND_INTERVAL_SECONDS)
-            logger.warning(
+            logger.info(
                 f"群 {group_id} 发送摘要失败（第 {attempt}/{attempts} 次）: {last_error}"
             )
     raise RuntimeError(f"群 {group_id} 发送摘要最终失败: {last_error}")

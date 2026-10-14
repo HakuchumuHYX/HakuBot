@@ -1,4 +1,4 @@
-from nonebot.log import logger
+from nonebot import logger
 from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.models import UserTitle, TokenUsage
 from plugins.group_daily_analysis.utils.llm import call_chat_completion
@@ -97,5 +97,5 @@ class TitlesAnalysis:
                 )
             )
 
-        logger.info(f"用户称号分析完成，生成了 {len(user_titles)} 个称号")
+        logger.debug(f"用户称号分析完成，生成了 {len(user_titles)} 个称号")
         return user_titles[:max_titles], tokens

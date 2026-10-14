@@ -53,12 +53,12 @@ async def _send_with_retry(
                     f"{target} 发送{desc}超时，服务端可能已处理，跳过重试避免重复推送"
                 )
                 return True
-            _state.logger.warning(
+            _state.logger.info(
                 f"{target} 发送{desc}网络错误（第 {attempt}/{attempts} 次）: {_state.get_exc_desc(e)}"
             )
         except (_state.ActionFailed, ValueError, _state.asyncio.TimeoutError) as e:
             await _state.asyncio.sleep(interval)
-            _state.logger.warning(
+            _state.logger.info(
                 f"{target} 发送{desc}失败（第 {attempt}/{attempts} 次）: {_state.get_exc_desc(e)}"
             )
         else:

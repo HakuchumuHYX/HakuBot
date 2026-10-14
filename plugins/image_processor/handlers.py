@@ -1,9 +1,8 @@
 from functools import partial
 from pathlib import Path
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageEvent
-from nonebot.log import logger
 from nonebot.params import CommandArg
 from nonebot.rule import to_me
 
@@ -19,6 +18,7 @@ from plugins.image_processor.image_cutout import remove_background
 from plugins.image_processor.image_mirror import process_image_mirror
 from plugins.image_processor.image_rotate import process_image_rotate
 from plugins.image_processor.image_symmetry import process_image_symmetry
+from plugins.image_processor.utils import UserInputError
 from plugins.image_processor.video_to_gif import convert_video_to_gif
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -80,6 +80,9 @@ async def _run_job(matcher, event: MessageEvent, feature: str, label: str, job):
     try:
         result_path = await job()
         await matcher.send(image_segment(result_path))
+    except UserInputError as e:
+        logger.info(f"{label}未处理（素材不合要求）: {e}")
+        await matcher.finish(f"{label}失败：{e}")
     except Exception as e:
         logger.exception(f"{label}失败")
         await matcher.finish(f"{label}失败：{e}")

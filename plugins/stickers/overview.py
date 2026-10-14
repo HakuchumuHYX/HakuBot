@@ -12,10 +12,9 @@ from concurrent.futures import ThreadPoolExecutor
 # 忽略 PIL 的 EXIF 损坏警告（不影响图片处理）
 warnings.filterwarnings("ignore", message="Corrupt EXIF data")
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent, Message
 from nonebot.params import CommandArg
-from nonebot.log import logger
 from nonebot.exception import FinishedException
 
 # 导入模块而非变量，确保获取最新值
@@ -172,8 +171,8 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
                 # 累加图片消息段
                 msg += image_segment(found_image_path)
                 has_valid_image = True
-            except Exception as e:
-                logger.error(f"发送图片 {found_image_path} 失败: {e}")
+            except Exception:
+                logger.opt(exception=True).warning(f"读取图片 {found_image_path} 失败")
                 error_msgs.append(f"编号 {target_id} 图片加载失败")
         else:
             # 理论上 ID 在范围内但文件不存在（可能被手动删除了）
@@ -264,7 +263,7 @@ async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"生成概览图出错: {e}")
+        logger.exception(f"生成概览图出错: {e}")
         await view_all_matcher.finish(f"生成概览图时发生未知错误: {e}")
 
 

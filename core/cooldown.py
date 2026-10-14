@@ -1,7 +1,6 @@
 import time
 from typing import Dict, Any
 from nonebot import get_driver
-from utils.logging import get_logger
 from core.registry import get_plugin_catalog
 from core.access_state import (
     cd_config,
@@ -9,8 +8,6 @@ from core.access_state import (
     cd_runtime,
     save_cd_runtime,
 )
-
-logger = get_logger("cooldown")
 
 
 def get_plugin_cd_duration(plugin_id: str, group_id: str) -> int:

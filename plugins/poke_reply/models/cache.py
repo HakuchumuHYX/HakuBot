@@ -15,10 +15,10 @@ def _load_cache(path, label: str) -> dict:
             path, expected_type=dict, missing_ok=True, backup_on_error=True, default={}
         )
         if not result.success:
-            logger.error(f"加载{label}缓存失败: {result.error}")
+            logger.warning(f"加载{label}缓存失败: {result.error}")
         return result.data
     except Exception as error:
-        logger.error(f"加载{label}缓存失败: {error}")
+        logger.opt(exception=True).warning(f"加载{label}缓存失败: {error}")
         return {}
 
 
@@ -26,7 +26,7 @@ def _save_cache(path, data: dict, label: str) -> None:
     try:
         atomic_write_json(path, data, expected_type=dict)
     except Exception as error:
-        logger.error(f"保存{label}缓存失败: {error}")
+        logger.opt(exception=True).warning(f"保存{label}缓存失败: {error}")
 
 
 def _clean_expired_cache(data: dict, now: Optional[float] = None) -> int:

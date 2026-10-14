@@ -2,7 +2,7 @@
 import math
 import os
 
-from nonebot.log import logger
+from nonebot import logger
 from PIL import Image
 
 from utils.concurrency import run_in_pool
@@ -39,7 +39,7 @@ def _process_rotate_file(
     if direction == "clockwise":
         step_angle = -step_angle
 
-    logger.info(
+    logger.debug(
         f"旋转参数: 倍速{speed}, 总帧数{frames_per_circle}, 步进{step_angle:.2f}度"
     )
 

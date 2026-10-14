@@ -105,8 +105,10 @@ async def handle_view_all_text_count(event: MessageEvent):
                 message += "前10个群组详情:\n" + "\n".join(group_details[:10])
                 message += f"\n... 还有 {len(group_details) - 10} 个群聊"
         await view_all_text_count.finish(message)
+    except FinishedException:
+        raise
     except Exception as e:
-        logger.error(f"获取所有群聊投稿统计时出错: {e}")
+        logger.exception(f"获取所有群聊投稿统计时出错: {e}")
         await view_all_text_count.finish("获取统计信息时出错喵！")
 
 
@@ -139,5 +141,5 @@ async def handle_clear_duplicates(bot: Bot, event: GroupMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"执行清除重复命令时出错: {e}")
+        logger.exception(f"执行清除重复命令时出错: {e}")
         await clear_duplicates.finish(f"清理过程中发生错误: {e}")

@@ -13,6 +13,8 @@ from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
 
+from utils.logging import get_exc_desc
+
 from plugins.poke_reply.config import (
     get_group_image_dir,
     add_text_to_image_group,
@@ -95,7 +97,7 @@ async def get_image_preview(
             )
         return False, "不支持的消息类型或格式错误"
     except Exception as e:
-        logger.error(f"获取图片预览失败: {e}")
+        logger.opt(exception=True).warning(f"获取图片预览失败: {e}")
         return False, f"获取图片预览失败: {str(e)}"
 
 
@@ -143,7 +145,7 @@ async def notify_superuser(bot: Bot, request_info: dict):
 
                         image_preview_sent = True
                     except Exception as e:
-                        logger.error(f"向超级用户 {superuser} 发送图片预览失败: {e}")
+                        logger.warning(f"向超级用户 {superuser} 发送图片预览失败: {get_exc_desc(e)}")
             else:
                 for superuser in superusers:
                     receipt = await bot.send_private_msg(
@@ -176,7 +178,7 @@ async def notify_superuser(bot: Bot, request_info: dict):
             delete_request_manager.add_notification_map(mid, request_info["request_id"])
 
     except Exception as e:
-        logger.error(f"通知超级用户失败: {e}")
+        logger.exception(f"通知超级用户失败: {e}")
 
 
 async def process_content_deletion(
@@ -201,7 +203,7 @@ async def process_content_deletion(
                         success = False
         return success
     except Exception as e:
-        logger.error(f"删除内容时出错: {e}")
+        logger.exception(f"删除内容时出错: {e}")
         return False
 
 
@@ -234,7 +236,7 @@ async def handle_apply_delete(bot: Bot, event: GroupMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"处理删除申请时出错: {e}")
+        logger.exception(f"处理删除申请时出错: {e}")
         await apply_delete.finish("申请失败，请稍后重试喵！")
 
 
@@ -272,7 +274,7 @@ async def handle_su_direct_delete(bot: Bot, event: GroupMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"SU直接删除出错: {e}")
+        logger.exception(f"SU直接删除出错: {e}")
         await su_direct_delete.finish(f"执行删除时出错: {e}")
 
 
@@ -341,7 +343,7 @@ async def handle_process_delete(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"处理删除申请时出错: {e}")
+        logger.exception(f"处理删除申请时出错: {e}")
         await handle_delete_request.finish("处理失败，请稍后重试喵！")
 
 
@@ -376,7 +378,7 @@ async def handle_private_reply(bot: Bot, event: PrivateMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"处理私聊回复出错: {e}")
+        logger.exception(f"处理私聊回复出错: {e}")
         # 私聊回复出错不一定要finish，因为可能是普通聊天
         pass
 
@@ -405,7 +407,7 @@ async def handle_view_requests(event: PrivateMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"查看删除申请时出错: {e}")
+        logger.exception(f"查看删除申请时出错: {e}")
         await view_delete_requests.finish("获取申请列表失败喵！")
 
 
@@ -428,7 +430,7 @@ async def handle_clear_processed(event: PrivateMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"清理已处理申请时出错: {e}")
+        logger.exception(f"清理已处理申请时出错: {e}")
         await clear_processed_requests.finish("清理失败喵！")
 
 

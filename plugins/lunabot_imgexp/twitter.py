@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import List, Tuple
 from contextlib import ExitStack
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot
 from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
@@ -14,7 +14,7 @@ from nonebot.matcher import Matcher
 from PIL import Image
 
 from plugins.lunabot_imgexp.config import config
-from utils.logging import get_logger, get_exc_desc
+from utils.logging import get_exc_desc
 from utils.concurrency import run_in_pool
 from utils.text import truncate
 from utils.files import TemporaryPath
@@ -32,8 +32,6 @@ from plugins.lunabot_imgexp.image_utils import (
     save_transparent_static_gif,
 )
 from utils.onebot.media import image_segment, outbound_media_path, video_segment
-
-logger = get_logger("Twitter")
 
 try:
     from core.access import is_feature_enabled
@@ -182,10 +180,10 @@ async def _(
     await ximg.send("正在获取推文内容...")
 
     try:
-        logger.info(f"获取X推文: {url}")
+        logger.debug(f"获取X推文: {url}")
         tweet = await get_x_content(url)
         image_urls = tweet.photo_urls[:16]
-        logger.info(f"获取到图片: {image_urls} 视频: {tweet.videos}")
+        logger.debug(f"获取到图片: {image_urls} 视频: {tweet.videos}")
     except ReplyException as e:
         await ximg.finish(str(e))
     except Exception as e:
@@ -211,12 +209,14 @@ async def _(
                     *[download_bytes(u, proxy=config.get("proxy")) for u in image_urls]
                 )
         except Exception as e:
+            logger.warning(f"下载推文图片失败: {get_exc_desc(e)}")
             await ximg.finish(f"下载图片失败: {get_exc_desc(e)}")
 
     if concat_mode and images:
         try:
             images = [await run_in_pool(concat_images, images, concat_mode)]
         except Exception as e:
+            logger.exception("拼图失败")
             await ximg.finish(f"拼图失败: {e}")
 
     # 使用 ExitStack 管理多个临时文件
@@ -259,6 +259,7 @@ async def _(
             )
             continue
         except Exception as e:
+            logger.warning(f"下载推文视频失败 {video_url}: {get_exc_desc(e)}")
             await ximg.send(f"下载视频失败: {get_exc_desc(e)}")
             continue
         await ximg.send(video_segment(path))

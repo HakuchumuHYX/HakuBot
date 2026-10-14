@@ -1,8 +1,7 @@
 from typing import Tuple, Optional
-from nonebot import on_regex
+from nonebot import on_regex, logger
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
 from nonebot.params import RegexGroup
-from nonebot.log import logger
 from nonebot.exception import FinishedException
 
 from core.access import is_plugin_enabled
@@ -70,5 +69,5 @@ async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"PJSK Profile 处理异常: {e}")
+        logger.exception(f"PJSK Profile 处理异常: {e}")
         await profile_matcher.finish(f"获取SnowyBot版个人资料页出错，请稍后再试")

@@ -22,15 +22,15 @@ from urllib.parse import unquote
 
 import aiofiles
 import aiohttp
-from nonebot import on_command, on_message, require
+from nonebot import on_command, on_message, require, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.exception import FinishedException
-from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type
 
 from plugins.buaa_msm.config import plugin_config
 from plugins.buaa_msm.data_rename import generate_target_filename
+from plugins.buaa_msm.exceptions import DataLoadError
 from plugins.buaa_msm.infra.decryptor import decrypt_and_save
 from plugins.buaa_msm.infra.cache import cache_manager
 from plugins.buaa_msm.infra.storage import (
@@ -122,7 +122,7 @@ async def handle_file_message(
         file_id = file_data.get("file_id", "")
         file_size = file_data.get("file_size", 0)
 
-        logger.info(f"收到文件: {file_name}, ID: {file_id}, 大小: {file_size} 字节")
+        logger.debug(f"收到文件: {file_name}, ID: {file_id}, 大小: {file_size} 字节")
 
         # get_file 只解析图片/语音缓存；普通文件按会话类型取下载链接
         if isinstance(event, GroupMessageEvent):
@@ -217,8 +217,13 @@ async def handle_file_message(
                         await set_processing(user_id, False)
             except FinishedException:
                 raise
+            except DataLoadError as e:
+                logger.info(f"自动执行 MSR 分析时无法读取用户数据: {e}")
+                await file_handler.send(
+                    f"自动分析失败: {str(e)}\n您可以稍后手动使用 'buaamsr' 重新生成分析结果。"
+                )
             except Exception as e:
-                logger.error(f"自动执行 MSR 分析失败: {e}")
+                logger.exception("自动执行 MSR 分析失败")
                 await file_handler.send(
                     f"自动分析失败: {str(e)}\n您可以稍后手动使用 'buaamsr' 重新生成分析结果。"
                 )
@@ -230,7 +235,7 @@ async def handle_file_message(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"文件处理失败: {e}")
+        logger.exception("文件处理失败")
         waiting_for_file.pop(user_id, None)
         await file_handler.send(f"文件上传失败：{str(e)}")
 
@@ -249,9 +254,9 @@ def _record_visiting_characters(user_id: str, decrypted_data: dict):
 
         if char_ids:
             record_character_visit(user_id, char_ids)
-            logger.info(f"已记录用户 {user_id} 的 {len(char_ids)} 个来访角色ID")
-    except Exception as e:
-        logger.error(f"记录来访角色失败: {e}")
+            logger.debug(f"已记录用户 {user_id} 的 {len(char_ids)} 个来访角色ID")
+    except Exception:
+        logger.opt(exception=True).warning("记录来访角色失败")
 
 
 # ============== 取消命令 ==============

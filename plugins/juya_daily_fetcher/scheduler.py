@@ -4,7 +4,7 @@ import time
 from typing import Any
 
 import aiohttp
-from nonebot import require
+from nonebot import logger, require
 from nonebot.adapters.onebot.v11 import Bot
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
@@ -18,7 +18,7 @@ from utils.network.http import (
     get_client_session,
     get_effective_proxy,
 )
-from utils.logging import get_exc_desc, get_logger
+from utils.logging import get_exc_desc
 from plugins.juya_daily_fetcher.config import (
     ARTICLE_DIR,
     DEFAULT_USER_AGENT,
@@ -51,9 +51,10 @@ from plugins.juya_daily_fetcher.store import (
 )
 from plugins.juya_daily_fetcher.summary import summarize_directory
 
-logger = get_logger("juya_daily_fetcher.scheduler")
 POLL_JOB_ID = "juya_daily_fetcher_poll"
 CLEANUP_JOB_ID = "juya_daily_fetcher_cleanup"
+
+_render_failing = False
 
 
 def _should_retry_feed(exc: BaseException) -> bool:
@@ -176,30 +177,33 @@ async def _prepare_and_queue(
 async def _deliver_or_record_failure(state: dict[str, Any]) -> str:
     bots_by_group = await get_group_bot_map()
     if not bots_by_group:
-        logger.info("当前没有可用的 Bot 连接，跳过本轮早报投递")
+        logger.debug("当前没有可用的 Bot 连接，跳过本轮早报投递")
         return "no_bot"
     try:
         await deliver_pending(state, bots_by_group=bots_by_group)
     except Exception as exc:
         mark_pending_failure(state, get_exc_desc(exc))
-        logger.exception(f"早报投递失败: {get_exc_desc(exc)}")
+        logger.opt(exception=True).warning(
+            f"早报投递失败，下轮重试: {get_exc_desc(exc)}"
+        )
         return "deliver_failed"
     return "delivered_pending" if state.get("pending") else "delivered"
 
 
 async def run_once(*, force_latest: bool = False) -> str:
+    global _render_failing
     state = load_state()
     pending = state.get("pending")
     if isinstance(pending, dict):
         if pending_images_missing(pending):
-            logger.error(
+            logger.warning(
                 "pending 图片已缺失，丢弃 pending 但不推进已读，下一轮将重新渲染"
             )
             abandon_pending(state)
             state = load_state()
         else:
             if pending_expired(pending) and not pending.get("alerted_at"):
-                logger.warning(
+                logger.error(
                     "早报 pending 已超过失败阈值，将告警并继续重试 "
                     f"fail_count={pending.get('fail_count')} last_error={pending.get('last_error')}"
                 )
@@ -208,7 +212,7 @@ async def run_once(*, force_latest: bool = False) -> str:
             return await _deliver_or_record_failure(state)
 
     if not plugin_config.targets and not force_latest:
-        logger.info("未配置 targets，跳过本轮早报轮询")
+        logger.debug("未配置 targets，跳过本轮早报轮询")
         return "no_targets"
 
     try:
@@ -217,14 +221,14 @@ async def run_once(*, force_latest: bool = False) -> str:
             {} if force_latest else state,
         )
     except Exception as exc:
-        logger.exception(f"拉取早报 RSS 失败: {get_exc_desc(exc)}")
+        logger.warning(f"拉取早报 RSS 失败: {get_exc_desc(exc)}")
         return "fetch_failed"
 
     if fetch_status == "not_modified":
-        logger.info("RSS 未更新（HTTP 304）")
+        logger.debug("RSS 未更新（HTTP 304）")
         return "not_modified"
     if feed_bytes is None:
-        logger.error("RSS 返回空内容")
+        logger.warning("RSS 返回空内容")
         return "fetch_failed"
 
     try:
@@ -270,14 +274,22 @@ async def run_once(*, force_latest: bool = False) -> str:
         if not updates:
             state["seen"] = current_seen(items)
             save_state(state)
-            logger.info(f"早报无更新（共检查 {len(items)} 条）")
+            logger.debug(f"早报无更新（共检查 {len(items)} 条）")
             return "no_updates"
 
     try:
         await _prepare_and_queue(state, items, updates)
     except Exception as exc:
-        logger.exception(f"渲染早报失败: {get_exc_desc(exc)}")
+        # 渲染失败不推进已读，每轮都会重试；只在第一次失败时记 traceback
+        if _render_failing:
+            logger.debug(f"渲染早报仍失败: {get_exc_desc(exc)}")
+        else:
+            logger.exception(f"渲染早报失败，之后每轮重试: {get_exc_desc(exc)}")
+            _render_failing = True
         return "render_failed"
+    if _render_failing:
+        logger.info("早报渲染已恢复")
+        _render_failing = False
 
     result = await _deliver_or_record_failure(state)
     if result == "delivered":
@@ -304,7 +316,7 @@ async def run_debug(bot: Bot) -> str:
 async def poll_juya_daily() -> None:
     try:
         result = await run_once()
-        logger.info(f"橘鸦早报轮询结束: {result}")
+        logger.debug(f"橘鸦早报轮询结束: {result}")
     except Exception as exc:
         logger.exception(f"橘鸦早报轮询失败: {get_exc_desc(exc)}")
 

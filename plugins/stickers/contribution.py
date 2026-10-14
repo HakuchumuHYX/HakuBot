@@ -11,7 +11,8 @@ import tempfile
 from pathlib import Path
 from typing import List, Tuple, Set, Dict, Optional
 from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot
-from nonebot.log import logger
+from nonebot import logger
+from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 
 from plugins.stickers.send import (
@@ -96,11 +97,11 @@ async def download_single_image(
 
                 return temp_path
             else:
-                logger.error(f"下载图片失败: {image_url}, 状态码: {response.status}")
+                logger.warning(f"下载图片失败: {image_url}, 状态码: {response.status}")
     except asyncio.TimeoutError:
-        logger.error(f"下载图片超时: {image_url}")
+        logger.warning(f"下载图片超时: {image_url}")
     except Exception as e:
-        logger.error(f"下载图片异常: {image_url}, 错误: {e}")
+        logger.warning(f"下载图片异常: {image_url}, 错误: {e}")
     return None
 
 
@@ -132,7 +133,7 @@ async def download_images_parallel(image_urls: Dict[str, MessageSegment]) -> Lis
             elif isinstance(result, Exception):
                 logger.warning(f"下载任务异常: {result}")
 
-    logger.info(f"并行下载完成: {len(temp_files)}/{len(image_urls)} 张图片成功")
+    logger.debug(f"并行下载完成: {len(temp_files)}/{len(image_urls)} 张图片成功")
     return temp_files
 
 
@@ -199,10 +200,10 @@ async def save_contribution_images(
                                     except Exception as e:
                                         logger.warning(f"无法解析图片 segment: {e}")
                         except Exception as e:
-                            logger.error(f"解析合并转发节点失败: {e}")
+                            logger.opt(exception=True).warning(f"解析合并转发节点失败: {e}")
 
                 except Exception as e:
-                    logger.error(f"获取合并转发消息失败: {e}")
+                    logger.warning(f"获取合并转发消息失败: {get_exc_desc(e)}")
                     return False, "投稿失败！解析合并转发内容失败，请稍后再试。", 0
 
         # Case 2: 回复普通消息
@@ -266,7 +267,7 @@ async def save_contribution_images(
                     saved_count += 1
                     saved_files.append(file_path)
                 except Exception as e:
-                    logger.error(f"保存图片时出错: {e}")
+                    logger.exception(f"保存图片时出错: {e}")
 
         # 保存成功后使缓存失效
         if saved_count > 0:
@@ -274,6 +275,10 @@ async def save_contribution_images(
 
         # --- 报告结果 ---
         total_processed = saved_count + duplicate_count
+        logger.info(
+            f"群 {event.group_id} 向 {actual_folder_name} 投稿："
+            f"保存 {saved_count} 张，重复 {duplicate_count} 张"
+        )
 
         if total_processed == 0:
             return False, "投稿失败！无法处理任何图片。", 0
@@ -317,10 +322,10 @@ async def save_contribution_images(
         return True, Message(message_segments), saved_count
 
     finally:
-        logger.info(f"清理 {len(temp_files)} 个临时文件...")
+        logger.debug(f"清理 {len(temp_files)} 个临时文件...")
         for temp_file in temp_files:
             try:
                 if temp_file.exists():
                     temp_file.unlink()
             except Exception as e:
-                logger.error(f"清理临时文件失败 {temp_file}: {e}")
+                logger.warning(f"清理临时文件失败 {temp_file}: {e}")

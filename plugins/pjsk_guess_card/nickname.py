@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from typing import Optional, Dict, List
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.pjsk_guess_card.config import data_dir
 
@@ -31,9 +31,9 @@ def load_nicknames():
                 _cid_to_name[cid] = nicknames[0]
             for nick in nicknames:
                 _nickname_to_cid[nick.lower()] = cid
-        logger.info(f"已加载 {len(_cid_to_name)} 个角色的昵称数据")
+        logger.debug(f"已加载 {len(_cid_to_name)} 个角色的昵称数据")
     except Exception as e:
-        logger.error(f"加载角色昵称数据失败: {e}")
+        logger.exception(f"加载角色昵称数据失败: {e}")
 
 
 def get_cid_by_nickname(text: str) -> Optional[int]:

@@ -9,7 +9,7 @@ import re
 from datetime import date, datetime
 
 from bs4 import BeautifulSoup
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.hltv_sub.models import EventInfo, EventMvp, MvpStat
 from plugins.hltv_sub.parsers.common import (

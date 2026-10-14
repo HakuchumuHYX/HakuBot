@@ -172,7 +172,7 @@ async def poll_once() -> None:
     try:
         bot = _state.get_bot()
     except (ValueError, KeyError) as e:
-        _state.logger.info(
+        _state.logger.debug(
             f"当前没有可用的 Bot 连接，跳过本轮 B 站动态轮询: {_state.get_exc_desc(e)}"
         )
         return

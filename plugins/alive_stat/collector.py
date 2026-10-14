@@ -12,10 +12,7 @@ import psutil
 
 from plugins.alive_stat.config import config
 
-from utils.logging import get_logger
 from utils.concurrency import run_in_pool
-
-logger = get_logger("alive_stat.collector")
 
 
 # ================= 数据类 =================

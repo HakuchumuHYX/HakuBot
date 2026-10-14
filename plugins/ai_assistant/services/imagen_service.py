@@ -1,7 +1,7 @@
 import base64
 from typing import Optional
 
-from nonebot.log import logger
+from nonebot import logger
 
 from utils.llm.client import (
     LLMClientConfig,
@@ -122,5 +122,5 @@ async def call_image_generation(
             quality=plugin_config.image.quality,
         )
 
-    logger.info("成功提取生图结果")
+    logger.debug("成功提取生图结果")
     return result.image_url

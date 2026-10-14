@@ -7,9 +7,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from utils.logging import get_logger
-
-logger = get_logger("juya_daily_fetcher.config")
+from nonebot import logger
 
 PLUGIN_NAME = "juya_daily_fetcher"
 PLUGIN_DIR = Path(__file__).parent

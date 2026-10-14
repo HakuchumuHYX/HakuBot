@@ -38,7 +38,7 @@ class DeleteRequestManager:
             else:
                 self.requests_data = {}
         except Exception as e:
-            logger.error(f"加载删除申请失败: {e}")
+            logger.exception(f"加载删除申请失败: {e}")
             self.requests_data = {}
 
     def save_requests(self):
@@ -47,7 +47,7 @@ class DeleteRequestManager:
                 self.requests_file, self.requests_data, expected_type=dict
             )
         except Exception as e:
-            logger.error(f"保存删除申请失败: {e}")
+            logger.exception(f"保存删除申请失败: {e}")
 
     def add_request(
         self,

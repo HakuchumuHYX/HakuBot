@@ -8,7 +8,7 @@ import re
 from typing import Dict, List, Optional
 
 from bs4 import BeautifulSoup, Tag
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.hltv_sub.models import (
     HalfScore, MapStats, MatchStats, PlayerStats, VrsChange,

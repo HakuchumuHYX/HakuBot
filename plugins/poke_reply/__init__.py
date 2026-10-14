@@ -46,7 +46,7 @@ def cleanup_expired_runtime_state():
         "delete_requests": delete_request_manager.clean_expired_requests(),
         "image_hash_cache": clean_expired_hash_cache(),
     }
-    logger.info(
+    logger.debug(
         "Poke Reply 启动清理完成: "
         f"消息缓存 {result['message_cache']} 条, "
         f"文本图片缓存 {result['text_image_cache']} 条, "
@@ -58,23 +58,21 @@ def cleanup_expired_runtime_state():
 
 @on_plugin_startup(driver, "poke_reply")
 async def startup():
-    logger.info("正在启动 Poke Reply 插件...")
+    logger.debug("正在启动 Poke Reply 插件...")
     try:
         cleanup_expired_runtime_state()
-    except Exception as e:
-        logger.error(f"Poke Reply 启动清理失败: {e}")
+    except Exception:
+        logger.exception("Poke Reply 启动清理失败")
     try:
         log_health_report(scan_poke_reply_data_health())
-    except Exception as e:
-        logger.error(f"Poke Reply 数据健康检查失败: {e}")
-    if file_monitor.start_monitoring():
-        logger.info("Poke Reply 文件监听器已启动")
-    else:
-        logger.error("Poke Reply 文件监听器启动失败")
+    except Exception:
+        logger.exception("Poke Reply 数据健康检查失败")
+    # 启动结果由 file_monitor 自己记
+    file_monitor.start_monitoring()
 
 
 @on_plugin_shutdown(driver, "poke_reply")
 async def shutdown():
-    logger.info("正在停止 Poke Reply 插件...")
+    logger.debug("正在停止 Poke Reply 插件...")
     if file_monitor.stop_monitoring():
-        logger.info("Poke Reply 文件监听器已停止")
+        logger.debug("Poke Reply 文件监听器已停止")

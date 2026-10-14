@@ -25,10 +25,7 @@ from plugins.alive_stat.collector import (
 )
 from plugins.alive_stat import drawer
 
-from utils.logging import get_logger
 from utils.onebot.media import image_segment
-
-logger = get_logger("alive_stat")
 
 try:
     from core.access import is_plugin_enabled

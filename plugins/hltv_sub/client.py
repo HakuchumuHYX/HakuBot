@@ -14,7 +14,7 @@ from typing import Optional
 import httpx
 import pytz
 from bs4 import BeautifulSoup
-from nonebot.log import logger
+from nonebot import logger
 
 from utils.json_io import atomic_write_json, load_json
 from utils.paths import PluginPaths
@@ -239,19 +239,19 @@ class HLTVClient:
         if not self._session_id:
             self._session_id = sessions[0] if sessions else str(uuid4())
             self._save_session_state()
-            logger.info(f"[HLTV] 选择浏览器会话 session={self._session_id}")
+            logger.debug(f"[HLTV] 选择浏览器会话 session={self._session_id}")
 
         if self._session_id not in sessions:
             created = await self._call("sessions.create", session=self._session_id)
             if created.get("session") != self._session_id:
                 raise HLTVFetchError("FlareSolverr 返回了不匹配的会话 ID")
             self._session_requests = 0
-            logger.info(f"[HLTV] 新会话创建成功 session={self._session_id}")
+            logger.debug(f"[HLTV] 新会话创建成功 session={self._session_id}")
 
         if self._pending_cleanup_id:
             if self._pending_cleanup_id in sessions:
                 await self._call("sessions.destroy", session=self._pending_cleanup_id)
-            logger.info(f"[HLTV] 旧会话清理完成 session={self._pending_cleanup_id}")
+            logger.debug(f"[HLTV] 旧会话清理完成 session={self._pending_cleanup_id}")
             self._pending_cleanup_id = ""
             self._save_session_state()
 
@@ -260,7 +260,7 @@ class HLTVClient:
         self._session_id = str(uuid4())
         # 先记下新旧 ID；创建超时或 Bot 重启后仍能继续同一次更换。
         self._save_session_state()
-        logger.info("[HLTV] 开始更换浏览器会话")
+        logger.debug("[HLTV] 开始更换浏览器会话")
         await self._prepare_session()
 
     async def close(self) -> None:
@@ -318,12 +318,13 @@ class HLTVClient:
                 try:
                     result = await self._request(url, key)
                 except HLTVFetchError as exc:
-                    logger.warning(f"[HLTV] 首次抓取失败 page={key} reason={exc.reason}")
+                    # 结局只有两种：换会话成功（下面 INFO），或进入暂停（_pause 的 WARNING）
+                    logger.debug(f"[HLTV] 首次抓取失败 page={key} reason={exc.reason}")
                     if not exc.recoverable:
                         raise
                     await self._replace_session()
                     result = await self._request(url, key)
-                    logger.info(f"[HLTV] 换会话重试成功 page={key}")
+                    logger.info(f"[HLTV] 换会话重试成功 page={key} first_reason={exc.reason}")
             except HLTVFetchError as exc:
                 raise self._pause(exc.reason) from None
             if self._blocked_until:

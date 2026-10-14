@@ -14,7 +14,7 @@ from functools import partial
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
-from nonebot.log import logger
+from nonebot import logger
 from plugins.pjsk_guess_song.config import PluginConfig
 from plugins.pjsk_guess_song.services.cache_service import CacheService
 from plugins.pjsk_guess_song.services.audio_processor import AudioProcessor
@@ -365,7 +365,7 @@ class GameService:
                     if is_segment_found:
                         break
                     else:
-                        logger.warning(
+                        logger.info(
                             f"歌曲 '{song.get('title')}' 在 {MAX_SEGMENT_RETRIES_PER_SONG} 次尝试后未找到有效片段，更换歌曲。"
                         )
                         song = None
@@ -377,7 +377,7 @@ class GameService:
                     self.vocals_silence_detection = False  # 禁用后续检测
                     break  # 允许游戏继续
                 except Exception as e:
-                    logger.error(
+                    logger.opt(exception=True).warning(
                         f"对歌曲 '{song.get('title')}' 进行静音检测时失败: {e}，更换歌曲。"
                     )
                     song = None
@@ -427,7 +427,7 @@ class GameService:
                     "game_type": kwargs.get("game_type"),
                 }
             else:
-                logger.warning("人声模式快速裁剪失败，将回退到pydub慢速路径。")
+                logger.info("人声模式快速裁剪失败，将回退到pydub慢速路径。")
                 use_slow_path = True  # 强制进入慢速路径
 
         # 路径 2: 其他简单模式的快速路径
@@ -470,7 +470,7 @@ class GameService:
                     "game_type": kwargs.get("game_type"),
                 }
             except Exception as e:
-                logger.warning(f"快速路径处理失败: {e}. 将回退到 pydub 慢速路径。")
+                logger.info(f"快速路径处理失败: {e}. 将回退到 pydub 慢速路径。")
 
         # 路径 3: 慢速路径 (pydub)
         try:
@@ -509,9 +509,8 @@ class GameService:
                 "game_type": kwargs.get("game_type"),
             }
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"慢速路径 (pydub) 处理音频文件 {audio_source} 时失败: {e}",
-                exc_info=True,
             )
             return None
 

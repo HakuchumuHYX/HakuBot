@@ -6,7 +6,7 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
 # --- Nonebot Imports ---
-from nonebot.log import logger
+from nonebot import logger
 
 
 # -------------------------
@@ -15,7 +15,7 @@ from nonebot.log import logger
 class DBService:
     def __init__(self, db_path: str):
         self.db_path = db_path
-        logger.info(f"数据库服务已初始化，路径: {self.db_path}")
+        logger.debug(f"数据库服务已初始化，路径: {self.db_path}")
 
     def _get_conn(self) -> aiosqlite.Connection:
         """
@@ -74,7 +74,7 @@ class DBService:
                 )
             """)
             await conn.commit()
-            logger.info("数据库表 'user_stats' 和 'user_scores' 已确认存在。")
+            logger.debug("数据库表 'user_stats' 和 'user_scores' 已确认存在。")
 
     async def consume_daily_play_attempt(
         self, user_id: str, user_name: str, session_id: str, is_independent: bool

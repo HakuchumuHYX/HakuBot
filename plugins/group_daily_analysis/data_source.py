@@ -2,7 +2,7 @@ from typing import List, Dict, Any
 from datetime import datetime, timedelta
 import json
 from nonebot.adapters.onebot.v11 import Bot
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.database import db
@@ -20,7 +20,7 @@ class MessageFetcher:
             start_ts = int(start_time.timestamp())
             end_ts = int(end_time.timestamp())
 
-            logger.info(
+            logger.debug(
                 f"开始从数据库获取群 {group_id} 消息，时间范围: {start_time} - {end_time}"
             )
 
@@ -60,8 +60,6 @@ class MessageFetcher:
                 except Exception as e:
                     continue
 
-            logger.info(f"共获取到 {len(valid_messages)} 条有效消息")
-
             # 限制最大消息数 (如果配置 > 0)
             if (
                 plugin_config.max_messages > 0
@@ -76,5 +74,5 @@ class MessageFetcher:
             return valid_messages
 
         except Exception as e:
-            logger.error(f"获取群消息失败: {e}")
+            logger.exception(f"获取群消息失败: {e}")
             return []

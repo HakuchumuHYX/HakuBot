@@ -1,6 +1,6 @@
 from utils.json_io import atomic_write_json
 from utils.paths import PluginPaths
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     Event,
@@ -10,7 +10,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageEvent,
 )
 from nonebot.exception import FinishedException
-from nonebot.log import logger
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
@@ -107,7 +106,7 @@ async def get_or_render_image(sign_index: int, force_refresh: bool = False) -> b
         return cache_file.read_bytes()
 
     # 3. 渲染新图片
-    logger.info(
+    logger.debug(
         f"Draw lots: Rendering image for index {sign_index} (Force: {force_refresh})"
     )
     img_bytes = await render_sign_image_v2(sign_content, sign_index, WATERMARK_TEXT)
@@ -117,7 +116,7 @@ async def get_or_render_image(sign_index: int, force_refresh: bool = False) -> b
         with open(cache_file, "wb") as f:
             f.write(img_bytes)
     except Exception as e:
-        logger.error(f"Draw lots: Failed to save cache: {e}")
+        logger.opt(exception=True).warning(f"Draw lots: Failed to save cache: {e}")
 
     return img_bytes
 
@@ -173,7 +172,7 @@ async def lq_(bot: Bot, event: MessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"抽签处理失败: {e}")
+        logger.opt(exception=True).warning(f"抽签处理失败: {e}")
         # 降级文本
         content = "空签" if sign_index == -1 else message_sign[sign_index]
         await command.finish(f"图片生成失败，签文内容：\n{content}", at_sender=True)
@@ -241,6 +240,8 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
                 f"✅ 缓存检查完毕！\n缓存目录: {CACHE_DIR.absolute()}\n(注意：批量模式仅生成缺失图片，如需更新样式请使用'刷新签文缓存 <序号>'指定重绘)"
             )
 
+        except FinishedException:
+            raise
         except Exception as e:
-            logger.error(f"生成缓存时发生错误: {e}")
+            logger.exception(f"生成缓存时发生错误: {e}")
             await gen_cache_cmd.finish(f"❌ 生成过程中出错: {e}")

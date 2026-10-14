@@ -7,10 +7,9 @@ from datetime import date, datetime, timedelta
 
 import pytz
 
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
 from nonebot.exception import FinishedException
-from nonebot.log import logger
 from nonebot.params import CommandArg
 
 from utils.onebot.media import image_segment
@@ -85,7 +84,7 @@ async def handle_event_list(bot: Bot, event: GroupMessageEvent):
     except HLTVFetchError as e:
         await event_list.finish(str(e))
     except Exception as e:
-        logger.error(f"获取赛事列表失败: {e}")
+        logger.exception(f"获取赛事列表失败: {e}")
         await event_list.finish("获取赛事列表失败，HLTV 可能暂时无法访问")
 
 
@@ -166,7 +165,7 @@ async def handle_event_subscribe(
     except HLTVFetchError as e:
         await event_subscribe.finish(f"订阅未完成：{e}")
     except Exception as e:
-        logger.error(f"订阅赛事失败: {e}")
+        logger.exception(f"订阅赛事失败: {e}")
         await event_subscribe.finish("订阅失败，HLTV 可能暂时无法访问")
 
 
@@ -294,7 +293,7 @@ async def handle_matches_list(bot: Bot, event: GroupMessageEvent):
     except HLTVFetchError as e:
         await matches_list.finish(str(e))
     except Exception as e:
-        logger.error(f"获取比赛列表失败: {e}")
+        logger.exception(f"获取比赛列表失败: {e}")
         await matches_list.finish("获取比赛列表失败，HLTV 可能暂时无法访问")
 
 
@@ -344,7 +343,7 @@ async def handle_results_list(bot: Bot, event: GroupMessageEvent):
     except HLTVFetchError as e:
         await results_list.finish(str(e))
     except Exception as e:
-        logger.error(f"获取比赛结果失败: {e}")
+        logger.exception(f"获取比赛结果失败: {e}")
         await results_list.finish("获取比赛结果失败，HLTV 可能暂时无法访问")
 
 
@@ -389,7 +388,7 @@ async def handle_stats(
         except HLTVFetchError as e:
             await stats_cmd.finish(str(e))
         except Exception as e:
-            logger.error(f"获取比赛数据失败: {e}")
+            logger.exception(f"获取比赛数据失败: {e}")
             await stats_cmd.finish("获取比赛数据失败，HLTV 可能暂时无法访问")
 
     else:
@@ -410,7 +409,7 @@ async def handle_stats(
         except HLTVFetchError as e:
             await stats_cmd.finish(str(e))
         except Exception as e:
-            logger.error(f"获取比赛数据失败: {e}")
+            logger.exception(f"获取比赛数据失败: {e}")
             await stats_cmd.finish("获取比赛数据失败，HLTV 可能暂时无法访问")
 
 
@@ -499,7 +498,7 @@ async def handle_hltv_check(bot: Bot, event: GroupMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"检查比赛失败: {e}")
+        logger.exception(f"检查比赛失败: {e}")
         await hltv_check.finish(f"检查失败: {e}")
 
 
@@ -535,7 +534,7 @@ async def handle_hltv_trigger(bot: Bot, event: GroupMessageEvent):
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"手动触发检查失败: {e}")
+        logger.exception(f"手动触发检查失败: {e}")
         await hltv_trigger.finish(f"执行失败: {e}")
 
 

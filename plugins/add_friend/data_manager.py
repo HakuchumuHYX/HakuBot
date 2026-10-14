@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from nonebot.log import logger
+from nonebot import logger
 
 
 class RequestDataManager:
@@ -12,7 +12,7 @@ class RequestDataManager:
         """添加待处理的好友请求"""
         try:
             self.pending_requests[user_id] = user_data
-            logger.info(f"已添加用户 {user_id} 的好友请求到待处理列表")
+            logger.debug(f"已添加用户 {user_id} 的好友请求到待处理列表")
             return True
         except Exception as e:
             logger.error(f"添加好友请求失败: {e}")
@@ -27,7 +27,7 @@ class RequestDataManager:
         try:
             if user_id in self.pending_requests:
                 del self.pending_requests[user_id]
-                logger.info(f"已移除用户 {user_id} 的好友请求")
+                logger.debug(f"已移除用户 {user_id} 的好友请求")
                 return True
             return False
         except Exception as e:

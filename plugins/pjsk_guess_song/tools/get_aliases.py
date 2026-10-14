@@ -4,7 +4,7 @@ import aiohttp
 import json
 import os
 from typing import Dict, List, Optional
-from nonebot.log import logger
+from nonebot import logger
 
 # --- 配置 ---
 API_URL_TEMPLATE = "http://public-api.haruki.seiunx.com/alias/v1/music/{}"
@@ -103,7 +103,7 @@ async def fetch_all_aliases(guess_song_path: str, output_path: str) -> bool:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         atomic_write_json(output_path, all_aliases, indent=4, ensure_ascii=False)
     except Exception as e:
-        logger.error(f"[get_aliases] 保存失败: {e}")
+        logger.exception(f"[get_aliases] 保存失败: {e}")
         return False
 
     logger.info(

@@ -5,7 +5,7 @@ import random
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Tuple
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.pjsk_guess_card.config import plugin_config
 
@@ -63,7 +63,7 @@ def load_cards():
 
         logger.info(f"已加载 {len(_available_cards)} 张可用卡牌（3星/4星/生日卡）")
     except Exception as e:
-        logger.error(f"加载卡牌数据失败: {e}")
+        logger.exception(f"加载卡牌数据失败: {e}")
 
 
 def random_card() -> Tuple[Dict, CardImageType]:

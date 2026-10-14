@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Dict, Set, Any
 
-from nonebot.log import logger
+from nonebot import logger
 
 from plugins.groupmate_waifu.config import Config
 from plugins.groupmate_waifu.storage import (

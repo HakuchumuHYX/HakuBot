@@ -12,9 +12,8 @@ import asyncio
 import time
 from typing import Dict, Optional, Set, Tuple
 
-from nonebot import on_command, on_message, get_driver
+from nonebot import on_command, on_message, get_driver, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment
-from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from PIL import Image
@@ -30,6 +29,7 @@ from plugins.pjsk_guess_card.card_data import (
 )
 from plugins.pjsk_guess_card.nickname import get_cid_by_nickname
 from plugins.pjsk_guess_card.image_utils import random_crop_image
+from utils.logging import get_exc_desc
 from utils.network.http import download_image
 from utils.images.formats import image_to_bytes
 from core.access import is_plugin_enabled
@@ -62,7 +62,7 @@ driver = get_driver()
 @on_plugin_startup(driver, "pjsk_guess_card")
 async def _on_startup():
     load_cards()
-    logger.info("PJSK 猜卡面插件已启动")
+    logger.debug("PJSK 猜卡面插件已启动")
 
 
 async def _prepare_random_card_image(
@@ -73,7 +73,7 @@ async def _prepare_random_card_image(
     for attempt in range(max_retry):
         card, image_type = random_card()
         url = get_card_image_url(card, image_type)
-        logger.info(
+        logger.debug(
             f"[猜卡面] 群 {group_id} 第 {attempt + 1} 次尝试: "
             f"card_id={card['id']}, image_type={image_type}"
         )
@@ -83,8 +83,9 @@ async def _prepare_random_card_image(
             logger.debug(f"[猜卡面] 在线下载卡面成功: {url}")
             return card, image_type, card_image
         except Exception as e:
-            logger.warning(f"[猜卡面] 第 {attempt + 1} 次下载失败，重新选卡: {e}")
+            logger.info(f"[猜卡面] 第 {attempt + 1} 次下载失败，重新选卡: {get_exc_desc(e)}")
 
+    logger.error(f"[猜卡面] 群 {group_id} 连续 {max_retry} 次下载卡面均失败")
     return None, None, None
 
 
@@ -231,18 +232,18 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
                     )
 
         except Exception as e:
-            logger.error(f"[猜卡面] 群 {group_id} 游戏主循环异常: {e}", exc_info=True)
+            logger.exception(f"[猜卡面] 群 {group_id} 游戏主循环异常: {e}")
             try:
                 await bot.send(event, f"猜卡面出错了，正确答案：\n{title}")
                 await bot.send(event, image_segment(full_image_bytes))
-            except Exception:
-                pass
+            except Exception as send_err:
+                logger.warning(f"[猜卡面] 群 {group_id} 补发答案失败: {get_exc_desc(send_err)}")
     finally:
         preparing_guess_groups.discard(group_id)
         # 清理队列
         if group_id in guess_msg_queues:
             del guess_msg_queues[group_id]
-        logger.info(f"[猜卡面] 群 {group_id} 游戏结束")
+        logger.debug(f"[猜卡面] 群 {group_id} 游戏结束")
 
 
 # ==================== 消息监听（将消息放入队列） ==================== #

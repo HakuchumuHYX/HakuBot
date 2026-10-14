@@ -13,9 +13,7 @@ from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
-from utils.logging import get_logger
-
-logger = get_logger("bili_dyn_sub.config")
+from nonebot import logger
 
 # 默认浏览器 UA：轮询与造 cookie 必须共用同一个，且绝不能含 python/httpx/curl 字样
 DEFAULT_USER_AGENT = (
@@ -108,7 +106,7 @@ def load_plugin_config() -> Config:
         logger.info(f"未找到配置文件 {CONFIG_FILE_PATH}，使用内存默认配置")
         return Config()
 
-    logger.info(f"正在从 {CONFIG_FILE_PATH} 加载 B 站动态订阅配置...")
+    logger.debug(f"正在从 {CONFIG_FILE_PATH} 加载 B 站动态订阅配置...")
     try:
         raw = json.loads(CONFIG_FILE_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:

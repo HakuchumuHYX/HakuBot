@@ -4,7 +4,7 @@ from utils.paths import PluginPaths
 import json
 from typing import List, Dict, Any
 from pydantic import BaseModel, Extra
-from nonebot.log import logger
+from nonebot import logger
 
 
 # --- 1. 定义配置结构与默认值 ---
@@ -61,7 +61,7 @@ def load_plugin_config() -> PluginConfig:
     文件不存在时使用内存默认值，不写入配置文件。
     """
     if CONFIG_FILE_PATH.exists():
-        logger.info(f"正在从 {CONFIG_FILE_PATH} 加载 PJSK 猜歌插件配置...")
+        logger.debug(f"正在从 {CONFIG_FILE_PATH} 加载 PJSK 猜歌插件配置...")
         try:
             with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
                 config_data = json.load(f)

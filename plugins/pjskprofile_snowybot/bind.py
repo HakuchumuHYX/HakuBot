@@ -1,9 +1,8 @@
 import re
-from nonebot import on_regex
+from nonebot import on_regex, logger
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
 from nonebot.params import RegexGroup
 from nonebot.exception import FinishedException
-from nonebot.log import logger
 from typing import Tuple, Optional
 
 from core.access import is_plugin_enabled
@@ -52,5 +51,5 @@ async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup(
     except FinishedException:
         raise
     except Exception as e:
-        logger.error(f"PJSK 绑定指令发生错误: {e}")
+        logger.exception(f"PJSK 绑定指令发生错误: {e}")
         await bind_matcher.finish("❌ 处理过程中发生内部错误，请查看日志。")
