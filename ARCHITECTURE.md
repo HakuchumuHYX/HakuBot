@@ -20,7 +20,7 @@
 
 统一 `from nonebot import logger`；`webconsole_bridge` 直接用 loguru（挂 sink、`webconsole_bridge_internal` 防回环）。
 
-日志有两个读者：`bot.py` 的 stdout（`output.log`）里 nonebot 内核、uvicorn、websockets 只出 WARNING 起，其余来源跟 `log_level`；
+日志有两个读者：`bot.py` 的 stdout（`output.log`）里 nonebot 内核、uvicorn、websockets 只出 WARNING 起（内核收到事件那一行带消息原文，照常输出），其余来源跟 `log_level`；
 webconsole bridge 自己的 sink 只收 WARNING 起，并按级别判定一次响应——出现 ERROR 记失败，出现 WARNING 留完整诊断。所以级别按这个语义用：
 
 | 级别 | 放什么 |

@@ -21,20 +21,25 @@ _DUP_RULE_RE = re.compile(r'^Duplicated prefix rule "\.?(.+)"$')
 
 
 # NoneBot 内核、适配器和 uvicorn 的 INFO 是事件调度流水（每条消息十几行），websockets 的连接行
-# 和 core 的「Bot N 已连接」重复，都只留 WARNING 起；其余来源（包括所有插件）跟随 log_level。
-# webconsole_bridge 有自己的 sink，不受这里影响。
+# 和 core 的「Bot N 已连接」重复，都只留 WARNING 起；例外是内核收到事件时那一行（带消息原文），照常输出。
+# 其余来源（包括所有插件）跟随 log_level。webconsole_bridge 有自己的 sink，不受这里影响。
 _NOISY_SOURCES = frozenset({"nonebot", "uvicorn", "websockets"})
+
+
+def _is_event_line(record) -> bool:
+    return record["module"] == "message" and record["function"] == "handle_event"
 
 
 def _log_filter(record):
     m = _DUP_RULE_RE.match(record["message"])
     if m and m.group(1) in _KNOWN_DUP_COMMANDS:
         return False
-    level = (
-        "WARNING"
-        if record["name"] in _NOISY_SOURCES
-        else record["extra"].get("nonebot_log_level", "INFO")
-    )
+    if record["name"] not in _NOISY_SOURCES:
+        level = record["extra"].get("nonebot_log_level", "INFO")
+    elif _is_event_line(record):
+        level = "SUCCESS"
+    else:
+        level = "WARNING"
     return record["level"].no >= nonebot.logger.level(level).no
 
 
