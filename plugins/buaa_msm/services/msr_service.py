@@ -21,7 +21,7 @@ from utils.json_io import atomic_write_bytes
 from utils.onebot.media import image_segment
 
 from plugins.buaa_msm import analysis
-from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.config import plugin_config, with_site_link
 from plugins.buaa_msm.domain.models import UserDataContext
 from plugins.buaa_msm.exceptions import (
     AssetDownloadError,
@@ -243,7 +243,8 @@ async def _execute_msr_analysis(
             await _send_or_raise(send_func, f"{label}发送失败，已跳过。")
 
     await _send_or_raise(
-        send_func, "分析结果发送完毕。" if sent_any else "抱歉，无法生成任何结果。"
+        send_func,
+        with_site_link("分析结果发送完毕。") if sent_any else "抱歉，无法生成任何结果。",
     )
     return sent_any
 

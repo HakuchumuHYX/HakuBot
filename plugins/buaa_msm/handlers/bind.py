@@ -20,7 +20,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.params import CommandArg
 
-from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.config import plugin_config, with_site_link
 
 
 class BindManager:
@@ -136,11 +136,13 @@ async def handle_bind_command(
     if bind_manager.set(user_id, bind_content):
         if old_content:
             await bind_cmd.finish(
-                f"绑定成功！\n已更新绑定内容：\n原内容：{old_content}\n新内容：{bind_content}"
+                with_site_link(
+                    f"绑定成功！\n已更新绑定内容：\n原内容：{old_content}\n新内容：{bind_content}"
+                )
             )
         else:
             await bind_cmd.finish(
-                f"绑定成功！\nQQ：{user_id}\n绑定内容：{bind_content}"
+                with_site_link(f"绑定成功！\nQQ：{user_id}\n绑定内容：{bind_content}")
             )
     else:
         await bind_cmd.finish("绑定失败，数据保存出错，请稍后重试")
@@ -155,7 +157,9 @@ async def handle_query_command(bot: Bot, event: PrivateMessageEvent):
     content = bind_manager.get(user_id)
 
     if content:
-        await query_bind.finish(f"您的绑定信息：\nQQ：{user_id}\n绑定内容：{content}")
+        await query_bind.finish(
+            with_site_link(f"您的绑定信息：\nQQ：{user_id}\n绑定内容：{content}")
+        )
     else:
         await query_bind.finish("您尚未绑定任何内容")
 
@@ -169,7 +173,9 @@ async def handle_unbind_command(bot: Bot, event: PrivateMessageEvent):
     old_content = bind_manager.delete(user_id)
 
     if old_content:
-        await unbind_cmd.finish(f"已解除绑定\n原绑定内容：{old_content}")
+        await unbind_cmd.finish(
+            with_site_link(f"已解除绑定\n原绑定内容：{old_content}")
+        )
     elif old_content is None and user_id not in bind_manager.get_all():
         await unbind_cmd.finish("您尚未绑定任何内容，无需解除")
     else:
@@ -210,17 +216,17 @@ async def handle_view_all_command(bot: Bot, event: PrivateMessageEvent):
 
 @bind_cmd.handle()
 async def handle_group_bind(bot: Bot, event: GroupMessageEvent):
-    await bind_cmd.finish("该指令仅在私聊中可用")
+    await bind_cmd.finish(with_site_link("该指令仅在私聊中可用"))
 
 
 @query_bind.handle()
 async def handle_group_query(bot: Bot, event: GroupMessageEvent):
-    await query_bind.finish("该指令仅在私聊中可用")
+    await query_bind.finish(with_site_link("该指令仅在私聊中可用"))
 
 
 @unbind_cmd.handle()
 async def handle_group_unbind(bot: Bot, event: GroupMessageEvent):
-    await unbind_cmd.finish("该指令仅在私聊中可用")
+    await unbind_cmd.finish(with_site_link("该指令仅在私聊中可用"))
 
 
 @view_all_binds.handle()

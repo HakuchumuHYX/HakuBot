@@ -27,7 +27,7 @@ from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type
 
-from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.config import plugin_config, with_site_link
 from plugins.buaa_msm.exceptions import DataLoadError
 from plugins.buaa_msm.services.ingest_service import ingest_bin, reserve_storage_path
 from plugins.buaa_msm.services.msr_service import run_msr
@@ -62,14 +62,16 @@ async def handle_upload_command(bot: Bot, event: PrivateMessageEvent):
     user_id = str(event.user_id)
     waiting_for_file[user_id] = time.time()
     await upload_cmd.finish(
-        "已准备好接收文件，请直接发送您要上传的文件。如需取消，请发送'取消'。"
+        with_site_link(
+            "已准备好接收文件，请直接发送您要上传的文件。如需取消，请发送'取消'。"
+        )
     )
 
 
 # 群聊提示（挂在同一 matcher 上，群聊事件走此 handler）
 @upload_cmd.handle()
 async def handle_group_upload(bot: Bot, event: GroupMessageEvent):
-    await upload_cmd.finish("该指令仅在私聊中生效")
+    await upload_cmd.finish(with_site_link("该指令仅在私聊中生效"))
 
 
 # ============== 文件接收处理 ==============

@@ -17,6 +17,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 
+from plugins.buaa_msm.config import with_site_link
 from plugins.buaa_msm.exceptions import DataLoadError
 from plugins.buaa_msm.services.msr_service import run_msr
 from plugins.buaa_msm.services.processing_guard import is_processing, set_processing
@@ -64,4 +65,4 @@ async def handle_msr_command(
 # 群聊提示（挂在同一 matcher 上，群聊事件走此 handler）
 @msr_cmd.handle()
 async def handle_group_msr(bot: Bot, event: GroupMessageEvent):
-    await msr_cmd.finish("该指令仅在私聊中可用")
+    await msr_cmd.finish(with_site_link("该指令仅在私聊中可用"))

@@ -145,6 +145,9 @@ class PluginConfig:
             600,
         )
 
+        # 网页版地址（config.json，不写入代码）；配了就附在部分回复末尾
+        self.site_link: str = self._as_str(self._deep_get(local_cfg, ("link",), ""), "")
+
         # API 包体解密密钥（config.json，不写入代码）
         self.api_crypto_key: str = self._as_str(
             self._deep_get(local_cfg, ("api_crypto", "key"), ""),
@@ -281,3 +284,10 @@ class PluginConfig:
 
 # 全局配置实例
 plugin_config = PluginConfig()
+
+
+def with_site_link(text: str) -> str:
+    """配了网页版地址时，在回复末尾提示也可以去网页操作"""
+    if not plugin_config.site_link:
+        return text
+    return f"{text}\n也可以通过网站：{plugin_config.site_link} 进行操作"
