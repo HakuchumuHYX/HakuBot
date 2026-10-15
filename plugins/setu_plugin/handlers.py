@@ -29,18 +29,6 @@ from plugins.setu_plugin.client import SetuClient
 from utils.onebot.media import image_segment
 from utils.onebot.forward import send_forward_msg
 
-__plugin_name__ = "涩图（lzst）"
-__plugin_usage__ = """
-发送 lzst 获取一张随机图片
-发送 lzst <tag> 根据 tag 获取图片（例如：lzst 白丝）
-
-输出方式：合并转发（Title/Pid + 图片/链接）
-
-本插件的开关与CD完全由 plugin_manager 管理：
-- 启用/禁用：启用 setu_plugin / 禁用 setu_plugin
-- CD：启用CD setu_plugin <秒> / 禁用CD setu_plugin
-""".strip()
-
 CACHE_TTL_DAYS = 7
 CACHE_CLEAN_INTERVAL_SECONDS = 24 * 60 * 60  # daily
 _cache_clean_task: Optional[asyncio.Task] = None

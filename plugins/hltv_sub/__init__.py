@@ -35,8 +35,6 @@ __plugin_meta__ = PluginMetadata(
 
 - hltv开启：开启本群功能
 - hltv关闭：关闭本群功能
-
-- hltv帮助：查看帮助
 """,
     type="application",
     homepage="",

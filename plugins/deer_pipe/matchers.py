@@ -15,7 +15,7 @@ from nonebot_plugin_userinfo import EventUserInfo, UserInfo
 from core.access import is_plugin_enabled
 from core.cooldown import check_cd, update_cd
 from plugins.deer_pipe.config import config
-from plugins.deer_pipe.constants import PLUGIN_ID, PLUGIN_VERSION
+from plugins.deer_pipe.constants import PLUGIN_ID
 from plugins.deer_pipe.database import (
     attend,
     attend_past,
@@ -44,12 +44,6 @@ deer_past: AlconnaMatcher = on_alconna(
 deer_calendar: AlconnaMatcher = on_alconna(
     Alconna("🦌历", Args["target?", At]),
     aliases={"鹿历"},
-)
-
-# 帮助命令
-deer_help: AlconnaMatcher = on_alconna(
-    Alconna("🦌帮助"),
-    aliases={"鹿帮助"},
 )
 
 
@@ -262,40 +256,3 @@ async def handle_deer_calendar(
     except Exception as e:
         logger.exception(f"查看日历失败: {e}")
         await deer_calendar.finish("获取日历失败，请稍后重试")
-
-
-@deer_help.handle()
-async def handle_deer_help(event: Event):
-    """处理帮助命令"""
-    try:
-        # 检查是否在群聊中
-        is_group = isinstance(event, GroupMessageEvent)
-
-        if is_group:
-            group_id = str(event.group_id)
-            caller_user_id = str(event.get_user_id())
-
-            # 检查插件是否启用
-            if not is_plugin_enabled(PLUGIN_ID, group_id, caller_user_id):
-                await deer_help.finish()
-
-        help_text = (
-            f"== 🦌管插件 v{PLUGIN_VERSION} 帮助 ==\n"
-            "[🦌] 🦌管1次\n"
-            "[🦌 @xxx] 帮xxx🦌管1次\n"
-            "[补🦌 x] 补🦌本月x日\n"
-            "[🦌历] 看本月🦌日历\n"
-            "[🦌历 @xxx] 看xxx的本月🦌日历\n"
-            "[🦌帮助] 打开帮助\n\n"
-            '* 以上命令中的"🦌"均可换成"鹿"字\n\n'
-            "== 插件代码仓库 ==\n"
-            "https://github.com/SamuNatsu/nonebot-plugin-deer-pipe"
-        )
-
-        await UniMessage.text(help_text).finish(reply_to=True)
-
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.exception(f"显示帮助失败: {e}")
-        await deer_help.finish("获取帮助信息失败")

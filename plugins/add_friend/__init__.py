@@ -7,19 +7,5 @@ from plugins.add_friend import request_handler
 from plugins.add_friend import command_handler
 from plugins.add_friend import utils
 
-# 插件信息
-__plugin_name__ = "好友请求处理"
-__plugin_usage__ = """
-自动处理好友请求：
-- 验证信息中包含白名单群号的用户会自动通过
-- 其他用户会被拒绝
-
-配置管理命令：
-/查看白名单群组 - 查看当前白名单群组
-/添加白名单群组 [群号] - 添加群组到白名单
-/移除白名单群组 [群号] - 从白名单移除群组
-""".strip()
-
-
 # 导出模块，便于其他插件引用
 __all__ = ["config", "data_manager", "request_handler", "command_handler", "utils"]

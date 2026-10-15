@@ -1,6 +1,6 @@
 # pjsk_guess_song/handlers/other.py
 """
-存放帮助等其他指令
+资源版本、别名更新等其他指令
 """
 
 from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
@@ -19,7 +19,6 @@ from plugins.pjsk_guess_song.runtime import (
     image_service,
     cache_service,
     resources_dir,
-    game_service,
 )
 from plugins.pjsk_guess_song.tools.get_aliases import fetch_all_aliases
 from plugins.pjsk_guess_song.utils import _is_group_allowed
@@ -35,26 +34,6 @@ from core.access import (
 from utils.onebot.rules import create_exact_command_rule
 from utils.onebot.media import image_segment
 
-# --- 帮助 ---
-show_guess_song_help = on_command(
-    "猜歌帮助", priority=10, block=True, rule=create_exact_command_rule("猜歌帮助")
-)
-
-
-@show_guess_song_help.handle()
-async def _(bot: Bot, event: MessageEvent):
-    user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await show_guess_song_help.finish()
-            return
-    if not await _is_group_allowed(event):
-        return
-
-    image = await image_service.draw_help_image(game_service.game_modes)
-    await show_guess_song_help.finish(image_segment(image))
-
-
 # --- 资源版本 ---
 show_resource_version = on_command(
     "猜歌资源", priority=10, block=True, rule=create_exact_command_rule("猜歌资源")
@@ -66,7 +45,7 @@ async def _(bot: Bot, event: MessageEvent):
     user_id = str(event.user_id)
     if isinstance(event, GroupMessageEvent):
         if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await show_guess_song_help.finish()
+            await show_resource_version.finish()
             return
     if not await _is_group_allowed(event):
         return

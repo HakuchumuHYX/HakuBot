@@ -17,9 +17,8 @@ from plugins.hltv_sub.client import HLTVFetchError, hltv_client
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.data_manager import EventSubscription, data_manager
 from plugins.hltv_sub.handler import hltv_handler
-from plugins.hltv_sub.help_content import build_help_sections
 from plugins.hltv_sub.render import (
-    render_events, render_help, render_matches, render_results, render_stats,
+    render_events, render_matches, render_results, render_stats,
 )
 from plugins.hltv_sub.scheduler import hltv_scheduler
 
@@ -536,18 +535,3 @@ async def handle_hltv_trigger(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.exception(f"手动触发检查失败: {e}")
         await hltv_trigger.finish(f"执行失败: {e}")
-
-
-# 帮助
-hltv_help = on_command("hltv帮助", aliases={"hltvhelp"}, priority=5, block=True)
-
-
-@hltv_help.handle()
-async def handle_hltv_help(bot: Bot, event: GroupMessageEvent):
-    group_id = event.group_id
-
-    if not data_manager.is_enabled(group_id):
-        return
-
-    img = await render_help(build_help_sections())
-    await hltv_help.finish(image_segment(img))

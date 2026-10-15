@@ -1,17 +1,15 @@
 from functools import partial
-from pathlib import Path
 
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageEvent
 from nonebot.params import CommandArg
 from nonebot.rule import to_me
 
-from core.access import is_feature_enabled, is_plugin_enabled
+from core.access import is_feature_enabled
 from core.cooldown import check_cd, update_cd
 from utils.files import safe_delete_file
 from utils.onebot.media import image_segment
 from utils.onebot.messages import reply_image_segments
-from utils.rendering.engine import render_template
 from plugins.image_processor.gif_reverse import reverse_gif
 from plugins.image_processor.gif_speed import change_gif_speed
 from plugins.image_processor.image_cutout import remove_background
@@ -21,7 +19,6 @@ from plugins.image_processor.image_symmetry import process_image_symmetry
 from plugins.image_processor.utils import UserInputError
 from plugins.image_processor.video_to_gif import convert_video_to_gif
 
-TEMPLATE_DIR = Path(__file__).parent / "templates"
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".webm", ".mkv", ".flv", ".wmv")
 
 
@@ -31,7 +28,6 @@ def _command(name: str):
 
 gif_speed_handler = _command("imgx")
 video_to_gif_handler = _command("imggif")
-image_help_handler = on_command("imghelp", priority=5, block=True)
 
 SYMMETRY_COMMANDS = {
     "img对称": ("left", "左对称"),
@@ -241,13 +237,3 @@ async def handle_video_to_gif(bot: Bot, event: MessageEvent):
         "视频转GIF",
         lambda: convert_video_to_gif(video_url, file_name, file_size),
     )
-
-
-@image_help_handler.handle()
-async def handle_image_help(event: MessageEvent):
-    if isinstance(event, GroupMessageEvent) and not is_plugin_enabled(
-        "image_processor", str(event.group_id), str(event.user_id)
-    ):
-        await image_help_handler.finish()
-    image = await render_template(TEMPLATE_DIR, "help.html", width=840)
-    await image_help_handler.finish(image_segment(image))

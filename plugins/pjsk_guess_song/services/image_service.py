@@ -1,6 +1,6 @@
 # pjsk_guess_song/services/image_service.py
 """
-图像服务：选项图、排行榜、资源版本、帮助，均由 templates/ 下的模板经 Chromium 渲染。
+图像服务：选项图、排行榜、资源版本，均由 templates/ 下的模板经 Chromium 渲染。
 """
 
 from datetime import datetime
@@ -106,48 +106,3 @@ class ImageService:
         except Exception as e:
             logger.opt(exception=True).warning(f"资源版本图片生成失败: {e}")
             return None
-
-    async def draw_help_image(self, game_modes: Dict[str, Dict]) -> bytes:
-        modes = [
-            {
-                "cmd": "猜歌" + ("" if key == "normal" else key),
-                "desc": mode["name"],
-                "score": mode["score"],
-            }
-            for key, mode in game_modes.items()
-        ]
-        sections = [
-            {"title": "基础指令", "entries": modes},
-            {
-                "title": "高级指令",
-                "entries": [
-                    {"cmd": "随机猜歌", "desc": "随机组合效果，分数按组合计算"},
-                    {"cmd": "猜歌手", "desc": "竞猜演唱者", "score": 1},
-                    {
-                        "cmd": "听",
-                        "args": "[歌名/ID] <ver>",
-                        "desc": "播放指定歌曲，可选 vs 或 sekai 版，默认 sekai 版",
-                    },
-                    {
-                        "cmd": "听<模式>",
-                        "args": "[歌名/ID]",
-                        "desc": "支持钢琴、伴奏、人声、贝斯、鼓组",
-                    },
-                    {
-                        "cmd": "听anvo",
-                        "args": "[歌名/ID] [角色名缩写]",
-                        "desc": "播放指定或随机的 Another Vocal",
-                    },
-                ],
-            },
-            {
-                "title": "其他功能",
-                "entries": [
-                    {"cmd": "猜歌帮助", "desc": "显示本帮助"},
-                    {"cmd": "猜歌资源", "desc": "显示资源版本"},
-                ],
-            },
-        ]
-        return await self._render(
-            "help.html", 760, [self._version_line()], sections=sections
-        )

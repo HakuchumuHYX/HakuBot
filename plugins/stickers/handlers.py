@@ -48,8 +48,6 @@ from plugins.stickers.check import (
     batch_rename_stickers,
 )
 
-# 导入 help
-from plugins.stickers import help
 from plugins.stickers import overview
 
 load_sticker_list()

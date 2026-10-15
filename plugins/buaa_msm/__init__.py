@@ -22,7 +22,6 @@ load_user_latest_files()
 # 导入 handlers 完成命令注册
 from plugins.buaa_msm.handlers import admin as _admin
 from plugins.buaa_msm.handlers import bind as _bind
-from plugins.buaa_msm.handlers import help as _help
 from plugins.buaa_msm.handlers import msr as _msr
 from plugins.buaa_msm.handlers import upload as _upload
 from plugins.buaa_msm.handlers import web as _web

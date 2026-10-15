@@ -12,7 +12,7 @@
 
 图片渲染统一走 Chromium：每个插件把模板放在自己的 `templates/`，通过 `utils/rendering/engine.py` 的 `render_template` 截图。模板可直接使用 `font_css`（本地 MiSans 五个字重，family 为 `Haku`）和 `dark`（上海时间 18:00–06:00 为夜间）。PIL 只用于贴图合成与图片处理（buaa_msm 地图、stickers 概览拼图、B 站九宫格、ximg 拼图等）。
 
-帮助图也由各插件自己的模板渲染；全局菜单继续手写，渲染失败时发送同源文本。`utils/rendering/templates/` 只保留通用的 Markdown / 纯文本转图模板。
+插件不带帮助命令，用法统一写在帮助站。`utils/rendering/templates/` 只保留通用的 Markdown / 纯文本转图模板。
 
 群日报和早报各用自己的 LLM 配置，不读取其他插件的配置作为回退。正常运行使用 `uv run python bot.py`。
 
