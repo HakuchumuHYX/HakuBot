@@ -186,10 +186,26 @@ async def handle_clean_cancel(event: GroupMessageEvent):
     await clean_cancel_matcher.finish("已取消清理操作")
 
 
-# vvvvvv 【修改：添加 Bot 对象】 vvvvvv
+async def _send_stickers_preview():
+    try:
+        pic_bytes = await render_stickers_preview()
+        if pic_bytes:
+            await sticker_matcher.send(image_segment(pic_bytes))
+        else:
+            await sticker_matcher.send(get_sticker_statistics())
+    except Exception as e:
+        # 如果图片生成或发送失败，使用文本统计
+        logger.warning(f"发送贴图预览图片失败，改发文本: {get_exc_desc(e)}")
+        await sticker_matcher.send(get_sticker_statistics())
+
+
+async def _send_site_url():
+    if SITE_URL:
+        await sticker_matcher.send(f"下载链接：{SITE_URL}")
+
+
 @sticker_matcher.handle()
 async def handle_sticker(bot: Bot, event: GroupMessageEvent):
-    # ^^^^^^ 【修改：添加 Bot 对象】 ^^^^^^
     # 只处理群聊消息
     if not isinstance(event, GroupMessageEvent):
         return
@@ -216,32 +232,17 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
 
     # 检查是否是查看统计命令
     if handle_statistics_command(message_text):
-        # 渲染贴图预览图片
-        try:
-            pic_bytes = await render_stickers_preview()
-            if pic_bytes:
-                await sticker_matcher.send(image_segment(pic_bytes))
-            else:
-                await sticker_matcher.send(get_sticker_statistics())
-        except Exception as e:
-            # 如果图片生成或发送失败，使用文本统计
-            logger.warning(f"发送贴图预览图片失败，改发文本: {get_exc_desc(e)}")
-            await sticker_matcher.send(get_sticker_statistics())
-
-        # 下载站网址单独发一条：域名没备案，QQ 里点不开，单独一条方便整条复制
-        if SITE_URL:
-            await sticker_matcher.send(f"下载链接：{SITE_URL}")
+        # 预览图渲染和上传都慢，链接不用等它
+        await asyncio.gather(_send_stickers_preview(), _send_site_url())
         return  # 使用 return 而不是 finish
 
     # 检查是否是投稿格式
     folder_name, is_contribution, is_force = extract_contribution_info(message_text)
     if is_contribution:
-        # vvvvvv 【修改：传递 Bot 对象】 vvvvvv
         # 处理投稿
         success, reply_msg, saved_count = await save_contribution_images(
             bot, folder_name, event, is_force
         )
-        # ^^^^^^ 【修改：传递 Bot 对象】 ^^^^^^
 
         if success or saved_count == 0:  # 成功或完全失败时回复
             await sticker_matcher.finish(reply_msg)
