@@ -40,6 +40,7 @@ from plugins.stickers.render import (
     preview_duplicates_before_cleanup,
 )
 from plugins.stickers.manage import handle_manage_command, is_superuser
+from plugins.stickers.config import SITE_URL
 from plugins.stickers.check import (
     find_all_duplicates,
     remove_duplicates,
@@ -222,13 +223,17 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
             pic_bytes = await render_stickers_preview()
             if pic_bytes:
                 await sticker_matcher.send(image_segment(pic_bytes))
-                return  # 使用 return 而不是 finish
+            else:
+                await sticker_matcher.send(get_sticker_statistics())
         except Exception as e:
+            # 如果图片生成或发送失败，使用文本统计
             logger.warning(f"发送贴图预览图片失败，改发文本: {get_exc_desc(e)}")
+            await sticker_matcher.send(get_sticker_statistics())
 
-        # 如果图片生成或发送失败，使用文本统计
-        statistics_info = get_sticker_statistics()
-        await sticker_matcher.finish(statistics_info)
+        # 下载站网址单独发一条：域名没备案，QQ 里点不开，单独一条方便整条复制
+        if SITE_URL:
+            await sticker_matcher.send(f"下载链接：{SITE_URL}")
+        return  # 使用 return 而不是 finish
 
     # 检查是否是投稿格式
     folder_name, is_contribution, is_force = extract_contribution_info(message_text)
