@@ -2,22 +2,21 @@
 """
 文件上传入口（私聊）：
 - buaa上传文件：进入等待状态
-- 收到 file 消息：保存文件 -> 预解密 -> 记录来访角色 -> 自动 run_msr()
+- 收到 file 消息：保存文件 -> ingest_bin（预解密、记录来访角色等）-> 自动 run_msr()
 - 取消：退出等待状态
 
 说明：
 - 迁移自 plugins/buaa_msm/data_upload.py
-- 这里仅做 NoneBot 事件适配；MSR 生成调用 services.msr_service.run_msr
+- 这里仅做 NoneBot 事件适配；入库调用 services.ingest_service，MSR 生成调用 services.msr_service.run_msr
 """
 
 from __future__ import annotations
 from utils.paths import PluginPaths
 
-import os
 import shutil
 import time
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict
 from urllib.parse import unquote
 
 import aiofiles
@@ -29,20 +28,10 @@ from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type
 
 from plugins.buaa_msm.config import plugin_config
-from plugins.buaa_msm.data_rename import generate_target_filename
 from plugins.buaa_msm.exceptions import DataLoadError
-from plugins.buaa_msm.infra.decryptor import decrypt_and_save
-from plugins.buaa_msm.infra.cache import cache_manager
-from plugins.buaa_msm.infra.storage import (
-    remove_old_user_files,
-    update_user_latest_file,
-)
-from plugins.buaa_msm.infra.visit_history import record_character_visit
+from plugins.buaa_msm.services.ingest_service import ingest_bin, reserve_storage_path
 from plugins.buaa_msm.services.msr_service import run_msr
 from plugins.buaa_msm.services.processing_guard import is_processing, set_processing
-
-# 从配置获取路径
-file_storage_dir = plugin_config.file_storage_dir
 
 # 等待文件上传的用户字典：{user_id: entered_at_epoch_seconds}
 waiting_for_file: Dict[str, float] = {}
@@ -152,41 +141,20 @@ async def handle_file_message(
         if not file_name or file_name == "unknown":
             file_name = f"file_{user_id}_{int(event.time)}.bin"
 
-        # 命名前置：先生成最终目标文件名，再执行保存
-        target_filename = generate_target_filename(file_name, user_id)
-
-        # 保存文件（内部执行冲突去重）
-        saved_file_path, unique_filename = await save_file(
-            file_url, target_filename, user_id
-        )
+        # 命名前置：先按绑定名生成目标路径（已去重），再执行保存
+        saved_file_path = reserve_storage_path(file_name, user_id)
+        await save_file(file_url, saved_file_path, user_id)
 
         # 移除等待状态
         waiting_for_file.pop(user_id, None)
 
-        # 更新用户文件记录
-        update_user_latest_file(user_id, saved_file_path)
-        remove_old_user_files(user_id, saved_file_path)
-
-        # 使缓存失效
-        await cache_manager.invalidate(user_id)
-
         await file_handler.send(
-            f"文件上传成功！\n文件名：{unique_filename}\n正在进行预解密，请稍候..."
+            f"文件上传成功！\n文件名：{saved_file_path.name}\n正在进行预解密，请稍候..."
         )
 
-        # 预解密
-        user_output_dir = file_storage_dir / f"output_{user_id}"
-        user_output_dir.mkdir(parents=True, exist_ok=True)
-        json_output_file = user_output_dir / f"{saved_file_path.stem}_decrypted.json"
-
-        decrypted_data = decrypt_and_save(
-            bin_file_path=saved_file_path, json_output_path=json_output_file
-        )
+        decrypted_data = await ingest_bin(user_id, saved_file_path)
 
         if decrypted_data:
-            # 记录来访角色
-            _record_visiting_characters(user_id, decrypted_data)
-
             try:
                 import nonebot_plugin_localstore as store
 
@@ -240,25 +208,6 @@ async def handle_file_message(
         await file_handler.send(f"文件上传失败：{str(e)}")
 
 
-def _record_visiting_characters(user_id: str, decrypted_data: dict):
-    """记录来访角色"""
-    try:
-        char_visit_list = decrypted_data.get("userMysekaiGateCharacterVisit", {}).get(
-            "userMysekaiGateCharacters", []
-        )
-        char_ids = []
-        for char in char_visit_list:
-            gid = char.get("mysekaiGameCharacterUnitGroupId")
-            if gid:
-                char_ids.append(str(gid))
-
-        if char_ids:
-            record_character_visit(user_id, char_ids)
-            logger.debug(f"已记录用户 {user_id} 的 {len(char_ids)} 个来访角色ID")
-    except Exception:
-        logger.opt(exception=True).warning("记录来访角色失败")
-
-
 # ============== 取消命令 ==============
 
 cancel_cmd = on_command(
@@ -279,41 +228,16 @@ async def handle_cancel_command(bot: Bot, event: PrivateMessageEvent):
 # ============== 文件保存工具函数 ==============
 
 
-async def save_file(file_path: str, filename: str, user_id: str) -> Tuple[Path, str]:
+async def save_file(file_path: str, destination_path: Path, user_id: str):
     """
-    保存文件到存储目录
-
-    Args:
-        file_path: 文件URL或本地路径
-        filename: 文件名（建议为最终目标文件名）
-        user_id: 用户ID
-
-    Returns:
-        (保存路径, 实际文件名)
+    把 QQ 文件（URL 或本地路径）保存到 destination_path（由 reserve_storage_path 生成）
     """
-    file_storage_dir.mkdir(parents=True, exist_ok=True)
-
-    # 生成唯一文件名（在目标文件名基础上做冲突去重）
-    base_name, ext = os.path.splitext(filename)
-    counter = 1
-    unique_filename = filename
-    destination_path = file_storage_dir / unique_filename
-
-    while destination_path.exists():
-        unique_filename = f"{base_name}_{counter}{ext}"
-        destination_path = file_storage_dir / unique_filename
-        counter += 1
-
-    # 下载或复制文件
     if file_path.startswith(("http://", "https://")):
         await download_file(file_path, destination_path)
     else:
         await copy_local_file(file_path, destination_path)
 
-    logger.info(
-        f"用户 {user_id} 上传文件: {unique_filename}，保存至 {destination_path}"
-    )
-    return destination_path, unique_filename
+    logger.info(f"用户 {user_id} 上传文件: {destination_path.name}，保存至 {destination_path}")
 
 
 async def download_file(url: str, destination_path: Path):

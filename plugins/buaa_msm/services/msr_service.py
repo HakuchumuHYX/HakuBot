@@ -1,7 +1,8 @@
 # plugins/buaa_msm/services/msr_service.py
 """
 MSR 分析服务（完整编排）：
-- 获取用户上下文 → 解析数据 → 预取资源 → 并行渲染 → 发送结果
+- 获取用户上下文 → 解析数据 → 预取资源 → 并行渲染 → 结果图落盘 → 发送结果
+- render_msr 供网页复用（只渲染落盘、不发送）
 - 统一的 jacket 封面下载与 HTTP 重试逻辑
 """
 
@@ -16,6 +17,7 @@ import aiohttp
 from PIL import Image
 from nonebot.exception import FinishedException
 from nonebot import logger
+from utils.json_io import atomic_write_bytes
 from utils.onebot.media import image_segment
 
 from plugins.buaa_msm import analysis
@@ -32,6 +34,7 @@ from plugins.buaa_msm.renderers.msr import (
     generate_msr_map_image_bytes,
     generate_msr_summary_image_bytes,
 )
+from plugins.buaa_msm.services.ingest_service import RESULT_FILES
 from plugins.buaa_msm.services.rip_asset_lite import rip_asset_lite
 from plugins.buaa_msm.services.user_data_service import get_user_context
 
@@ -127,17 +130,10 @@ async def _fetch_jacket_images(
 # ============== MSR 核心执行 ==============
 
 
-async def _execute_msr_analysis(
-    *,
-    bot: Any,
-    user_ctx: UserDataContext,
-    event_user_id: int,
-    send_func: SendFunc,
-) -> bool:
+async def render_msr(user_ctx: UserDataContext) -> tuple[bytes | None, bytes | None]:
     """
-    MSR 核心执行逻辑：
-    - 生成 summary 图 + map 图
-    - 以 bytes 形式发送
+    生成统计图和位置图，落盘到用户输出目录（网页从这里读图），并返回 (summary, map) 的 bytes。
+    单张失败时对应位置为 None（已记日志）；封面全部下载失败等整体错误照常抛出。
     """
     decrypted_data = user_ctx.decrypted_data
     parsed_maps = user_ctx.parsed_maps
@@ -146,8 +142,6 @@ async def _execute_msr_analysis(
     visiting_characters = analysis.get_visiting_group_counts(decrypted_data)
     owned_music_records = analysis.parse_owned_music_records(decrypted_data)
     analysis_data = analysis.aggregate_materials(parsed_maps)
-
-    sent_any = False
 
     # 收集所有唱片 record_id 并预下载封面
     all_record_ids: list[str] = []
@@ -185,9 +179,7 @@ async def _execute_msr_analysis(
     except Exception as e:
         logger.warning(f"MySekai harvest fixture icon 预取失败，将回退圆点标记: {e}")
 
-    # 并行触发渲染
-    await send_func("正在生成统计图与位置图...")
-
+    # 并行渲染
     summary_task = runtime.spawn(
         asyncio.to_thread(
             generate_msr_summary_image_bytes,
@@ -204,52 +196,65 @@ async def _execute_msr_analysis(
         name="buaa_msm",
     )
 
+    results: list[bytes | None] = []
+    for kind, task in (("summary", summary_task), ("map", map_task)):
+        out_path = user_ctx.user_output_dir / RESULT_FILES[kind]
+        try:
+            data = await task
+        except Exception:
+            logger.opt(exception=True).warning(f"MSR {kind} 生成失败")
+            out_path.unlink(missing_ok=True)
+            results.append(None)
+            continue
+        await asyncio.to_thread(atomic_write_bytes, out_path, data)
+        results.append(data)
+
+    return results[0], results[1]
+
+
+async def _execute_msr_analysis(
+    *,
+    bot: Any,
+    user_ctx: UserDataContext,
+    event_user_id: int,
+    send_func: SendFunc,
+) -> bool:
+    """
+    QQ 私聊：生成 summary 图 + map 图，以 bytes 形式发送
+    """
+    await send_func("正在生成统计图与位置图...")
+    images = await render_msr(user_ctx)
+
     # 发送顺序保持稳定：先 summary 后 map
-    try:
-        summary_bytes = await summary_task
-        await bot.send_private_msg(
-            user_id=event_user_id, message=image_segment(summary_bytes)
-        )
-        sent_any = True
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.opt(exception=True).warning("MSR summary 生成/发送失败")
+    sent_any = False
+    for image_bytes, label in zip(images, ("统计图", "位置图")):
+        if image_bytes is None:
+            await _send_or_raise(send_func, f"{label}生成失败，已跳过。")
+            continue
         try:
-            await send_func("统计图生成失败，已跳过。")
+            await bot.send_private_msg(
+                user_id=event_user_id, message=image_segment(image_bytes)
+            )
+            sent_any = True
         except FinishedException:
             raise
-        except Exception as send_err:
-            raise SendError(f"统计图失败提示发送失败: {send_err}") from e
+        except Exception:
+            logger.opt(exception=True).warning(f"MSR {label}发送失败")
+            await _send_or_raise(send_func, f"{label}发送失败，已跳过。")
 
-    try:
-        map_bytes = await map_task
-        await bot.send_private_msg(
-            user_id=event_user_id, message=image_segment(map_bytes)
-        )
-        sent_any = True
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.opt(exception=True).warning("MSR map 生成/发送失败")
-        try:
-            await send_func("位置图生成失败，已跳过。")
-        except FinishedException:
-            raise
-        except Exception as send_err:
-            raise SendError(f"位置图失败提示发送失败: {send_err}") from e
-
-    try:
-        if sent_any:
-            await send_func("分析结果发送完毕。")
-        else:
-            await send_func("抱歉，无法生成任何结果。")
-    except FinishedException:
-        raise
-    except Exception as e:
-        raise SendError(f"发送完成消息失败: {e}") from e
-
+    await _send_or_raise(
+        send_func, "分析结果发送完毕。" if sent_any else "抱歉，无法生成任何结果。"
+    )
     return sent_any
+
+
+async def _send_or_raise(send_func: SendFunc, text: str) -> None:
+    try:
+        await send_func(text)
+    except FinishedException:
+        raise
+    except Exception as e:
+        raise SendError(f"提示消息发送失败（{text}）: {e}") from e
 
 
 # ============== 对外接口 ==============

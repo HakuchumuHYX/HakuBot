@@ -51,6 +51,8 @@ class PluginConfig:
         self.user_latest_files_index_file: Path = (
             self.data_dir / "user_latest_files.json"
         )
+        # 网页登录会话；不放进 msmdata/，定时清理不会把人登出
+        self.web_sessions_file: Path = self.data_dir / "web_sessions.json"
         self.local_config_file: Path = PluginPaths("buaa_msm").config / "config.json"
 
         # 本地 JSON 配置（若缺失则回退默认值）
