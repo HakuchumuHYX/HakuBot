@@ -1,66 +1,120 @@
 {% extends "base.html" %}
 
 {% block style %}
-.id { font-size: 16px; font-weight: 700; color: var(--accent); }
+/* 头部：应援色底，左边 logo + 标题，右边角色立绘从底边伸出；World Link 没有立绘，下接各章角色色带 */
+.hero { position: relative; overflow: hidden; min-height: 330px; padding: 26px 40px 28px; background: var(--c); color: var(--on); }
 
-h1 { margin-top: 4px; }
+.hero .chr { position: absolute; right: -60px; top: 14px; height: 450px; }
 
-.jp { margin-top: 4px; font-size: 16px; color: var(--muted); }
+.hero .info { position: relative; max-width: 410px; }
 
-section { margin-top: 26px; }
+.hero.wide .info { max-width: none; }
 
-h2 { font-size: 20px; font-weight: 900; color: var(--accent); }
+/* 无图版（远程图超时后重渲染）：不再为立绘留高度 */
+.hero.bare { min-height: 0; }
+
+/* World Link 头部右侧：各章角色名牌 */
+.hero .roster { position: absolute; right: 40px; top: 50%; transform: translateY(-50%); display: grid; grid-template-columns: auto auto; gap: 10px 12px; }
+
+.hero .roster span { padding: 6px 14px; border-radius: 999px; background: var(--cc); color: var(--con); font-size: 15px; font-weight: 700;
+                     box-shadow: 0 0 0 2px color-mix(in srgb, var(--on) 35%, transparent); }
+
+.hero .logo { display: block; width: 300px; height: 150px; object-fit: contain; object-position: left center; margin-left: -8px; }
+
+.kicker { margin-top: 6px; font-size: 16px; font-weight: 700; opacity: .8; }
+
+h1 { margin-top: 4px; font-size: 32px; font-weight: 900; line-height: 1.28; }
+
+.hero .jp { margin-top: 4px; font-size: 16px; opacity: .75; }
+
+.hero .meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; font-size: 15px; font-weight: 600; }
+
+.strip { display: flex; height: 10px; }
+
+.strip i { flex: 1; }
+
+main { padding: 6px 40px 28px; }
+
+section { margin-top: 24px; }
+
+h2 { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 900; }
+
+h2::before { content: ""; width: 6px; height: 20px; border-radius: 3px; background: var(--c); }
 
 .text { margin-top: 8px; font-size: 16px; line-height: 1.8; color: var(--sub); text-align: justify; }
 
-.chapter {
-    display: grid;
-    grid-template-columns: 240px 1fr;
-    gap: 18px;
-    margin-top: 14px;
-    padding: 14px;
-    border-radius: 16px;
-    background: var(--card);
+/* 分镜板：两栏，每格一话 */
+.board { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 22px 20px; margin-top: 14px; }
+
+.frame .pic { position: relative; aspect-ratio: 280 / 144; border-radius: 8px; overflow: hidden; background: var(--c); }
+
+.frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.frame .no {
+    position: absolute; left: 0; top: 10px;
+    padding: 3px 10px 3px 8px; border-radius: 0 6px 6px 0;
+    background: var(--c); color: var(--on);
+    font-size: 15px; font-weight: 900;
 }
 
-.chapter img { width: 240px; height: 135px; border-radius: 10px; object-fit: cover; background: var(--line); }
+.frame .no.solo { position: static; display: inline-block; border-radius: 6px; }
 
-/* 没有章节图或图片加载失败（上游图床偶尔 404）时收成单栏 */
-.chapter.no-img { grid-template-columns: 1fr; }
+.frame h3 { margin-top: 10px; font-size: 17px; font-weight: 700; line-height: 1.4; }
 
-.no { font-size: 14px; color: var(--muted); }
-
-.chapter h3 { margin-top: 2px; font-size: 18px; font-weight: 700; }
-
-.chapter p { margin-top: 6px; font-size: 14.5px; line-height: 1.7; color: var(--sub); text-align: justify; }
+.frame p { margin-top: 4px; font-size: 15px; line-height: 1.7; color: var(--sub); text-align: justify; }
 {% endblock %}
 
 {% block content %}
-<div class="id">第 {{ data.event_id }} 期活动</div>
-<h1>{{ data.title_cn }}</h1>
-{% if data.title_jp != data.title_cn %}<div class="jp">{{ data.title_jp }}</div>{% endif %}
-
-{% if data.outline_cn %}
-<section><h2>简介</h2><p class="text">{{ data.outline_cn }}</p></section>
-{% endif %}
-
-{% if data.summary_cn %}
-<section><h2>剧情总结</h2><p class="text">{{ data.summary_cn }}</p></section>
-{% endif %}
-
-{% if data.chapters %}
-<section>
-    <h2>分章</h2>
-    {% for chapter in data.chapters %}
-    <div class="chapter{% if not chapter.image_url %} no-img{% endif %}">
-        {% if chapter.image_url %}<img src="{{ chapter.image_url }}" onerror="this.parentElement.classList.add('no-img'); this.remove()">{% endif %}
-        <div>
-            <div class="no">第 {{ chapter.chapter_no }} 话</div>
-            <h3>{{ chapter.title_cn }}</h3>
-            <p>{{ chapter.summary_cn }}</p>
+<div class="hero{% if not (with_images and data.character) %} wide{% endif %}{% if not with_images %} bare{% endif %}"style="--c: {{ data.color }}; --on: {{ data.on_color }}">
+    {% if with_images and data.character %}<img class="chr" src="{{ data.character }}" onerror="this.closest('.hero').classList.add('wide'); this.remove()">{% endif %}
+    <div class="info">
+        {% if with_images %}<img class="logo" src="{{ data.logo }}" onerror="this.remove()">{% endif %}
+        <div class="kicker">第 {{ data.event_id }} 期 {{ data.type }}</div>
+        <h1>{{ data.title_cn }}</h1>
+        {% if data.title_jp != data.title_cn %}<div class="jp">{{ data.title_jp }}</div>{% endif %}
+        <div class="meta">
+            <span>{{ data.unit }}</span>
+            {% if data.chars|length == 1 %}<span>{{ data.chars[0].name }}</span>{% endif %}
+            <span>{{ data.start }} – {{ data.end[5:] }}</span>
         </div>
     </div>
-    {% endfor %}
-</section>
+    {% if data.chars|length > 1 %}
+    <div class="roster">{% for c in data.chars %}<span style="--cc: {{ c.color }}; --con: {{ c.on_color }}">{{ c.name }}</span>{% endfor %}</div>
+    {% endif %}
+</div>
+{% if data.chars|length > 1 %}
+<div class="strip">{% for c in data.chars %}<i style="background: {{ c.color }}"></i>{% endfor %}</div>
 {% endif %}
+
+<main style="--c: {{ data.color }}; --on: {{ data.on_color }}">
+    {% if data.outline_cn %}
+    <section><h2>简介</h2><p class="text">{{ data.outline_cn }}</p></section>
+    {% endif %}
+
+    {% if data.summary_cn %}
+    <section><h2>剧情总结</h2><p class="text">{{ data.summary_cn }}</p></section>
+    {% endif %}
+
+    {% if data.chapters %}
+    <section>
+        <h2>分章</h2>
+        <ol class="board">
+            {% for ch in data.chapters %}
+            <li class="frame">
+                {% if with_images %}
+                <div class="pic">
+                    <img src="{{ ch.image_url }}" onerror="this.remove()">
+                    <span class="no">第 {{ ch.chapter_no }} 话</span>
+                </div>
+                {% else %}
+                <span class="no solo">第 {{ ch.chapter_no }} 话</span>
+                {% endif %}
+                <h3>{{ ch.title_cn }}</h3>
+                <p>{{ ch.summary_cn }}</p>
+            </li>
+            {% endfor %}
+        </ol>
+    </section>
+    {% endif %}
+</main>
 {% endblock %}

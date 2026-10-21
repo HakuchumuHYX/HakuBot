@@ -6,13 +6,23 @@
 {{ font_css | safe }}
 
 :root {
-    --bg: #15171c;
-    --card: #1e2128;
-    --ink: #eceef2;
-    --sub: #a3a8b4;
-    --muted: #6c7280;
-    --line: #2b2f38;
-    --accent: #6fd3c8;
+{% if dark %}
+    --bg: #1a1c2e;
+    --surface: #24273b;
+    --ink: #eef0f7;
+    --sub: #b6bacd;
+    --muted: #80859c;
+    --line: #31354b;
+    --wm: rgba(255, 255, 255, 0.045);
+{% else %}
+    --bg: #eef1f6;
+    --surface: #ffffff;
+    --ink: #1c2033;
+    --sub: #4a5068;
+    --muted: #868ca3;
+    --line: #e1e5ee;
+    --wm: rgba(28, 32, 51, 0.04);
+{% endif %}
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,20 +32,13 @@ body {
     font-family: Haku, 'Noto Color Emoji', sans-serif;
     color: var(--ink);
     background: var(--bg);
-    padding: 34px 36px 26px;
+    font-variant-numeric: tabular-nums;
 }
 
-/* 防转载水印：铺满全图但压得很淡，不影响阅读 */
 .watermark-overlay { position: absolute; inset: 0; pointer-events: none; }
 
-h1 { font-size: 34px; font-weight: 900; line-height: 1.25; }
-
-.lead { margin-top: 8px; font-size: 16px; color: var(--sub); }
-
-.lead b { color: var(--accent); font-weight: 700; }
-
 footer {
-    margin-top: 22px;
+    padding: 0 36px 26px;
     font-size: 13px;
     line-height: 1.7;
     color: var(--muted);
@@ -54,7 +57,7 @@ footer {
     <defs>
         <pattern id="wm" width="520" height="360" patternUnits="userSpaceOnUse">
             <text x="260" y="180" text-anchor="middle" transform="rotate(-24, 260, 180)"
-                  fill="rgba(255, 255, 255, 0.05)" font-size="22" font-family="Haku" font-weight="700">{{ global_watermark }}</text>
+                  fill="var(--wm)" font-size="22" font-family="Haku" font-weight="700">{{ global_watermark }}</text>
         </pattern>
     </defs>
     <rect width="100%" height="100%" fill="url(#wm)" />

@@ -1,42 +1,72 @@
 {% extends "base.html" %}
 
 {% block style %}
-.list { margin-top: 22px; padding: 4px 24px; border-radius: 18px; background: var(--card); }
+header { padding: 36px 40px 20px; }
 
+h1 { font-size: 34px; font-weight: 900; }
+
+.lead { margin-top: 8px; font-size: 16px; color: var(--sub); }
+
+.lead b { color: var(--ink); font-weight: 700; }
+
+.list { list-style: none; display: grid; gap: 8px; padding: 0 40px 28px; }
+
+/* 每期一张条，左端应援色索引签写 ID，右端放官方活动 logo */
 .row {
     display: grid;
-    grid-template-columns: 76px 1fr auto;
-    align-items: center;
-    gap: 16px;
-    padding: 14px 0;
+    grid-template-columns: 96px 1fr 150px;
+    align-items: stretch;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface);
 }
 
-.row + .row { border-top: 1px solid var(--line); }
+.tab { position: relative; display: grid; place-items: center; background: var(--c); color: var(--on); font-size: 30px; font-weight: 900; }
 
-.id { font-size: 24px; font-weight: 900; color: var(--accent); }
+/* World Link：签底部按章节角色排一条色带 */
+.tab .cast { position: absolute; left: 0; right: 0; bottom: 0; display: flex; height: 8px; }
+
+.tab .cast i { flex: 1; }
+
+.body { min-width: 0; padding: 13px 18px; }
 
 .cn { font-size: 19px; font-weight: 700; }
 
 .jp { margin-top: 2px; font-size: 14px; color: var(--muted); }
 
-.meta { font-size: 15px; color: var(--sub); text-align: right; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 14px; color: var(--sub); }
 
-.meta small { display: block; font-size: 13px; color: var(--muted); }
+.meta .unit { font-weight: 700; color: color-mix(in srgb, var(--u) {{ '55%, white' if dark else '80%, black' }}); }
+
+.logo { display: grid; place-items: center; padding: 8px 14px 8px 0; }
+
+.logo img { width: 136px; height: 68px; object-fit: contain; }
 {% endblock %}
 
 {% block content %}
-<h1>剧情活动</h1>
-<p class="lead">最新 {{ events|length }} 期。发送 <b>剧情总结 活动ID</b> 查看详情</p>
-<div class="list">
-    {% for event in events %}
-    <div class="row">
-        <span class="id">{{ event.event_id }}</span>
-        <div>
-            <div class="cn">{{ event.title_cn }}</div>
-            {% if event.title_jp != event.title_cn %}<div class="jp">{{ event.title_jp }}</div>{% endif %}
+<header>
+    <h1>剧情活动</h1>
+    <p class="lead">最新 {{ events|length }} 期。发送 <b>剧情总结 活动ID</b> 查看详情</p>
+</header>
+<ol class="list">
+    {% for e in events %}
+    <li class="row" style="--c: {{ e.color }}; --on: {{ e.on_color }}; --u: {{ e.unit_color }}">
+        <span class="tab">{{ e.event_id }}
+            {% if e.chars|length > 1 %}<span class="cast">{% for c in e.chars %}<i style="background: {{ c.color }}"></i>{% endfor %}</span>{% endif %}
+        </span>
+        <div class="body">
+            <div class="cn">{{ e.title_cn }}</div>
+            {% if e.title_jp != e.title_cn %}<div class="jp">{{ e.title_jp }}</div>{% endif %}
+            <div class="meta">
+                <span class="unit">{{ e.unit }}</span>
+                {% if e.chars|length == 1 %}<span>{{ e.chars[0].name }}</span>{% endif %}
+                <span>{{ e.type }}</span>
+                <span>{{ e.chapter_count }} 话</span>
+                <span>{{ e.start }}</span>
+            </div>
         </div>
-        <span class="meta">{{ event.chapter_count }} 章{% if event.summary_status != "已收录" %}<small>{{ event.summary_status }}</small>{% endif %}</span>
-    </div>
+        <div class="logo">{% if with_images %}<img src="{{ e.logo }}" onerror="this.remove()">{% endif %}</div>
+    </li>
     {% endfor %}
-</div>
+</ol>
 {% endblock %}
