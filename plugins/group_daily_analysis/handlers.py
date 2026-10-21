@@ -73,7 +73,7 @@ message_sent_recorder = on_type(
         getattr(event, "post_type", None) == "message_sent"
         and getattr(event, "message_type", None) == "group"
     ),
-    priority=10,
+    priority=1,
     block=False,
 )
 

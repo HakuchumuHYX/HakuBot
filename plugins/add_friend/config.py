@@ -42,10 +42,6 @@ GROUP_PATTERNS: List[str] = [
     r"(\d+)",
 ]
 
-# 命令优先级
-FRIEND_REQUEST_PRIORITY = 1
-COMMAND_PRIORITY = 1
-
 # 消息模板
 WELCOME_MESSAGE = "欢迎好友！"
 FRIEND_APPROVED_MESSAGE = "你好！现在我们是好友了。"

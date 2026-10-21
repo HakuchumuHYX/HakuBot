@@ -3,11 +3,13 @@ from utils.json_io import atomic_write_json
 # stickers/manage.py
 import json
 import re
-from typing import Optional, List
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
-from nonebot import logger
-from core.access import is_superuser
+from typing import List
+from nonebot import on_command, logger
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
+from nonebot.params import CommandArg
+from nonebot.permission import SUPERUSER
 
+from utils.onebot.rules import command_boundary
 
 from plugins.stickers import send
 from plugins.stickers.send import (
@@ -21,135 +23,130 @@ from plugins.stickers.send import (
 )
 
 
-async def handle_manage_command(
-    message_text: str, event: GroupMessageEvent
-) -> Optional[str]:
-    """
-    处理管理命令
+reload_matcher = on_command(
+    "重载stickers", rule=command_boundary, permission=SUPERUSER, priority=5, block=True
+)
+delete_matcher = on_command(
+    "删除", rule=command_boundary, permission=SUPERUSER, priority=5, block=True
+)
+new_gallery_matcher = on_command(
+    "新建gallery", rule=command_boundary, permission=SUPERUSER, priority=5, block=True
+)
+add_alias_matcher = on_command(
+    "添加别名", rule=command_boundary, permission=SUPERUSER, priority=5, block=True
+)
+remove_alias_matcher = on_command(
+    "删除别名", rule=command_boundary, permission=SUPERUSER, priority=5, block=True
+)
 
-    返回: 回复消息，如果不是管理命令则返回None
-    """
-    message_text = message_text.strip()
 
-    # 重载列表命令 (su only)
-    if message_text == "重载stickers":
-        if not is_superuser(str(event.user_id)):
-            return "权限不足，只有超级用户才能重载列表"
+@reload_matcher.handle()
+async def handle_reload(event: GroupMessageEvent):
+    await reload_matcher.finish(reload_sticker_list())
 
-        return reload_sticker_list()
 
-    # 匹配 "删除 1024" 或 "删除 1024 4399"
-    delete_match = re.match(r"^删除\s+(.+)$", message_text, re.IGNORECASE)
-    if delete_match:
-        if not is_superuser(str(event.user_id)):
-            return "权限不足，只有超级用户才能删除图片"
+@delete_matcher.handle()
+async def handle_delete(event: GroupMessageEvent, args: Message = CommandArg()):
+    id_list = args.extract_plain_text().split()
+    if not id_list:
+        await delete_matcher.finish("用法：删除 编号 [编号...]")
+    await delete_matcher.finish(delete_stickers(id_list))
 
-        args_str = delete_match.group(1).strip()
-        id_list = args_str.split()
 
-        # 数量限制
-        if len(id_list) > 5:
-            return "为了防止误操作，一次最多只能删除 5 张图片。"
+@new_gallery_matcher.handle()
+async def handle_new_gallery(event: GroupMessageEvent, args: Message = CommandArg()):
+    gallery_name = args.extract_plain_text().strip()
+    if not gallery_name or len(gallery_name.split()) > 1:
+        await new_gallery_matcher.finish("用法：新建gallery 文件夹名")
+    await new_gallery_matcher.finish(create_new_gallery(gallery_name))
 
-        # 动态获取当前最大编号
-        current_max_id = send.current_max_id
-        valid_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 
-        results = []
+@add_alias_matcher.handle()
+async def handle_add_alias(event: GroupMessageEvent, args: Message = CommandArg()):
+    match = re.match(r"^(\S+)\s+to\s+(\S+)$", args.extract_plain_text().strip(), re.I)
+    if not match:
+        await add_alias_matcher.finish("用法：添加别名 别名 to 文件夹")
+    alias, folder_name = match.groups()
+    await add_alias_matcher.finish(
+        await add_alias(alias, folder_name, str(event.user_id))
+    )
 
-        for id_str in id_list:
-            # 1. 基础格式校验
-            if not id_str.isdigit():
-                results.append(f"⚠️ 参数 '{id_str}' 不是合法的数字编号")
+
+@remove_alias_matcher.handle()
+async def handle_remove_alias(event: GroupMessageEvent, args: Message = CommandArg()):
+    match = re.match(r"^(\S+)\s+from\s+(\S+)$", args.extract_plain_text().strip(), re.I)
+    if not match:
+        await remove_alias_matcher.finish("用法：删除别名 别名 from 文件夹")
+    alias, folder_name = match.groups()
+    await remove_alias_matcher.finish(remove_alias(alias, folder_name))
+
+
+def delete_stickers(id_list: List[str]) -> str:
+    """按编号删除图片，返回逐条结果"""
+    # 数量限制
+    if len(id_list) > 5:
+        return "为了防止误操作，一次最多只能删除 5 张图片。"
+
+    # 动态获取当前最大编号
+    current_max_id = send.current_max_id
+    valid_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
+
+    results = []
+
+    for id_str in id_list:
+        # 1. 基础格式校验
+        if not id_str.isdigit():
+            results.append(f"⚠️ 参数 '{id_str}' 不是合法的数字编号")
+            continue
+
+        target_id = int(id_str)
+
+        # 2. 范围校验
+        if target_id <= 0:
+            results.append(f"⚠️ 编号 {target_id} 必须大于 0")
+            continue
+
+        if target_id > current_max_id:
+            results.append(f"⚠️ 找不到编号 {target_id} (当前最大: {current_max_id})")
+            continue
+
+        # 3. 查找并删除
+        found = False
+        for folder_name, folder_path in sticker_folders.items():
+            if not folder_path.exists():
                 continue
 
-            target_id = int(id_str)
+            file_deleted = False
+            for ext in valid_extensions:
+                potential_path = folder_path / f"{target_id}{ext}"
+                potential_path_upper = folder_path / f"{target_id}{ext.upper()}"
 
-            # 2. 范围校验
-            if target_id <= 0:
-                results.append(f"⚠️ 编号 {target_id} 必须大于 0")
-                continue
+                target_file = None
+                if potential_path.exists() and potential_path.is_file():
+                    target_file = potential_path
+                elif potential_path_upper.exists() and potential_path_upper.is_file():
+                    target_file = potential_path_upper
 
-            if target_id > current_max_id:
-                results.append(f"⚠️ 找不到编号 {target_id} (当前最大: {current_max_id})")
-                continue
+                if target_file:
+                    try:
+                        target_file.unlink()  # 删除文件
+                        results.append(
+                            f"✅ 已删除 {target_id} (原位于 '{folder_name}')"
+                        )
+                        file_deleted = True
+                    except Exception as e:
+                        results.append(f"❌ 删除 {target_id} 失败: {e}")
+                        file_deleted = True  # 找到了但操作失败，也算处理过
+                    break
 
-            # 3. 查找并删除
-            found = False
-            for folder_name, folder_path in sticker_folders.items():
-                if not folder_path.exists():
-                    continue
+            if file_deleted:
+                found = True
+                break  # 找到并处理后，停止搜索其他文件夹
 
-                file_deleted = False
-                for ext in valid_extensions:
-                    potential_path = folder_path / f"{target_id}{ext}"
-                    potential_path_upper = folder_path / f"{target_id}{ext.upper()}"
+        if not found:
+            results.append(f"⚠️ 未找到文件 {target_id} (可能已被删除)")
 
-                    target_file = None
-                    if potential_path.exists() and potential_path.is_file():
-                        target_file = potential_path
-                    elif (
-                        potential_path_upper.exists() and potential_path_upper.is_file()
-                    ):
-                        target_file = potential_path_upper
-
-                    if target_file:
-                        try:
-                            target_file.unlink()  # 删除文件
-                            results.append(
-                                f"✅ 已删除 {target_id} (原位于 '{folder_name}')"
-                            )
-                            file_deleted = True
-                        except Exception as e:
-                            results.append(f"❌ 删除 {target_id} 失败: {e}")
-                            file_deleted = True  # 找到了但操作失败，也算处理过
-                        break
-
-                if file_deleted:
-                    found = True
-                    break  # 找到并处理后，停止搜索其他文件夹
-
-            if not found:
-                results.append(f"⚠️ 未找到文件 {target_id} (可能已被删除)")
-
-        return "\n".join(results)
-
-    # 新建Gallery命令
-    new_gallery_match = re.match(
-        r"^sticker 新建gallery\s+(\S+)$", message_text, re.IGNORECASE
-    )
-    if new_gallery_match:
-        if not is_superuser(str(event.user_id)):
-            return "权限不足，只有超级用户才能新建gallery"
-
-        gallery_name = new_gallery_match.group(1).strip()
-        return create_new_gallery(gallery_name)
-
-    # 添加别名命令
-    add_alias_match = re.match(
-        r"^添加别名\s+(\S+)\s+to\s+(\S+)$", message_text, re.IGNORECASE
-    )
-    if add_alias_match:
-        if not is_superuser(str(event.user_id)):
-            return "权限不足，只有超级用户才能添加别名"
-
-        alias = add_alias_match.group(1).strip()
-        folder_name = add_alias_match.group(2).strip()
-        return await add_alias(alias, folder_name, str(event.user_id))
-
-    # 删除别名命令
-    remove_alias_match = re.match(
-        r"^删除别名\s+(\S+)\s+from\s+(\S+)$", message_text, re.IGNORECASE
-    )
-    if remove_alias_match:
-        if not is_superuser(str(event.user_id)):
-            return "权限不足，只有超级用户才能删除别名"
-
-        alias = remove_alias_match.group(1).strip()
-        folder_name = remove_alias_match.group(2).strip()
-        return remove_alias(alias, folder_name)
-
-    return None
+    return "\n".join(results)
 
 
 def reload_sticker_list() -> str:
@@ -341,38 +338,3 @@ def remove_alias(alias: str, folder_name: str) -> str:
 
     except Exception as e:
         return f"删除别名失败: {e}"
-
-
-def get_folder_aliases(folder_name: str) -> List[str]:
-    """
-    获取指定文件夹的所有别名
-
-    返回: 别名列表
-    """
-    for folder_config in folder_configs:
-        if folder_config["name"] == folder_name:
-            return folder_config.get("aliases", [])
-    return []
-
-
-def get_all_aliases_info() -> str:
-    """
-    获取所有别名的信息（用于调试）
-
-    返回: 格式化的别名信息
-    """
-    if not folder_configs:
-        return "当前没有配置任何文件夹"
-
-    lines = ["当前别名配置："]
-
-    for folder_config in folder_configs:
-        folder_name = folder_config["name"]
-        aliases = folder_config.get("aliases", [])
-
-        if aliases:
-            lines.append(f"{folder_name}: {', '.join(aliases)}")
-        else:
-            lines.append(f"{folder_name}: 无别名")
-
-    return "\n".join(lines)

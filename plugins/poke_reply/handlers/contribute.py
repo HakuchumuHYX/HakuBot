@@ -4,7 +4,6 @@ from nonebot.rule import Rule, to_me
 from nonebot.params import CommandArg
 from nonebot.exception import FinishedException
 
-from plugins.poke_reply.config import CONTRIBUTE_COMMAND_PRIORITY
 from plugins.poke_reply.models.cache import message_cache, text_image_cache
 from plugins.poke_reply.utils.common import (
     get_group_id,
@@ -20,6 +19,7 @@ from plugins.poke_reply.services.contribute import (
 from core.access import is_feature_enabled
 from core.cooldown import check_cd, update_cd
 from utils.onebot.forward import send_forward_msg
+from utils.onebot.rules import command_boundary
 
 
 # --- 注册匹配器 ---
@@ -32,12 +32,8 @@ async def _convert_to_text_rule(event: MessageEvent) -> bool:
 
 
 contribute = on_command(
-    "投稿",
-    rule=ensure_at_me() & to_me(),
-    priority=CONTRIBUTE_COMMAND_PRIORITY,
-    block=True,
+    "投稿", rule=ensure_at_me() & to_me() & command_boundary, priority=5, block=True
 )
-mention_handler = on_message(rule=to_me(), priority=15, block=False)
 convert_to_text = on_message(
     rule=to_me() & Rule(_convert_to_text_rule), priority=10, block=True
 )
@@ -133,43 +129,6 @@ async def process_image_contribution(
         )
     else:
         await contribute.finish(message)
-
-
-# --- 提及缓存 ---
-
-
-@mention_handler.handle()
-async def handle_mention_message(bot: Bot, event: GroupMessageEvent):
-    try:
-        group_id = event.group_id
-        message_id = event.message_id
-        message_text = event.get_plaintext().strip()
-        if message_text and len(message_text) > 0:
-            is_command = any(
-                cmd in message_text
-                for cmd in [
-                    "投稿",
-                    "申请删除",
-                    "查看文本数",
-                    "查看投稿统计",
-                    "启用文本转图片",
-                    "禁用文本转图片",
-                    "文本转图片状态",
-                    "设置文本阈值",
-                    "处理删除",
-                    "查看删除申请",
-                    "转文字",
-                ]
-            )
-            if not is_command:
-                message_cache.add_message(
-                    group_id=group_id,
-                    message_id=message_id,
-                    content=message_text,
-                    message_type="mention_text",
-                )
-    except Exception as e:
-        logger.exception(f"处理提及消息缓存时出错: {e}")
 
 
 # --- 转文字 ---

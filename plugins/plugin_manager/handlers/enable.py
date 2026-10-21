@@ -23,19 +23,19 @@ from core.access import (
 
 WATERMARK_CONFIG_FILE = PluginPaths("plugin_manager").data / "watermark_config.json"
 
-enable_plugin = on_command("启用", permission=SUPERUSER, priority=1, block=True)
+enable_plugin = on_command("启用", permission=SUPERUSER, priority=5, block=True)
 
-disable_plugin = on_command("禁用", permission=SUPERUSER, priority=1, block=True)
+disable_plugin = on_command("禁用", permission=SUPERUSER, priority=5, block=True)
 
-list_plugins = on_command("插件开关状态", permission=SUPERUSER, priority=1, block=True)
+list_plugins = on_command("插件开关状态", permission=SUPERUSER, priority=5, block=True)
 
-enable_all = on_command("启用all", permission=SUPERUSER, priority=1, block=True)
+enable_all = on_command("启用all", permission=SUPERUSER, priority=5, block=True)
 
-disable_all = on_command("禁用all", permission=SUPERUSER, priority=1, block=True)
+disable_all = on_command("禁用all", permission=SUPERUSER, priority=5, block=True)
 
-enable_feature = on_command("启用功能", permission=SUPERUSER, priority=1, block=True)
+enable_feature = on_command("启用功能", permission=SUPERUSER, priority=5, block=True)
 
-disable_feature = on_command("禁用功能", permission=SUPERUSER, priority=1, block=True)
+disable_feature = on_command("禁用功能", permission=SUPERUSER, priority=5, block=True)
 
 
 @enable_plugin.handle()

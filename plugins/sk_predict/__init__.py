@@ -11,6 +11,7 @@ from nonebot.params import CommandArg
 
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 from plugins.sk_predict.service import (
     get_cache_file,
     is_cache_valid,
@@ -21,8 +22,8 @@ from plugins.sk_predict.service import (
 from plugins.sk_predict import scheduler as _scheduler  # noqa: F401
 
 
-cn_shot_cmd = on_command("cnsk预测", priority=5, block=True)
-jp_shot_cmd = on_command("sk预测", priority=5, block=True)
+cn_shot_cmd = on_command("cnsk预测", rule=command_boundary, priority=5, block=True)
+jp_shot_cmd = on_command("sk预测", rule=command_boundary, priority=5, block=True)
 
 
 async def handle_predict_command(

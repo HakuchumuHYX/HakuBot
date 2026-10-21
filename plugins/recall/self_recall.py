@@ -1,23 +1,24 @@
 from nonebot import on_message, logger
-from nonebot.adapters import Event
-from nonebot.rule import to_me
+from nonebot.rule import Rule, to_me
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent
 from core.access import is_feature_enabled
 from utils.logging import get_exc_desc
 
-recall = on_message(rule=to_me(), priority=10)
+
+async def _is_recall_request(bot: Bot, event: MessageEvent) -> bool:
+    # 只放行「回复 bot 的消息并说撤回」：rule 太宽会挡住所有 @bot 消息和私聊
+    if event.get_plaintext().strip() != "撤回" or event.reply is None:
+        return False
+    # 校验被回复的消息是否为机器人自己发送的，防止撤回他人消息
+    reply_sender_id = event.reply.sender.user_id
+    return reply_sender_id is not None and str(reply_sender_id) == bot.self_id
+
+
+recall = on_message(rule=to_me() & Rule(_is_recall_request), priority=10, block=True)
 
 
 @recall.handle()
-async def handle_recall(bot: Bot, event: Event):
-    # 检查消息内容是否为"撤回"
-    if event.get_plaintext().strip() != "撤回":
-        return
-
-    # 获取原始事件
-    if not isinstance(event, MessageEvent):
-        return
-
+async def handle_recall(bot: Bot, event: MessageEvent):
     # 获取群号和用户ID
     group_id = str(getattr(event, "group_id", "0"))
     user_id = str(event.user_id)
@@ -25,18 +26,6 @@ async def handle_recall(bot: Bot, event: Event):
     # 检查开关
     if not is_feature_enabled("recall", "self_recall", group_id, user_id):
         # 如果未开启该功能，不响应
-        return
-
-    # 检查是否是回复消息
-    if not hasattr(event, "reply") or event.reply is None:
-        await recall.finish()
-        return
-
-    # 校验被回复的消息是否为机器人自己发送的，防止撤回他人消息
-    reply_sender = getattr(event.reply, "sender", None)
-    reply_sender_id = getattr(reply_sender, "user_id", None)
-    if reply_sender_id is None or str(reply_sender_id) != str(bot.self_id):
-        await recall.finish()
         return
 
     # 获取被回复的消息ID（即机器人发送的消息）

@@ -13,7 +13,7 @@ import time
 from typing import Dict, Optional, Set, Tuple
 
 from nonebot import on_command, on_message, get_driver, logger
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent, MessageSegment
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from PIL import Image
@@ -34,6 +34,7 @@ from utils.network.http import download_image
 from utils.images.formats import image_to_bytes
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 
 PLUGIN_ID = "pjsk_guess_card"
 
@@ -91,7 +92,9 @@ async def _prepare_random_card_image(
 
 # ==================== 猜卡面游戏主命令 ==================== #
 
-guess_card_cmd = on_command("pjsk猜卡面", priority=5, block=True)
+guess_card_cmd = on_command(
+    "pjsk猜卡面", rule=command_boundary, permission=GROUP, priority=5, block=True
+)
 
 
 @guess_card_cmd.handle()
@@ -248,7 +251,7 @@ async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher
 
 # ==================== 消息监听（将消息放入队列） ==================== #
 
-answer_listener = on_message(priority=6, block=False)
+answer_listener = on_message(priority=3, block=False)
 
 
 @answer_listener.handle()

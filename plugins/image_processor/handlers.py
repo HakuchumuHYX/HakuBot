@@ -10,6 +10,7 @@ from core.cooldown import check_cd, update_cd
 from utils.files import safe_delete_file
 from utils.onebot.media import image_segment
 from utils.onebot.messages import reply_image_segments
+from utils.onebot.rules import command_boundary
 from plugins.image_processor.gif_reverse import reverse_gif
 from plugins.image_processor.gif_speed import change_gif_speed
 from plugins.image_processor.image_cutout import remove_background
@@ -23,7 +24,7 @@ VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".webm", ".mkv", ".flv", ".wmv")
 
 
 def _command(name: str):
-    return on_command(name, rule=to_me(), priority=5, block=True)
+    return on_command(name, rule=to_me() & command_boundary, priority=5, block=True)
 
 
 gif_speed_handler = _command("imgx")

@@ -12,13 +12,18 @@ from nonebot.exception import FinishedException
 from plugins.poke_reply.models.data import data_manager
 from plugins.poke_reply.services import image as image_service
 from plugins.poke_reply.config import TEXT_FILES_DIR
+from utils.onebot.rules import command_boundary
 
 # --- 统计命令 ---
-view_text_count = on_command("查看投稿数", rule=to_me(), priority=5, block=True)
+view_text_count = on_command(
+    "查看投稿数", rule=to_me() & command_boundary, priority=5, block=True
+)
 view_all_text_count = on_command(
     "查看所有投稿数", permission=SUPERUSER, rule=to_me(), priority=5, block=True
 )
-view_content_stats = on_command("查看投稿统计", rule=to_me(), priority=5, block=True)
+view_content_stats = on_command(
+    "查看投稿统计", rule=to_me() & command_boundary, priority=5, block=True
+)
 clear_duplicates = on_command(
     "清除投稿重复", permission=SUPERUSER, rule=to_me(), priority=5, block=True
 )

@@ -10,10 +10,10 @@ from nonebot.params import CommandArg
 from typing import List
 import time
 from core.access import is_plugin_enabled
-from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.rules import command_boundary
 
 jrrp = on_command(
-    "jrrp", permission=GROUP, priority=10, rule=create_exact_command_rule("jrrp")
+    "jrrp", rule=command_boundary, permission=GROUP, priority=5, block=True
 )
 message: List[dict] = [
     {

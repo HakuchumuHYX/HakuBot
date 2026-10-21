@@ -6,7 +6,6 @@ CONFIG_FILE = PluginPaths("plus_one").config / "config.json"
 
 
 class Config(ConfigModel):
-    plus_one_priority: int
     plus_one_black_list: list[str]
     blocked_words: set[str]
 

@@ -30,6 +30,7 @@ from plugins.buaa_msm.exceptions import DataLoadError
 from plugins.buaa_msm.services.ingest_service import ingest_bin, reserve_storage_path
 from plugins.buaa_msm.services.msr_service import run_msr
 from plugins.buaa_msm.services.processing_guard import is_processing, set_processing
+from utils.onebot.rules import command_boundary
 
 # 等待文件上传的用户字典：{user_id: entered_at_epoch_seconds}
 waiting_for_file: Dict[str, float] = {}
@@ -51,7 +52,7 @@ def _cleanup_expired_waiting(now: float | None = None) -> None:
 # ============== 上传命令 ==============
 
 # 同一命令只注册一个 matcher，私聊/群聊由按事件类型分流的 handler 处理（避免 Duplicated prefix rule 警告）
-upload_cmd = on_command("buaa上传文件", priority=5, block=True)
+upload_cmd = on_command("buaa上传文件", rule=command_boundary, priority=5, block=True)
 
 
 @upload_cmd.handle()
@@ -207,7 +208,10 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent | GroupMessag
 # ============== 取消命令 ==============
 
 cancel_cmd = on_command(
-    "取消", rule=is_type(PrivateMessageEvent), priority=5, block=True
+    "取消",
+    rule=is_type(PrivateMessageEvent) & command_boundary,
+    priority=5,
+    block=True,
 )
 
 

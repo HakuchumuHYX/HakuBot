@@ -1,6 +1,6 @@
 from core.lifecycle import on_plugin_startup, on_plugin_shutdown
 from nonebot import get_driver, on_command, logger, require
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
+from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Bot
 from typing import Optional
 
 require("nonebot_plugin_apscheduler")
@@ -10,17 +10,19 @@ from nonebot_plugin_apscheduler import scheduler
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
 from utils.onebot.forward import ForwardItem, send_forward_msg
-from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.rules import command_boundary
 from plugins.identify.data_manager import daily_record_manager
 from nonebot.exception import FinishedException
 
 # 注册命令处理器 - 鉴定自己
 identify = on_command(
-    "鉴定", priority=5, block=True, rule=create_exact_command_rule("鉴定")
+    "鉴定", rule=command_boundary, permission=GROUP, priority=5, block=True
 )
 
 # 注册命令处理器 - 鉴定别人
-identify_other = on_command("鉴定你", priority=4, block=True)
+identify_other = on_command(
+    "鉴定你", rule=command_boundary, permission=GROUP, priority=5, block=True
+)
 
 
 async def create_identify_message(

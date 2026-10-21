@@ -19,9 +19,10 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 from nonebot.params import CommandArg
+from nonebot.permission import SUPERUSER
 
-from core.access import is_superuser
 from plugins.buaa_msm.config import plugin_config, with_site_link
+from utils.onebot.rules import command_boundary
 
 
 class BindManager:
@@ -118,7 +119,7 @@ bind_manager = BindManager()
 # 注意：同一命令只注册一个 matcher（不区分私聊/群聊 rule），
 # 私聊/群聊行为由下方两个按事件类型分流的 handler 决定；
 # 若注册两个同名 matcher，NoneBot 启动时会报 Duplicated prefix rule 警告。
-bind_cmd = on_command("buaa绑定", priority=5, block=True)
+bind_cmd = on_command("buaa绑定", rule=command_boundary, priority=5, block=True)
 
 
 @bind_cmd.handle()
@@ -149,7 +150,7 @@ async def handle_bind_command(
         await bind_cmd.finish("绑定失败，数据保存出错，请稍后重试")
 
 
-query_bind = on_command("buaa查询绑定", priority=5, block=True)
+query_bind = on_command("buaa查询绑定", rule=command_boundary, priority=5, block=True)
 
 
 @query_bind.handle()
@@ -165,7 +166,7 @@ async def handle_query_command(bot: Bot, event: PrivateMessageEvent):
         await query_bind.finish("您尚未绑定任何内容")
 
 
-unbind_cmd = on_command("buaa解除绑定", priority=5, block=True)
+unbind_cmd = on_command("buaa解除绑定", rule=command_boundary, priority=5, block=True)
 
 
 @unbind_cmd.handle()
@@ -183,15 +184,13 @@ async def handle_unbind_command(bot: Bot, event: PrivateMessageEvent):
         await unbind_cmd.finish("解除绑定失败，数据保存出错")
 
 
-view_all_binds = on_command("buaa查看所有绑定", priority=10, block=True)
+view_all_binds = on_command(
+    "buaa查看所有绑定", permission=SUPERUSER, priority=5, block=True
+)
 
 
 @view_all_binds.handle()
 async def handle_view_all_command(bot: Bot, event: PrivateMessageEvent):
-    if not is_superuser(str(event.user_id)):
-        await view_all_binds.finish("权限不足，仅超级用户可使用此命令")
-        return
-
     all_binds = bind_manager.get_all()
     if not all_binds:
         await view_all_binds.finish("当前没有任何绑定记录")

@@ -7,7 +7,13 @@ from typing import List, Tuple
 from contextlib import ExitStack
 
 from nonebot import on_command, logger
-from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot
+from nonebot.adapters.onebot.v11 import (
+    GROUP,
+    Message,
+    MessageSegment,
+    GroupMessageEvent,
+    Bot,
+)
 from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
 
@@ -18,6 +24,7 @@ from utils.logging import get_exc_desc
 from utils.text import truncate
 from utils.files import TemporaryPath
 from utils.onebot.forward import send_forward_msg
+from utils.onebot.rules import command_boundary
 from utils.network.http import (
     DownloadTooLarge,
     download_bytes,
@@ -108,7 +115,14 @@ class ArgumentParser(argparse.ArgumentParser):
         raise ReplyException(message)
 
 
-ximg = on_command("ximg", aliases={"x img", "tw img", "推图"}, priority=5, block=True)
+ximg = on_command(
+    "ximg",
+    aliases={"x img", "tw img", "推图"},
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
+    block=True,
+)
 
 
 @ximg.handle()

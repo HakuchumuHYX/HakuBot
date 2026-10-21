@@ -1,4 +1,4 @@
-"""HLTV 群命令、权限检查与回复。"""
+"""HLTV 群命令与回复。"""
 
 from __future__ import annotations
 
@@ -8,12 +8,20 @@ from datetime import date, datetime, timedelta
 import pytz
 
 from nonebot import on_command, logger
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
+from nonebot.adapters.onebot.v11 import (
+    GROUP,
+    GROUP_ADMIN,
+    GROUP_OWNER,
+    Bot,
+    GroupMessageEvent,
+    Message,
+)
 from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
+from nonebot.permission import SUPERUSER
 
-from core.access import is_superuser
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 from plugins.hltv_sub.client import HLTVFetchError, hltv_client
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.data_manager import EventSubscription, data_manager
@@ -38,24 +46,15 @@ def _may_have_matches(sub: EventSubscription) -> bool:
     return date.fromisoformat(sub.end_date) >= (now - timedelta(hours=12)).date()
 
 
-async def check_permission(bot: Bot, group_id: int, user_id: int) -> bool:
-    """检查权限：群主、管理员或超级用户"""
-    if is_superuser(str(user_id)):
-        return True
-
-    try:
-        member_info = await bot.get_group_member_info(
-            group_id=group_id, user_id=user_id
-        )
-        return member_info.get("role") in ("owner", "admin")
-    except Exception:
-        return False
-
-
 # 赛事管理
 # event列表命令
 event_list = on_command(
-    "event列表", aliases={"赛事列表", "events"}, priority=5, block=True
+    "event列表",
+    aliases={"赛事列表", "events"},
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
@@ -92,7 +91,12 @@ async def handle_event_list(bot: Bot, event: GroupMessageEvent):
 
 # event订阅命令
 event_subscribe = on_command(
-    "event订阅", aliases={"订阅赛事", "subscribe"}, priority=5, block=True
+    "event订阅",
+    aliases={"订阅赛事", "subscribe"},
+    rule=command_boundary,
+    permission=GROUP_ADMIN | GROUP_OWNER | SUPERUSER,
+    priority=5,
+    block=True,
 )
 
 
@@ -101,13 +105,8 @@ async def handle_event_subscribe(
     bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()
 ):
     group_id = event.group_id
-    user_id = event.user_id
 
     if not data_manager.is_enabled(group_id):
-        return
-
-    if not await check_permission(bot, group_id, user_id):
-        await event_subscribe.finish("❌ 只有群主或管理员可以订阅赛事")
         return
 
     event_id = args.extract_plain_text().strip()
@@ -175,7 +174,12 @@ async def handle_event_subscribe(
 
 # event取消订阅命令
 event_unsubscribe = on_command(
-    "event取消订阅", aliases={"取消订阅赛事", "unsubscribe"}, priority=5, block=True
+    "event取消订阅",
+    aliases={"取消订阅赛事", "unsubscribe"},
+    rule=command_boundary,
+    permission=GROUP_ADMIN | GROUP_OWNER | SUPERUSER,
+    priority=5,
+    block=True,
 )
 
 
@@ -184,13 +188,8 @@ async def handle_event_unsubscribe(
     bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()
 ):
     group_id = event.group_id
-    user_id = event.user_id
 
     if not data_manager.is_enabled(group_id):
-        return
-
-    if not await check_permission(bot, group_id, user_id):
-        await event_unsubscribe.finish("❌ 只有群主或管理员可以取消订阅")
         return
 
     event_id = args.extract_plain_text().strip()
@@ -213,7 +212,12 @@ async def handle_event_unsubscribe(
 
 # 我的订阅命令
 my_subscriptions = on_command(
-    "我的订阅", aliases={"订阅列表", "mysub"}, priority=5, block=True
+    "我的订阅",
+    aliases={"订阅列表", "mysub"},
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
@@ -242,7 +246,12 @@ async def handle_my_subscriptions(bot: Bot, event: GroupMessageEvent):
 
 # 比赛列表
 matches_list = on_command(
-    "matches列表", aliases={"比赛列表", "matches"}, priority=5, block=True
+    "matches列表",
+    aliases={"比赛列表", "matches"},
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
@@ -305,7 +314,12 @@ async def handle_matches_list(bot: Bot, event: GroupMessageEvent):
 
 # 比赛结果
 results_list = on_command(
-    "results列表", aliases={"结果列表", "results"}, priority=5, block=True
+    "results列表",
+    aliases={"结果列表", "results"},
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
@@ -355,7 +369,9 @@ async def handle_results_list(bot: Bot, event: GroupMessageEvent):
 
 
 # 比赛数据
-stats_cmd = on_command("stats", priority=5, block=True)
+stats_cmd = on_command(
+    "stats", rule=command_boundary, permission=GROUP, priority=5, block=True
+)
 
 
 @stats_cmd.handle()
@@ -426,6 +442,8 @@ async def handle_stats(
 hltv_toggle = on_command(
     "hltv开启",
     aliases={"hltv关闭", "hltv启用", "hltv禁用"},
+    rule=command_boundary,
+    permission=GROUP_ADMIN | GROUP_OWNER | SUPERUSER,
     priority=5,
     block=True,
 )
@@ -434,12 +452,6 @@ hltv_toggle = on_command(
 @hltv_toggle.handle()
 async def handle_hltv_toggle(bot: Bot, event: GroupMessageEvent):
     group_id = event.group_id
-    user_id = event.user_id
-
-    if not await check_permission(bot, group_id, user_id):
-        await hltv_toggle.finish("❌ 需要管理员权限")
-        return
-
     raw_cmd = event.get_plaintext().strip()
 
     enabled = "开启" in raw_cmd or "启用" in raw_cmd
@@ -456,16 +468,11 @@ async def handle_hltv_toggle(bot: Bot, event: GroupMessageEvent):
 
 
 # 超级用户调试
-hltv_check = on_command("hltv_check", priority=1, block=True)
+hltv_check = on_command("hltv_check", permission=SUPERUSER, priority=5, block=True)
 
 
 @hltv_check.handle()
 async def handle_hltv_check(bot: Bot, event: GroupMessageEvent):
-    user_id = str(event.user_id)
-
-    if not is_superuser(user_id):
-        return
-
     await hltv_check.send("正在检查即将开始的比赛...")
 
     try:
@@ -513,16 +520,11 @@ async def handle_hltv_check(bot: Bot, event: GroupMessageEvent):
         await hltv_check.finish(f"检查失败: {e}")
 
 
-hltv_trigger = on_command("hltv_trigger", priority=1, block=True)
+hltv_trigger = on_command("hltv_trigger", permission=SUPERUSER, priority=5, block=True)
 
 
 @hltv_trigger.handle()
 async def handle_hltv_trigger(bot: Bot, event: GroupMessageEvent):
-    user_id = str(event.user_id)
-
-    if not is_superuser(user_id):
-        return
-
     await hltv_trigger.send("正在手动执行定时任务检查...")
 
     try:

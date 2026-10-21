@@ -8,17 +8,17 @@ from plugins.plus_one.config import config, reload_from_file, save_config
 from utils.logging import get_exc_desc
 
 # 配置管理命令
-reload_config = on_command("重载复读配置", permission=SUPERUSER, priority=1, block=True)
-view_config = on_command("查看复读配置", permission=SUPERUSER, priority=1, block=True)
+reload_config = on_command("重载复读配置", permission=SUPERUSER, priority=5, block=True)
+view_config = on_command("查看复读配置", permission=SUPERUSER, priority=5, block=True)
 add_blocked_word = on_command(
-    "添加屏蔽词", permission=SUPERUSER, priority=1, block=True
+    "添加屏蔽词", permission=SUPERUSER, priority=5, block=True
 )
 remove_blocked_word = on_command(
-    "移除屏蔽词", permission=SUPERUSER, priority=1, block=True
+    "移除屏蔽词", permission=SUPERUSER, priority=5, block=True
 )
-add_black_list = on_command("添加黑名单", permission=SUPERUSER, priority=1, block=True)
+add_black_list = on_command("添加黑名单", permission=SUPERUSER, priority=5, block=True)
 remove_black_list = on_command(
-    "移除黑名单", permission=SUPERUSER, priority=1, block=True
+    "移除黑名单", permission=SUPERUSER, priority=5, block=True
 )
 
 
@@ -37,7 +37,6 @@ async def reload_config_handler(matcher: Matcher):
 async def view_config_handler(matcher: Matcher):
     """查看当前配置"""
     message = "当前复读姬插件配置:\n\n"
-    message += f"响应优先级: {config.plus_one_priority}\n"
     message += f"黑名单群组: {config.plus_one_black_list}\n"
     message += f"屏蔽词数量: {len(config.blocked_words)}\n"
     message += f"屏蔽词列表: {', '.join(sorted(config.blocked_words))}"

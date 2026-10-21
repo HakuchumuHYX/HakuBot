@@ -7,7 +7,6 @@ from nonebot.permission import SUPERUSER
 from utils.logging import get_exc_desc
 
 from plugins.add_friend.config import (
-    COMMAND_PRIORITY,
     FRIEND_APPROVED_MESSAGE,
     AUTO_APPROVE_GROUPS,
     save_auto_approve_groups,
@@ -15,21 +14,13 @@ from plugins.add_friend.config import (
 from plugins.add_friend.data_manager import request_manager
 
 # SUPERUSER 处理好友请求的命令
-approve_friend = on_command(
-    "同意好友", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
-)
-reject_friend = on_command(
-    "拒绝好友", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
-)
+approve_friend = on_command("同意好友", permission=SUPERUSER, priority=5, block=True)
+reject_friend = on_command("拒绝好友", permission=SUPERUSER, priority=5, block=True)
 # 配置管理命令
-list_groups = on_command(
-    "查看白名单群组", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
-)
-add_group = on_command(
-    "添加白名单群组", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
-)
+list_groups = on_command("查看白名单群组", permission=SUPERUSER, priority=5, block=True)
+add_group = on_command("添加白名单群组", permission=SUPERUSER, priority=5, block=True)
 remove_group = on_command(
-    "移除白名单群组", permission=SUPERUSER, priority=COMMAND_PRIORITY, block=True
+    "移除白名单群组", permission=SUPERUSER, priority=5, block=True
 )
 
 

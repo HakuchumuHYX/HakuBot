@@ -84,16 +84,16 @@ pattern = (
 analysis_bili = on_regex(
     pattern,
     rule=is_normal,
+    priority=10,
     block=False,
-    priority=11,
 )
 
 if use_on_message:
-    analysis_bili = on_message(rule=is_normal, block=False, priority=11)
+    analysis_bili = on_message(rule=is_normal, priority=10, block=False)
 
 
 rule = Rule(is_enable_search, is_normal)
-search_bili = on_regex(r"^搜视频.*", rule=rule)
+search_bili = on_regex(r"^搜视频.*", rule=rule, priority=5, block=True)
 
 
 def is_image(msg: str) -> bool:

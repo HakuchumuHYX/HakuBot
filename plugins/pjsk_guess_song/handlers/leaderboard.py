@@ -8,6 +8,7 @@ from nonebot import on_command, logger
 from nonebot.matcher import Matcher
 from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import (
+    GROUP,
     MessageEvent,
     Bot,
     GroupMessageEvent,
@@ -15,15 +16,16 @@ from nonebot.adapters.onebot.v11 import (
 
 from plugins.pjsk_guess_song.runtime import db_service, image_service
 from core.access import is_plugin_enabled
-from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment
 
 leaderboard_handler = on_command(
     "群聊猜歌排行",
     aliases={"猜歌排行", "pjsk排行"},
-    priority=10,
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
     block=True,
-    rule=create_exact_command_rule("群聊猜歌排行", {"猜歌排行", "pjsk排行"}),
 )
 
 

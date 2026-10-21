@@ -2,6 +2,7 @@ from utils.json_io import atomic_write_json
 from utils.paths import PluginPaths
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
+    GROUP,
     Bot,
     Event,
     GroupMessageEvent,
@@ -24,7 +25,7 @@ from typing import Dict, Any, Optional
 
 # 导入管理模块
 from core.access import is_plugin_enabled
-from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment
 
 # --- 配置 ---
@@ -122,7 +123,9 @@ async def get_or_render_image(sign_index: int, force_refresh: bool = False) -> b
 
 # --- 响应处理器 ---
 
-command = on_command("抽签", priority=6, rule=create_exact_command_rule("抽签"))
+command = on_command(
+    "抽签", rule=command_boundary, permission=GROUP, priority=5, block=True
+)
 
 
 @command.handle()
@@ -179,7 +182,7 @@ async def lq_(bot: Bot, event: MessageEvent):
 
 # --- 缓存管理命令 ---
 
-gen_cache_cmd = on_command("刷新签文缓存", permission=SUPERUSER, priority=1, block=True)
+gen_cache_cmd = on_command("刷新签文缓存", permission=SUPERUSER, priority=5, block=True)
 
 
 @gen_cache_cmd.handle()

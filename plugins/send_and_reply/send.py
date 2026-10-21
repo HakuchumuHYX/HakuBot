@@ -10,6 +10,7 @@ from nonebot.params import CommandArg
 from nonebot.rule import to_me
 
 from utils.logging import get_exc_desc
+from utils.onebot.rules import command_boundary
 
 # 导入共享上下文
 from plugins.send_and_reply.content import message_context, prune_message_context
@@ -21,7 +22,9 @@ from core.access import (
 superusers = get_driver().config.superusers
 
 # 创建命令处理器，需要@机器人触发
-send_to_superuser = on_command("send", rule=to_me(), priority=10, block=True)
+send_to_superuser = on_command(
+    "send", rule=to_me() & command_boundary, priority=5, block=True
+)
 
 
 async def get_user_info(bot: Bot, user_id: str) -> str:

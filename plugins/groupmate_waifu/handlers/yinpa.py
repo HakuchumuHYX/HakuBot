@@ -8,7 +8,8 @@ import random
 
 from nonebot.plugin.on import on_command, on_message
 from nonebot.typing import T_State
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent
+from nonebot.rule import Rule
 
 # 本地模块导入
 from plugins.groupmate_waifu import service
@@ -27,7 +28,7 @@ from plugins.groupmate_waifu.rules import (
 )
 
 # 外部模块导入
-from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.rules import command_boundary
 from utils.onebot.forward import send_forward_msg
 
 
@@ -138,11 +139,10 @@ async def handle_yinpa(bot: Bot, event: GroupMessageEvent, state: T_State):
 yinpa_list = on_command(
     "涩涩记录",
     aliases={"色色记录"},
-    priority=10,
+    rule=Rule(command_boundary, check_plugin_enabled),
+    permission=GROUP,
+    priority=5,
     block=True,
-    rule=create_exact_command_rule(
-        "涩涩记录", {"色色记录"}, extra_rule=check_plugin_enabled
-    ),
 )
 
 

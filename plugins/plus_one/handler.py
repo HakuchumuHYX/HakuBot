@@ -9,7 +9,7 @@ from plugins.plus_one.config import config
 from core.access import is_plugin_enabled
 from utils.logging import get_exc_desc
 
-plus = on_message(rule=regex(""), priority=config.plus_one_priority, block=False)
+plus = on_message(rule=regex(""), priority=1, block=False)
 msg_dict = {}
 
 

@@ -1,21 +1,29 @@
 """Protection-list matchers for marry/yinpa opt-out behavior."""
 
-from nonebot.adapters.onebot.v11 import GROUP_ADMIN, GROUP_OWNER, Bot, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import (
+    GROUP,
+    GROUP_ADMIN,
+    GROUP_OWNER,
+    Bot,
+    GroupMessageEvent,
+)
 from nonebot.permission import SUPERUSER
 from nonebot.plugin.on import on_command
+from nonebot.rule import Rule
 
 from plugins.groupmate_waifu import service
 from plugins.groupmate_waifu.render import render_protect_list
 from plugins.groupmate_waifu.rules import check_plugin_enabled
 from utils.onebot.messages import mentioned_users
-from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.rules import command_boundary
 
 
 protect = on_command(
     "娶群友保护",
-    priority=10,
+    rule=Rule(command_boundary, check_plugin_enabled),
+    permission=GROUP,
+    priority=5,
     block=True,
-    rule=create_exact_command_rule("娶群友保护", extra_rule=check_plugin_enabled),
 )
 
 
@@ -48,9 +56,10 @@ async def handle_protect(bot: Bot, event: GroupMessageEvent):
 
 unprotect = on_command(
     "解除娶群友保护",
-    priority=10,
+    rule=Rule(command_boundary, check_plugin_enabled),
+    permission=GROUP,
+    priority=5,
     block=True,
-    rule=create_exact_command_rule("解除娶群友保护", extra_rule=check_plugin_enabled),
 )
 
 
@@ -90,9 +99,10 @@ async def handle_unprotect(bot: Bot, event: GroupMessageEvent):
 
 show_protect = on_command(
     "查看保护名单",
-    priority=10,
+    rule=Rule(command_boundary, check_plugin_enabled),
+    permission=GROUP,
+    priority=5,
     block=True,
-    rule=create_exact_command_rule("查看保护名单", extra_rule=check_plugin_enabled),
 )
 
 

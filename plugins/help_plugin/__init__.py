@@ -1,12 +1,20 @@
 from nonebot import on_command, logger
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent
 from nonebot.matcher import Matcher
 
 from core.settings import load_config
 from plugins.help_plugin.config import HelpConfig
 from core.access import is_plugin_enabled
+from utils.onebot.rules import command_boundary
 
-help_cmd = on_command("help", aliases={"帮助", "菜单"}, priority=5, block=True)
+help_cmd = on_command(
+    "help",
+    aliases={"帮助", "菜单"},
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
+    block=True,
+)
 
 
 @help_cmd.handle()

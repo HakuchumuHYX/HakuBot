@@ -20,5 +20,3 @@ DEFAULT_THRESHOLD_TEXT = "今天大家聊得不是很多呢……但是没问题
 
 # 其他配置项
 TOP_N_USERS = 5  # 显示前N名用户
-MESSAGE_HANDLER_PRIORITY = 1  # 消息处理器优先级
-STAT_COMMAND_PRIORITY = 10  # 统计命令优先级

@@ -19,6 +19,7 @@ from nonebot.permission import SUPERUSER
 
 from utils.rendering.engine import render_markdown, read_tpl
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 from utils.logging import get_exc_desc
 from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.utils import (
@@ -79,21 +80,29 @@ html, body, .markdown-body {{
 
 
 # 注册命令
-chat_matcher = on_command("chat", priority=5, block=True)
+chat_matcher = on_command("chat", rule=command_boundary, priority=5, block=True)
 chat_web_matcher = on_command(
-    "chat联网", aliases={"chat_web", "chatweb", "chat搜索"}, priority=5, block=True
+    "chat联网",
+    aliases={"chat_web", "chatweb", "chat搜索"},
+    rule=command_boundary,
+    priority=5,
+    block=True,
 )
 
-draw_matcher = on_command("生图", priority=5, block=True)
+draw_matcher = on_command("生图", rule=command_boundary, priority=5, block=True)
 draw_web_matcher = on_command(
-    "生图联网", aliases={"生图web", "生图搜索"}, priority=5, block=True
+    "生图联网",
+    aliases={"生图web", "生图搜索"},
+    rule=command_boundary,
+    priority=5,
+    block=True,
 )
 
 model_cmd = on_command(
     "切换模型",
     aliases={"更改模型", "change_model"},
     permission=SUPERUSER,
-    priority=1,
+    priority=5,
     block=True,
 )
 

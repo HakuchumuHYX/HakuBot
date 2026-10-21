@@ -54,7 +54,7 @@ from plugins.groupmate_waifu.service import reset_records
 scheduler.add_job(reset_records, "cron", hour=0, misfire_grace_time=120)
 
 # 注册手动重置命令
-reset_command = on_command("重置记录", permission=SUPERUSER, priority=10, block=True)
+reset_command = on_command("重置记录", permission=SUPERUSER, priority=5, block=True)
 
 
 @reset_command.handle()

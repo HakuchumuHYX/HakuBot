@@ -20,6 +20,21 @@
 
 群日报和早报各用自己的 LLM 配置，不读取其他插件的配置作为回退。正常运行使用 `uv run python bot.py`。
 
+## matcher 分层
+
+NoneBot 同一优先级的 matcher 全部会跑，只要有一个 `block=True` 的 permission 和 rule 都通过，更低优先级就收不到这条消息；handler 里直接 `return`、或者参数类型对不上被跳过，都一样会挡住。所以按“谁先看到”分层，`priority` 和 `block` 一律显式写：
+
+| 优先级 | 放什么 | block |
+| --- | --- | --- |
+| 1 | 旁听：统计、日报记录、复读、入群欢迎、戳一戳、好友请求 | 否 |
+| 3 | 进行中游戏的答题监听 | 否；本会话确实在答题时才 `stop_propagation()` |
+| 5 | 所有命令，包括超管命令 | 是 |
+| 10 | 自由文本触发：呼叫 ATRI、二择、娶群友、表情包关键词、B 站链接、文件上传、撤回、转文字 | 是；旁路性质的（表情包关键词、文件上传、B 站解析）为否 |
+
+- rule 只在这个 matcher 确实会处理时才通过。只处理群消息的用户命令写 `permission=GROUP`，不能只靠 handler 参数类型。
+- 身份要求写在 `permission=`：超管 `SUPERUSER`，群管 `GROUP_ADMIN | GROUP_OWNER | SUPERUSER`。没权限的人不匹配、不回复，handler 里不再判断。
+- `COMMAND_START` 含空字符串、命令按最长前缀匹配，用户命令都要挂 `utils.onebot.rules.command_boundary`，否则「chatgpt好用吗」会触发 chat。帮助站里写明参数连写的命令（stickers 的「查看947」「看所有miku」）改为在 rule 里检查参数本身。
+
 ## 日志
 
 统一 `from nonebot import logger`；`webconsole_bridge` 直接用 loguru（挂 sink、`webconsole_bridge_internal` 防回环）。

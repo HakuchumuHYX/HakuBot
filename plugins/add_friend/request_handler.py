@@ -14,7 +14,7 @@ from plugins.add_friend.data_manager import request_manager
 from plugins.add_friend.utils import extract_group_candidates, create_request_data
 
 # 注册好友请求处理器
-friend_request = on_request(priority=1, block=True)
+friend_request = on_request(priority=1, block=False)
 
 # 用于防止重复处理的缓存
 processed_requests = {}

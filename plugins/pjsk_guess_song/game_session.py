@@ -175,7 +175,7 @@ async def _run_game_session(
         last_game_end_time[session_id] = time.time()
 
 
-answer_handler = on_message(priority=5, block=False)
+answer_handler = on_message(priority=3, block=False)
 
 
 @answer_handler.handle()
@@ -188,11 +188,12 @@ async def handle_game_answer(
     if not answer_text.isdigit():
         return
 
-    matcher.stop_propagation()
-
     game_data = active_game_sessions.get(session_id)
     if not game_data or game_data.get("type") != "game":
-        return  # 是数字，但没有游戏，忽略
+        return
+
+    # 只有本会话确实在答题时才拦下，否则纯数字消息会被所有群吞掉
+    matcher.stop_propagation()
 
     user_id = get_user_id(event)
     user_name = get_user_name(event)

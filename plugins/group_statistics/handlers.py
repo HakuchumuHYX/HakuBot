@@ -1,5 +1,5 @@
 from nonebot import on_message, on_command, on
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Event
+from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Bot, Event
 
 # 导入管理模块
 from core.access import is_plugin_enabled
@@ -7,14 +7,11 @@ from core.access import is_plugin_enabled
 from plugins.group_statistics.data_manager import data_manager
 from plugins.group_statistics.utils import get_total_messages, get_top_users
 from plugins.group_statistics.render import render_today_stat_image
-from plugins.group_statistics.config import (
-    MESSAGE_HANDLER_PRIORITY,
-    STAT_COMMAND_PRIORITY,
-)
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 
 # 创建消息处理器
-message_handler = on_message(priority=MESSAGE_HANDLER_PRIORITY, block=False)
+message_handler = on_message(priority=1, block=False)
 
 
 @message_handler.handle()
@@ -38,7 +35,7 @@ def is_message_sent(event: Event) -> bool:
     return getattr(event, "post_type", "") == "message_sent"
 
 
-sent_handler = on(rule=is_message_sent, priority=MESSAGE_HANDLER_PRIORITY, block=False)
+sent_handler = on(rule=is_message_sent, priority=1, block=False)
 
 
 @sent_handler.handle()
@@ -78,7 +75,9 @@ async def handle_sent_message(bot: Bot, event: Event):
 stat_command = on_command(
     "今日统计",
     aliases={"今日发言", "消息统计"},
-    priority=STAT_COMMAND_PRIORITY,
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
     block=True,
 )
 

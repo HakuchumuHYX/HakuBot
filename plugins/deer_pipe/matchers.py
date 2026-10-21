@@ -30,18 +30,24 @@ from utils.onebot.media import prepare_image_source
 deer: AlconnaMatcher = on_alconna(
     Alconna("🦌", Args["target?", At]),
     aliases={"鹿"},
+    priority=5,
+    block=True,
 )
 
 # 补签命令
 deer_past: AlconnaMatcher = on_alconna(
     Alconna("补🦌", Args["day", int]),
     aliases={"补鹿"},
+    priority=5,
+    block=True,
 )
 
 # 查看日历命令
 deer_calendar: AlconnaMatcher = on_alconna(
     Alconna("🦌历", Args["target?", At]),
     aliases={"鹿历"},
+    priority=5,
+    block=True,
 )
 
 

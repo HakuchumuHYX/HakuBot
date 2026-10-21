@@ -10,15 +10,25 @@ from plugins.poke_reply.utils.common import ensure_at_me, create_forward_message
 from plugins.poke_reply.config import get_group_image_dir
 from utils.onebot.media import image_segment
 from utils.onebot.forward import send_forward_msg
+from utils.onebot.rules import command_boundary
 
 view_all_contributions = on_command(
-    "查看所有投稿", rule=ensure_at_me() & to_me(), priority=5, block=True
+    "查看所有投稿",
+    rule=ensure_at_me() & to_me() & command_boundary,
+    priority=5,
+    block=True,
 )
 view_all_texts = on_command(
-    "查看所有文本", rule=ensure_at_me() & to_me(), priority=5, block=True
+    "查看所有文本",
+    rule=ensure_at_me() & to_me() & command_boundary,
+    priority=5,
+    block=True,
 )
 view_all_images = on_command(
-    "查看所有图片", rule=ensure_at_me() & to_me(), priority=5, block=True
+    "查看所有图片",
+    rule=ensure_at_me() & to_me() & command_boundary,
+    priority=5,
+    block=True,
 )
 
 MAX_NODES_PER_FORWARD = 30

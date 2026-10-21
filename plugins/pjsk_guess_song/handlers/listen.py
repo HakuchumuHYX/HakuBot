@@ -5,7 +5,7 @@
 
 import time
 from pathlib import Path
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent
 from typing import Optional
 from nonebot import on_command, logger
 from nonebot.matcher import Matcher
@@ -33,7 +33,7 @@ from plugins.pjsk_guess_song.utils import (
 from core.access import (
     is_feature_enabled,
 )
-from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment, audio_segment
 
 
@@ -169,11 +169,11 @@ for cmd, mode in listen_commands.items():
         return handler
 
     on_command(
-        cmd, priority=10, block=True, rule=create_exact_command_rule(cmd)
+        cmd, rule=command_boundary, permission=GROUP, priority=5, block=True
     ).handle()(create_handler(mode))
 
 listen_normal = on_command(
-    "听", priority=10, block=True, rule=create_exact_command_rule("听")
+    "听", rule=command_boundary, permission=GROUP, priority=5, block=True
 )
 
 
@@ -326,11 +326,10 @@ async def _(
 listen_anvo = on_command(
     "听anvo",
     aliases={"listen_anvo", "listen_anov", "听anov", "anvo", "anov"},
-    priority=10,
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
     block=True,
-    rule=create_exact_command_rule(
-        "听anvo", {"listen_anvo", "listen_anov", "听anov", "anvo", "anov"}
-    ),
 )
 
 

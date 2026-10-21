@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
+    GROUP,
     MessageEvent,
     Bot,
     GroupMessageEvent,
@@ -23,12 +24,12 @@ from plugins.pjsk_guess_song.utils import _is_group_allowed
 from core.access import (
     is_plugin_enabled,
 )
-from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment
 
 # --- 资源版本 ---
 show_resource_version = on_command(
-    "猜歌资源", priority=10, block=True, rule=create_exact_command_rule("猜歌资源")
+    "猜歌资源", rule=command_boundary, permission=GROUP, priority=5, block=True
 )
 
 
@@ -94,7 +95,7 @@ async def _(bot: Bot, event: MessageEvent):
 
 # --- 获取别名 ---
 fetch_aliases_cmd = on_command(
-    "获取别名", priority=10, block=True, rule=create_exact_command_rule("获取别名")
+    "获取别名", rule=command_boundary, permission=GROUP, priority=5, block=True
 )
 
 # 简单的运行锁，防止重复触发

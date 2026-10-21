@@ -8,6 +8,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 
 __plugin_meta__ = PluginMetadata(
     name="表情包保存器",
@@ -19,7 +20,11 @@ __plugin_meta__ = PluginMetadata(
 )
 
 face_extractor = on_command(
-    "save", aliases={"保存图片", "保存表情", "保存"}, priority=10, block=True
+    "save",
+    aliases={"保存图片", "保存表情", "保存"},
+    rule=command_boundary,
+    priority=5,
+    block=True,
 )
 
 TARGET_REDIRECT_URL = "https://pic.colanns.me"

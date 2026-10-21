@@ -2,7 +2,7 @@
 
 import random
 
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent
 from nonebot.plugin.on import on_command
 from nonebot.typing import T_State
 
@@ -30,7 +30,8 @@ bye = on_command(
     "离婚",
     aliases={"分手"},
     rule=bye_rule,
-    priority=10,
+    permission=GROUP,
+    priority=5,
     block=True,
 )
 

@@ -1,13 +1,14 @@
 # __init__.py
 import asyncio
 import re
-from typing import Optional
 from nonebot import on_message, on_command, logger
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, Bot
+from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Message, Bot
 from nonebot.exception import FinishedException
+from nonebot.permission import SUPERUSER
 
 from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 from core.access import (
     is_plugin_enabled,
 )
@@ -30,8 +31,7 @@ from plugins.stickers.render import (
     render_stickers_preview,
     preview_duplicates_before_cleanup,
 )
-from plugins.stickers.manage import handle_manage_command
-from core.access import is_superuser
+from plugins.stickers import manage  # noqa: F401  导入即注册超管命令
 from plugins.stickers.config import SITE_URL
 from plugins.stickers.check import (
     find_all_duplicates,
@@ -44,8 +44,15 @@ from plugins.stickers import overview  # noqa: F401  导入即注册查看命令
 load_sticker_list()
 
 sticker_matcher = on_message(priority=10, block=False)
-clean_confirm_matcher = on_command("确认清理", block=True)
-clean_cancel_matcher = on_command("取消", block=True)
+clean_duplicates_matcher = on_command(
+    "清除重复", rule=command_boundary, permission=SUPERUSER, priority=5, block=True
+)
+clean_confirm_matcher = on_command(
+    "确认清理", rule=command_boundary, permission=GROUP, priority=5, block=True
+)
+clean_cancel_matcher = on_command(
+    "取消", rule=command_boundary, permission=GROUP, priority=5, block=True
+)
 
 cleanup_state = {}
 
@@ -78,47 +85,39 @@ def parse_multi_random_command(message_text: str) -> tuple[str, int] | None:
     return None
 
 
-async def handle_clean_duplicates_command(event: GroupMessageEvent) -> Optional[str]:
-    """
-    处理清除重复命令（安全版本）
-    """
-    message_text = event.get_plaintext().strip()
+@clean_duplicates_matcher.handle()
+async def handle_clean_duplicates(event: GroupMessageEvent):
+    """清除重复：先发预览，等『确认清理』再动文件"""
+    all_duplicates = await find_all_duplicates()
 
-    if message_text == "清除重复":
-        # 检查权限
-        if not is_superuser(str(event.user_id)):
-            return "权限不足，只有超级用户才能清除重复图片"
-
-        all_duplicates = await find_all_duplicates()
-
-        if not all_duplicates:
-            # 即使没有重复，也执行批量重命名
-            rename_count, rename_msg = await batch_rename_stickers()
-            if rename_count > 0:
-                return f"未检测到重复图片\n📝 自动重命名完成：{rename_msg}"
-            return "未检测到重复图片"
-
-        preview_bytes = await preview_duplicates_before_cleanup(all_duplicates)
-        if preview_bytes:
-            await sticker_matcher.send(
-                image_segment(preview_bytes)
-                + "\n请回复『确认清理』来执行清理操作，或者回复『取消』取消操作"
+    if not all_duplicates:
+        # 即使没有重复，也执行批量重命名
+        rename_count, rename_msg = await batch_rename_stickers()
+        if rename_count > 0:
+            await clean_duplicates_matcher.finish(
+                f"未检测到重复图片\n📝 自动重命名完成：{rename_msg}"
             )
-        else:
-            total_pairs = sum(len(duplicates) for duplicates in all_duplicates.values())
-            await sticker_matcher.send(
-                f"检测到 {total_pairs} 组重复图片。请回复『确认清理』来执行清理操作，或者回复『取消』取消操作"
-            )
+        await clean_duplicates_matcher.finish("未检测到重复图片")
 
-        cleanup_state[event.group_id] = {
-            "user_id": event.user_id,
-            "duplicates": all_duplicates,
-            "timestamp": asyncio.get_event_loop().time(),
-        }
+    preview_bytes = await preview_duplicates_before_cleanup(all_duplicates)
+    if preview_bytes:
+        await clean_duplicates_matcher.send(
+            image_segment(preview_bytes)
+            + "\n请回复『确认清理』来执行清理操作，或者回复『取消』取消操作"
+        )
+    else:
+        total_pairs = sum(len(duplicates) for duplicates in all_duplicates.values())
+        await clean_duplicates_matcher.send(
+            f"检测到 {total_pairs} 组重复图片。请回复『确认清理』来执行清理操作，或者回复『取消』取消操作"
+        )
 
-        return "已发送预览，请确认是否继续"
+    cleanup_state[event.group_id] = {
+        "user_id": event.user_id,
+        "duplicates": all_duplicates,
+        "timestamp": asyncio.get_event_loop().time(),
+    }
 
-    return None
+    await clean_duplicates_matcher.finish("已发送预览，请确认是否继续")
 
 
 @clean_confirm_matcher.handle()
@@ -210,16 +209,6 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
     message_text = event.get_plaintext().strip()
     if not message_text:
         return
-
-    # 检查是否是清除重复命令 (SU
-    clean_reply = await handle_clean_duplicates_command(event)
-    if clean_reply is not None:
-        await sticker_matcher.finish(clean_reply)
-
-    # 检查是否是管理命令 (SU
-    manage_reply = await handle_manage_command(message_text, event)
-    if manage_reply is not None:
-        await sticker_matcher.finish(manage_reply)
 
     # 检查是否是查看统计命令
     if handle_statistics_command(message_text):

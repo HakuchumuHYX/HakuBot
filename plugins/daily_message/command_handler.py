@@ -6,10 +6,10 @@ from plugins.daily_message import config_manager
 
 # 配置管理命令
 list_schedules = on_command(
-    "查看定时任务", permission=SUPERUSER, priority=1, block=True
+    "查看定时任务", permission=SUPERUSER, priority=5, block=True
 )
 reload_schedules = on_command(
-    "重载定时任务", permission=SUPERUSER, priority=1, block=True
+    "重载定时任务", permission=SUPERUSER, priority=5, block=True
 )
 
 

@@ -21,14 +21,11 @@ from plugins.buaa_msm.config import with_site_link
 from plugins.buaa_msm.exceptions import DataLoadError
 from plugins.buaa_msm.services.msr_service import run_msr
 from plugins.buaa_msm.services.processing_guard import is_processing, set_processing
+from utils.onebot.rules import command_boundary
 
 
 # 同一命令只注册一个 matcher，私聊/群聊由按事件类型分流的 handler 处理（避免 Duplicated prefix rule 警告）
-msr_cmd = on_command(
-    "buaamsr",
-    priority=5,
-    block=True,
-)
+msr_cmd = on_command("buaamsr", rule=command_boundary, priority=5, block=True)
 
 
 @msr_cmd.handle()

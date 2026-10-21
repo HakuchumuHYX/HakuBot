@@ -6,19 +6,19 @@ from core.registry import get_plugin_catalog
 
 from core.cooldown import get_plugin_cd_duration, set_plugin_cd
 
-enable_cd = on_command("启用CD", permission=SUPERUSER, priority=1, block=True)
+enable_cd = on_command("启用CD", permission=SUPERUSER, priority=5, block=True)
 
-disable_cd = on_command("禁用CD", permission=SUPERUSER, priority=1, block=True)
+disable_cd = on_command("禁用CD", permission=SUPERUSER, priority=5, block=True)
 
 enable_feature_cd = on_command(
-    "启用功能CD", permission=SUPERUSER, priority=1, block=True
+    "启用功能CD", permission=SUPERUSER, priority=5, block=True
 )
 
 disable_feature_cd = on_command(
-    "禁用功能CD", permission=SUPERUSER, priority=1, block=True
+    "禁用功能CD", permission=SUPERUSER, priority=5, block=True
 )
 
-list_cd = on_command("CD列表", permission=SUPERUSER, priority=1, block=True)
+list_cd = on_command("CD列表", permission=SUPERUSER, priority=5, block=True)
 
 
 @enable_cd.handle()

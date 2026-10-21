@@ -28,6 +28,7 @@ from plugins.setu_plugin.client import SetuClient
 from utils.logging import get_exc_desc
 from utils.network.http import HttpError
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 from utils.onebot.forward import send_forward_msg
 
 CACHE_TTL_DAYS = 7
@@ -92,7 +93,9 @@ async def _stop_setu_cache_cleaner():
 
 PLUGIN_ID = "setu_plugin"
 
-lzst = on_command("lzst", aliases={"来张涩图"}, priority=5, block=True)
+lzst = on_command(
+    "lzst", aliases={"来张涩图"}, rule=command_boundary, priority=5, block=True
+)
 
 
 class Config(ConfigModel):

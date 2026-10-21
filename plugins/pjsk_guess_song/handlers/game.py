@@ -11,6 +11,7 @@ from nonebot import on_command, logger
 from nonebot.typing import T_State
 from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import (
+    GROUP,
     Message,
     MessageEvent,
     Bot,
@@ -37,7 +38,7 @@ from plugins.pjsk_guess_song.utils import (
 )
 from plugins.pjsk_guess_song.game_session import _run_game_session
 from core.access import is_plugin_enabled
-from utils.onebot.rules import create_exact_command_rule
+from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment
 
 # --- 猜歌指令 ---
@@ -60,28 +61,10 @@ start_guess_song_unified = on_command(
         "gs6",
         "gs7",
     },
-    priority=10,
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
     block=True,
-    rule=create_exact_command_rule(
-        "猜歌",
-        {
-            "gs",
-            "猜歌1",
-            "猜歌2",
-            "猜歌3",
-            "猜歌4",
-            "猜歌5",
-            "猜歌6",
-            "猜歌7",
-            "gs1",
-            "gs2",
-            "gs3",
-            "gs4",
-            "gs5",
-            "gs6",
-            "gs7",
-        },
-    ),
 )
 
 
@@ -228,9 +211,10 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
 start_random_guess_song = on_command(
     "随机猜歌",
     aliases={"rgs"},
-    priority=10,
+    rule=command_boundary,
+    permission=GROUP,
+    priority=5,
     block=True,
-    rule=create_exact_command_rule("随机猜歌", {"rgs"}),
 )
 
 
@@ -361,7 +345,7 @@ async def _(bot: Bot, event: MessageEvent):
 
 # --- 猜歌手 ---
 start_vocalist_game = on_command(
-    "猜歌手", priority=10, block=True, rule=create_exact_command_rule("猜歌手")
+    "猜歌手", rule=command_boundary, permission=GROUP, priority=5, block=True
 )
 
 

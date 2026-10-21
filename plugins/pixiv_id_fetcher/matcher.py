@@ -22,6 +22,7 @@ from nonebot.params import CommandArg
 require("nonebot_plugin_localstore")
 
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 from utils.onebot.forward import ForwardSendError, ForwardStatus, send_forward_msg
 from plugins.pixiv_id_fetcher.client import PixivClient, PixivClientError
 from plugins.pixiv_id_fetcher.config import config
@@ -45,7 +46,9 @@ from core.access import is_plugin_enabled
 
 PLUGIN_ID = "pixiv_id_fetcher"
 
-pixiv_cmd = on_command("pixiv", aliases={"pid", "p站图"}, priority=5, block=True)
+pixiv_cmd = on_command(
+    "pixiv", aliases={"pid", "p站图"}, rule=command_boundary, priority=5, block=True
+)
 
 _client: Optional[PixivClient] = None
 _semaphore: Optional[asyncio.Semaphore] = None

@@ -17,11 +17,16 @@ from plugins.lunabot_imgexp import twitter  # noqa: F401
 
 from core.access import is_feature_enabled
 from core.cooldown import check_cd, update_cd
+from utils.onebot.rules import command_boundary
 
 PLUGIN_NAME = "lunabot_imgexp"
 
 imgexp = on_command(
-    "搜图", aliases={"以图搜图", "imgexp", "search"}, priority=5, block=True
+    "搜图",
+    aliases={"以图搜图", "imgexp", "search"},
+    rule=command_boundary,
+    priority=5,
+    block=True,
 )
 
 

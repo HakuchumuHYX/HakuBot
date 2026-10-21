@@ -20,6 +20,7 @@ from plugins.alive_stat.collector import collect_server_status
 from plugins.alive_stat import drawer
 
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 
 try:
     from core.access import is_plugin_enabled
@@ -45,7 +46,7 @@ if _driver is not None:
 
 # ================= 响应器 =================
 
-alive = on_command("alive", priority=5, block=True)
+alive = on_command("alive", rule=command_boundary, priority=5, block=True)
 
 
 @alive.handle()

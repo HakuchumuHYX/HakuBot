@@ -13,8 +13,13 @@ from concurrent.futures import ThreadPoolExecutor
 warnings.filterwarnings("ignore", message="Corrupt EXIF data")
 
 from nonebot import on_command, logger
-from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent, Message
-from nonebot.params import CommandArg
+from nonebot.adapters.onebot.v11 import (
+    GROUP,
+    MessageSegment,
+    GroupMessageEvent,
+    Message,
+)
+from nonebot.params import CommandArg, CommandWhitespace
 from nonebot.exception import FinishedException
 
 # 导入模块而非变量，确保获取最新值
@@ -32,6 +37,7 @@ from plugins.stickers import send
 from utils.rendering.fonts import load_font
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
+from utils.onebot.rules import command_boundary
 
 
 # === 并行图片加载 ===
@@ -69,15 +75,38 @@ def load_and_resize_single(
         return (file_path, None)
 
 
+# 帮助里的写法是「看所有miku」「查看947」，参数可以连写，所以改为检查参数本身：
+# 看所有 连写时必须是已有文件夹，查看 第一个参数必须是编号。
+# 否则「看所有人」「查看收藏」「no way」这类日常说法也会触发
+async def _view_all_rule(
+    arg: Message = CommandArg(), whitespace: Optional[str] = CommandWhitespace()
+) -> bool:
+    if await command_boundary(arg, whitespace):
+        return True
+    return resolve_folder_name(arg.extract_plain_text().strip()) in sticker_folders
+
+
+async def _view_single_rule(arg: Message = CommandArg()) -> bool:
+    tokens = arg.extract_plain_text().split()
+    return bool(tokens) and tokens[0].isdigit()
+
+
 # 注册命令
 view_all_matcher = on_command(
-    "看所有", aliases={"查看所有", "view all"}, priority=5, block=True
+    "看所有",
+    aliases={"查看所有", "view all"},
+    rule=_view_all_rule,
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 view_single_matcher = on_command(
     "sticker",
     aliases={"看表情", "No.", "NO", "查看", "no", "no."},
+    rule=_view_single_rule,
+    permission=GROUP,
     priority=5,
-    block=False,
+    block=True,
 )
 
 
@@ -94,22 +123,7 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
     if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
         return
 
-    arg_text = args.extract_plain_text().strip()
-
-    if not arg_text:
-        await view_single_matcher.finish("请指定要查看的图片编号，例如：看表情 1024")
-
-    # 分割参数
-    id_list = arg_text.split()
-
-    # 兼容旧逻辑：如果只有一个参数且是保留关键字，直接返回（交给其他 matcher 处理）
-    if len(id_list) == 1 and id_list[0].lower() in [
-        "stickers",
-        "sticker",
-        "表情",
-        "表情包",
-    ]:
-        return
+    id_list = args.extract_plain_text().split()
 
     # 上限检查
     if len(id_list) > 5:
