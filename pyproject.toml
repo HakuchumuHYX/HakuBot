@@ -52,6 +52,4 @@ nonebot-adapter-onebot = [
 "@local" = []
 
 [tool.nonebot.plugins]
-# 以插件包形式加载的第三方插件（plugin_dirs 下的本地插件不在此列）。
-# nonebot_bison 已由本仓 plugins/bili_dyn_sub 替代并移除，故当前为空。
 plugins = []
