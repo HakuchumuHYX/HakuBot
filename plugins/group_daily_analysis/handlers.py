@@ -8,7 +8,6 @@ from nonebot import require, on_command, on_message, on_type, get_bot, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.adapters.onebot.v11.event import Event as OneBotEvent
 from nonebot.permission import SUPERUSER
-from nonebot.exception import FinishedException
 from nonebot.rule import Rule
 
 require("nonebot_plugin_apscheduler")
@@ -299,25 +298,20 @@ async def handle_analysis(bot: Bot, event: GroupMessageEvent):
 
     try:
         image_bytes = await run_analysis(bot, group_id, retries=2)  # 手动触发重试2次
-
-        if image_bytes:
-            # 用 send_group_msg 发送以拿到 message_id，用于过滤本插件发出的总结
-            resp = await bot.send_group_msg(
-                group_id=group_id, message=image_segment(image_bytes)
-            )
-            if isinstance(resp, dict):
-                _mark_report_message_id(group_id, resp.get("message_id"))
-            await analysis_cmd.finish()
-        else:
-            await analysis_cmd.finish(
-                f"消息数量不足 {plugin_config.min_messages_threshold} 条，无法生成总结。"
-            )
-
-    except FinishedException:
-        raise
     except Exception as e:
         logger.exception(f"生成总结失败: {e}")
         await analysis_cmd.finish("生成总结失败，请稍后重试。")
+
+    if not image_bytes:
+        await analysis_cmd.finish(
+            f"消息数量不足 {plugin_config.min_messages_threshold} 条，无法生成总结。"
+        )
+    # 用 send_group_msg 发送以拿到 message_id，用于过滤本插件发出的总结
+    resp = await bot.send_group_msg(
+        group_id=group_id, message=image_segment(image_bytes)
+    )
+    if isinstance(resp, dict):
+        _mark_report_message_id(group_id, resp.get("message_id"))
 
 
 @debug_analysis_cmd.handle()
@@ -327,17 +321,13 @@ async def handle_debug_analysis(bot: Bot, event: GroupMessageEvent):
 
     try:
         image_bytes = await run_analysis(bot, group_id, retries=1, debug=True)
-
-        if image_bytes:
-            await debug_analysis_cmd.finish(image_segment(image_bytes))
-        else:
-            await debug_analysis_cmd.finish("Debug 分析生成失败，未返回图片。")
-
-    except FinishedException:
-        raise
     except Exception as e:
         logger.exception(f"Debug 分析失败: {e}")
         await debug_analysis_cmd.finish(f"Debug 分析失败: {e}")
+
+    if not image_bytes:
+        await debug_analysis_cmd.finish("Debug 分析生成失败，未返回图片。")
+    await debug_analysis_cmd.finish(image_segment(image_bytes))
 
 
 # --- 模板管理命令 ---

@@ -3,7 +3,6 @@ import os
 import hashlib
 from nonebot import on_notice, logger
 from nonebot.adapters.onebot.v11 import PokeNotifyEvent, Message, Bot
-from nonebot.exception import FinishedException
 
 from plugins.poke_reply.config import (
     is_text_to_image_enabled,
@@ -137,7 +136,5 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
 
         # 成功发送投稿内容后才扣CD（提示性回复不扣，发送失败不扣）
         mark_cooldown(PLUGIN_ID, event)
-    except FinishedException:
-        raise
     except Exception as e:
         logger.exception(f"处理戳一戳事件时发生错误: {e}")

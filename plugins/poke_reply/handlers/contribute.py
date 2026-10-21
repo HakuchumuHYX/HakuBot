@@ -2,7 +2,6 @@ from nonebot import on_command, on_message, logger
 from nonebot.adapters.onebot.v11 import Message, GroupMessageEvent, MessageEvent, Bot
 from nonebot.rule import Rule, to_me
 from nonebot.params import CommandArg
-from nonebot.exception import FinishedException
 
 from plugins.poke_reply.models.cache import message_cache, text_image_cache
 from plugins.poke_reply.utils.common import (
@@ -126,49 +125,42 @@ async def process_image_contribution(
 
 @convert_to_text.handle()
 async def handle_convert_to_text(bot: Bot, event: GroupMessageEvent):
+    message_text = event.get_plaintext().strip()
+    if message_text != "转文字":
+        return
+
+    if not hasattr(event, "reply") or event.reply is None:
+        await convert_to_text.finish("请回复要转换的图片消息并说'转文字'喵！")
+
+    replied_message = event.reply
+    group_id = event.group_id
+    image_url = None
+    for segment in replied_message.message:
+        if segment.type == "image":
+            image_url = segment.data.get("url", "")
+            break
+
+    if not image_url:
+        await convert_to_text.finish("请回复一张由长文本转换的图片消息喵！")
+
     try:
-        message_text = event.get_plaintext().strip()
-        if message_text != "转文字":
-            return
-
-        if not hasattr(event, "reply") or event.reply is None:
-            await convert_to_text.finish("请回复要转换的图片消息并说'转文字'喵！")
-
-        replied_message = event.reply
-        group_id = event.group_id
-        image_url = None
-        for segment in replied_message.message:
-            if segment.type == "image":
-                image_url = segment.data.get("url", "")
-                break
-
-        if not image_url:
-            await convert_to_text.finish("请回复一张由长文本转换的图片消息喵！")
-
-        try:
-            image_hash = (await fetch_image(image_url)).md5
-        except Exception as e:
-            logger.warning(f"转文字时下载图片失败: {get_exc_desc(e)}")
-            await convert_to_text.finish("下载图片失败，无法计算哈希值喵！")
-
-        cache_record = text_image_cache.get_cache_by_image_hash(image_hash, group_id)
-        if not cache_record:
-            await convert_to_text.finish(
-                "未找到对应的文本缓存，可能已过期或不是由长文本转换的图片喵！"
-            )
-
-        original_text = cache_record.get("original_text", "")
-        if not original_text:
-            await convert_to_text.finish("缓存文本为空，无法转换喵！")
-
-        messages = [("转文字结果", "text", original_text)]
-        forward_nodes = await create_forward_message(bot, group_id, messages)
-
-        await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
-        text_image_cache.remove_cache_by_image_hash(image_hash, group_id)
-
-    except FinishedException:
-        raise
+        image_hash = (await fetch_image(image_url)).md5
     except Exception as e:
-        logger.exception(f"处理转文字命令时出错: {e}")
-        await convert_to_text.finish("转换失败，请稍后重试喵！")
+        logger.warning(f"转文字时下载图片失败: {get_exc_desc(e)}")
+        await convert_to_text.finish("下载图片失败，无法计算哈希值喵！")
+
+    cache_record = text_image_cache.get_cache_by_image_hash(image_hash, group_id)
+    if not cache_record:
+        await convert_to_text.finish(
+            "未找到对应的文本缓存，可能已过期或不是由长文本转换的图片喵！"
+        )
+
+    original_text = cache_record.get("original_text", "")
+    if not original_text:
+        await convert_to_text.finish("缓存文本为空，无法转换喵！")
+
+    messages = [("转文字结果", "text", original_text)]
+    forward_nodes = await create_forward_message(bot, group_id, messages)
+
+    await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
+    text_image_cache.remove_cache_by_image_hash(image_hash, group_id)

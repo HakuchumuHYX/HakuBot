@@ -14,7 +14,6 @@ from nonebot.adapters.onebot.v11 import (
     Message,
     PrivateMessageEvent,
 )
-from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 
 from plugins.buaa_msm.config import with_site_link
@@ -47,8 +46,6 @@ async def handle_msr_command(
             event_user_id=event.user_id,
             send_func=msr_cmd.send,
         )
-    except FinishedException:
-        raise
     except DataLoadError as e:
         logger.info(f"buaamsr 无法读取用户数据: {e}")
         await msr_cmd.finish(f"处理失败: {str(e)}")

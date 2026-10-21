@@ -7,10 +7,9 @@ import time
 from pathlib import Path
 from nonebot.adapters.onebot.v11 import GROUP
 from typing import Optional
-from nonebot import on_command, logger
+from nonebot import on_command
 from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
-from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment, Bot
 
 from plugins.pjsk_guess_song.runtime import (
@@ -119,13 +118,6 @@ async def _handle_listen_command(
 
         user_id = get_user_id(event)
         await db_service.record_listen_song(user_id, get_user_name(event))
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"处理听歌功能(模式: {mode})时出错: {e}")
-        await matcher.send("......播放时出错了，请联系管理员。")
     finally:
         if session_id in active_game_sessions:
             active_game_sessions.pop(session_id)
@@ -292,13 +284,6 @@ async def _(
 
         user_id = get_user_id(event)
         await db_service.record_listen_song(user_id, get_user_name(event))
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"处理 听歌 功能时出错: {e}")
-        await matcher.send("......播放时出错了，请联系管理员。")
     finally:
         if session_id in active_game_sessions:
             active_game_sessions.pop(session_id)
@@ -437,13 +422,6 @@ async def _(
 
         user_id = get_user_id(event)
         await db_service.record_listen_song(user_id, get_user_name(event))
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"处理听anvo功能时出错: {e}")
-        await matcher.send("......播放时出错了，请联系管理员。")
     finally:
         if session_id in active_game_sessions:
             active_game_sessions.pop(session_id)

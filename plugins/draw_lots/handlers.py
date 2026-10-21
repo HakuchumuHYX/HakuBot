@@ -9,7 +9,6 @@ from nonebot.adapters.onebot.v11 import (
     Message,
     MessageEvent,
 )
-from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
@@ -167,15 +166,13 @@ async def lq_(bot: Bot, event: MessageEvent):
     # 获取/生成图片并发送
     try:
         img_bytes = await get_or_render_image(sign_index)
-        msg.append(image_segment(img_bytes))
-        await command.finish(msg, at_sender=True)
-    except FinishedException:
-        raise
     except Exception as e:
         logger.opt(exception=True).warning(f"抽签处理失败: {e}")
         # 降级文本
         content = "空签" if sign_index == -1 else message_sign[sign_index]
         await command.finish(f"图片生成失败，签文内容：\n{content}", at_sender=True)
+    msg.append(image_segment(img_bytes))
+    await command.finish(msg, at_sender=True)
 
 
 # --- 缓存管理命令 ---
@@ -189,32 +186,30 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
 
     # 情况1：指定了序号 (例如 "刷新签文缓存 1")
     if arg_text:
-        try:
-            n = int(arg_text)
-
-            # 定义 0 为空签，1-N 为对应签文
-            if n == 0:
-                target_idx = -1
-                label = "空签"
-            else:
-                target_idx = n - 1
-                label = f"第{n}番"
-
-            # 范围检查
-            if target_idx != -1 and not (0 <= target_idx < len(message_sign)):
-                await gen_cache_cmd.finish(
-                    f"❌ 序号错误：请输入 0 (空签) 或 1-{len(message_sign)} 之间的数字。"
-                )
-
-            await gen_cache_cmd.send(f"🎨 正在强制重新渲染 {label}...")
-
-            # 强制刷新
-            await get_or_render_image(target_idx, force_refresh=True)
-
-            await gen_cache_cmd.finish(f"✅ {label} 渲染完成并已更新缓存！")
-
-        except ValueError:
+        if not arg_text.isdecimal():
             await gen_cache_cmd.finish("❌ 参数错误，请输入数字序号。")
+        n = int(arg_text)
+
+        # 定义 0 为空签，1-N 为对应签文
+        if n == 0:
+            target_idx = -1
+            label = "空签"
+        else:
+            target_idx = n - 1
+            label = f"第{n}番"
+
+        # 范围检查
+        if target_idx != -1 and not (0 <= target_idx < len(message_sign)):
+            await gen_cache_cmd.finish(
+                f"❌ 序号错误：请输入 0 (空签) 或 1-{len(message_sign)} 之间的数字。"
+            )
+
+        await gen_cache_cmd.send(f"🎨 正在强制重新渲染 {label}...")
+
+        # 强制刷新
+        await get_or_render_image(target_idx, force_refresh=True)
+
+        await gen_cache_cmd.finish(f"✅ {label} 渲染完成并已更新缓存！")
 
     # 情况2：未指定序号 (生成全部)
     else:
@@ -235,13 +230,10 @@ async def _(bot: Bot, event: Event, args: Message = CommandArg()):
                 # force_refresh=False: 仅生成缺失的，跳过已存在的
                 await get_or_render_image(i, force_refresh=False)
                 success_count += 1
-
-            await gen_cache_cmd.finish(
-                f"✅ 缓存检查完毕！\n缓存目录: {CACHE_DIR.absolute()}\n(注意：批量模式仅生成缺失图片，如需更新样式请使用'刷新签文缓存 <序号>'指定重绘)"
-            )
-
-        except FinishedException:
-            raise
         except Exception as e:
             logger.exception(f"生成缓存时发生错误: {e}")
             await gen_cache_cmd.finish(f"❌ 生成过程中出错: {e}")
+
+        await gen_cache_cmd.finish(
+            f"✅ 缓存检查完毕！\n缓存目录: {CACHE_DIR.absolute()}\n(注意：批量模式仅生成缺失图片，如需更新样式请使用'刷新签文缓存 <序号>'指定重绘)"
+        )

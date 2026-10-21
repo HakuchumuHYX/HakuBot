@@ -11,7 +11,6 @@ from utils.onebot.media import image_segment
 from utils.onebot.forward import ForwardItem, send_forward_msg
 from utils.onebot.rules import command_boundary
 from plugins.identify.data_manager import daily_record_manager
-from nonebot.exception import FinishedException
 
 # 注册命令处理器 - 鉴定自己
 identify = on_command(
@@ -113,97 +112,75 @@ def get_at_target(event: GroupMessageEvent) -> Optional[int]:
 @identify.handle()
 async def handle_identify(bot: Bot, event: GroupMessageEvent):
     """处理鉴定命令（鉴定自己）"""
-    try:
-        group_id = event.group_id
-        user_id = event.user_id
+    group_id = event.group_id
+    user_id = event.user_id
 
-        # 检查用户今天的鉴定结果
-        today_record = daily_record_manager.get_user_record(group_id, user_id)
+    # 检查用户今天的鉴定结果
+    today_record = daily_record_manager.get_user_record(group_id, user_id)
 
-        if today_record:
-            # 如果今天已经鉴定过，直接返回之前的结果
-            image_path = today_record
-        else:
-            # 获取随机图片
-            image_path = daily_record_manager.get_random_image()
+    if today_record:
+        # 如果今天已经鉴定过，直接返回之前的结果
+        image_path = today_record
+    else:
+        # 获取随机图片
+        image_path = daily_record_manager.get_random_image()
 
-            if not image_path:
-                await identify.finish("鉴定系统暂时不可用，请稍后再试喵~")
-                return
+        if not image_path:
+            await identify.finish("鉴定系统暂时不可用，请稍后再试喵~")
 
-            # 保存用户今天的鉴定结果
-            daily_record_manager.set_user_record(group_id, user_id, image_path)
+        # 保存用户今天的鉴定结果
+        daily_record_manager.set_user_record(group_id, user_id, image_path)
 
-        # 创建合并转发消息
-        forward_nodes = await create_identify_message(
-            bot, group_id, user_id, image_path
-        )
+    # 创建合并转发消息
+    forward_nodes = await create_identify_message(bot, group_id, user_id, image_path)
 
-        # 发送合并转发消息
-        await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
+    # 发送合并转发消息
+    await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
 
-        logger.info(f"用户 {user_id} 在群 {group_id} 进行了鉴定")
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"处理鉴定命令时出错: {e}")
-        await identify.finish("鉴定失败，请稍后再试喵~")
+    logger.info(f"用户 {user_id} 在群 {group_id} 进行了鉴定")
 
 
 @identify_other.handle()
 async def handle_identify_other(bot: Bot, event: GroupMessageEvent):
     """处理鉴定别人命令（鉴定你+@xxx）"""
-    try:
-        group_id = event.group_id
-        initiator_id = event.user_id  # 发起鉴定的人
+    group_id = event.group_id
+    initiator_id = event.user_id  # 发起鉴定的人
 
-        # 获取被@的用户
-        target_user_id = get_at_target(event)
+    # 获取被@的用户
+    target_user_id = get_at_target(event)
 
-        if target_user_id is None:
-            await identify_other.finish("请@一个要鉴定的人喵~\n用法：鉴定你 @某人")
-            return
+    if target_user_id is None:
+        await identify_other.finish("请@一个要鉴定的人喵~\n用法：鉴定你 @某人")
 
-        # 不能鉴定机器人自己
-        if target_user_id == int(bot.self_id):
-            await identify_other.finish("我不能鉴定我自己喵~")
-            return
+    # 不能鉴定机器人自己
+    if target_user_id == int(bot.self_id):
+        await identify_other.finish("我不能鉴定我自己喵~")
 
-        # 检查被鉴定用户今天的鉴定结果
-        today_record = daily_record_manager.get_user_record(group_id, target_user_id)
+    # 检查被鉴定用户今天的鉴定结果
+    today_record = daily_record_manager.get_user_record(group_id, target_user_id)
 
-        if today_record:
-            # 如果今天已经被鉴定过，直接返回之前的结果
-            image_path = today_record
-        else:
-            # 获取随机图片
-            image_path = daily_record_manager.get_random_image()
+    if today_record:
+        # 如果今天已经被鉴定过，直接返回之前的结果
+        image_path = today_record
+    else:
+        # 获取随机图片
+        image_path = daily_record_manager.get_random_image()
 
-            if not image_path:
-                await identify_other.finish("鉴定系统暂时不可用，请稍后再试喵~")
-                return
+        if not image_path:
+            await identify_other.finish("鉴定系统暂时不可用，请稍后再试喵~")
 
-            # 保存被鉴定用户今天的鉴定结果
-            daily_record_manager.set_user_record(group_id, target_user_id, image_path)
+        # 保存被鉴定用户今天的鉴定结果
+        daily_record_manager.set_user_record(group_id, target_user_id, image_path)
 
-        # 创建合并转发消息（传入发起者ID以生成不同文案）
-        forward_nodes = await create_identify_message(
-            bot, group_id, target_user_id, image_path, initiator_user_id=initiator_id
-        )
+    # 创建合并转发消息（传入发起者ID以生成不同文案）
+    forward_nodes = await create_identify_message(
+        bot, group_id, target_user_id, image_path, initiator_user_id=initiator_id
+    )
 
-        # 发送合并转发消息
-        await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
+    # 发送合并转发消息
+    await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
 
-        logger.info(f"用户 {initiator_id} 在群 {group_id} 鉴定了用户 {target_user_id}")
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"处理鉴定别人命令时出错: {e}")
-        await identify_other.finish("鉴定失败，请稍后再试喵~")
+    logger.info(f"用户 {initiator_id} 在群 {group_id} 鉴定了用户 {target_user_id}")
 
 
 @scheduler.scheduled_job("cron", hour=0, minute=5, id="identify_daily_cleanup")

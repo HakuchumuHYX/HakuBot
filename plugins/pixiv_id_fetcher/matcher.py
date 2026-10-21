@@ -5,7 +5,7 @@ from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, NoReturn, Optional
 
 from nonebot import get_driver, on_command, logger
 from nonebot.adapters.onebot.v11 import (
@@ -15,7 +15,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 from nonebot.adapters.onebot.v11.exception import ActionFailed, NetworkError
-from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 
 from utils.onebot.media import image_segment
@@ -326,6 +325,17 @@ async def _send_link_fallback(
     await bot.send(event, Message("\n\n".join(contents)))
 
 
+async def _finish_failed(pid: int, e: Exception) -> NoReturn:
+    """在 except 块里调用：按异常类型记日志，并回复用户"""
+    if isinstance(e, PixivClientError):
+        logger.warning(
+            f"[pixiv_id_fetcher] request failed pid={pid} kind={e.kind}: {e}"
+        )
+        await pixiv_cmd.finish(describe_client_error(e.kind))
+    logger.exception(f"[pixiv_id_fetcher] unexpected error pid={pid}: {e}")
+    await pixiv_cmd.finish("获取 Pixiv 图片失败，请稍后再试")
+
+
 @pixiv_cmd.handle()
 async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     remaining = cooldown_remaining(PLUGIN_ID, event)
@@ -343,23 +353,27 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         allow_r18g=config.allow_r18g,
     )
 
-    try:
-        async with _get_semaphore():
+    async with _get_semaphore():
+        try:
             illust = await _get_client().fetch_illust(
                 pid,
                 send_original=config.send_original,
             )
+        except Exception as e:
+            await _finish_failed(pid, e)
 
-            if not policy_allows(illust, policy):
-                if illust.is_r18g:
-                    await pixiv_cmd.finish("该作品为 R18G，当前配置未允许发送")
-                await pixiv_cmd.finish("该作品为 R18，当前配置未允许发送")
+        if not policy_allows(illust, policy):
+            if illust.is_r18g:
+                await pixiv_cmd.finish("该作品为 R18G，当前配置未允许发送")
+            await pixiv_cmd.finish("该作品为 R18，当前配置未允许发送")
 
-            if not illust.is_ugoira and not illust.pages:
-                await pixiv_cmd.finish("没有找到可发送的图片")
+        if not illust.is_ugoira and not illust.pages:
+            await pixiv_cmd.finish("没有找到可发送的图片")
 
-            pages, truncated = select_pages(illust, config.max_pages)
+        pages, truncated = select_pages(illust, config.max_pages)
 
+        # 发送前要下载图片，同样可能失败
+        try:
             if should_use_forward(illust):
                 image_sent = await _send_forward(
                     bot,
@@ -387,18 +401,9 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                     ),
                     pid=illust.pid,
                 )
+        except Exception as e:
+            await _finish_failed(pid, e)
 
-            mark_cooldown(PLUGIN_ID, event)
-
-    except FinishedException:
-        raise
-    except PixivClientError as e:
-        logger.warning(
-            f"[pixiv_id_fetcher] request failed pid={pid} kind={e.kind}: {e}"
-        )
-        await pixiv_cmd.finish(describe_client_error(e.kind))
-    except Exception as e:
-        logger.exception(f"[pixiv_id_fetcher] unexpected error pid={pid}: {e}")
-        await pixiv_cmd.finish("获取 Pixiv 图片失败，请稍后再试")
+        mark_cooldown(PLUGIN_ID, event)
 
     await pixiv_cmd.finish()

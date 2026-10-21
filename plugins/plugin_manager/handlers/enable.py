@@ -1,6 +1,5 @@
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
-from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
@@ -126,22 +125,17 @@ async def handle_list(event: MessageEvent):
         logger.warning(f"水印配置读取失败，本次不加水印: {get_exc_desc(result.error)}")
     watermark_config = result.data
 
+    wm_text = str(watermark_config.get("text", "")).strip()
+    wm_pos = (
+        str(watermark_config.get("position", "bottom_right")).strip() or "bottom_right"
+    )
     try:
-        wm_text = str(watermark_config.get("text", "")).strip()
-        wm_pos = (
-            str(watermark_config.get("position", "bottom_right")).strip()
-            or "bottom_right"
-        )
         img_bytes = await render_plugin_status_image(
             groups=ordered,
             group_id=group_id,
             watermark_text=wm_text,
             watermark_position=wm_pos,
         )
-        await list_plugins.finish(image_segment(img_bytes))
-    except FinishedException:
-        # finish() 会抛 FinishedException 用于中断流程；不要当作渲染失败处理
-        raise
     except Exception as e:
         logger.opt(exception=True).warning(f"渲染插件状态图片失败: {e}")
         lines = [
@@ -150,6 +144,7 @@ async def handle_list(event: MessageEvent):
             for row in (group.parent, *group.children)
         ]
         await list_plugins.finish("本群插件状态:\n" + "\n".join(lines))
+    await list_plugins.finish(image_segment(img_bytes))
 
 
 def text_line(row: PluginStatusRow) -> str:

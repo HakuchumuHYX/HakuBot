@@ -2,7 +2,6 @@ from typing import Tuple, Optional
 from nonebot import on_regex, logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.params import RegexGroup
-from nonebot.exception import FinishedException
 
 from core.access import switch_rule
 from utils.onebot.media import image_segment
@@ -61,10 +60,7 @@ async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup(
 
     try:
         image_bytes = await render_profile(target_url)
-        await profile_matcher.finish(image_segment(image_bytes))
-
-    except FinishedException:
-        raise
     except Exception as e:
         logger.exception(f"PJSK Profile 处理异常: {e}")
-        await profile_matcher.finish(f"获取SnowyBot版个人资料页出错，请稍后再试")
+        await profile_matcher.finish("获取SnowyBot版个人资料页出错，请稍后再试")
+    await profile_matcher.finish(image_segment(image_bytes))

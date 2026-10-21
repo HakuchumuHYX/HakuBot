@@ -3,7 +3,6 @@ import asyncio
 import re
 from nonebot import on_message, on_command, logger
 from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Message, Bot
-from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
 
 from utils.logging import get_exc_desc
@@ -235,19 +234,14 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
             sticker_files = get_random_stickers(folder_name, count)
             if sticker_files:
                 # 发送多张图片
-                try:
-                    # 创建包含多张图片的消息
-                    message_segments = []
-                    for sticker_file in sticker_files:
-                        message_segments.append(image_segment(sticker_file))
+                # 创建包含多张图片的消息
+                message_segments = []
+                for sticker_file in sticker_files:
+                    message_segments.append(image_segment(sticker_file))
 
-                    mark_cooldown("stickers", event)  # 成功则更新CD
+                mark_cooldown("stickers", event)  # 成功则更新CD
 
-                    await sticker_matcher.finish(Message(message_segments))
-                except FinishedException:
-                    raise
-                except Exception as e:
-                    logger.error(f"发送多图随机贴图失败: {get_exc_desc(e)}")
+                await sticker_matcher.finish(Message(message_segments))
             return
 
         # 如果不是多图随机命令，处理单图随机命令
@@ -263,11 +257,6 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
             sticker_file = get_random_sticker(folder_name)
             if sticker_file:
                 # 发送图片
-                try:
-                    mark_cooldown("stickers", event)  # 成功则更新CD
+                mark_cooldown("stickers", event)  # 成功则更新CD
 
-                    await sticker_matcher.finish(image_segment(sticker_file))
-                except FinishedException:
-                    raise
-                except Exception as e:
-                    logger.error(f"发送随机贴图失败: {get_exc_desc(e)}")
+                await sticker_matcher.finish(image_segment(sticker_file))

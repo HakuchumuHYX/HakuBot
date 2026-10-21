@@ -20,7 +20,6 @@ from nonebot.adapters.onebot.v11 import (
     Message,
 )
 from nonebot.params import CommandArg, CommandWhitespace
-from nonebot.exception import FinishedException
 
 # 导入模块而非变量，确保获取最新值
 from plugins.stickers.send import (
@@ -268,8 +267,6 @@ async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()
             else:
                 await view_all_matcher.send(f"第 {page_num} 页生成失败。")
 
-    except FinishedException:
-        raise
     except Exception as e:
         logger.exception(f"生成概览图出错: {e}")
         await view_all_matcher.finish(f"生成概览图时发生未知错误: {e}")

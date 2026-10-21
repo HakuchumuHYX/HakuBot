@@ -9,7 +9,6 @@ import time
 from pathlib import Path
 from nonebot import on_command, logger
 from nonebot.typing import T_State
-from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import (
     GROUP,
     Message,
@@ -188,16 +187,13 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
         await _run_game_session(
             bot, event, game_data, intro_messages, answer_reveal_messages
         )
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"游戏启动过程中发生未处理的异常: {e}")
-        await start_guess_song_unified.send("......开始游戏时发生内部错误，已中断。")
-        if session_id in active_game_sessions:
+    finally:
+        if (
+            session_id in active_game_sessions
+            and active_game_sessions[session_id].get("type") == "game_init"
+        ):
             active_game_sessions.pop(session_id)
-        last_game_end_time[session_id] = time.time()
+            last_game_end_time[session_id] = time.time()
 
 
 # --- 随机猜歌 ---
@@ -314,13 +310,6 @@ async def _(bot: Bot, event: MessageEvent):
         await _run_game_session(
             bot, event, game_data, intro_messages, answer_reveal_messages
         )
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"随机游戏启动过程中发生未处理的异常: {e}")
-        await start_random_guess_song.send("......开始游戏时发生内部错误，已中断。")
     finally:
         if (
             session_id in active_game_sessions
@@ -448,13 +437,6 @@ async def _(bot: Bot, event: MessageEvent):
         await _run_game_session(
             bot, event, game_data, intro_messages, answer_reveal_messages
         )
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"猜歌手游戏启动过程中发生未处理的异常: {e}")
-        await start_vocalist_game.send("......开始游戏时发生内部错误，已中断。")
     finally:
         if (
             session_id in active_game_sessions

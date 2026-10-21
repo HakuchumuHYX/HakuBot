@@ -15,7 +15,6 @@ from typing import Any, Callable
 
 import aiohttp
 from PIL import Image
-from nonebot.exception import FinishedException
 from nonebot import logger
 from utils.json_io import atomic_write_bytes
 from utils.onebot.media import image_segment
@@ -108,8 +107,6 @@ async def _fetch_jacket_images(
         async with aiohttp.ClientSession() as session:
             tasks = [_download_one(session, rid, url) for rid, url in url_map.items()]
             await asyncio.gather(*tasks)
-    except FinishedException:
-        raise
     except Exception as e:
         raise AssetDownloadError(str(e)) from e
 
@@ -152,8 +149,6 @@ async def render_msr(user_ctx: UserDataContext) -> tuple[bytes | None, bytes | N
     # 预取 mysekai 动态 icon
     try:
         await rip_asset_lite.prefetch_from_analysis_data(analysis_data)
-    except FinishedException:
-        raise
     except Exception as e:
         logger.warning(f"MySekai 动态 icon 预取失败，将回退静态资源: {e}")
 
@@ -167,8 +162,6 @@ async def render_msr(user_ctx: UserDataContext) -> tuple[bytes | None, bytes | N
         }
         if fixture_ids:
             await rip_asset_lite.prefetch_harvest_fixture_icons(fixture_ids)
-    except FinishedException:
-        raise
     except Exception as e:
         logger.warning(f"MySekai harvest fixture icon 预取失败，将回退圆点标记: {e}")
 
@@ -229,8 +222,6 @@ async def _execute_msr_analysis(
                 user_id=event_user_id, message=image_segment(image_bytes)
             )
             sent_any = True
-        except FinishedException:
-            raise
         except Exception:
             logger.opt(exception=True).warning(f"MSR {label}发送失败")
             await _send_or_raise(send_func, f"{label}发送失败，已跳过。")
@@ -247,8 +238,6 @@ async def _execute_msr_analysis(
 async def _send_or_raise(send_func: SendFunc, text: str) -> None:
     try:
         await send_func(text)
-    except FinishedException:
-        raise
     except Exception as e:
         raise SendError(f"提示消息发送失败（{text}）: {e}") from e
 
@@ -277,14 +266,10 @@ async def run_msr(
         if not ok:
             raise RenderError("render returned false")
         return True
-    except FinishedException:
-        raise
     except Exception as e:
         logger.exception("MSR 执行失败")
         try:
             await send_func("抱歉，分析生成失败。")
-        except FinishedException:
-            raise
         except Exception as send_err:
             raise SendError(str(send_err)) from e
         return False

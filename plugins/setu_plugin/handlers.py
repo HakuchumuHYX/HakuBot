@@ -14,7 +14,6 @@ from nonebot.adapters.onebot.v11 import (
     Message,
     MessageSegment,
 )
-from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 
 from core.access import switch_rule
@@ -289,8 +288,6 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         try:
             await send_forward_msg(bot, event, items=items)
             sent_ok = True
-        except FinishedException:
-            raise
         except Exception as e:
             logger.opt(exception=True).warning(
                 f"[setu_plugin] send forward failed: {e}"

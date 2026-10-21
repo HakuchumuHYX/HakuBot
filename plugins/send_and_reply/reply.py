@@ -1,7 +1,6 @@
 from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import Bot, PrivateMessageEvent, MessageSegment
 from nonebot.permission import SUPERUSER
-from nonebot.exception import FinishedException
 
 # 导入共享上下文
 from plugins.send_and_reply.content import message_context
@@ -58,27 +57,23 @@ async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
         # 如果原消息来自群聊，发送到群聊
         if "group_id" in context:
             group_id = int(context["group_id"])
-            group_info = context["group_info"]
             # 添加@用户
             at_segment = MessageSegment.at(user_id)
             full_message = at_segment + MessageSegment.text(f" {reply_message_content}")
             await bot.send_group_msg(group_id=group_id, message=full_message)
-            # 回复完成，从上下文中移除该条目
-            message_context.pop(replied_msg_id, None)
-            logger.info(f"超级用户 {superuser_id} 在群 {group_id} 中回复用户 {user_id}")
-            await reply_message.finish(f"回复已发送到群 {group_info}")
         else:
             # 发送私聊回复
             await bot.send_private_msg(
                 user_id=int(user_id), message=reply_message_content
             )
-            # 回复完成，从上下文中移除该条目
-            message_context.pop(replied_msg_id, None)
-            logger.info(f"超级用户 {superuser_id} 成功私聊回复用户 {user_id}")
-            await reply_message.finish(f"回复已发送给 {user_info}")
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
     except Exception as e:
         logger.exception(f"发送回复失败: {e}")
         await reply_message.finish(f"回复发送失败: {e}")
+
+    # 回复完成，从上下文中移除该条目
+    message_context.pop(replied_msg_id, None)
+    if "group_id" in context:
+        logger.info(f"超级用户 {superuser_id} 在群 {group_id} 中回复用户 {user_id}")
+        await reply_message.finish(f"回复已发送到群 {context['group_info']}")
+    logger.info(f"超级用户 {superuser_id} 成功私聊回复用户 {user_id}")
+    await reply_message.finish(f"回复已发送给 {user_info}")

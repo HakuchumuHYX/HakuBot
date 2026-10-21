@@ -22,7 +22,6 @@ from urllib.parse import unquote
 
 from nonebot import on_command, on_message, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
-from nonebot.exception import FinishedException
 from nonebot.rule import is_type
 
 from plugins.buaa_msm.config import with_site_link, settings
@@ -185,8 +184,6 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent | GroupMessag
                         )
                     finally:
                         await set_processing(user_id, False)
-            except FinishedException:
-                raise
             except DataLoadError as e:
                 logger.info(f"自动执行 MSR 分析时无法读取用户数据: {e}")
                 await file_handler.send(
@@ -202,8 +199,6 @@ async def handle_file_message(bot: Bot, event: PrivateMessageEvent | GroupMessag
                 "文件上传成功，但预解密失败！\n请检查文件是否为正确的 .bin 文件，然后重新上传。"
             )
 
-    except FinishedException:
-        raise
     except Exception as e:
         logger.exception("文件处理失败")
         waiting_for_file.pop(user_id, None)

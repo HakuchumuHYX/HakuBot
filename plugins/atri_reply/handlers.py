@@ -3,7 +3,6 @@ import random
 from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.rule import Rule
-from nonebot.exception import FinishedException
 from core.access import switch_rule
 from core.settings import ConfigModel, load_config
 from utils.logging import get_exc_desc
@@ -34,19 +33,12 @@ call_reply = on_message(
 @call_reply.handle()
 async def handle_call_reply(event: MessageEvent):
     """处理呼叫机器人的消息"""
-    try:
-        # 从回复文本中随机选择一条
-        if plugin_config.reply_texts:
-            reply_text = random.choice(plugin_config.reply_texts)
-            await call_reply.finish(reply_text)
-        else:
-            logger.warning("回复文本列表为空，无法回复")
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"处理呼叫回复时出错: {e}")
+    # 从回复文本中随机选择一条
+    if plugin_config.reply_texts:
+        reply_text = random.choice(plugin_config.reply_texts)
+        await call_reply.finish(reply_text)
+    else:
+        logger.warning("回复文本列表为空，无法回复")
 
 
 # 重新加载配置的命令（可选功能）

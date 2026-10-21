@@ -4,9 +4,8 @@
 存放排行榜指令
 """
 
-from nonebot import on_command, logger
+from nonebot import on_command
 from nonebot.matcher import Matcher
-from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import (
     GROUP,
     ActionFailed,
@@ -37,36 +36,28 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
 
     group_id = str(event.group_id)
 
+    # 1. 从数据库获取排行数据
+    leaderboard_data = await db_service.get_group_leaderboard(group_id, limit=5)
+
+    if not leaderboard_data:
+        await matcher.finish("本群还没有人猜对歌曲哦，快来玩“猜歌”吧！")
+
     try:
-        # 1. 从数据库获取排行数据
-        leaderboard_data = await db_service.get_group_leaderboard(group_id, limit=5)
+        group_info = await bot.get_group_info(group_id=event.group_id)
+        group_name = group_info.get("group_name", f"群 {group_id}")
+    except ActionFailed:
+        group_name = f"群 {group_id}"
 
-        if not leaderboard_data:
-            await matcher.finish("本群还没有人猜对歌曲哦，快来玩“猜歌”吧！")
+    image = await image_service.draw_leaderboard_image(group_name, leaderboard_data)
 
-        try:
-            group_info = await bot.get_group_info(group_id=event.group_id)
-            group_name = group_info.get("group_name", f"群 {group_id}")
-        except ActionFailed:
-            group_name = f"群 {group_id}"
-
-        image = await image_service.draw_leaderboard_image(group_name, leaderboard_data)
-
-        if image:
-            await matcher.send(image_segment(image))
-        else:
-            # 绘图失败，回退到文本
-            await matcher.send(
-                "...排行榜图片生成失败，即将发送文本版：\n"
-                + _format_leaderboard_text(group_name, leaderboard_data)
-            )
-
-    except FinishedException:
-        # 忽略 FinishedException，这是正常的结束流程
-        raise
-    except Exception as e:
-        logger.exception(f"获取或绘制排行榜失败: {e}")
-        await matcher.send("...获取排行榜时出错，请联系管理员。")
+    if image:
+        await matcher.send(image_segment(image))
+    else:
+        # 绘图失败，回退到文本
+        await matcher.send(
+            "...排行榜图片生成失败，即将发送文本版：\n"
+            + _format_leaderboard_text(group_name, leaderboard_data)
+        )
 
 
 def _format_leaderboard_text(group_name: str, data: list) -> str:

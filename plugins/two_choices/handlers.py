@@ -4,7 +4,6 @@ from typing import Optional, Tuple
 
 from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.exception import FinishedException
 from nonebot.rule import Rule
 
 from core.access import switch_rule
@@ -180,31 +179,24 @@ two_choice = on_message(
 @two_choice.handle()
 async def handle_two_choice(event: MessageEvent):
     """处理二择问题"""
-    try:
-        message_text = event.get_plaintext().strip()
-        choices = extract_choices(message_text)
+    message_text = event.get_plaintext().strip()
+    choices = extract_choices(message_text)
 
-        if not choices:
-            if plugin_config.error_responses:
-                await two_choice.finish(random.choice(plugin_config.error_responses))
-            return
+    if not choices:
+        if plugin_config.error_responses:
+            await two_choice.finish(random.choice(plugin_config.error_responses))
+        return
 
-        choice1, choice2 = choices
+    choice1, choice2 = choices
 
-        selected_choice = random.choice([choice1, choice2])
+    selected_choice = random.choice([choice1, choice2])
 
-        if plugin_config.responses:
-            response_template = random.choice(plugin_config.responses)
-            reply_text = response_template.format(choice=selected_choice)
-            await two_choice.finish(reply_text)
-        else:
-            await two_choice.finish(f"我建议选择：{selected_choice}")
-
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.exception(f"处理二择问题时出错: {e}")
-        await two_choice.finish("出现了一些问题，请稍后再试~")
+    if plugin_config.responses:
+        response_template = random.choice(plugin_config.responses)
+        reply_text = response_template.format(choice=selected_choice)
+        await two_choice.finish(reply_text)
+    else:
+        await two_choice.finish(f"我建议选择：{selected_choice}")
 
 
 # 重新加载配置的命令

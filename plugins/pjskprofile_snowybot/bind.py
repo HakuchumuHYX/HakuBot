@@ -1,7 +1,6 @@
-from nonebot import on_regex, logger
+from nonebot import on_regex
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.params import RegexGroup
-from nonebot.exception import FinishedException
 from typing import Tuple, Optional
 
 from core.access import switch_rule
@@ -27,27 +26,20 @@ async def _(event: MessageEvent, groups: Tuple[Optional[str], str] = RegexGroup(
     else:
         server = "jp"
 
-    try:
-        success = update_binding(user_id, server, pjsk_id)
+    success = update_binding(user_id, server, pjsk_id)
 
-        if success:
-            server_name_map = {
-                "jp": "日服",
-                "cn": "国服",
-                "en": "国际服",
-                "tw": "台服",
-                "kr": "韩服",
-            }
-            display_server = server_name_map.get(server, server)
+    if success:
+        server_name_map = {
+            "jp": "日服",
+            "cn": "国服",
+            "en": "国际服",
+            "tw": "台服",
+            "kr": "韩服",
+        }
+        display_server = server_name_map.get(server, server)
 
-            await bind_matcher.finish(
-                f"✅ 绑定成功！\n服务器: {display_server}\nID: {pjsk_id}"
-            )
-        else:
-            await bind_matcher.finish("❌ 绑定失败，发生未知错误。")
-
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.exception(f"PJSK 绑定指令发生错误: {e}")
-        await bind_matcher.finish("❌ 处理过程中发生内部错误，请查看日志。")
+        await bind_matcher.finish(
+            f"✅ 绑定成功！\n服务器: {display_server}\nID: {pjsk_id}"
+        )
+    else:
+        await bind_matcher.finish("❌ 绑定失败，发生未知错误。")

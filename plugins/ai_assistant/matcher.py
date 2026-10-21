@@ -1,6 +1,7 @@
 from core.lifecycle import on_plugin_startup
 from utils.paths import PluginPaths
 import time
+from typing import NoReturn
 
 import aiofiles
 from openai import BadRequestError
@@ -11,7 +12,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageEvent,
     MessageSegment,
 )
-from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
@@ -133,6 +133,18 @@ async def _render_chat_reply(
         return Message(remove_markdown(reply_text) + f"\n\n{stat_text}")
 
 
+async def _finish_failed(
+    matcher: type[Matcher], exc: Exception, log_context: str, error_prefix: str
+) -> NoReturn:
+    """在 except 块里调用：按异常类型记日志，并把错误回复给用户"""
+    if isinstance(exc, BadRequestError):
+        # 上游拒绝这条请求（内容审核、输入过长等），是对用户输入的判定，不算故障
+        logger.warning(f"{log_context}: 请求被上游拒绝: {get_exc_desc(exc)}")
+    else:
+        logger.exception(log_context)
+    await matcher.finish(f"{error_prefix}: {exc}")
+
+
 async def _handle_chat_command(
     matcher: type[Matcher],
     bot: Bot,
@@ -155,56 +167,50 @@ async def _handle_chat_command(
             args,
             include_forward=True,
         )
-        if not content_list:
-            await matcher.finish("请提供对话内容，或回复包含内容的消息。")
+    except Exception as exc:
+        await _finish_failed(matcher, exc, log_context, error_prefix)
+    if not content_list:
+        await matcher.finish("请提供对话内容，或回复包含内容的消息。")
 
-        decision = decide_chat_search(content_list, force_search=force_search)
-        if force_search and not decision.search_text:
-            await matcher.finish("未检测到可用于搜索的文本内容。")
-        if decision.mode != "none":
-            await matcher.send("正在联网搜索中...")
+    decision = decide_chat_search(content_list, force_search=force_search)
+    if force_search and not decision.search_text:
+        await matcher.finish("未检测到可用于搜索的文本内容。")
+    if decision.mode != "none":
+        await matcher.send("正在联网搜索中...")
 
-        harness = await prepare_chat_messages(content_list, decision=decision)
-        if force_search and harness.search_error:
-            await matcher.finish(f"联网Chat失败: {harness.search_error}")
+    harness = await prepare_chat_messages(content_list, decision=decision)
+    if force_search and harness.search_error:
+        await matcher.finish(f"联网Chat失败: {harness.search_error}")
 
-        await matcher.send("正在思考中...")
+    await matcher.send("正在思考中...")
+    try:
         result = await call_chat_completion(
             harness.messages,
             temperature=plugin_config.chat.temperature,
             top_p=plugin_config.chat.top_p,
         )
-        # LLM 调用成功（已产生消耗）后再更新 CD
-        mark_cooldown(CHAT_ID, event)
-
-        stat_text = (
-            f"—— 使用模型: {result.model}"
-            f" | Token消耗: {result.usage.total_tokens}"
-            f" | 耗时: {result.elapsed:.2f}s"
-        )
-        if force_search:
-            stat_text += (
-                f" | 联网: Tavily {harness.search_mode}"
-                f" | Query数: {len(harness.queries)}"
-            )
-        elif harness.search_mode != "none":
-            search_state = f"自动{harness.search_mode}"
-            if harness.search_error:
-                search_state += "失败"
-            stat_text += f" | 联网: {search_state} | Query数: {len(harness.queries)}"
-
-        reply_msg = await _render_chat_reply(result.content, stat_text)
-        await matcher.finish(reply_msg, at_sender=True)
-
-    except FinishedException:
-        raise
-    except BadRequestError as exc:
-        # 上游拒绝这条请求（内容审核、输入过长等），是对用户输入的判定，不算故障
-        logger.warning(f"{log_context}: 请求被上游拒绝: {get_exc_desc(exc)}")
-        await matcher.finish(f"{error_prefix}: {exc}")
     except Exception as exc:
-        logger.exception(log_context)
-        await matcher.finish(f"{error_prefix}: {exc}")
+        await _finish_failed(matcher, exc, log_context, error_prefix)
+    # LLM 调用成功（已产生消耗）后再更新 CD
+    mark_cooldown(CHAT_ID, event)
+
+    stat_text = (
+        f"—— 使用模型: {result.model}"
+        f" | Token消耗: {result.usage.total_tokens}"
+        f" | 耗时: {result.elapsed:.2f}s"
+    )
+    if force_search:
+        stat_text += (
+            f" | 联网: Tavily {harness.search_mode} | Query数: {len(harness.queries)}"
+        )
+    elif harness.search_mode != "none":
+        search_state = f"自动{harness.search_mode}"
+        if harness.search_error:
+            search_state += "失败"
+        stat_text += f" | 联网: {search_state} | Query数: {len(harness.queries)}"
+
+    reply_msg = await _render_chat_reply(result.content, stat_text)
+    await matcher.finish(reply_msg, at_sender=True)
 
 
 async def _handle_draw_command(
@@ -227,31 +233,34 @@ async def _handle_draw_command(
             args,
             image_purpose="generation",
         )
-        if not content_list:
-            await matcher.finish("请提供文字描述，或回复一张图片。")
+    except Exception as exc:
+        await _finish_failed(matcher, exc, log_context, error_prefix)
+    if not content_list:
+        await matcher.finish("请提供文字描述，或回复一张图片。")
 
-        context_text = None
-        if use_web:
-            raw_text = extract_pure_text(content_list).strip()
-            if not raw_text:
-                await matcher.finish("未检测到可用于搜索的文本内容。")
+    context_text = None
+    if use_web:
+        raw_text = extract_pure_text(content_list).strip()
+        if not raw_text:
+            await matcher.finish("未检测到可用于搜索的文本内容。")
 
-            await matcher.send("正在联网搜索视觉设定中...")
-            queries, search_payloads = await web_image_search_with_rewrite(raw_text)
+        await matcher.send("正在联网搜索视觉设定中...")
+        queries, search_payloads = await web_image_search_with_rewrite(raw_text)
 
-            await matcher.send("正在提炼视觉设定...")
-            visual_brief = await build_visual_brief_from_search(
-                raw_text,
-                queries,
-                search_payloads,
-            )
-            context_text = compile_image_prompt_from_visual_brief(
-                raw_text,
-                visual_brief,
-            )
+        await matcher.send("正在提炼视觉设定...")
+        visual_brief = await build_visual_brief_from_search(
+            raw_text,
+            queries,
+            search_payloads,
+        )
+        context_text = compile_image_prompt_from_visual_brief(
+            raw_text,
+            visual_brief,
+        )
 
-        await matcher.send("正在绘制中，请稍候...")
+    await matcher.send("正在绘制中，请稍候...")
 
+    try:
         started_at = time.perf_counter()
         image_url = await call_image_generation(
             content_list,
@@ -264,24 +273,16 @@ async def _handle_draw_command(
         started_at = time.perf_counter()
         await matcher.send(image_segment(image_url))
         send_elapsed = time.perf_counter() - started_at
-
-        stat_text = (
-            f"使用模型：{plugin_config.image.model}\n"
-            f"生成耗费{generation_elapsed:.2f}s，发送耗费{send_elapsed:.2f}s"
-        )
-        if use_web:
-            stat_text += "\n联网：Tavily，已提炼视觉设定"
-        await matcher.finish(stat_text)
-
-    except FinishedException:
-        raise
-    except BadRequestError as exc:
-        # 上游拒绝这条请求（内容审核、输入过长等），是对用户输入的判定，不算故障
-        logger.warning(f"{log_context}: 请求被上游拒绝: {get_exc_desc(exc)}")
-        await matcher.finish(f"{error_prefix}: {exc}")
     except Exception as exc:
-        logger.exception(log_context)
-        await matcher.finish(f"{error_prefix}: {exc}")
+        await _finish_failed(matcher, exc, log_context, error_prefix)
+
+    stat_text = (
+        f"使用模型：{plugin_config.image.model}\n"
+        f"生成耗费{generation_elapsed:.2f}s，发送耗费{send_elapsed:.2f}s"
+    )
+    if use_web:
+        stat_text += "\n联网：Tavily，已提炼视觉设定"
+    await matcher.finish(stat_text)
 
 
 @chat_matcher.handle()

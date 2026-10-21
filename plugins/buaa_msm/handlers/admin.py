@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from nonebot import logger, on_command, require
 from nonebot.adapters.onebot.v11 import Bot, PrivateMessageEvent
-from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type
 
@@ -71,14 +70,8 @@ cleanup_cmd = on_command("清理文件", permission=SUPERUSER, priority=5, block
 
 @cleanup_cmd.handle()
 async def handle_cleanup_command(bot: Bot, event):
-    try:
-        await cleanup_with_cache(clear_visit_history=True)
-        await cleanup_cmd.finish("文件及访问历史清理完成")
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.exception("手动清理文件失败")
-        await cleanup_cmd.finish(f"文件清理失败: {str(e)}")
+    await cleanup_with_cache(clear_visit_history=True)
+    await cleanup_cmd.finish("文件及访问历史清理完成")
 
 
 stats_cmd = on_command("文件统计", permission=SUPERUSER, priority=5, block=True)
@@ -86,23 +79,15 @@ stats_cmd = on_command("文件统计", permission=SUPERUSER, priority=5, block=T
 
 @stats_cmd.handle()
 async def handle_stats_command(bot: Bot, event):
-    try:
-        if not file_storage_dir.exists():
-            await stats_cmd.finish("文件存储目录不存在")
-            return
+    if not file_storage_dir.exists():
+        await stats_cmd.finish("文件存储目录不存在")
 
-        items = list_storage_items()
-        if not items:
-            await stats_cmd.finish("文件存储目录为空")
-            return
+    items = list_storage_items()
+    if not items:
+        await stats_cmd.finish("文件存储目录为空")
 
-        stats = collect_file_stats()
-        await stats_cmd.finish(build_stats_message(stats))
-    except FinishedException:
-        raise
-    except Exception as e:
-        logger.exception("获取文件统计失败")
-        await stats_cmd.finish(f"获取文件统计失败: {str(e)}")
+    stats = collect_file_stats()
+    await stats_cmd.finish(build_stats_message(stats))
 
 
 # 文件列表：原先在 handlers/upload.py 中（SUPERUSER + 私聊）
@@ -117,21 +102,14 @@ list_files_cmd = on_command(
 
 @list_files_cmd.handle()
 async def handle_list_files_command(bot: Bot, event: PrivateMessageEvent):
-    try:
-        files = list_storage_items()
-        if not files:
-            await list_files_cmd.finish("文件存储目录为空。")
-            return
+    files = list_storage_items()
+    if not files:
+        await list_files_cmd.finish("文件存储目录为空。")
 
-        file_list = []
-        for i, file in enumerate(files):
-            size_str = format_file_size(file.stat().st_size)
-            file_list.append(f"{i + 1}. {file.name} ({size_str})")
+    file_list = []
+    for i, file in enumerate(files):
+        size_str = format_file_size(file.stat().st_size)
+        file_list.append(f"{i + 1}. {file.name} ({size_str})")
 
-        message = f"已上传的文件 (共 {len(files)} 个):\n" + "\n".join(file_list)
-        await list_files_cmd.finish(message)
-    except FinishedException:
-        raise
-    except Exception:
-        logger.exception("列出文件失败")
-        await list_files_cmd.finish("列出文件失败。")
+    message = f"已上传的文件 (共 {len(files)} 个):\n" + "\n".join(file_list)
+    await list_files_cmd.finish(message)

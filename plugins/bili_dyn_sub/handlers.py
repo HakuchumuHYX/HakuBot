@@ -24,7 +24,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageEvent,
     PrivateMessageEvent,
 )
-from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
@@ -457,8 +456,6 @@ async def handle_test(bot: Bot, event: MessageEvent, args: Message = CommandArg(
         data = await api.fetch_space_feed(uid)
     except api.BiliApiError as e:
         await bili_test.finish(f"❌ 取数失败：{e}\n{_format_global_status()}")
-    except FinishedException:
-        raise
     except Exception as e:
         logger.error(f"测试拉取 UID {uid} 失败: {get_exc_desc(e)}")
         await bili_test.finish(f"❌ 取数异常：{get_exc_desc(e)}")
