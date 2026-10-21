@@ -35,4 +35,4 @@ async def download_avatar(user_id: int, *, size=100):
             return data
         except Exception as exc:
             error = exc
-    raise RuntimeError("Avatar download failed") from error
+    raise RuntimeError(f"头像下载失败: {user_id}") from error

@@ -25,7 +25,7 @@ def font_path(weight: str = "Regular") -> Path:
     for candidate in candidates:
         if candidate.is_file():
             return candidate
-    raise FileNotFoundError("No local CJK font in data/shared/fonts or system fonts")
+    raise FileNotFoundError("data/shared/fonts 和系统字体里都没有可用的中文字体")
 
 
 @lru_cache(maxsize=1)

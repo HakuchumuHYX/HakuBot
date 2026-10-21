@@ -1,4 +1,4 @@
-"""Bounded downloads with explicit proxy modes and owned, isolated sessions."""
+"""有大小上限的下载，代理模式显式指定，session 按用途隔离、统一关闭"""
 
 import asyncio
 import os
@@ -39,7 +39,7 @@ def normalize_proxy(proxy):
 
 
 def get_effective_proxy(explicit_proxy=None):
-    """None inherits environment, False requests direct access, str selects a proxy."""
+    """None 沿用环境变量，False 强制直连，字符串指定代理"""
     if explicit_proxy is False:
         return None
     if explicit_proxy:
@@ -81,13 +81,13 @@ async def close_sessions():
 async def read_limited_response(response, max_bytes):
     declared = response.headers.get("Content-Length", "")
     if declared.isdigit() and int(declared) > max_bytes:
-        raise DownloadTooLarge(f"Download exceeds {max_bytes} bytes")
+        raise DownloadTooLarge(f"下载内容超过 {max_bytes} 字节上限")
     chunks = []
     total = 0
     async for chunk in response.content.iter_chunked(64 * 1024):
         total += len(chunk)
         if total > max_bytes:
-            raise DownloadTooLarge(f"Download exceeds {max_bytes} bytes")
+            raise DownloadTooLarge(f"下载内容超过 {max_bytes} 字节上限")
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -111,7 +111,7 @@ async def download_bytes(
     attempts=3,
 ):
     if max_bytes <= 0 or attempts < 1:
-        raise ValueError("max_bytes and attempts must be positive")
+        raise ValueError("max_bytes 和 attempts 必须为正数")
     # A direct session must not consult environment proxy settings.
     direct = None
     if proxy is False:
@@ -130,7 +130,7 @@ async def download_bytes(
                     timeout=aiohttp.ClientTimeout(total=timeout),
                 ) as response:
                     if response.status != 200:
-                        raise HttpError(response.status, "Download failed")
+                        raise HttpError(response.status, "下载失败")
                     return await read_limited_response(response, max_bytes)
             except (aiohttp.ClientError, asyncio.TimeoutError, HttpError) as exc:
                 if not _should_retry(exc, attempt, attempts):
@@ -142,7 +142,7 @@ async def download_bytes(
 
 
 async def download_to_file(url, path, **options):
-    """Stream to a staging file; failure or cancellation never truncates the target."""
+    """先流式写到临时文件再替换；失败或取消都不会截断目标文件"""
     import aiofiles
 
     path = Path(path)
@@ -153,7 +153,7 @@ async def download_to_file(url, path, **options):
     proxy = options.pop("proxy", None)
     statuses = options.pop("allowed_statuses", (200,))
     if max_bytes <= 0 or attempts < 1:
-        raise ValueError("Invalid download bounds")
+        raise ValueError("下载大小上限或重试次数无效")
     descriptor, name = tempfile.mkstemp(
         dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
     )
@@ -175,17 +175,17 @@ async def download_to_file(url, path, **options):
                     **options,
                 ) as response:
                     if response.status not in statuses:
-                        raise HttpError(response.status, "Download failed")
+                        raise HttpError(response.status, "下载失败")
                     declared = response.headers.get("Content-Length", "")
                     if declared.isdigit() and int(declared) > max_bytes:
-                        raise DownloadTooLarge(f"Download exceeds {max_bytes} bytes")
+                        raise DownloadTooLarge(f"下载内容超过 {max_bytes} 字节上限")
                     size = 0
                     async with aiofiles.open(name, "wb") as stream:
                         async for chunk in response.content.iter_chunked(64 * 1024):
                             size += len(chunk)
                             if size > max_bytes:
                                 raise DownloadTooLarge(
-                                    f"Download exceeds {max_bytes} bytes"
+                                    f"下载内容超过 {max_bytes} 字节上限"
                                 )
                             await stream.write(chunk)
                         await stream.flush()

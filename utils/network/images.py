@@ -30,5 +30,5 @@ async def fetch_image(
     data = await download_bytes(url, max_bytes=max_bytes, timeout=timeout, **options)
     extension = await asyncio.to_thread(validate_image, data)
     if extension not in allowed_formats:
-        raise ValueError(f"Unsupported image format: {extension}")
+        raise ValueError(f"不支持的图片格式: {extension}")
     return DownloadedImage(data, extension)

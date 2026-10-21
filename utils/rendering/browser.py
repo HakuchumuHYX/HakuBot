@@ -1,4 +1,4 @@
-"""Owned Playwright runtime; a page failure does not close unrelated contexts."""
+"""Playwright 浏览器池；单个页面出错不影响其他 context"""
 
 import asyncio
 import os

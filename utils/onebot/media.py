@@ -27,7 +27,7 @@ _PROJECT_ROOT = project_root()
 
 
 class ImagePreparationError(ValueError):
-    """Raised when an outgoing image cannot be made readable by OneBot."""
+    """要发出的图片没法变成 OneBot 能读取的形式"""
 
 
 def _host_root() -> Path:
@@ -162,7 +162,7 @@ def _decode_encoded_image(source: str, filename: str | None) -> Path:
 
 
 def cleanup_outbound_media() -> None:
-    """Delete expired files created by this module."""
+    """删除本模块写出的过期缓存文件"""
     cutoff = time.time() - _OUTBOUND_MEDIA_TTL_SECONDS
     removed = 0
     for path in _outbound_media_dir().iterdir():
@@ -196,7 +196,7 @@ def prepare_image_source(
     *,
     filename: str | None = None,
 ) -> str | Path:
-    """Prepare an outgoing image as a URL or a NapCat-readable local path."""
+    """把要发的图片整理成 URL，或 NapCat 容器里能读到的本地路径"""
     if isinstance(source, BytesIO):
         source = source.getvalue()
     if isinstance(source, bytearray):
@@ -230,7 +230,7 @@ def image_segment(
     filename: str | None = None,
     **segment_options,
 ) -> MessageSegment:
-    """Build a OneBot image segment without embedding local data in the request."""
+    """构造图片消息段；本地数据走共享目录，不塞进请求体"""
     return MessageSegment.image(
         prepare_image_source(source, filename=filename),
         **segment_options,
@@ -247,7 +247,7 @@ def video_segment(path: Path) -> MessageSegment:
 
 
 def audio_segment(path) -> MessageSegment:
-    """Encode a local audio file using OneBot's record transport."""
+    """把本地音频文件构造成 OneBot 的语音消息段"""
     source_path = _validate_file(Path(path))
     encoded = base64.b64encode(source_path.read_bytes()).decode("utf-8")
     return MessageSegment.record(f"base64://{encoded}")

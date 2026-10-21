@@ -1,4 +1,4 @@
-"""Image identification based on actual file contents."""
+"""按文件内容（而不是扩展名）识别图片格式"""
 
 from io import BytesIO
 from PIL import Image
@@ -23,7 +23,7 @@ def detect_format(data: bytes) -> str:
         return "webp"
     if data.startswith(b"BM"):
         return "bmp"
-    raise ValueError("Unknown image format")
+    raise ValueError("无法识别的图片格式")
 
 
 def validate_image(data: bytes) -> str:

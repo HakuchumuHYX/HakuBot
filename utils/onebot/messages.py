@@ -1,4 +1,4 @@
-"""OneBot message parsing without plugin-specific prompts or policies."""
+"""OneBot 消息解析，不含任何插件自己的提示语或策略"""
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.adapters.onebot.v11.helpers import extract_image_urls
@@ -57,6 +57,6 @@ def image_urls(event, *, reply_first=False):
 
 
 def reply_image_segments(event):
-    """Only images in the replied message; never silently switch to current input."""
+    """只取被回复消息里的图片；没有也不悄悄改用当前消息里的"""
     reply = getattr(event, "reply", None)
     return list(reply.message["image"]) if reply is not None else []

@@ -6,7 +6,7 @@ from nonebot import logger
 
 from core.settings import ConfigModel, load_config
 from utils.logging import get_exc_desc
-from utils.paths import sekai_master_dir
+from utils.paths import moesekai_hub_dir, sekai_master_dir
 from plugins.pjsk_event_summary.models import (
     Chapter,
     Character,
@@ -16,7 +16,7 @@ from plugins.pjsk_event_summary.models import (
 )
 
 # 由 /opt/scripts/moesekai-auto-pull.sh 维护的 MoeSekai-Hub 稀疏镜像
-STORY_DIR = Path("/opt/moesekai-hub/story/detail")
+STORY_DIR = moesekai_hub_dir() / "story" / "detail"
 MASTER_DIR = sekai_master_dir() / "master"
 
 

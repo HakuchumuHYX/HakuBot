@@ -58,9 +58,7 @@ class TemporaryPath:
                             try:
                                 p.unlink(missing_ok=True)
                             except OSError as error:
-                                logger.warning(
-                                    f"Temporary file cleanup failed: {error}"
-                                )
+                                logger.warning(f"临时文件清理失败: {error}")
 
                     try:
                         loop = asyncio.get_running_loop()

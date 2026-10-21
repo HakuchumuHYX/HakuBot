@@ -47,7 +47,7 @@ async def send_forward_msg(
     fallback_on_action_failed: bool = True,
     fallback_interval: float = 1.0,
 ) -> ForwardStatus:
-    """Send structured forward nodes with timeout-safe fallback semantics."""
+    """发送合并转发；超时时结果未知不补发，被拒绝时逐条补发"""
     forward_items = list(items)
     if not forward_items:
         raise ValueError("合并转发消息不能为空")

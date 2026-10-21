@@ -9,7 +9,7 @@ from aiohttp import ClientSession
 
 from core.settings import ConfigModel, load_config
 from plugins.analysis_bilibili.ExpiringCache import ExpiringCache
-from plugins.analysis_bilibili.sign import get_query, get_ticket
+from utils.bilibili import get_ticket, wbi_query
 
 # analysis_stat : {group_id: ExpiringCache}
 analysis_stat: Dict[int, ExpiringCache] = {}
@@ -158,7 +158,7 @@ async def _ensure_ticket(session: ClientSession) -> None:
 
 async def _signed_view_url(params: dict) -> str:
     try:
-        query = await get_query(dict(params))
+        query = await wbi_query(dict(params))
         return f"{VIEW_API}?{query}"
     except Exception as e:
         nonebot.logger.debug(
@@ -296,7 +296,7 @@ async def search_bili_by_title(title: str, session: ClientSession) -> str:
     async with session.get(mainsite_url) as resp:
         assert resp.status == 200
 
-    query = await get_query({"keyword": title})
+    query = await wbi_query({"keyword": title})
     search_url = f"https://api.bilibili.com/x/web-interface/wbi/search/all/v2?{query}"
 
     bili_ticket = await get_ticket()

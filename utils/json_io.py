@@ -34,7 +34,7 @@ def load_json(
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, expected_type):
             raise TypeError(
-                f"Expected {expected_type.__name__}, got {type(data).__name__}"
+                f"JSON 顶层应为 {expected_type.__name__}，实际是 {type(data).__name__}"
             )
         return JsonLoadResult(True, data)
     except FileNotFoundError as exc:
@@ -90,7 +90,7 @@ def atomic_write_json(
     避免写入中途崩溃导致目标文件被截断。
     """
     if expected_type is not None and not isinstance(data, expected_type):
-        raise TypeError(f"Expected {expected_type.__name__}")
+        raise TypeError(f"JSON 顶层应为 {expected_type.__name__}")
     atomic_write_bytes(
         path, json.dumps(data, ensure_ascii=ensure_ascii, indent=indent).encode("utf-8")
     )

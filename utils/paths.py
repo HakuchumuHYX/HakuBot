@@ -1,4 +1,4 @@
-"""Canonical paths; construction never creates directories."""
+"""项目内外各类目录的唯一来源；只拼路径，不创建目录"""
 
 from dataclasses import dataclass
 import os
@@ -17,7 +17,7 @@ class PluginPaths:
 
     def __post_init__(self):
         if not self.plugin_id.isidentifier():
-            raise ValueError("Invalid plugin ID")
+            raise ValueError(f"插件 ID 不合法: {self.plugin_id}")
 
     @property
     def config(self):
@@ -39,3 +39,8 @@ class PluginPaths:
 def sekai_master_dir() -> Path:
     """haruki-sekai-master 仓库（PJSK masterdata），和项目根目录并列"""
     return project_root().parent / "haruki-sekai-master"
+
+
+def moesekai_hub_dir() -> Path:
+    """MoeSekai-Hub 稀疏镜像（PJSK 剧情文本），和项目根目录并列"""
+    return project_root().parent / "moesekai-hub"

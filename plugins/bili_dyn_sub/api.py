@@ -19,16 +19,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import importlib.util
 import json
 import random
-from pathlib import Path
-from types import ModuleType
 from typing import Any, Optional
 
 import aiohttp
 from nonebot import logger
 
+from utils import bilibili
 from utils.network.http import get_client_session, get_effective_proxy
 from utils.logging import get_exc_desc
 from utils.text import truncate
@@ -158,68 +156,23 @@ def build_feed_params(uid: str, *, offset: str = "") -> dict[str, str]:
     return params
 
 
-_SIGN_MODULE_PATH = (
-    Path(__file__).resolve().parent.parent / "analysis_bilibili" / "sign.py"
-)
-_sign_module: Optional[ModuleType] = None
-
-
-def _load_sign_module() -> Optional[ModuleType]:
-    """按文件路径单独加载 plugins/analysis_bilibili/sign.py（复用其 wbi 实现），失败返回 None。
-
-    不写 `from ..analysis_bilibili.sign import ...`：那会连带执行该插件包的 __init__.py
-    （on_regex 注册 + get_driver().config），等于把另一个插件的
-    注册副作用拖进取数路径，在非 NoneBot 上下文（单测/命令行）里会直接抛 ValueError。
-    sign.py 自身只依赖 stdlib + aiohttp，按路径加载即可安全复用；代价是本模块持有一份独立的
-    wbi key 缓存（启用 wbi 时每小时最多多一次 nav 请求）。
-    """
-    global _sign_module
-    if _sign_module is not None:
-        return _sign_module
-    spec = importlib.util.spec_from_file_location(
-        "bili_dyn_sub_wbi_sign", _SIGN_MODULE_PATH
-    )
-    if spec is None or spec.loader is None:
-        logger.warning(f"无法定位 wbi 签名模块 {_SIGN_MODULE_PATH}，本次不签名")
-        return None
-    module = importlib.util.module_from_spec(spec)
-    try:
-        spec.loader.exec_module(module)
-    except (ImportError, OSError, SyntaxError, ValueError) as e:
-        logger.warning(f"加载 wbi 签名模块失败，本次不签名: {get_exc_desc(e)}")
-        return None
-    _sign_module = module
-    return module
-
-
 async def _sign_with_wbi(params: dict[str, str]) -> dict[str, str]:
-    """给参数补 wbi 签名（wts + w_rid），复用 plugins/analysis_bilibili/sign.py 的实现。
+    """给参数补 wbi 签名（wts + w_rid）。
 
     第一版 enable_wbi 默认关闭（bison/bilichat/RSSHub 都没签仍在跑），仅在大面积 352 时启用。
     取 key 失败时退回未签名参数：签名缺失最多得到 -403，比整轮不取数更好。
     """
-    sign = _load_sign_module()
-    if sign is None:
-        return params
     try:
-        img_key, sub_key = await sign.getWbiKeys()
+        img_key, sub_key = await bilibili.get_wbi_keys()
     except (*_NET_ERRORS, KeyError, TypeError, ValueError) as e:
         logger.warning(f"获取 wbi key 失败，本次不签名: {get_exc_desc(e)}")
         return params
-    signed = sign.encWbi(dict(params), img_key, sub_key)
-    return {str(key): str(value) for key, value in signed.items()}
+    return bilibili.enc_wbi(params, img_key, sub_key)
 
 
 def invalidate_wbi_keys() -> None:
     """作废 wbi key 缓存，供 scheduler 收到 -403 后重试前调用（§3.5）"""
-    sign = _load_sign_module()
-    if sign is None:
-        return
-    cache = getattr(sign, "_wbi_keys_cache", None)
-    if not isinstance(cache, dict):
-        logger.debug("wbi 签名模块没有可作废的 key 缓存，跳过")
-        return
-    cache["ts"] = 0.0
+    bilibili.invalidate_wbi_keys()
     logger.info("已作废 wbi key 缓存，下次取数将重新获取")
 
 

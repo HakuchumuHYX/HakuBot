@@ -23,16 +23,14 @@ L2 的两个等待条件（wait_for_function('document.cookie.includes("bili_tic
 wait_for_load_state("networkidle")）借鉴 nonebot-bison (MIT, Copyright (c) 2021 felinae98)
 的 platform/bilibili/scheduler.py：只 goto + load 会拿到未激活的 buvid3，等于白跑浏览器。
 
-GenWebTicket 的 HMAC-SHA256 算法与本仓 plugins/analysis_bilibili/sign.py 的
-hmac_sha256/get_ticket 一致，此处按同法本地实现（避免 import 触发该插件包的注册副作用），
-并改用本仓全局 session + 代理 + 超时配置。
+GenWebTicket 的签名参数由 utils.bilibili.ticket_params 生成；请求走本插件带登录态的
+session + 代理 + 超时配置，ticket 的有效期也由本插件自己管理。
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import hmac
 import json
 import random
 import time
@@ -44,6 +42,7 @@ from typing import Any, Mapping, Optional
 import aiohttp
 from nonebot import logger
 
+from utils.bilibili import ticket_params
 from utils.json_io import atomic_write_json
 from utils.network.http import get_client_session, get_effective_proxy
 from utils.logging import get_exc_desc
@@ -71,10 +70,6 @@ FORCED_STREAK_RESET_SECONDS = (
 )
 LOGIN_STATUS_TTL_SECONDS = 1800.0  # 登录态校验结果的缓存有效期（30 分钟）
 LOGIN_ERROR_RETRY_SECONDS = 300.0  # 校验失败（网络抖动等）时的重试冷却，比正常 TTL 短
-
-# GenWebTicket 的 web 端固定常量
-_TICKET_HMAC_KEY = "XgwSnGZ1p"
-_TICKET_KEY_ID = "ec02"
 
 # 允许由响应 Set-Cookie 回写的字段（SESSDATA/bili_jct 只认配置，不接受回写）
 _MUTABLE_COOKIE_KEYS = frozenset(
@@ -214,23 +209,6 @@ def build_activate_payload(*, uuid: str, user_agent: str) -> str:
     }
     # fmt: on
     return json.dumps(content, separators=(",", ":"), ensure_ascii=False)
-
-
-def hmac_sha256_hex(key: str, message: str) -> str:
-    """HMAC-SHA256 十六进制摘要（与 plugins/analysis_bilibili/sign.py 的 hmac_sha256 同法）"""
-    return hmac.new(
-        key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
-
-
-def build_ticket_params(ts: int) -> dict[str, str]:
-    """构造 GenWebTicket 的查询参数（纯函数，便于单测其确定性部分）"""
-    return {
-        "key_id": _TICKET_KEY_ID,
-        "hexsign": hmac_sha256_hex(_TICKET_HMAC_KEY, f"ts{ts}"),
-        "context[ts]": str(ts),
-        "csrf": "",
-    }
 
 
 def sessdata_fingerprint(sessdata: str) -> str:
@@ -787,7 +765,7 @@ class CredentialManager:
         """取 bili_ticket，返回 (ticket, 到期时间戳)；失败返回 None"""
         ts = int(time.time())
         raw = await self._request_json(
-            "POST", TICKET_URL, desc="GenWebTicket", params=build_ticket_params(ts)
+            "POST", TICKET_URL, desc="GenWebTicket", params=ticket_params(ts)
         )
         if raw is None:
             logger.warning("获取 bili_ticket 失败，缺少 ticket 的 cookie 更易被风控")

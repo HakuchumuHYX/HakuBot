@@ -2,12 +2,12 @@
 
 - `plugins/`：插件入口、命令处理及各自的业务逻辑。
 - `core/`：应用装配、插件开关、冷却、配置读取和资源生命周期。
-- `utils/`：公共网络、文件、图片、OneBot 消息及渲染能力。
+- `utils/`：公共网络、文件、图片、OneBot 消息、渲染能力，以及多个插件共用的 B 站 Web 签名（`bilibili.py`）。
 - `config/plugins/<插件名>/config.json`：插件配置，不入库；`config-example/<插件名>/config.json` 是入库的默认配置，列出全部字段，地址、密钥这类用占位值。
 - `data/shared/fonts/`：公共字体 `MiSans-{Regular,Medium,Semibold,Bold,Heavy}.ttf`，每个字重必须是真实文件，否则模板里的粗体不生效。
 - `data/shared/playwright/`：浏览器资源。
 - `data/shared/rembg_models/`：抠图模型。
-- `../haruki-sekai-master/`：PJSK 的 masterdata，和项目根目录并列，各插件统一用 `utils.paths.sekai_master_dir()` 取路径，不写进配置。
+- 和项目根目录并列的外部仓库，由各自的同步脚本更新，路径统一从 `utils/paths.py` 取，不写进配置：`../haruki-sekai-master/`（PJSK masterdata，`sekai_master_dir()`）、`../moesekai-hub/`（PJSK 剧情文本，`moesekai_hub_dir()`）。
 
 公共工具不依赖具体插件。业务数据通过 `PluginPaths` 访问。
 
