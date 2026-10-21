@@ -178,6 +178,10 @@ def build_chat_messages(
             }
         )
 
+    bottom_line = plugin_config.chat.bottom_line.strip()
+    if bottom_line:
+        messages.append({"role": "system", "content": bottom_line})
+
     messages.append({"role": "user", "content": content_list})
     return messages
 

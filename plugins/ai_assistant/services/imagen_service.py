@@ -91,6 +91,10 @@ def _build_image_request(
             "若与用户描述冲突，以用户描述为准。\n\n" + extra_context.strip()
         )
 
+    bottom_line = plugin_config.image.bottom_line.strip()
+    if bottom_line:
+        prompt += f"\n\n{bottom_line}"
+
     return prompt, images
 
 
