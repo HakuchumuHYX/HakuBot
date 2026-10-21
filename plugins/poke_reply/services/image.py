@@ -91,7 +91,7 @@ def get_cache_key(image_path: Path) -> str:
     try:
         stat = image_path.stat()
         return f"{image_path.absolute()}:{stat.st_size}:{stat.st_mtime}"
-    except:
+    except OSError:
         return str(image_path.absolute())
 
 
@@ -336,10 +336,10 @@ def safe_remove_group_duplicates(
         return 0
 
     for _, remove_path in duplicates:
+        # 缓存键含文件大小和 mtime，要在删除前算
+        invalidate_cache_for_file(remove_path)
         try:
-            if remove_path.exists():
-                remove_path.unlink()
-                invalidate_cache_for_file(remove_path)
-        except Exception:
-            pass
+            remove_path.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning(f"删除重复图片失败，文件残留在磁盘上 {remove_path}: {e}")
     return removed_count

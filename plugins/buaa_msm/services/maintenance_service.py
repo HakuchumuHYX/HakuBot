@@ -104,8 +104,8 @@ def collect_file_stats() -> FileStats:
     for item in items:
         try:
             total_size += item.stat().st_size
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning(f"读取文件大小失败 {item}: {e}")
 
         if item.is_file():
             file_count += 1

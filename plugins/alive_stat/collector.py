@@ -80,13 +80,11 @@ def format_bytes(b: int) -> str:
 
 
 def get_cpu_model() -> str:
-    try:
-        with open("/proc/cpuinfo", "r") as f:
-            for line in f:
-                if line.startswith("model name"):
-                    return line.split(":", 1)[1].strip()
-    except Exception:
-        pass
+    with open("/proc/cpuinfo", "r") as f:
+        for line in f:
+            if line.startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    # ARM 的 cpuinfo 没有 model name 行
     return platform.processor() or "Unknown"
 
 

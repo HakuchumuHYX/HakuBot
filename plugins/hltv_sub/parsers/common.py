@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 
 import pytz
+from nonebot import logger
 
 
 def extract_id_from_url(url: str) -> str:
@@ -49,21 +50,16 @@ def flag_of(img) -> tuple[str, str]:
 
 def format_date(unix_timestamp: str, tz: pytz.BaseTzInfo) -> str:
     """保留年份；月日展示由渲染层负责。"""
-    try:
-        if unix_timestamp:
-            ts = int(unix_timestamp) / 1000
-            dt = datetime.fromtimestamp(ts, tz)
-            return dt.date().isoformat()
-    except Exception:
-        pass
-    return ""
+    dt = parse_start_time(unix_timestamp, tz)
+    return dt.date().isoformat() if dt else ""
 
 
 def parse_start_time(unix_timestamp: str, tz: pytz.BaseTzInfo) -> datetime | None:
+    """页面上的毫秒时间戳；待定的比赛没有这个属性。"""
+    if not unix_timestamp:
+        return None
     try:
-        if unix_timestamp:
-            ts = int(unix_timestamp) / 1000
-            return datetime.fromtimestamp(ts, tz)
-    except (ValueError, TypeError, OverflowError, OSError):
-        pass
-    return None
+        return datetime.fromtimestamp(int(unix_timestamp) / 1000, tz)
+    except ValueError:
+        logger.warning(f"[HLTV] 时间戳不是数字: {unix_timestamp!r}")
+        return None

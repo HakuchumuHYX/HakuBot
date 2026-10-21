@@ -23,6 +23,7 @@ from PIL import (
     ImageFilter,
     ImageFont,
 )
+from nonebot import logger
 
 from plugins.buaa_msm import analysis
 from plugins.buaa_msm.config import plugin_config, settings
@@ -607,7 +608,9 @@ def generate_msr_summary_image_bytes(
                     d = ImageDraw.Draw(bg)
                     text_offset_x = jacket_thumb_size + 8
                 except Exception:
-                    pass
+                    logger.opt(exception=True).warning(
+                        f"唱片封面绘制失败，只画文字: {record_id}"
+                    )
 
             # 文字垂直居中于封面
             text_y = y3 + (jacket_thumb_size - 16) // 2 if text_offset_x > 0 else y3 + 2

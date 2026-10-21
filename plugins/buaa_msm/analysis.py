@@ -63,12 +63,10 @@ def get_resource_name(category: str, item_id: str) -> str:
         return name
 
     # masterdata 动态名称
-    try:
+    if item_id.isdecimal():
         md_name = masterdata_lite.get_resource_name(category, int(item_id))
         if md_name:
             return md_name
-    except Exception:
-        pass
 
     # category 默认名
     default_name = category_names.get("_default")
