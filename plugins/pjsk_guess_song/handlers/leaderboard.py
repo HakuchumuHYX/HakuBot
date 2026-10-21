@@ -9,6 +9,7 @@ from nonebot.matcher import Matcher
 from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import (
     GROUP,
+    ActionFailed,
     MessageEvent,
     Bot,
     GroupMessageEvent,
@@ -46,7 +47,7 @@ async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
         try:
             group_info = await bot.get_group_info(group_id=event.group_id)
             group_name = group_info.get("group_name", f"群 {group_id}")
-        except Exception:
+        except ActionFailed:
             group_name = f"群 {group_id}"
 
         image = await image_service.draw_leaderboard_image(group_name, leaderboard_data)

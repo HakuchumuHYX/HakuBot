@@ -81,13 +81,9 @@ def parse_multi_random_command(message_text: str) -> tuple[str, int] | None:
         if folder_name.lower() in RANDOM_ALL_ALIASES:
             folder_name = "stickers"  # 标准化为 "stickers" 关键字
 
-        try:
-            count = int(match.group(3))
-            # 限制数量在1-5之间
-            count = max(1, min(count, 5))
-            return folder_name, count
-        except ValueError:
-            pass
+        # 限制数量在1-5之间
+        count = max(1, min(int(match.group(3)), 5))
+        return folder_name, count
     return None
 
 

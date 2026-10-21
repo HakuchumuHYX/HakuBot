@@ -170,11 +170,7 @@ async def record_message_sent(bot: Bot, event: OneBotEvent):
             logger.debug(f"message_sent 序列化失败: {e}")
             raw_message = ""
 
-        content = ""
-        try:
-            content = getattr(event, "raw_message", None) or ""
-        except Exception:
-            content = ""
+        content = getattr(event, "raw_message", None) or ""
 
         await asyncio.to_thread(
             db.add_message,
@@ -321,7 +317,7 @@ async def handle_analysis(bot: Bot, event: GroupMessageEvent):
         raise
     except Exception as e:
         logger.exception(f"生成总结失败: {e}")
-        await analysis_cmd.finish(f"生成总结失败，请稍后重试。")
+        await analysis_cmd.finish("生成总结失败，请稍后重试。")
 
 
 @debug_analysis_cmd.handle()

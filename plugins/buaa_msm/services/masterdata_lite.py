@@ -87,7 +87,7 @@ class MasterDataLite:
         for item in table:
             try:
                 item_id = int(item.get("id"))
-            except Exception:
+            except (TypeError, ValueError):
                 continue
             ind[item_id] = item
 

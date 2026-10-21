@@ -38,10 +38,7 @@ def _probe_spool_write(spool_path: Path) -> None:
     try:
         os.close(descriptor)
     finally:
-        try:
-            os.unlink(probe_name)
-        except FileNotFoundError:
-            pass
+        Path(probe_name).unlink(missing_ok=True)
 
 
 async def probe_storage(config: BridgeConfig) -> ProbeResult:

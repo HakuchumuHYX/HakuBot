@@ -80,7 +80,7 @@ class SetuClient:
         pid_raw = item.get("pid") or 0
         try:
             pid = int(pid_raw)
-        except Exception:
+        except (TypeError, ValueError):
             pid = 0
 
         urls = item.get("urls") or {}

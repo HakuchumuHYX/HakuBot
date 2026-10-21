@@ -5,12 +5,16 @@ alive_stat 数据采集模块。
 
 import asyncio
 import platform
+import re
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Optional
 
 import psutil
+from nonebot import logger
 
 from plugins.alive_stat.config import config
+from utils.logging import get_exc_desc
 
 
 # ================= 数据类 =================
@@ -91,14 +95,10 @@ def get_cpu_model() -> str:
 def get_system_uptime() -> str:
     from plugins.alive_stat.runtime import format_duration
 
-    try:
-        boot_time = psutil.boot_time()
-        from datetime import datetime
+    from datetime import datetime
 
-        delta = datetime.now() - datetime.fromtimestamp(boot_time)
-        return format_duration(delta)
-    except Exception:
-        return "N/A"
+    delta = datetime.now() - datetime.fromtimestamp(psutil.boot_time())
+    return format_duration(delta)
 
 
 def get_resources() -> ResourceUsage:
@@ -160,10 +160,8 @@ def _get_processes_psutil() -> list[ProcessInfo]:
                     for child in p.children(recursive=True):
                         if child.pid not in global_counted:
                             global_counted.add(child.pid)
-                            try:
+                            with suppress(psutil.NoSuchProcess, psutil.AccessDenied):
                                 mem_bytes += child.memory_info().rss
-                            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                pass
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
 
@@ -208,14 +206,15 @@ async def _get_docker_process(container_name: str) -> tuple[bool, int]:
         mem_str = stdout2.decode().strip().split("/")[0].strip()
         mem_bytes = _parse_docker_mem(mem_str)
         return True, mem_bytes
-    except Exception:
+    except (OSError, asyncio.TimeoutError) as e:
+        logger.warning(f"查询 docker 容器 {container_name} 失败: {get_exc_desc(e)}")
         return False, 0
 
 
 def _parse_docker_mem(s: str) -> int:
     """解析 docker stats 的内存字符串，如 '120.5MiB' -> bytes。"""
     s = s.strip()
-    try:
+    with suppress(ValueError):
         if s.endswith("GiB"):
             return int(float(s[:-3]) * 1024**3)
         elif s.endswith("MiB"):
@@ -224,8 +223,6 @@ def _parse_docker_mem(s: str) -> int:
             return int(float(s[:-3]) * 1024)
         elif s.endswith("B"):
             return int(float(s[:-1]))
-    except (ValueError, IndexError):
-        pass
     return 0
 
 
@@ -257,19 +254,15 @@ async def _ping_host(host: str, timeout: int = 3) -> NetworkResult:
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout + 2)
         if proc.returncode == 0:
             output = stdout.decode("utf-8", errors="ignore")
-            latency = None
-            for line in output.splitlines():
-                if "time=" in line:
-                    try:
-                        t_part = line.split("time=")[1].split()[0]
-                        latency = float(t_part.replace("ms", ""))
-                    except (IndexError, ValueError):
-                        pass
-                    break
+            match = re.search(r"time=([\d.]+)", output)
+            latency = float(match.group(1)) if match else None
             return NetworkResult(host=host, reachable=True, latency_ms=latency)
         else:
             return NetworkResult(host=host, reachable=False, latency_ms=None)
-    except Exception:
+    except asyncio.TimeoutError:
+        return NetworkResult(host=host, reachable=False, latency_ms=None)
+    except OSError as e:
+        logger.warning(f"执行 ping {host} 失败: {get_exc_desc(e)}")
         return NetworkResult(host=host, reachable=False, latency_ms=None)
 
 

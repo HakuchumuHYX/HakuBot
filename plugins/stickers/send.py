@@ -106,13 +106,8 @@ def refresh_max_id() -> None:
                 for file in folder_path.iterdir():
                     if file.is_file():
                         stem = file.stem
-                        if stem.isdigit():
-                            try:
-                                num = int(stem)
-                                if num > max_id:
-                                    max_id = num
-                            except ValueError:
-                                pass
+                        if stem.isdecimal():
+                            max_id = max(max_id, int(stem))
             except PermissionError as e:
                 logger.warning(f"无法访问文件夹 {folder_path}: {e}")
                 continue

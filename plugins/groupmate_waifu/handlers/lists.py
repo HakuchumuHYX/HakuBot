@@ -1,6 +1,6 @@
 """Read-only list/query matchers for pools and current couples."""
 
-from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GROUP, ActionFailed, Bot, GroupMessageEvent
 from nonebot.plugin.on import on_command
 
 from plugins.groupmate_waifu import service
@@ -57,7 +57,7 @@ async def handle_cp_list(bot: Bot, event: GroupMessageEvent):
         try:
             member = await bot.get_group_member_info(group_id=group_id, user_id=user_id)
             name_a = member["card"] or member["nickname"]
-        except Exception:
+        except ActionFailed:
             name_a = str(user_id)
 
         try:
@@ -65,7 +65,7 @@ async def handle_cp_list(bot: Bot, event: GroupMessageEvent):
                 group_id=group_id, user_id=waifu_id
             )
             name_b = member["card"] or member["nickname"]
-        except Exception:
+        except ActionFailed:
             name_b = str(waifu_id)
 
         names.append((user_id, name_a, waifu_id, name_b))

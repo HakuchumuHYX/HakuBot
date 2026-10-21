@@ -54,7 +54,7 @@ ColorRGBA = Tuple[int, int, int, int]
 def _safe_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
-    except Exception:
+    except (TypeError, ValueError):
         return default
 
 
@@ -81,6 +81,15 @@ def _get_texture_path(category: str, item_id: int) -> Optional[str]:
 
     # 3) 静态 fallback
     return ITEM_TEXTURES.get(category, {}).get(str(item_id))
+
+
+def _open_scene_image(scene: Dict[str, Any]) -> Image.Image:
+    """场景底图是插件自带的本地图片；打不开时用灰底，图照出。"""
+    try:
+        return Image.open(scene["imagePath"]).convert("RGBA")
+    except OSError as e:
+        logger.warning(f"场景底图打不开，用灰底代替 {scene['imagePath']}: {e}")
+        return Image.new("RGBA", (800, 600), (220, 220, 220, 255))
 
 
 def _lerp(a: int, b: int, t: float) -> int:
@@ -212,13 +221,7 @@ def _draw_text_with_stroke(
 
 
 def _text_width(font: ImageFont.FreeTypeFont, text: str) -> int:
-    try:
-        return font.getbbox(text)[2]
-    except Exception:
-        try:
-            return font.getsize(text)[0]
-        except Exception:
-            return len(text) * 10
+    return font.getbbox(text)[2]
 
 
 def _ellipsize(font: ImageFont.FreeTypeFont, text: str, max_width: int) -> str:
@@ -298,27 +301,20 @@ SUPER_RARE_STROKE: ColorRGBA = (255, 90, 90, 235)
 
 
 def _fixture_color_rgb(fixture_id: int) -> Tuple[int, int, int]:
-    c = FIXTURE_COLORS.get(fixture_id, "#000000")
-    try:
-        return ImageColor.getrgb(c)
-    except Exception:
-        return (0, 0, 0)
+    return ImageColor.getrgb(FIXTURE_COLORS.get(fixture_id, "#000000"))
 
 
 def _contains_rare_item(reward: Dict[str, Any]) -> bool:
     """是否包含 rare/super rare item（用于缩略图点位描边）"""
-    try:
-        for category, items in (reward or {}).items():
-            if category in SUPER_RARE_ITEM:
-                for item_id_str in (items or {}).keys():
-                    if _safe_int(item_id_str, -1) in SUPER_RARE_ITEM[category]:
-                        return True
-            if category in RARE_ITEM:
-                for item_id_str in (items or {}).keys():
-                    if _safe_int(item_id_str, -1) in RARE_ITEM[category]:
-                        return True
-    except Exception:
-        return False
+    for category, items in (reward or {}).items():
+        if category in SUPER_RARE_ITEM:
+            for item_id_str in (items or {}).keys():
+                if _safe_int(item_id_str, -1) in SUPER_RARE_ITEM[category]:
+                    return True
+        if category in RARE_ITEM:
+            for item_id_str in (items or {}).keys():
+                if _safe_int(item_id_str, -1) in RARE_ITEM[category]:
+                    return True
     return False
 
 
@@ -536,11 +532,8 @@ def generate_msr_summary_image_bytes(
 
     # 行高估算 + 行间距
     line_gap = 4
-    try:
-        bbox = font_small.getbbox("Ag")
-        line_h = (bbox[3] - bbox[1]) + line_gap
-    except Exception:
-        line_h = font_small.getsize("Ag")[1] + line_gap
+    bbox = font_small.getbbox("Ag")
+    line_h = (bbox[3] - bbox[1]) + line_gap
 
     block_h = line_h * len(wm_lines)
 
@@ -646,11 +639,7 @@ def generate_msr_summary_image_bytes(
         name = SCENE_KEY_TO_NAME.get(scene_key)
         if not name:
             continue
-        try:
-            im = Image.open(scene["imagePath"]).convert("RGB")
-        except Exception:
-            im = Image.new("RGB", (400, 300), (200, 200, 200))
-        scene_thumb_map[name] = im
+        scene_thumb_map[name] = _open_scene_image(scene).convert("RGB")
 
     card_w = w - padding * 2
     for map_name in map_cards:
@@ -702,15 +691,17 @@ def generate_msr_summary_image_bytes(
                         (tile_sz - 8, tile_sz - 8), Image.Resampling.LANCZOS
                     )
                 except Exception:
-                    icon = None
+                    logger.opt(exception=True).warning(
+                        f"唱片封面缩放失败，改用贴图: {item_id}"
+                    )
 
             if icon is None:
                 tex = _get_texture_path(category, item_id)
                 if tex:
                     try:
                         icon = get_icon(tex, (tile_sz - 8, tile_sz - 8))
-                    except Exception:
-                        icon = None
+                    except OSError as e:
+                        logger.warning(f"图标打不开，不画 {tex}: {e}")
 
             tile = _get_tile_base(tile_sz)
             if icon is not None:
@@ -847,10 +838,7 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
 
         scene = SCENES[scene_key]
 
-        try:
-            base_img = Image.open(scene["imagePath"]).convert("RGBA")
-        except Exception:
-            base_img = Image.new("RGBA", (800, 600), (220, 220, 220, 255))
+        base_img = _open_scene_image(scene)
 
         overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
         d = ImageDraw.Draw(overlay, "RGBA")
@@ -899,12 +887,15 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
                     if marker_path and marker_size > 0:
                         try:
                             marker = get_icon(marker_path, (marker_size, marker_size))
+                        except OSError as e:
+                            logger.warning(
+                                f"点位标记打不开，改画圆点 {marker_path}: {e}"
+                            )
+                        else:
                             mx = int(px_x + marker_offset[0])
                             my = int(px_y + marker_offset[1])
                             _paste_with_shadow(overlay, marker, (mx, my), shadow=False)
                             marker_drawn = True
-                        except Exception:
-                            marker_drawn = False
 
                 if not marker_drawn:
                     fill_rgb = _fixture_color_rgb(fixture_id)
@@ -975,7 +966,8 @@ def generate_msr_map_image_bytes(*, parsed_maps: Dict[str, List]) -> bytes:
                 sz = small_sz if small_icon else large_sz
                 try:
                     icon = get_icon(tex, (sz - 8, sz - 8))
-                except Exception:
+                except OSError as e:
+                    logger.warning(f"图标打不开，不画 {tex}: {e}")
                     return
 
                 tile = _get_tile_base(sz)

@@ -330,7 +330,7 @@ class RipAssetLite:
                     continue
                 try:
                     items.add((category, int(item_id_str)))
-                except Exception:
+                except ValueError:
                     continue
         return await self.prefetch_icons(items)
 

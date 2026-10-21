@@ -2,6 +2,7 @@
 
 import base64
 from calendar import monthcalendar
+from contextlib import suppress
 from datetime import datetime
 
 from plugins.deer_pipe.constants import TEMPLATE_DIR
@@ -16,13 +17,11 @@ async def render_calendar(
 ) -> bytes:
     """渲染签到日历，deer_map 为 {日期: 签到次数}"""
     avatar_uri = ""
-    try:
-        if avatar:
+    if avatar:
+        # 头像来自适配器，格式不认识时就不画头像
+        with suppress(ValueError):
             mime = MIME_TYPES[detect_format(avatar)]
             avatar_uri = f"data:{mime};base64,{base64.b64encode(avatar).decode()}"
-    except ValueError:
-        # 头像来自适配器，格式不认识时就不画头像
-        pass
 
     return await render_template(
         TEMPLATE_DIR,

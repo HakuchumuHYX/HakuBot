@@ -10,7 +10,7 @@ from collections import defaultdict
 
 from nonebot.plugin.on import on_message
 from nonebot.typing import T_State
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import ActionFailed, Bot, GroupMessageEvent
 
 # 本地模块导入
 from plugins.groupmate_waifu import service
@@ -86,7 +86,7 @@ async def handle_waifu(bot: Bot, event: GroupMessageEvent, state: T_State):
                 member = await bot.get_group_member_info(
                     group_id=group_id, user_id=existing_waifu_id
                 )
-            except Exception:
+            except ActionFailed:
                 member = None
                 # CP 已不在群内，清除记录
                 service.remove_couple(group_id, user_id)
@@ -139,7 +139,7 @@ async def handle_waifu(bot: Bot, event: GroupMessageEvent, state: T_State):
                         group_id=group_id, user_id=at
                     )
                     name = member["card"] or member["nickname"]
-                except Exception:
+                except ActionFailed:
                     name = "TA"
                 await waifu.finish(f"你没能娶到 {name}！", at_sender=True)
             if error_message:

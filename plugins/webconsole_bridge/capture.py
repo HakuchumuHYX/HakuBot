@@ -42,22 +42,13 @@ def _string_or_none(value: Any) -> str | None:
 
 
 def _event_name(event: Event) -> str:
-    try:
-        return str(event.get_event_name())
-    except Exception:
-        return type(event).__name__
+    return str(event.get_event_name())
 
 
 def _serialize_event(event: Event) -> str:
-    try:
-        payload = event.model_dump(mode="json")
-    except Exception:
-        try:
-            payload = event.dict()
-        except Exception:
-            payload = vars(event)
+    # 跑在 run_preprocessor 里，抛异常会取消 matcher；python 模式不做序列化，剩下的类型交给 default=str
     return json.dumps(
-        payload,
+        event.model_dump(),
         ensure_ascii=False,
         separators=(",", ":"),
         default=str,
@@ -99,8 +90,9 @@ def _message_summary(value: Any) -> str:
 def _event_summary(event: Event) -> str:
     try:
         message = event.get_message()
-    except Exception:
-        message = getattr(event, "message", "")
+    except ValueError:
+        # 通知、元事件没有消息
+        message = ""
     return _truncate_summary(_message_summary(message))
 
 
@@ -141,17 +133,13 @@ def _matcher_source(
     int | None,
 ]:
     matcher_class = type(matcher)
-    source = getattr(matcher_class, "_source", None)
-    plugin_id = getattr(source, "plugin_id", None)
-    module_name = getattr(source, "module_name", None) or getattr(
-        matcher_class, "module_name", None
+    source = matcher_class._source
+    return (
+        matcher_class.plugin_name,
+        matcher_class.plugin_id,
+        matcher_class.module_name,
+        source.lineno if source else None,
     )
-    lineno = getattr(source, "lineno", None)
-    try:
-        plugin_name = getattr(source, "plugin_name", None)
-    except Exception:
-        plugin_name = None
-    return plugin_name, plugin_id, module_name, lineno
 
 
 @dataclass(slots=True)

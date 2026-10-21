@@ -96,11 +96,7 @@ def format_msg(msg_list: List[Union[List[str], str]]) -> Message:
 
 def _message_json_text(event: Event) -> str:
     """优先用 json 卡片原始 data，避免 str(message) 转义后抓不到 qqdocurl。"""
-    try:
-        message = event.get_message()
-    except Exception:
-        return ""
-    for segment in message:
+    for segment in event.get_message():
         if getattr(segment, "type", None) != "json":
             continue
         data = getattr(segment, "data", None) or {}

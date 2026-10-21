@@ -2,6 +2,7 @@ from __future__ import annotations
 from core.lifecycle import runtime
 
 import asyncio
+from contextlib import suppress
 from dataclasses import asdict
 import gzip
 import hashlib
@@ -100,19 +101,15 @@ def _write_spool_atomic(
         finally:
             os.close(directory_fd)
     except BaseException:
-        try:
-            os.unlink(temporary_name)
-        except FileNotFoundError:
-            pass
+        Path(temporary_name).unlink(missing_ok=True)
         raise
     return target
 
 
 def _write_stderr(message: str) -> None:
-    try:
+    # 日志落不了盘时才走这里，stderr 也写不进去就没有别处可报了
+    with suppress(OSError):
         os.write(2, (message.rstrip() + "\n").encode("utf-8", errors="replace"))
-    except OSError:
-        pass
 
 
 def _read_spool(path: Path) -> dict[str, Any]:
@@ -169,10 +166,8 @@ class PersistenceWriter:
                 await asyncio.wait_for(task, timeout=5)
             except asyncio.TimeoutError:
                 task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await task
-                except asyncio.CancelledError:
-                    pass
         connection = self._connection
         self._connection = None
         if connection is not None:
@@ -204,10 +199,9 @@ class PersistenceWriter:
                 )
                 return
             if self._running:
-                try:
+                # spool 已落盘，worker 每轮都会扫 spool 目录，入队只是让它早点处理
+                with suppress(asyncio.QueueFull):
                     self._queue.put_nowait(("spool", path))
-                except asyncio.QueueFull:
-                    pass
             return
 
         if not self._running:
@@ -234,10 +228,9 @@ class PersistenceWriter:
         if not self._running:
             return
         self._pending_status[snapshot.bot_id] = asdict(snapshot)
-        try:
+        # 只是唤醒信号；队列满说明 worker 本来就在忙，会顺带写掉 _pending_status
+        with suppress(asyncio.QueueFull):
             self._queue.put_nowait(("wake", None))
-        except asyncio.QueueFull:
-            pass
 
     def persist_log_from_sink(self, entry: DiagnosticLogEntry) -> None:
         try:
@@ -268,13 +261,11 @@ class PersistenceWriter:
     async def _worker_loop(self) -> None:
         while self._running or not self._queue.empty():
             command: tuple[str, Any] | None = None
-            try:
+            with suppress(asyncio.TimeoutError):
                 command = await asyncio.wait_for(
                     self._queue.get(),
                     timeout=0.25,
                 )
-            except asyncio.TimeoutError:
-                pass
 
             if command is not None:
                 kind, payload = command

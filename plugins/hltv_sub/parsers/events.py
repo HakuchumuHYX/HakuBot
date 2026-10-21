@@ -133,32 +133,29 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
             event_holders = soup.find_all("a", href=re.compile(r"/events/\d+/"))
             seen_ids = set()
             for elem in event_holders[:30]:
-                try:
-                    href = elem.get("href", "") or ""
-                    event_id = extract_id_from_url(href)
-                    if event_id and event_id not in seen_ids:
-                        seen_ids.add(event_id)
+                href = elem.get("href", "") or ""
+                event_id = extract_id_from_url(href)
+                if event_id and event_id not in seen_ids:
+                    seen_ids.add(event_id)
 
-                        name_elem = elem.find(class_=re.compile(r"event.*name", re.I))
-                        if not name_elem:
-                            name_elem = elem.find("div")
-                        title = (
-                            name_elem.get_text(strip=True)
-                            if name_elem
-                            else f"Event {event_id}"
-                        )
+                    name_elem = elem.find(class_=re.compile(r"event.*name", re.I))
+                    if not name_elem:
+                        name_elem = elem.find("div")
+                    title = (
+                        name_elem.get_text(strip=True)
+                        if name_elem
+                        else f"Event {event_id}"
+                    )
 
-                        events.append(
-                            EventInfo(
-                                id=event_id,
-                                title=title,
-                                start_date="",
-                                end_date="",
-                                is_ongoing=False,
-                            )
+                    events.append(
+                        EventInfo(
+                            id=event_id,
+                            title=title,
+                            start_date="",
+                            end_date="",
+                            is_ongoing=False,
                         )
-                except Exception:
-                    continue
+                    )
 
         logger.debug(f"[HLTV] 获取到 {len(events)} 个赛事")
     except Exception as e:

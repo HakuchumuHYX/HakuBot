@@ -215,8 +215,10 @@ async def bili_keyword(
                 analysis_stat[group_id] = ExpiringCache(expire_seconds=reanalysis_time)
                 analysis_stat[group_id].set(vurl)
 
-    except Exception as e:
-        msg = "bili_keyword Error: {}".format(type(e))
+    except Exception:
+        # 被动解析，出错不往群里发报错
+        nonebot.logger.opt(exception=True).warning("B站链接解析失败")
+        return False
     return msg
 
 
@@ -234,60 +236,57 @@ async def b23_extract(text: str, session: ClientSession) -> str:
 
 
 def extract(text: str) -> Tuple[str, Optional[str], Optional[str]]:
-    try:
-        url = ""
-        # 视频分p
-        page = re.compile(r"([?&]|&amp;)p=\d+").search(text)
-        # 视频播放定位时间
-        time = re.compile(r"([?&]|&amp;)t=\d+").search(text)
-        # 主站视频 av 号
-        aid = re.compile(r"av\d+").search(text)
-        # 主站视频 bv 号
-        bvid = re.compile(r"BV([A-Za-z0-9]{10})+").search(text)
-        # 番剧视频页
-        epid = re.compile(r"ep\d+").search(text)
-        # 番剧剧集ssid(season_id)
-        ssid = re.compile(r"ss\d+").search(text)
-        # 番剧详细页
-        mdid = re.compile(r"md\d+").search(text)
-        # 直播间
-        room_id = re.compile(r"live.bilibili.com/(blanc/|h5/)?(\d+)").search(text)
-        # 文章
-        cvid = re.compile(r"(/read/(cv|mobile|native)(/|\?id=)?|^cv)(\d+)").search(text)
-        # 动态 (opus 新格式)
-        opus_id = re.compile(r"bilibili.com/opus/(\d+)", re.I).search(text)
-        # 动态
-        dynamic_id_type2 = re.compile(
-            r"(t|m).bilibili.com/(\d+)\?(.*?)(&|&amp;)type=2"
-        ).search(text)
-        # 动态
-        dynamic_id = re.compile(r"(t|m).bilibili.com/(opus/)?(\d+)").search(text)
-        if bvid:
-            url = f"{VIEW_API}?bvid={bvid[0]}"
-        elif aid:
-            url = f"{VIEW_API}?aid={aid[0][2:]}"
-        elif epid:
-            url = f"https://api.bilibili.com/pgc/view/web/season?ep_id={epid[0][2:]}"
-        elif ssid:
-            url = (
-                f"https://api.bilibili.com/pgc/view/web/season?season_id={ssid[0][2:]}"
-            )
-        elif mdid:
-            url = f"https://api.bilibili.com/pgc/review/user?media_id={mdid[0][2:]}"
-        elif room_id:
-            url = f"{LIVE_INFO_API}?room_id={room_id[2]}"
-        elif cvid:
-            page = cvid[4]
-            url = f"https://api.bilibili.com/x/article/viewinfo?id={page}&mobi_app=pc&from=web"
-        elif opus_id:
-            url = f"https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?id={opus_id[1]}"
-        elif dynamic_id_type2:
-            url = f"https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?rid={dynamic_id_type2[2]}&type=2"
-        elif dynamic_id:
-            url = f"https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?id={dynamic_id[3]}"
-        return url, page, time
-    except Exception:
-        return "", None, None
+    url = ""
+    # 视频分p
+    page = re.compile(r"([?&]|&amp;)p=\d+").search(text)
+    # 视频播放定位时间
+    time = re.compile(r"([?&]|&amp;)t=\d+").search(text)
+    # 主站视频 av 号
+    aid = re.compile(r"av\d+").search(text)
+    # 主站视频 bv 号
+    bvid = re.compile(r"BV([A-Za-z0-9]{10})+").search(text)
+    # 番剧视频页
+    epid = re.compile(r"ep\d+").search(text)
+    # 番剧剧集ssid(season_id)
+    ssid = re.compile(r"ss\d+").search(text)
+    # 番剧详细页
+    mdid = re.compile(r"md\d+").search(text)
+    # 直播间
+    room_id = re.compile(r"live.bilibili.com/(blanc/|h5/)?(\d+)").search(text)
+    # 文章
+    cvid = re.compile(r"(/read/(cv|mobile|native)(/|\?id=)?|^cv)(\d+)").search(text)
+    # 动态 (opus 新格式)
+    opus_id = re.compile(r"bilibili.com/opus/(\d+)", re.I).search(text)
+    # 动态
+    dynamic_id_type2 = re.compile(
+        r"(t|m).bilibili.com/(\d+)\?(.*?)(&|&amp;)type=2"
+    ).search(text)
+    # 动态
+    dynamic_id = re.compile(r"(t|m).bilibili.com/(opus/)?(\d+)").search(text)
+    if bvid:
+        url = f"{VIEW_API}?bvid={bvid[0]}"
+    elif aid:
+        url = f"{VIEW_API}?aid={aid[0][2:]}"
+    elif epid:
+        url = f"https://api.bilibili.com/pgc/view/web/season?ep_id={epid[0][2:]}"
+    elif ssid:
+        url = f"https://api.bilibili.com/pgc/view/web/season?season_id={ssid[0][2:]}"
+    elif mdid:
+        url = f"https://api.bilibili.com/pgc/review/user?media_id={mdid[0][2:]}"
+    elif room_id:
+        url = f"{LIVE_INFO_API}?room_id={room_id[2]}"
+    elif cvid:
+        page = cvid[4]
+        url = f"https://api.bilibili.com/x/article/viewinfo?id={page}&mobi_app=pc&from=web"
+    elif opus_id:
+        url = (
+            f"https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?id={opus_id[1]}"
+        )
+    elif dynamic_id_type2:
+        url = f"https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?rid={dynamic_id_type2[2]}&type=2"
+    elif dynamic_id:
+        url = f"https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?id={dynamic_id[3]}"
+    return url, page, time
 
 
 async def search_bili_by_title(title: str, session: ClientSession) -> str:

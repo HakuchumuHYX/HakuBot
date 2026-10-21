@@ -64,3 +64,4 @@ webconsole bridge 自己的 sink 只收 WARNING 起，并按级别判定一次�
 - 意料之外的异常用 `logger.exception`；意料之中的（超时、风控 1200）一行 `warning`，用 `utils.logging.get_exc_desc(e)`。
 - 已降级兜底、但原因可能是代码 bug 时，用 `logger.opt(exception=True).warning`：保留 traceback，又不被控制台记成失败。
 - loguru 不认 `exc_info=True`：不会带 traceback，异常文本里有 `{}` 时日志调用本身会抛 `KeyError`。
+- 不写裸 `except:` 和只有 `pass` 的 except。能用不抛异常的写法（`unlink(missing_ok=True)`、`isdecimal()`、正则）就不用 try；预期内要忽略的具体异常写 `with suppress(具体类型)`，原因不明显时补一句注释；宽泛捕获要么收窄类型，要么按上表记日志降级。

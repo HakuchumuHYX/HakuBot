@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
@@ -79,10 +80,8 @@ def build_link_fallback_contents(
 def detect_image_ext(data: bytes, fallback: str) -> str:
     from utils.images.formats import detect_format
 
-    try:
+    with suppress(ValueError):
         return detect_format(data)
-    except ValueError:
-        pass
 
     fallback = fallback.lower().lstrip(".")
     return fallback if fallback in {"jpg", "jpeg", "png", "gif", "webp"} else "jpg"

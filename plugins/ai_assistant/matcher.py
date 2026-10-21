@@ -344,38 +344,12 @@ async def handle_change_model(args: Message = CommandArg()):
         f"正在尝试切换到模型: {new_model}\n正在进行连接测试，请稍候..."
     )
 
+    messages = [{"role": "user", "content": "Hello! This is a connection test."}]
     try:
-        # 构造测试消息
-        messages = [{"role": "user", "content": "Hello! This is a connection test."}]
-
         # 直接用新模型发起测试请求，不修改全局配置，避免测试期间并发请求用到未验证的模型
         result = await call_chat_completion(messages, model=new_model)
-        reply_text = result.content
-        used_model = result.model
-
-        # 如果代码执行到这里，说明测试成功，写入配置
-        plugin_config.chat.model = new_model
-        from core.settings import update_fields
-        from plugins.ai_assistant.config import CONFIG_PATH
-
-        update_fields(CONFIG_PATH, {"chat": {"model": new_model}})
-
-        # 截取简短的响应预览
-        preview = reply_text[:50] + "..." if len(reply_text) > 50 else reply_text
-        preview = preview.replace("\n", " ")
-
-        await model_cmd.finish(
-            f"✅ 模型切换成功！\n"
-            f"旧模型: {old_model}\n"
-            f"新模型: {used_model}\n"
-            f"测试响应: {preview}"
-        )
-
-    except FinishedException:
-        raise
-
     except Exception as e:
-        # 测试失败，全局配置未被修改
+        logger.warning(f"切换模型 {new_model} 测试失败: {get_exc_desc(e)}")
         error_msg = str(e)
         if len(error_msg) > 100:
             error_msg = error_msg[:100] + "..."
@@ -385,3 +359,22 @@ async def handle_change_model(args: Message = CommandArg()):
             f"当前模型保持为: {old_model}\n"
             f"错误信息: {error_msg}"
         )
+
+    from core.settings import update_fields
+    from plugins.ai_assistant.config import CONFIG_PATH
+
+    # 先落盘再改内存：写配置失败时内存里仍是旧模型，和磁盘一致
+    update_fields(CONFIG_PATH, {"chat": {"model": new_model}})
+    plugin_config.chat.model = new_model
+
+    # 截取简短的响应预览
+    reply_text = result.content
+    preview = reply_text[:50] + "..." if len(reply_text) > 50 else reply_text
+    preview = preview.replace("\n", " ")
+
+    await model_cmd.finish(
+        f"✅ 模型切换成功！\n"
+        f"旧模型: {old_model}\n"
+        f"新模型: {result.model}\n"
+        f"测试响应: {preview}"
+    )

@@ -185,7 +185,7 @@ async def handle_game_answer(
     session_id = get_session_id(event)
     answer_text = event.get_plaintext().strip()
 
-    if not answer_text.isdigit():
+    if not answer_text.isdecimal():
         return
 
     game_data = active_game_sessions.get(session_id)
@@ -212,14 +212,11 @@ async def handle_game_answer(
     # 3. 为该用户增加一次猜测次数
     game_data["user_guess_counts"][user_id] = user_count + 1
 
-    is_correct = False
-    try:
-        answer_num = int(answer_text)
-        if 1 <= answer_num <= game_data.get("num_options", 12):
-            if answer_num == game_data["correct_answer_num"]:
-                is_correct = True
-    except ValueError:
-        pass
+    answer_num = int(answer_text)
+    is_correct = (
+        1 <= answer_num <= game_data.get("num_options", 12)
+        and answer_num == game_data["correct_answer_num"]
+    )
 
     if is_correct:
         # 答对了，且在该用户的次数限制内

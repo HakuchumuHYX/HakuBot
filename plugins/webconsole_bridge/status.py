@@ -130,14 +130,12 @@ class BridgeRuntime:
 
     async def _probe_loop(self) -> None:
         while not self._stop_event.is_set():
-            try:
+            with suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(
                     self._stop_event.wait(),
                     timeout=self.config.probe_interval_seconds,
                 )
                 break
-            except asyncio.TimeoutError:
-                pass
 
             try:
                 await self.check_now()
@@ -175,10 +173,7 @@ def _now_ms() -> int:
 
 
 def _adapter_name(bot: Bot) -> str:
-    try:
-        return str(bot.adapter.get_name())
-    except Exception:
-        return type(bot.adapter).__name__
+    return bot.adapter.get_name()
 
 
 class BotStatusManager:

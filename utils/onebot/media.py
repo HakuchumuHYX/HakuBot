@@ -10,6 +10,7 @@ import os
 import shutil
 import tempfile
 import time
+from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
 from typing import TypeAlias
@@ -53,10 +54,8 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _detect_image_suffix(data: bytes, filename: str | None = None) -> str:
-    try:
+    with suppress(ValueError):
         return "." + detect_format(data)
-    except ValueError:
-        pass
 
     suffix = Path(filename or "").suffix.lower()
     if suffix in _KNOWN_IMAGE_SUFFIXES:
@@ -115,8 +114,8 @@ def _cache_external_file(path: Path) -> Path:
     finally:
         try:
             Path(temporary_name).unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as e:
+            logger.warning(f"清理临时文件失败 {temporary_name}: {e}")
     return target
 
 

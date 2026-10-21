@@ -18,6 +18,7 @@ from plugins.poke_reply.services.contribute import (
 )
 from core.access import switch_rule
 from core.cooldown import cooldown_remaining, mark_cooldown
+from utils.logging import get_exc_desc
 from utils.onebot.forward import send_forward_msg
 from utils.onebot.rules import command_boundary
 
@@ -146,7 +147,8 @@ async def handle_convert_to_text(bot: Bot, event: GroupMessageEvent):
 
         try:
             image_hash = (await fetch_image(image_url)).md5
-        except Exception:
+        except Exception as e:
+            logger.warning(f"转文字时下载图片失败: {get_exc_desc(e)}")
             await convert_to_text.finish("下载图片失败，无法计算哈希值喵！")
 
         cache_record = text_image_cache.get_cache_by_image_hash(image_hash, group_id)

@@ -3,7 +3,7 @@
 import asyncio
 import os
 from utils.paths import project_root
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from playwright.async_api import async_playwright
 
 
@@ -65,13 +65,11 @@ class BrowserPool:
                                 self._idle = asyncio.create_task(self._close_idle())
 
     async def _close_idle(self):
-        try:
+        with suppress(asyncio.CancelledError):
             await asyncio.sleep(self._idle_seconds)
             async with self._lock:
                 if self._active == 0:
                     await self._close_resources()
-        except asyncio.CancelledError:
-            pass
 
     async def _close_resources(self):
         try:

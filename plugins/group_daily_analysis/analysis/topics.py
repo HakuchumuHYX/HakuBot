@@ -181,32 +181,29 @@ class TopicsAnalysis:
         - rank: 出现频次 + detail 长度 + 参与者数量
         """
         buckets: dict[str, dict] = {}
-        for t in topics or []:
-            try:
-                topic_name = (t.topic or "").strip()
-                key = self._norm_key(topic_name)
-                if not key:
-                    continue
-                b = buckets.get(key)
-                if not b:
-                    b = {
-                        "topic": topic_name,
-                        "contributors": set(),
-                        "detail": (t.detail or "").strip(),
-                        "count": 0,
-                    }
-                    buckets[key] = b
-
-                b["count"] += 1
-                for c in t.contributors or []:
-                    if c and str(c).strip():
-                        b["contributors"].add(str(c).strip())
-
-                detail = (t.detail or "").strip()
-                if len(detail) > len(b["detail"]):
-                    b["detail"] = detail
-            except Exception:
+        for t in topics:
+            topic_name = t.topic.strip()
+            key = self._norm_key(topic_name)
+            if not key:
                 continue
+            b = buckets.get(key)
+            if not b:
+                b = {
+                    "topic": topic_name,
+                    "contributors": set(),
+                    "detail": t.detail.strip(),
+                    "count": 0,
+                }
+                buckets[key] = b
+
+            b["count"] += 1
+            for c in t.contributors:
+                if c.strip():
+                    b["contributors"].add(c.strip())
+
+            detail = t.detail.strip()
+            if len(detail) > len(b["detail"]):
+                b["detail"] = detail
 
         merged: list[SummaryTopic] = []
         for b in buckets.values():
@@ -235,31 +232,28 @@ class TopicsAnalysis:
         - rank: 出现频次 + reason 信息量
         """
         buckets: dict[str, dict] = {}
-        for q in quotes or []:
-            try:
-                content = (q.content or "").strip()
-                key = self._norm_key(content)
-                if not key:
-                    continue
-                b = buckets.get(key)
-                if not b:
-                    b = {
-                        "content": content,
-                        "senders": Counter(),
-                        "reasons": set(),
-                        "count": 0,
-                    }
-                    buckets[key] = b
-
-                b["count"] += 1
-                sender = (q.sender or "").strip()
-                if sender:
-                    b["senders"][sender] += 1
-                reason = (q.reason or "").strip()
-                if reason:
-                    b["reasons"].add(reason)
-            except Exception:
+        for q in quotes:
+            content = q.content.strip()
+            key = self._norm_key(content)
+            if not key:
                 continue
+            b = buckets.get(key)
+            if not b:
+                b = {
+                    "content": content,
+                    "senders": Counter(),
+                    "reasons": set(),
+                    "count": 0,
+                }
+                buckets[key] = b
+
+            b["count"] += 1
+            sender = q.sender.strip()
+            if sender:
+                b["senders"][sender] += 1
+            reason = q.reason.strip()
+            if reason:
+                b["reasons"].add(reason)
 
         merged: list[GoldenQuote] = []
         for b in buckets.values():
