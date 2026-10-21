@@ -1,8 +1,9 @@
-from nonebot import on_command
+from nonebot import logger, on_command
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11 import Message, GroupMessageEvent
-from nonebot.exception import FinishedException
+from nonebot.exception import NetworkError
+from nonebot.matcher import Matcher
 
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
@@ -19,6 +20,16 @@ GLOBAL_WATERMARK_TEXT = "禁止转载至其他任何社交平台"
 
 pjsk_list = on_command("剧情列表", priority=5, block=True)
 pjsk_detail = on_command("剧情总结", priority=5, block=True)
+
+
+async def _send_pic(matcher: type[Matcher], pic: bytes) -> None:
+    try:
+        await matcher.send(image_segment(pic))
+    except NetworkError as e:
+        if "timeout" not in str(e).lower():
+            raise
+        # NapCat 上传长图可能超过 api_timeout，但图随后通常仍会发出，不能回“失败”
+        logger.warning(f"发送剧情图超时，服务端可能已处理: {e}")
 
 
 @pjsk_list.handle()
@@ -38,13 +49,11 @@ async def handle_list(bot: Bot, event: Event):
         pic = await render_event_list_pic(
             events, watermark=CUSTOM_WATERMARK, global_watermark=GLOBAL_WATERMARK_TEXT
         )
-
-        await pjsk_list.finish(image_segment(pic))
-
-    except FinishedException:
-        raise
     except Exception as e:
+        logger.exception("剧情列表生成失败")
         await pjsk_list.finish(f"获取列表失败: {str(e)}")
+
+    await _send_pic(pjsk_list, pic)
 
 
 @pjsk_detail.handle()
@@ -62,20 +71,17 @@ async def handle_detail(bot: Bot, event: Event, args: Message = CommandArg()):
 
     await pjsk_detail.send(f"正在获取 Event {event_id} 的详情...")
 
+    result = await fetch_event_detail(event_id)
+    if isinstance(result, str):
+        await pjsk_detail.finish(result)
+
     try:
-        result = await fetch_event_detail(event_id)
-
-        if isinstance(result, str):
-            await pjsk_detail.finish(result)
-
         # 传入水印
         pic = await render_event_detail_pic(
             result, watermark=CUSTOM_WATERMARK, global_watermark=GLOBAL_WATERMARK_TEXT
         )
-
-        await pjsk_detail.finish(image_segment(pic))
-
-    except FinishedException:
-        raise
     except Exception as e:
+        logger.exception(f"活动 {event_id} 剧情图生成失败")
         await pjsk_detail.finish(f"处理出错: {str(e)}")
+
+    await _send_pic(pjsk_detail, pic)

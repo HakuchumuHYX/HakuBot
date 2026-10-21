@@ -10,16 +10,26 @@ from plugins.pjsk_event_summary.models import EventSimple, EventDetail
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 # 资源站有一张图卡住，页面 load 就等不到；先限时带图渲染，超时再出无图版
 IMAGE_TIMEOUT = 15_000
+# 长图 PNG 有 1～2MB，NapCat 上传到 QQ 会慢到超时；JPEG 约小 40%
+OUTPUT = {"type": "jpeg", "quality": 90}
 
 
 async def _render(name: str, width: int, **ctx) -> bytes:
     try:
         return await render_template(
-            TEMPLATE_DIR, name, width=width, timeout=IMAGE_TIMEOUT, with_images=True, **ctx
+            TEMPLATE_DIR,
+            name,
+            width=width,
+            timeout=IMAGE_TIMEOUT,
+            with_images=True,
+            **OUTPUT,
+            **ctx,
         )
     except PlaywrightTimeoutError:
         logger.warning(f"{name} 带远程图渲染超时，改出无图版")
-        return await render_template(TEMPLATE_DIR, name, width=width, with_images=False, **ctx)
+        return await render_template(
+            TEMPLATE_DIR, name, width=width, with_images=False, **OUTPUT, **ctx
+        )
 
 
 async def render_event_list_pic(
