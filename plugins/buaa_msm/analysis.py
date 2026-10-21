@@ -4,7 +4,7 @@
 
 职责：
 - 数据聚合（aggregate_materials）
-- 资源名称查询（get_resource_name / get_translated_map_name）
+- 名称查询（get_music_record_name / get_translated_map_name）
 - 来访角色统计（get_visiting_group_counts）
 - 唱片信息（parse_owned_music_records / get_jacket_url）
 
@@ -22,7 +22,6 @@ from nonebot import logger
 from plugins.buaa_msm.domain.constants import (
     CHARACTER_NAMES,
     MAP_TITLE_CN,
-    RESOURCE_NAME_CN,
 )
 from plugins.buaa_msm.config import settings
 from plugins.buaa_msm.services.masterdata_lite import masterdata_lite
@@ -40,40 +39,10 @@ def get_translated_map_name(japanese_name: str) -> str:
     return MAP_TITLE_CN.get(japanese_name, japanese_name)
 
 
-def get_resource_name(category: str, item_id: str) -> str:
-    """
-    获取资源中文名称。查询链：
-    1. 唱片特殊处理（通过 masterdata 查音乐标题）
-    2. 内联中文名映射（RESOURCE_NAME_CN）
-    3. masterdata_lite 动态名称
-    4. category 默认名 + ID
-    5. "{category}_{item_id}" 兜底
-    """
-    if category == "mysekai_music_record":
-        title = masterdata_lite.get_music_title_by_record_id(str(item_id))
-        if title:
-            return f"唱片：{title}"
-        default_name = RESOURCE_NAME_CN.get(category, {}).get("_default", "唱片")
-        return f"{default_name} (ID: {item_id})"
-
-    # 内联中文名
-    category_names = RESOURCE_NAME_CN.get(category, {})
-    name = category_names.get(str(item_id))
-    if name:
-        return name
-
-    # masterdata 动态名称
-    if item_id.isdecimal():
-        md_name = masterdata_lite.get_resource_name(category, int(item_id))
-        if md_name:
-            return md_name
-
-    # category 默认名
-    default_name = category_names.get("_default")
-    if default_name:
-        return f"{default_name} ({item_id})"
-
-    return f"{category}_{item_id}"
+def get_music_record_name(record_id: str) -> str:
+    """唱片显示名：masterdata 查得到歌名就用歌名。"""
+    title = masterdata_lite.get_music_title_by_record_id(record_id)
+    return f"唱片：{title}" if title else f"唱片 (ID: {record_id})"
 
 
 # ============== 数据聚合 ==============

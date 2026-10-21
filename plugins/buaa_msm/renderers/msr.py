@@ -607,7 +607,7 @@ def generate_msr_summary_image_bytes(
 
             # 文字垂直居中于封面
             text_y = y3 + (jacket_thumb_size - 16) // 2 if text_offset_x > 0 else y3 + 2
-            name = analysis.get_resource_name("mysekai_music_record", str(record_id))
+            name = analysis.get_music_record_name(str(record_id))
             line = f"• {name}：{qty}个"
             line = _ellipsize(
                 font_text, line, max(10, right_max_w - 60 - text_offset_x)

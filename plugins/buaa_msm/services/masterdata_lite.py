@@ -117,16 +117,6 @@ class MasterDataLite:
                 return str(val)
         return None
 
-    def get_resource_name(self, category: str, item_id: int) -> str | None:
-        item = self.get_item_by_id(category, item_id)
-        if not item:
-            return None
-        for key in ("name", "resourceName", "displayName"):
-            val = item.get(key)
-            if val:
-                return str(val)
-        return None
-
     def get_harvest_fixture_meta(self, fixture_id: int) -> dict[str, Any] | None:
         """
         查询 mysekaiSiteHarvestFixtures 的关键字段：
