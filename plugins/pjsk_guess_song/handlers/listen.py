@@ -29,7 +29,6 @@ from plugins.pjsk_guess_song.utils import (
     get_user_id,
     get_user_name,
     _is_group_allowed,
-    _get_setting_for_group,
 )
 from core.access import (
     is_feature_enabled,
@@ -67,7 +66,7 @@ async def _handle_listen_command(
     lock = game_session_locks[session_id]
 
     async with lock:
-        cooldown = _get_setting_for_group(event, "game_cooldown_seconds", 30)
+        cooldown = plugin_config.game_cooldown_seconds
         if time.time() - last_game_end_time.get(session_id, 0) < cooldown:
             remaining_time = cooldown - (
                 time.time() - last_game_end_time.get(session_id, 0)
@@ -82,7 +81,7 @@ async def _handle_listen_command(
             await matcher.finish("......有一个正在进行的游戏或播放任务了呢。")
 
         user_id = get_user_id(event)
-        listen_limit = _get_setting_for_group(event, "daily_listen_limit", 10)
+        listen_limit = plugin_config.daily_listen_limit
         can_listen = await db_service.can_listen_song(user_id, listen_limit)
         if not can_listen:
             await matcher.finish(
@@ -205,7 +204,7 @@ async def _(
         return
 
     async with lock:
-        cooldown = _get_setting_for_group(event, "game_cooldown_seconds", 30)
+        cooldown = plugin_config.game_cooldown_seconds
         if time.time() - last_game_end_time.get(session_id, 0) < cooldown:
             remaining_time = cooldown - (
                 time.time() - last_game_end_time.get(session_id, 0)
@@ -220,7 +219,7 @@ async def _(
             await matcher.finish("......有一个正在进行的游戏或播放任务了呢。")
 
         user_id = get_user_id(event)
-        listen_limit = _get_setting_for_group(event, "daily_listen_limit", 10)
+        listen_limit = plugin_config.daily_listen_limit
         can_listen = await db_service.can_listen_song(user_id, listen_limit)
         if not can_listen:
             await matcher.finish(
@@ -355,7 +354,7 @@ async def _(
     lock = game_session_locks[session_id]
 
     async with lock:
-        cooldown = _get_setting_for_group(event, "game_cooldown_seconds", 30)
+        cooldown = plugin_config.game_cooldown_seconds
         if time.time() - last_game_end_time.get(session_id, 0) < cooldown:
             remaining_time = cooldown - (
                 time.time() - last_game_end_time.get(session_id, 0)
@@ -370,7 +369,7 @@ async def _(
             await matcher.finish("......有一个正在进行的游戏或播放任务了呢。")
 
         user_id = get_user_id(event)
-        listen_limit = _get_setting_for_group(event, "daily_listen_limit", 10)
+        listen_limit = plugin_config.daily_listen_limit
         can_listen = await db_service.can_listen_song(user_id, listen_limit)
         if not can_listen:
             await matcher.finish(

@@ -53,14 +53,6 @@ async def _is_group_allowed(event: MessageEvent) -> bool:
     return True  # 私聊默认允许
 
 
-def _get_setting_for_group(event: MessageEvent, key: str, default: any) -> any:
-    """
-    Nonebot 适配版设置获取。
-    直接从加载的 plugin_config 对象中读取属性。
-    """
-    return getattr(plugin_config, key, default)
-
-
 async def _check_game_start_conditions(
     event: MessageEvent,
 ) -> Tuple[bool, Optional[str]]:
@@ -70,7 +62,7 @@ async def _check_game_start_conditions(
 
     # --- 检查游戏是否在禁用时段 ---
     now_time = datetime.now().time()
-    disable_periods = _get_setting_for_group(event, "disable_guess_song_periods", [])
+    disable_periods = plugin_config.disable_guess_song_periods
     if isinstance(disable_periods, list):
         for period in disable_periods:
             try:
@@ -84,12 +76,10 @@ async def _check_game_start_conditions(
                 continue
 
     session_id = get_session_id(event)
-    cooldown = _get_setting_for_group(event, "game_cooldown_seconds", 30)
-    limit = _get_setting_for_group(event, "daily_play_limit", 15)
+    cooldown = plugin_config.game_cooldown_seconds
+    limit = plugin_config.daily_play_limit
     debug_mode = plugin_config.debug_mode
-    is_independent_limit = _get_setting_for_group(
-        event, "independent_daily_limit", False
-    )
+    is_independent_limit = plugin_config.independent_daily_limit
 
     if (
         not debug_mode

@@ -4,10 +4,9 @@ Stickers 插件配置文件
 集中管理所有可配置参数
 """
 
-import json
 from typing import Set
 
-from utils.paths import PluginPaths
+from core.settings import ConfigModel, load_config
 
 # ==================== 图片文件配置 ====================
 
@@ -77,16 +76,10 @@ MAX_CANVAS_PIXELS: int = 50 * 1024 * 1024
 
 # ==================== 本地配置（不进 git） ====================
 
-# config/plugins/stickers/config.json，例如 {"site_url": "https://..."}；*.json 已被 .gitignore 忽略
-LOCAL_CONFIG_FILE = PluginPaths("stickers").config / "config.json"
+
+class LocalConfig(ConfigModel):
+    # 表情包下载站的网址，「查看stickers」发预览图时附在后面；没配就不附
+    site_url: str
 
 
-def _load_local_config() -> dict:
-    if not LOCAL_CONFIG_FILE.exists():
-        return {}
-    with open(LOCAL_CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-# 表情包下载站的网址，「查看stickers」发预览图时附在后面；没配就不附
-SITE_URL: str = _load_local_config().get("site_url", "")
+SITE_URL: str = load_config("stickers", LocalConfig).site_url

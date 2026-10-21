@@ -80,7 +80,7 @@ async def get_x_content(url: str) -> Tweet:
 
     async with get_client_session().get(
         FXTWITTER_API.format(match.group(1)),
-        proxy=get_effective_proxy(config.get("proxy")),
+        proxy=get_effective_proxy(config.proxy),
     ) as resp:
         data = await resp.json(content_type=None)
     if data.get("code") != 200:
@@ -191,12 +191,12 @@ async def _(
         try:
             if concat_mode or args_obj.gif:
                 images = await asyncio.gather(
-                    *[download_image(u, proxy=config.get("proxy")) for u in image_urls]
+                    *[download_image(u, proxy=config.proxy) for u in image_urls]
                 )
             else:
                 # 不拼图时直接发原图字节，免得把原图 JPEG 转成体积更大的 PNG
                 images = await asyncio.gather(
-                    *[download_bytes(u, proxy=config.get("proxy")) for u in image_urls]
+                    *[download_bytes(u, proxy=config.proxy) for u in image_urls]
                 )
         except Exception as e:
             logger.warning(f"下载推文图片失败: {get_exc_desc(e)}")
@@ -239,7 +239,7 @@ async def _(
                 await download_to_file(
                     video_url,
                     path,
-                    proxy=config.get("proxy"),
+                    proxy=config.proxy,
                     max_bytes=VIDEO_MAX_BYTES,
                     timeout=300,
                 )

@@ -1,0 +1,7 @@
+{
+    "asset_base_url": "https://sekai-assets.example.net/jp-assets/startapp/",
+    "masterdata_path": "",
+    "guess_timeout": 60,
+    "crop_rate_min": 0.15,
+    "crop_rate_max": 0.25
+}

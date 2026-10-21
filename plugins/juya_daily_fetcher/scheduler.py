@@ -322,7 +322,7 @@ async def poll_juya_daily() -> None:
 
 
 async def cleanup_articles() -> None:
-    retention_days = max(1, int(plugin_config.article_retention_days or 7))
+    retention_days = plugin_config.article_retention_days
     cutoff = time.time() - retention_days * 86400
     pending = load_state().get("pending")
     keep = pending_keep_names(pending if isinstance(pending, dict) else None)
@@ -346,7 +346,7 @@ async def cleanup_articles() -> None:
 
 
 def _register_jobs() -> None:
-    interval = max(1, int(plugin_config.poll_interval_minutes or 15))
+    interval = plugin_config.poll_interval_minutes
     try:
         apscheduler.add_job(
             poll_juya_daily,

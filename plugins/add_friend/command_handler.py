@@ -10,7 +10,6 @@ from plugins.add_friend.config import (
     COMMAND_PRIORITY,
     FRIEND_APPROVED_MESSAGE,
     AUTO_APPROVE_GROUPS,
-    load_auto_approve_groups,
     save_auto_approve_groups,
 )
 from plugins.add_friend.data_manager import request_manager
@@ -129,18 +128,12 @@ async def add_group_handler(matcher: Matcher, args: Message = CommandArg()):
     if not group_id.isdigit():
         await matcher.finish("群号必须为数字")
 
-    # 重新加载当前配置
-    current_groups = load_auto_approve_groups()
+    current_groups = set(AUTO_APPROVE_GROUPS)
     if group_id in current_groups:
         await matcher.finish(f"群组 {group_id} 已在白名单中")
 
     current_groups.add(group_id)
     if save_auto_approve_groups(current_groups):
-        # 更新内存中的配置
-        from plugins.add_friend.config import AUTO_APPROVE_GROUPS
-
-        AUTO_APPROVE_GROUPS.clear()
-        AUTO_APPROVE_GROUPS.update(current_groups)
         await matcher.send(f"已添加群组 {group_id} 到白名单")
     else:
         await matcher.send("添加失败，请检查日志")
@@ -153,18 +146,12 @@ async def remove_group_handler(matcher: Matcher, args: Message = CommandArg()):
     if not group_id:
         await matcher.finish("请提供要移除的群号，格式：/移除白名单群组 [群号]")
 
-    # 重新加载当前配置
-    current_groups = load_auto_approve_groups()
+    current_groups = set(AUTO_APPROVE_GROUPS)
     if group_id not in current_groups:
         await matcher.finish(f"群组 {group_id} 不在白名单中")
 
     current_groups.remove(group_id)
     if save_auto_approve_groups(current_groups):
-        # 更新内存中的配置
-        from plugins.add_friend.config import AUTO_APPROVE_GROUPS
-
-        AUTO_APPROVE_GROUPS.clear()
-        AUTO_APPROVE_GROUPS.update(current_groups)
         await matcher.send(f"已从白名单移除群组 {group_id}")
     else:
         await matcher.send("移除失败，请检查日志")

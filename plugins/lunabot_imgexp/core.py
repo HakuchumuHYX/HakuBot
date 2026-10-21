@@ -50,7 +50,7 @@ _THUMB_TIMEOUT_SEC = 30
 
 
 async def download_batch_thumbnails(urls: list[str]) -> list[Optional[str]]:
-    plugin_proxy = config.get("proxy")
+    plugin_proxy = config.proxy
 
     async def download_nothrow(url: str):
         if not url:
@@ -124,7 +124,7 @@ async def search_saucenao(
 
         saucenao = SauceNAO(
             client=client,
-            api_key=config.get("saucenao_apikey"),
+            api_key=config.saucenao_apikey,
             numres=limit,
         )
         # 直接上传图片，不依赖 SauceNAO 能否回源拉到带时效 rkey 的 QQ 图链
@@ -148,9 +148,7 @@ async def search_saucenao(
             ImageSearchResultItem(
                 title=item.title,
                 url=url,
-                source=" · ".join(
-                    filter(None, [item.author, via and f"经 {via} 溯源"])
-                )
+                source=" · ".join(filter(None, [item.author, via and f"经 {via} 溯源"]))
                 or None,
                 similarity=item.similarity,
                 thumbnail=thumbnail,
@@ -167,7 +165,7 @@ async def search_saucenao(
 
 async def _flaresolverr(http: aiohttp.ClientSession, **payload) -> dict:
     async with http.post(
-        config.get("flaresolverr_url"), json={"maxTimeout": 30000, **payload}
+        config.flaresolverr_url, json={"maxTimeout": 30000, **payload}
     ) as resp:
         data = await resp.json()
     if data.get("status") != "ok":
@@ -177,7 +175,7 @@ async def _flaresolverr(http: aiohttp.ClientSession, **payload) -> dict:
 
 async def search_ascii2d(img_url: str, limit: int = 3) -> ImageSearchResult:
     try:
-        if not config.get("flaresolverr_url"):
+        if not config.flaresolverr_url:
             return ImageSearchResult(
                 source="Ascii2D", results=[], error="未配置 FlareSolverr"
             )
@@ -244,7 +242,7 @@ async def search_googlelens(
             return ImageSearchResult(source="GoogleLens", results=[])
         logger.debug("开始从 GoogleLens 搜索图片...")
 
-        serp_apikey = config.get("serp_apikey")
+        serp_apikey = config.serp_apikey
         if not serp_apikey:
             logger.warning("未配置 SerpApi Key，跳过 GoogleLens 搜索")
             return ImageSearchResult(
@@ -254,7 +252,7 @@ async def search_googlelens(
         img_url_encoded = quote(img_url, safe="")
         serp_url = f"https://serpapi.com/search.json?engine=google_lens&url={img_url_encoded}&api_key={serp_apikey}"
 
-        proxy = get_effective_proxy(config.get("proxy"))
+        proxy = get_effective_proxy(config.proxy)
         async with get_client_session().get(
             serp_url,
             proxy=proxy,
@@ -306,10 +304,10 @@ async def search_googlelens(
 
 async def search_image(img_url: str) -> Tuple[bytes, List[ImageSearchResult]]:
     SIZE_LIMIT_MB = 15
-    proxy = get_effective_proxy(config.get("proxy"))
+    proxy = get_effective_proxy(config.proxy)
     try:
         img_bytes = await download_bytes(
-            img_url, proxy=config.get("proxy"), max_bytes=SIZE_LIMIT_MB * 1024 * 1024
+            img_url, proxy=config.proxy, max_bytes=SIZE_LIMIT_MB * 1024 * 1024
         )
     except DownloadTooLarge:
         raise ValueError(f"图片大小超过{SIZE_LIMIT_MB}MB，请先缩小后再进行搜索")
@@ -328,6 +326,6 @@ async def search_image(img_url: str) -> Tuple[bytes, List[ImageSearchResult]]:
         width=900,
         query_url=img_url,
         results=results,
-        watermark_text=config.get("watermark_text", "").strip(),
+        watermark_text=config.watermark_text.strip(),
     )
     return image, results

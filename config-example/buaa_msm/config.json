@@ -1,4 +1,5 @@
 {
+    "link": "",
     "master_data_dir": "/abs/path/to/haruki-sekai-master/master",
     "asset": {
         "url_base": "https://sekai-assets.example.net/",
@@ -23,7 +24,7 @@
         "wait_timeout_seconds": 600
     },
     "api_crypto": {
-        "key": "",
-        "iv": ""
+        "key": "YOUR_API_CRYPTO_KEY",
+        "iv": "YOUR_API_CRYPTO_IV"
     }
 }

@@ -34,7 +34,6 @@ from plugins.pjsk_guess_song.utils import (
     get_user_id,
     get_user_name,
     _check_game_start_conditions,
-    _get_setting_for_group,
 )
 from plugins.pjsk_guess_song.game_session import _run_game_session
 from core.access import is_plugin_enabled
@@ -128,9 +127,7 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
     try:
         initiator_id = get_user_id(event)
         initiator_name = get_user_name(event)
-        is_independent_limit = _get_setting_for_group(
-            event, "independent_daily_limit", False
-        )
+        is_independent_limit = plugin_config.independent_daily_limit
         await db_service.consume_daily_play_attempt(
             initiator_id, initiator_name, session_id, is_independent_limit
         )
@@ -193,7 +190,7 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
 
         options_image = await image_service.create_options_image(options)
 
-        answer_timeout = _get_setting_for_group(event, "answer_timeout", 30)
+        answer_timeout = plugin_config.answer_timeout
         intro_text = f".......嗯\n这首歌是？请在{answer_timeout}秒内发送编号回答。\n"
 
         intro_messages = Message(intro_text)
@@ -267,9 +264,7 @@ async def _(bot: Bot, event: MessageEvent):
     try:
         initiator_id = get_user_id(event)
         initiator_name = get_user_name(event)
-        is_independent_limit = _get_setting_for_group(
-            event, "independent_daily_limit", False
-        )
+        is_independent_limit = plugin_config.independent_daily_limit
         await db_service.consume_daily_play_attempt(
             initiator_id, initiator_name, session_id, is_independent_limit
         )
@@ -326,7 +321,7 @@ async def _(bot: Bot, event: MessageEvent):
         )
 
         options_image = await image_service.create_options_image(options)
-        timeout_seconds = _get_setting_for_group(event, "answer_timeout", 30)
+        timeout_seconds = plugin_config.answer_timeout
         intro_text = f".......嗯\n这首歌是？请在{timeout_seconds}秒内发送编号回答。\n"
 
         intro_messages = Message(intro_text)
@@ -400,9 +395,7 @@ async def _(bot: Bot, event: MessageEvent):
     try:
         initiator_id = get_user_id(event)
         initiator_name = get_user_name(event)
-        is_independent_limit = _get_setting_for_group(
-            event, "independent_daily_limit", False
-        )
+        is_independent_limit = plugin_config.independent_daily_limit
         await db_service.consume_daily_play_attempt(
             initiator_id, initiator_name, session_id, is_independent_limit
         )
@@ -465,7 +458,7 @@ async def _(bot: Bot, event: MessageEvent):
             vocalist_name = get_vocalist_name(vocal)
             compact_options_text += f"{i + 1}. {vocalist_name}\n"
 
-        timeout_seconds = _get_setting_for_group(event, "answer_timeout", 30)
+        timeout_seconds = plugin_config.answer_timeout
         intro_text = f"这首歌是【{song['title']}】，正在演唱的是谁？[1.5倍速]\n请在{timeout_seconds}秒内发送编号回答。\n\n⚠️ 测试功能\n\n{compact_options_text}"
         jacket_source = cache_service.get_resource_path_or_url(
             f"music_jacket/{song['jacketAssetbundleName']}.png"

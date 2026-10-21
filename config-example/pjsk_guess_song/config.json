@@ -1,0 +1,22 @@
+{
+    "answer_timeout": 30,
+    "daily_play_limit": 15,
+    "group_whitelist": [],
+    "game_cooldown_seconds": 60,
+    "max_guess_attempts": 10,
+    "clip_duration_seconds": 10,
+    "bonus_time_after_first_answer": 0,
+    "end_game_after_bonus_time": true,
+    "debug_mode": false,
+    "daily_listen_limit": 5,
+    "use_local_resources": false,
+    "remote_resource_url_base": "",
+    "lightweight_mode": false,
+    "disable_guess_song_periods": [],
+    "independent_daily_limit": false,
+    "random_mode_decay_factor": 0.75,
+    "custom_footer_text": "",
+    "full_mode": false,
+    "asset_url_base": "",
+    "asset_server": "jp"
+}

@@ -1,47 +1,42 @@
-from utils.paths import PluginPaths
 # pjsk_guess_song/config.py
+from core.settings import ConfigModel, load_config
+from utils.paths import PluginPaths
 
-import json
 from typing import List, Dict
-from pydantic import BaseModel, Extra
-from nonebot import logger
+from pydantic import ConfigDict
 
 
 # --- 1. 定义配置结构与默认值 ---
 
 
-class PluginConfig(BaseModel, extra=Extra.ignore):
+class PluginConfig(ConfigModel):
     """
     PJSK 猜歌插件配置模型
     (用于 config.json)
     """
 
-    answer_timeout: int = 30
-    daily_play_limit: int = 15
-    super_users: List[str] = []
-    group_whitelist: List[str] = []
-    game_cooldown_seconds: int = 60
-    max_guess_attempts: int = 10
-    clip_duration_seconds: int = 10
-    bonus_time_after_first_answer: int = 0
-    end_game_after_bonus_time: bool = True
-    debug_mode: bool = False
-    daily_listen_limit: int = 5
-    use_local_resources: bool = False
-    remote_resource_url_base: str = ""
-    lightweight_mode: bool = False
-    disable_guess_song_periods: List[Dict[str, str]] = [
-        # 示例: {"start": "00:00", "end": "06:00", "message": "Zzz...这个时间点机器人需要休息..."}
-    ]
-    independent_daily_limit: bool = False
-    random_mode_decay_factor: float = 0.75
-    custom_footer_text: str = ""
-    full_mode: bool = False
-    asset_url_base: str = ""
-    asset_server: str = "jp"
+    answer_timeout: int
+    daily_play_limit: int
+    group_whitelist: List[str]
+    game_cooldown_seconds: int
+    max_guess_attempts: int
+    clip_duration_seconds: int
+    bonus_time_after_first_answer: int
+    end_game_after_bonus_time: bool
+    debug_mode: bool
+    daily_listen_limit: int
+    use_local_resources: bool
+    remote_resource_url_base: str
+    lightweight_mode: bool
+    disable_guess_song_periods: List[Dict[str, str]]
+    independent_daily_limit: bool
+    random_mode_decay_factor: float
+    custom_footer_text: str
+    full_mode: bool
+    asset_url_base: str
+    asset_server: str
 
-    class Config:
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
 # --- 2. 定义配置文件路径 ---
@@ -49,29 +44,6 @@ class PluginConfig(BaseModel, extra=Extra.ignore):
 PLUGIN_NAME = "pjsk_guess_song"
 data_dir = PluginPaths("pjsk_guess_song").data
 data_dir.mkdir(parents=True, exist_ok=True)
-CONFIG_FILE_PATH = PluginPaths("pjsk_guess_song").config / "config.json"
 
 
-# --- 3. 配置加载 ---
-
-
-def load_plugin_config() -> PluginConfig:
-    """
-    加载插件配置。
-    文件不存在时使用内存默认值，不写入配置文件。
-    """
-    if CONFIG_FILE_PATH.exists():
-        logger.debug(f"正在从 {CONFIG_FILE_PATH} 加载 PJSK 猜歌插件配置...")
-        try:
-            with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
-                config_data = json.load(f)
-                return PluginConfig.parse_obj(config_data)
-        except Exception as e:
-            logger.error(f"加载 config.json 失败: {e}，将使用默认配置。")
-            return PluginConfig()
-    else:
-        logger.info(f"未找到配置文件 {CONFIG_FILE_PATH}，使用内存默认配置")
-        return PluginConfig()
-
-
-plugin_config = load_plugin_config()
+plugin_config = load_config("pjsk_guess_song", PluginConfig)

@@ -13,9 +13,7 @@ async def call_chat_completion(
 ):
     global _semaphore
     if _semaphore is None:
-        _semaphore = asyncio.Semaphore(
-            max(1, int(plugin_config.max_concurrent_tasks or 1))
-        )
+        _semaphore = asyncio.Semaphore(plugin_config.max_concurrent_tasks)
     source = plugin_config.llm
     config = LLMClientConfig(
         api_key=source.api_key,

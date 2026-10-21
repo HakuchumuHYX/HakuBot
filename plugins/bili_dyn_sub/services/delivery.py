@@ -7,7 +7,7 @@ from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.exception import ActionFailed, NetworkError
 from utils.logging import get_exc_desc
 from utils.onebot.forward import send_forward_msg
-from plugins.bili_dyn_sub.services import state as _state
+from plugins.bili_dyn_sub.config import plugin_config
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,11 +42,8 @@ async def _send_with_retry(
     返回 False 仅代表"确认失败"（调用方可安全降级重发）；
     超时属于"可能已送达"，返回 True 以避免重复推送（同 utils.tools.send_forward_msg 的判断）。
     """
-    attempts = max(
-        _state._MIN_SEND_ATTEMPTS,
-        _state._cfg_int("send_retry_times", 3, _state._MIN_SEND_ATTEMPTS),
-    )
-    interval = _state._cfg_float("send_interval_seconds", 1.5, 0.0)
+    attempts = plugin_config.send_retry_times
+    interval = plugin_config.send_interval_seconds
 
     for attempt in range(1, attempts + 1):
         try:
@@ -103,5 +100,5 @@ async def dispatch_segments(
         group_id=target.group_id,
         user_id=target.user_id,
         items=[Message(segment) for segment in rest],
-        fallback_interval=_state._cfg_float("send_interval_seconds", 1.5, 0.0),
+        fallback_interval=plugin_config.send_interval_seconds,
     )

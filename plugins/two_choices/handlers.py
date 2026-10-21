@@ -1,61 +1,23 @@
-from utils.json_io import atomic_write_json
-from core.lifecycle import on_plugin_startup
-from utils.paths import PluginPaths
-import json
 import random
 import re
 from typing import Optional, Tuple
 
-from nonebot import get_driver, on_message, logger
+from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.rule import Rule
 
 from core.access import is_plugin_enabled
-
-# 配置文件路径
-CONFIG_FILE = PluginPaths("two_choices").config / "config.json"
-
-# 全局配置
-plugin_config = {
-    "responses": [],
-    "error_responses": [],
-}
+from core.settings import ConfigModel, load_config
+from utils.logging import get_exc_desc
 
 
-def load_config():
-    """加载配置文件"""
-    global plugin_config
-    try:
-        if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                config_data = json.load(f)
-                plugin_config["responses"] = config_data.get("responses", [])
-                plugin_config["error_responses"] = config_data.get(
-                    "error_responses", []
-                )
-            logger.debug(
-                f"二择插件配置加载成功，回复模板: {len(plugin_config['responses'])} 个"
-            )
-        else:
-            # 如果配置文件不存在，创建默认配置
-            default_config = {
-                "responses": [
-                    "我建议选择：{choice}",
-                    "我觉得 {choice} 更好一些",
-                    "要不试试 {choice}？",
-                    "我推荐 {choice}",
-                    "{choice} 看起来不错",
-                ],
-                "error_responses": [
-                    "我没看懂你的二择格式呢，请用 1d 开头：1d吃不吃午饭 / 1d抽这个还是那个"
-                ],
-            }
-            atomic_write_json(CONFIG_FILE, default_config, ensure_ascii=False, indent=2)
-            plugin_config = default_config
-            logger.info("创建默认配置文件成功")
-    except Exception as e:
-        logger.exception(f"加载配置文件失败: {e}")
+class Config(ConfigModel):
+    responses: list[str]
+    error_responses: list[str]
+
+
+plugin_config = load_config("two_choices", Config)
 
 
 def _strip_1d_prefix(text: str) -> Optional[str]:
@@ -224,16 +186,16 @@ async def handle_two_choice(event: MessageEvent):
         choices = extract_choices(message_text)
 
         if not choices:
-            if plugin_config["error_responses"]:
-                await two_choice.finish(random.choice(plugin_config["error_responses"]))
+            if plugin_config.error_responses:
+                await two_choice.finish(random.choice(plugin_config.error_responses))
             return
 
         choice1, choice2 = choices
 
         selected_choice = random.choice([choice1, choice2])
 
-        if plugin_config["responses"]:
-            response_template = random.choice(plugin_config["responses"])
+        if plugin_config.responses:
+            response_template = random.choice(plugin_config.responses)
             reply_text = response_template.format(choice=selected_choice)
             await two_choice.finish(reply_text)
         else:
@@ -244,14 +206,6 @@ async def handle_two_choice(event: MessageEvent):
     except Exception as e:
         logger.exception(f"处理二择问题时出错: {e}")
         await two_choice.finish("出现了一些问题，请稍后再试~")
-
-
-# 插件启动时加载配置
-@on_plugin_startup(get_driver(), "two_choices")
-async def init_plugin():
-    """插件初始化"""
-    load_config()
-    logger.debug("二择插件初始化完成")
 
 
 # 重新加载配置的命令
@@ -267,7 +221,12 @@ reload_config = on_command(
 @reload_config.handle()
 async def handle_reload_config():
     """重载配置文件"""
-    load_config()
+    global plugin_config
+    try:
+        plugin_config = load_config("two_choices", Config)
+    except Exception as e:
+        logger.exception("重载 two_choices 配置失败")
+        await reload_config.finish(f"配置无效，继续使用旧配置：{get_exc_desc(e)}")
     await reload_config.finish("二择插件配置重载成功！")
 
 
@@ -281,7 +240,7 @@ view_config = on_command(
 async def handle_view_config():
     """查看当前配置"""
     config_info = (
-        f"回复模板数量: {len(plugin_config['responses'])}\n"
-        f"错误回复数量: {len(plugin_config['error_responses'])}"
+        f"回复模板数量: {len(plugin_config.responses)}\n"
+        f"错误回复数量: {len(plugin_config.error_responses)}"
     )
     await view_config.finish(config_info)

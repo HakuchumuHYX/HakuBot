@@ -229,8 +229,8 @@ def invalidate_wbi_keys() -> None:
 def _build_timeout() -> aiohttp.ClientTimeout:
     """按配置构造超时（连接 5s / 总 10s；bison 的 4s 在跨境时会误判为网络故障）"""
     return aiohttp.ClientTimeout(
-        total=max(1.0, float(plugin_config.http_timeout_total)),
-        connect=max(1.0, float(plugin_config.http_timeout_connect)),
+        total=plugin_config.http_timeout_total,
+        connect=plugin_config.http_timeout_connect,
     )
 
 

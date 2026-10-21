@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import List, Union
 from nonebot import logger
 
+from core.settings import ConfigModel, load_config
 from utils.logging import get_exc_desc
-from utils.paths import PluginPaths
 from plugins.pjsk_event_summary.models import (
     Chapter,
     Character,
@@ -18,11 +18,14 @@ from plugins.pjsk_event_summary.models import (
 STORY_DIR = Path("/opt/moesekai-hub/story/detail")
 MASTER_DIR = Path("/opt/haruki-sekai-master/master")
 
-# 游戏资源站基址不进代码，只放在 config.json
-_config = json.loads(
-    (PluginPaths("pjsk_event_summary").config / "config.json").read_text(encoding="utf-8")
-)
-ASSET_BASE: str = _config["asset_base"].rstrip("/")
+
+
+class Config(ConfigModel):
+    # 游戏资源站基址不进代码，只放在 config.json
+    asset_base: str
+
+
+ASSET_BASE: str = load_config("pjsk_event_summary", Config).asset_base.rstrip("/")
 
 # masterdata 只有日文名
 CHAR_CN = {

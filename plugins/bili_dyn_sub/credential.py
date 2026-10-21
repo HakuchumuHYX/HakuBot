@@ -406,10 +406,10 @@ class CredentialManager:
     def _compose(self) -> dict[str, str]:
         """输出给调用方的 cookie 副本；配置了 sessdata 时（L0）覆盖登录字段"""
         result = dict(self._cookies)
-        sessdata = (plugin_config.sessdata or "").strip()
+        sessdata = plugin_config.sessdata.strip()
         if sessdata:
             result["SESSDATA"] = sessdata
-            bili_jct = (plugin_config.bili_jct or "").strip()
+            bili_jct = plugin_config.bili_jct.strip()
             if bili_jct:
                 result["bili_jct"] = bili_jct
             if not self._login_logged:
@@ -520,7 +520,7 @@ class CredentialManager:
 
         本方法只产出「状态」，不改变取数行为（cookie 组装见 _compose）。
         """
-        sessdata = (plugin_config.sessdata or "").strip()
+        sessdata = plugin_config.sessdata.strip()
         if not sessdata:
             status = LoginStatus(
                 configured=False, is_login=False, checked_at=time.time()
@@ -631,7 +631,7 @@ class CredentialManager:
 
     def describe(self) -> str:
         """一行状态描述（供状态命令/排查日志使用）"""
-        if (plugin_config.sessdata or "").strip():
+        if plugin_config.sessdata.strip():
             mode = f"L0 登录态{self._describe_login()}"
         elif self._source:
             mode = {"http": "L1 纯 HTTP", "browser": "L2 Playwright"}.get(
@@ -851,8 +851,8 @@ class CredentialManager:
         if json_body is not None:
             headers["Content-Type"] = "application/json"
         timeout = aiohttp.ClientTimeout(
-            total=float(plugin_config.http_timeout_total),
-            connect=float(plugin_config.http_timeout_connect),
+            total=plugin_config.http_timeout_total,
+            connect=plugin_config.http_timeout_connect,
         )
         try:
             async with get_client_session("bilibili").request(

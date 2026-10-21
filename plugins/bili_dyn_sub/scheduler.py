@@ -15,8 +15,8 @@ from plugins.bili_dyn_sub.services import state as _state
 
 def _register_jobs() -> None:
     """注册轮询与裁剪任务（import 即注册，幂等）"""
-    interval = _state._cfg_int("poll_interval_seconds", 100, 30)
-    jitter = _state._cfg_int("poll_jitter_seconds", 20, 0)
+    interval = plugin_config.poll_interval_seconds
+    jitter = plugin_config.poll_jitter_seconds
     try:
         apscheduler.add_job(
             _polling.poll_once,
@@ -54,7 +54,7 @@ def _register_login_check() -> None:
     不配就一个 job、一次请求都不产生（启动那次校验在未配置时也是纯内存操作，
     只用来在日志里说明「本次以匿名方式取数」）。
     """
-    if (plugin_config.sessdata or "").strip():
+    if plugin_config.sessdata.strip():
         try:
             apscheduler.add_job(
                 _login.login_check_job,

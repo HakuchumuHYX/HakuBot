@@ -2,5 +2,5 @@
     "enabled": true,
     "database_path": "/var/lib/hakubot-webconsole/webconsole.db",
     "spool_path": "/var/lib/hakubot-webconsole/spool",
-    "probe_interval_seconds": 60
+    "probe_interval_seconds": 60.0
 }

@@ -24,7 +24,7 @@ from plugins.buaa_msm.domain.constants import (
     MAP_TITLE_CN,
     RESOURCE_NAME_CN,
 )
-from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.config import settings
 from plugins.buaa_msm.services.masterdata_lite import masterdata_lite
 
 # ============== 类型别名 ==============
@@ -162,10 +162,10 @@ def get_jacket_url(mysekai_record_id: str) -> str | None:
     根据 mysekai_record_id 获取封面的 asset 站 URL。
     返回 None 表示无法映射或未配置 asset 站。
     """
-    asset_base = plugin_config.asset_url_base.strip("/")
+    asset_base = settings.asset.url_base.strip("/")
     if not asset_base:
         return None
-    server = plugin_config.asset_server
+    server = settings.asset.server
 
     bundle = masterdata_lite.get_jacket_bundle_by_record_id(str(mysekai_record_id))
     if not bundle:

@@ -3,7 +3,6 @@ import asyncio
 from typing import Optional
 from nonebot import logger
 from plugins.bili_dyn_sub.backoff import backoff_manager
-from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.store import store
 
 
@@ -24,29 +23,6 @@ _EMPTY_FEED_BASELINE_THRESHOLD = 3
 _EMPTY_FEED_WARN_THRESHOLD = 5
 
 _empty_feed_streak: dict[str, int] = {}
-
-_MIN_SEND_ATTEMPTS = 1
-
-
-def _cfg_float(name: str, default: float, minimum: float = 0.0) -> float:
-    """读取 float 配置项并做下限保护（config.py 未加数值 validator）"""
-    try:
-        value = float(getattr(plugin_config, name, default))
-    except (TypeError, ValueError):
-        logger.warning(f"配置项 {name} 非法，回落默认值 {default}")
-        return default
-    return max(minimum, value)
-
-
-def _cfg_int(name: str, default: int, minimum: int = 0) -> int:
-    """读取 int 配置项并做下限保护"""
-    try:
-        value = int(getattr(plugin_config, name, default))
-    except (TypeError, ValueError):
-        logger.warning(f"配置项 {name} 非法，回落默认值 {default}")
-        return default
-    return max(minimum, value)
-
 
 async def _save_state() -> None:
     """把去重状态落盘（同步原子写下线程池，不阻塞事件循环）"""

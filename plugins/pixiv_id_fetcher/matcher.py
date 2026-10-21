@@ -56,11 +56,11 @@ def _get_client() -> PixivClient:
     if _client is None:
         _client = PixivClient(
             refresh_token=config.refresh_token,
-            client_id=str(config.get("client_id")),
-            client_secret=str(config.get("client_secret")),
+            client_id=config.client_id,
+            client_secret=config.client_secret,
             proxy=config.proxy,
-            timeout=float(config.get("timeout", 20.0)),
-            reverse_proxy_domain=config.get("reverse_proxy_domain"),
+            timeout=config.timeout,
+            reverse_proxy_domain=config.reverse_proxy_domain,
         )
     return _client
 
@@ -68,7 +68,7 @@ def _get_client() -> PixivClient:
 def _get_semaphore() -> asyncio.Semaphore:
     global _semaphore
     if _semaphore is None:
-        concurrency = int(config.get("concurrency", 2) or 2)
+        concurrency = config.concurrency
         _semaphore = asyncio.Semaphore(max(1, concurrency))
     return _semaphore
 
@@ -180,7 +180,7 @@ async def _download_page(
 
     data = await _get_client().download_image(
         page.url,
-        max_bytes=int(config.get("max_bytes", 20 * 1024 * 1024)),
+        max_bytes=config.max_bytes,
     )
     ext = detect_image_ext(data, page.ext)
     if normalize_for_forward:
@@ -202,14 +202,14 @@ async def _download_ugoira(illust: PixivIllust) -> MessageSegment:
     metadata = await client.fetch_ugoira_metadata(illust.pid)
     zip_data = await client.download_bytes(
         metadata.zip_url,
-        max_bytes=int(config.get("ugoira_zip_max_bytes", 30 * 1024 * 1024)),
+        max_bytes=config.ugoira_zip_max_bytes,
     )
     gif_data = await asyncio.to_thread(
         client.render_ugoira_gif,
         zip_data,
         metadata,
-        max_frames=int(config.get("ugoira_max_frames", 150)),
-        max_bytes=int(config.get("max_bytes", 20 * 1024 * 1024)),
+        max_frames=config.ugoira_max_frames,
+        max_bytes=config.max_bytes,
     )
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -343,15 +343,15 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     await pixiv_cmd.send("在找了在找了...")
 
     policy = PixivPolicy(
-        allow_r18=bool(config.get("allow_r18", False)),
-        allow_r18g=bool(config.get("allow_r18g", False)),
+        allow_r18=config.allow_r18,
+        allow_r18g=config.allow_r18g,
     )
 
     try:
         async with _get_semaphore():
             illust = await _get_client().fetch_illust(
                 pid,
-                send_original=bool(config.get("send_original", False)),
+                send_original=config.send_original,
             )
 
             if not policy_allows(illust, policy):
@@ -362,9 +362,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
             if not illust.is_ugoira and not illust.pages:
                 await pixiv_cmd.finish("没有找到可发送的图片")
 
-            pages, truncated = select_pages(
-                illust, int(config.get("max_pages", 9) or 9)
-            )
+            pages, truncated = select_pages(illust, config.max_pages)
 
             if should_use_forward(illust):
                 image_sent = await _send_forward(

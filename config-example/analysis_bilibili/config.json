@@ -1,0 +1,15 @@
+{
+    "whitelist": [],
+    "group_whitelist": [],
+    "blacklist": [],
+    "group_blacklist": [],
+    "desc_blacklist": [],
+    "trust_env": false,
+    "enable_search": false,
+    "use_on_message": false,
+    "display_image": false,
+    "display_image_list": [],
+    "images_size": "",
+    "cover_images_size": "",
+    "reanalysis_time": 0
+}

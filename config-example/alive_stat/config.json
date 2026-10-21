@@ -1,0 +1,9 @@
+{
+    "autochat_data_file": null,
+    "monitored_processes": [],
+    "docker_processes": [],
+    "ping_hosts": [
+        "baidu.com",
+        "google.com"
+    ]
+}

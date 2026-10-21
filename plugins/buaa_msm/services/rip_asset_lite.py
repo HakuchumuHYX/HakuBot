@@ -9,7 +9,7 @@ import aiohttp
 from nonebot import logger
 
 from plugins.buaa_msm.analysis import AggregatedData
-from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.config import plugin_config, settings
 from plugins.buaa_msm.exceptions import AssetDownloadError
 from plugins.buaa_msm.services.masterdata_lite import masterdata_lite
 
@@ -129,8 +129,8 @@ class RipAssetLite:
         return []
 
     def _build_url(self, relative_path: str, stage: str) -> str:
-        base = plugin_config.mysekai_icon_url_base.rstrip("/")
-        server = plugin_config.mysekai_icon_server
+        base = settings.mysekai_icon.url_base.rstrip("/")
+        server = settings.mysekai_icon.server
         return f"{base}/{server}-assets/{stage}/{relative_path}"
 
     def _build_url_candidates(self, relative_path: str, category: str) -> List[str]:
@@ -151,7 +151,7 @@ class RipAssetLite:
     def _request_headers() -> Dict[str, str]:
         # 该资产站对“无 UA/Referer 的直连请求”会返回 403
         # Referer 使用当前配置的资产源自身，避免跨源伪装
-        base = plugin_config.mysekai_icon_url_base.strip()
+        base = settings.mysekai_icon.url_base.strip()
         parsed = urlsplit(base)
         referer = (
             f"{parsed.scheme}://{parsed.netloc}/"
@@ -181,8 +181,8 @@ class RipAssetLite:
         timeout: float,
     ) -> Tuple[Optional[bytes], List[str]]:
         errors: List[str] = []
-        retries = max(0, int(plugin_config.mysekai_icon_download_retries))
-        backoff = max(0.0, float(plugin_config.mysekai_icon_retry_backoff_seconds))
+        retries = settings.mysekai_icon.download_retries
+        backoff = settings.mysekai_icon.retry_backoff_seconds
         max_attempts = retries + 1
 
         for rel in candidates:
@@ -248,7 +248,7 @@ class RipAssetLite:
         if cache_path.exists():
             return str(cache_path)
 
-        if not plugin_config.mysekai_dynamic_icon_enabled:
+        if not settings.mysekai_icon.enabled:
             return None
 
         lock = self._get_lock(category, item_id)
@@ -265,7 +265,7 @@ class RipAssetLite:
                 session,
                 candidates,
                 category=category,
-                timeout=plugin_config.mysekai_icon_download_timeout,
+                timeout=settings.mysekai_icon.download_timeout,
             )
             if data is None:
                 if errors:
@@ -291,12 +291,10 @@ class RipAssetLite:
             (c, int(i)) for c, i in items if c in _DYNAMIC_ICON_CATEGORIES
         }
         result: Dict[Tuple[str, int], str] = {}
-        if not wanted or not plugin_config.mysekai_dynamic_icon_enabled:
+        if not wanted or not settings.mysekai_icon.enabled:
             return result
 
-        sem = asyncio.Semaphore(
-            max(1, int(plugin_config.mysekai_icon_prefetch_concurrency))
-        )
+        sem = asyncio.Semaphore(settings.mysekai_icon.prefetch_concurrency)
         failed: List[Tuple[str, int]] = []
 
         async def _one(
@@ -326,12 +324,10 @@ class RipAssetLite:
     ) -> Dict[int, str]:
         wanted: Set[int] = {int(x) for x in fixture_ids if x is not None}
         result: Dict[int, str] = {}
-        if not wanted or not plugin_config.mysekai_dynamic_icon_enabled:
+        if not wanted or not settings.mysekai_icon.enabled:
             return result
 
-        sem = asyncio.Semaphore(
-            max(1, int(plugin_config.mysekai_icon_prefetch_concurrency))
-        )
+        sem = asyncio.Semaphore(settings.mysekai_icon.prefetch_concurrency)
 
         async def _one(session: aiohttp.ClientSession, fixture_id: int) -> None:
             async with sem:

@@ -25,7 +25,7 @@ from PIL import (
 )
 
 from plugins.buaa_msm import analysis
-from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.config import plugin_config, settings
 from plugins.buaa_msm.domain.constants import (
     FIXTURE_COLORS,
     MAP_ORDER,
@@ -330,7 +330,7 @@ def _resolve_harvest_fixture_marker(
     2) 静态目录兜底（若项目内存在）
     3) 返回 None 让上层回退圆点
     """
-    if not plugin_config.mysekai_dynamic_icon_enabled:
+    if not settings.mysekai_icon.enabled:
         return None, 0, (0, 0)
 
     meta = masterdata_lite.get_harvest_fixture_meta(int(fixture_id))

@@ -10,15 +10,9 @@ def format_chat_evidence_pack(
         return "（联网搜索未返回结果）"
 
     if max_chars is None:
-        max_chars = int(
-            getattr(plugin_config.search, "chat_context_max_chars", 5000) or 5000
-        )
-    content_limit = int(
-        getattr(plugin_config.search, "chat_content_max_chars", 700) or 700
-    )
-    raw_limit = int(
-        getattr(plugin_config.search, "chat_raw_content_max_chars", 1200) or 1200
-    )
+        max_chars = plugin_config.search.chat_context_max_chars
+    content_limit = plugin_config.search.chat_content_max_chars
+    raw_limit = plugin_config.search.chat_raw_content_max_chars
 
     lines: List[str] = []
     answer_seen = set()

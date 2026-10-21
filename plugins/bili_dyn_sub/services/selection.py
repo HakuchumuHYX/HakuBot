@@ -2,6 +2,7 @@ from __future__ import annotations
 import time
 from typing import NamedTuple
 from nonebot import logger
+from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.parser import ParsedDynamic, should_skip
 from plugins.bili_dyn_sub.store import dyn_id_to_int, store
 from plugins.bili_dyn_sub.services import state as _state
@@ -112,7 +113,7 @@ def _select_pushable(uid: str, parsed_list: list[ParsedDynamic]) -> PushSelectio
     # 「要不要补推停机期间遗漏的动态」不是独立开关，只是这个窗口取多大的自然结果：
     # 30 → 只推新鲜动态（停机期间遗漏的自然被丢弃）；1440 → 补推一天内的；0 → 不做时间限制。
     # 超窗口的一律**静默**标记已读：只记日志、不进群消息，避免下一轮反复处理。
-    age_limit_seconds = _state._cfg_int("max_dynamic_age_minutes", 30, 0) * 60
+    age_limit_seconds = plugin_config.max_dynamic_age_minutes * 60
     if age_limit_seconds > 0 and candidates:
         deadline = time.time() - age_limit_seconds
         kept: list[ParsedDynamic] = []
@@ -130,7 +131,7 @@ def _select_pushable(uid: str, parsed_list: list[ParsedDynamic]) -> PushSelectio
 
     # 闸二：单 UID 单轮最多推 N 条，多出的（较旧的那些）只标 seen（0 表示不限）。
     # 这是与"多旧才推"无关的独立关注点：防刷屏，且这部分会向群里提示"另有 X 条未展示"。
-    max_count = _state._cfg_int("max_push_per_round", 5, 0)
+    max_count = plugin_config.max_push_per_round
     if max_count > 0 and len(candidates) > max_count:
         extra = candidates[:-max_count]
         candidates = candidates[-max_count:]

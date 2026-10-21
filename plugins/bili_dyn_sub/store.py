@@ -28,22 +28,6 @@ from plugins.bili_dyn_sub.config import STATE_FILE, plugin_config
 DEFAULT_CATEGORIES: list[int] = [1, 2, 3, 4, 5, 6]
 _VALID_CATEGORIES: frozenset[int] = frozenset(DEFAULT_CATEGORIES)
 
-# 配置缺失 / 非法时的兜底值
-_FALLBACK_SEEN_IDS_MAX = 50
-_FALLBACK_SEEN_RETENTION_DAYS = 14
-
-
-def _config_int(name: str, default: int, minimum: int = 1) -> int:
-    """读取整数配置项，缺失或非法时回落默认值（store 不应因配置问题崩掉）"""
-    raw = getattr(plugin_config, name, default)
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        logger.warning(f"配置项 {name}={raw!r} 不是整数，回落为 {default}")
-        return default
-    return max(minimum, value)
-
-
 def dyn_id_to_int(dyn_id: Any) -> Optional[int]:
     """动态 id 转 int；非纯数字（B 站偶发的非雪花 id）返回 None 而不抛异常"""
     try:
@@ -309,7 +293,7 @@ class Store:
     def init_baseline(self, uid: str, ids: list[str], cursor: int) -> None:
         """首次订阅 / 状态缺失时建基线：全部标 seen，只回执不推送"""
         uid = str(uid)
-        limit = _config_int("seen_ids_max", _FALLBACK_SEEN_IDS_MAX)
+        limit = plugin_config.seen_ids_max
         # 去重后按 id 数值升序（与 mark_seen 的「新的在尾部」一致），超限只留最新的
         str_ids = sorted(dict.fromkeys(str(i) for i in ids), key=_seen_sort_key)[
             -limit:
@@ -345,7 +329,7 @@ class Store:
 
         if dyn_id not in entry["ids"]:
             entry["ids"].append(dyn_id)
-        limit = _config_int("seen_ids_max", _FALLBACK_SEEN_IDS_MAX)
+        limit = plugin_config.seen_ids_max
         if len(entry["ids"]) > limit:
             # FIFO：丢最旧的，保留最新的 limit 条
             del entry["ids"][: len(entry["ids"]) - limit]
@@ -378,10 +362,8 @@ class Store:
         仍在订阅中的 uid 无论多久没成功取数都保留基线，否则会退化成重新建基线（会吞动态）。
         返回被裁掉的记录数（截断的 id 数 + 清除的 uid 状态数）。
         """
-        limit = _config_int("seen_ids_max", _FALLBACK_SEEN_IDS_MAX)
-        retention_days = _config_int(
-            "seen_retention_days", _FALLBACK_SEEN_RETENTION_DAYS
-        )
+        limit = plugin_config.seen_ids_max
+        retention_days = plugin_config.seen_retention_days
         cutoff = datetime.now() - timedelta(days=retention_days)
 
         trimmed_ids = 0

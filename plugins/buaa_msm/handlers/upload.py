@@ -26,7 +26,7 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEv
 from nonebot.exception import FinishedException
 from nonebot.rule import is_type
 
-from plugins.buaa_msm.config import plugin_config, with_site_link
+from plugins.buaa_msm.config import with_site_link, settings
 from plugins.buaa_msm.exceptions import DataLoadError
 from plugins.buaa_msm.services.ingest_service import ingest_bin, reserve_storage_path
 from plugins.buaa_msm.services.msr_service import run_msr
@@ -39,7 +39,7 @@ waiting_for_file: Dict[str, float] = {}
 def _cleanup_expired_waiting(now: float | None = None) -> None:
     """清理过期的上传等待态"""
     current = now if now is not None else time.time()
-    ttl = max(1, int(plugin_config.upload_wait_timeout_seconds))
+    ttl = settings.upload.wait_timeout_seconds
     expired_users = [
         uid
         for uid, entered_at in waiting_for_file.items()
@@ -79,9 +79,7 @@ file_handler = on_message(priority=10, block=False)
 
 
 @file_handler.handle()
-async def handle_file_message(
-    bot: Bot, event: PrivateMessageEvent | GroupMessageEvent
-):
+async def handle_file_message(bot: Bot, event: PrivateMessageEvent | GroupMessageEvent):
     _cleanup_expired_waiting()
     user_id = str(event.user_id)
 
@@ -157,7 +155,6 @@ async def handle_file_message(
 
         if decrypted_data:
             try:
-
                 display_path = saved_file_path.relative_to(PluginPaths("buaa_msm").data)
             except (ValueError, Exception):
                 display_path = saved_file_path
@@ -237,7 +234,9 @@ async def save_file(file_path: str, destination_path: Path, user_id: str):
     else:
         await copy_local_file(file_path, destination_path)
 
-    logger.info(f"用户 {user_id} 上传文件: {destination_path.name}，保存至 {destination_path}")
+    logger.info(
+        f"用户 {user_id} 上传文件: {destination_path.name}，保存至 {destination_path}"
+    )
 
 
 async def download_file(url: str, destination_path: Path):
@@ -256,7 +255,9 @@ async def copy_local_file(source_path: str, destination_path: Path):
     decoded_path = unquote(source_path)
 
     if decoded_path.startswith("/app/.config/QQ"):
-        decoded_path = decoded_path.replace("/app/.config/QQ", "/opt/SnowLuma/qq-config/QQ", 1)
+        decoded_path = decoded_path.replace(
+            "/app/.config/QQ", "/opt/SnowLuma/qq-config/QQ", 1
+        )
 
     source_file = Path(decoded_path)
 

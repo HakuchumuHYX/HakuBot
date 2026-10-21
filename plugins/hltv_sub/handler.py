@@ -288,8 +288,8 @@ def build_completed_map_results(
 
 class HLTVHandler:
     def __init__(self):
-        self._tz = pytz.timezone(plugin_config.hltv_timezone)
-        self._end_grace_days = max(0, int(plugin_config.hltv_auto_unsub_delay_days))
+        self._tz = pytz.timezone(plugin_config.timezone)
+        self._end_grace_days = plugin_config.auto_unsub_delay_days
         self._initialized_events: set[str] = set()
         self._event_run_locks: dict[str, asyncio.Lock] = {}
         self._unavailable_matches: set[str] = set()
@@ -662,7 +662,7 @@ class HLTVHandler:
             return False
 
     async def daily_maintenance(self) -> None:
-        cleaned = data_manager.cleanup_notified_state(plugin_config.hltv_notified_ttl_days)
+        cleaned = data_manager.cleanup_notified_state(plugin_config.notified_ttl_days)
         if cleaned:
             logger.info(f"[HLTV] 已清理 {cleaned} 条过期去重记录")
         if not data_manager.has_enabled_groups():

@@ -53,13 +53,13 @@ class HLTVClient:
     BASE_URL = "https://www.hltv.org"
 
     def __init__(self) -> None:
-        self._tz = pytz.timezone(plugin_config.hltv_timezone)
-        self._timeout = plugin_config.hltv_flaresolverr_timeout_seconds
-        self._interval = plugin_config.hltv_request_interval_seconds
-        self._session_max_requests = plugin_config.hltv_session_max_requests
-        self._endpoint = plugin_config.hltv_flaresolverr_url
-        self._cooldown = plugin_config.hltv_block_cooldown_seconds
-        self._max_cooldown = plugin_config.hltv_block_cooldown_max_seconds
+        self._tz = pytz.timezone(plugin_config.timezone)
+        self._timeout = plugin_config.flaresolverr_timeout_seconds
+        self._interval = plugin_config.request_interval_seconds
+        self._session_max_requests = plugin_config.session_max_requests
+        self._endpoint = plugin_config.flaresolverr_url
+        self._cooldown = plugin_config.block_cooldown_seconds
+        self._max_cooldown = plugin_config.block_cooldown_max_seconds
         self._state_path = PluginPaths("hltv_sub").data / "http_state.json"
         self._session_state_path = PluginPaths("hltv_sub").data / "session_state.json"
         self._client: httpx.AsyncClient | None = None

@@ -65,8 +65,8 @@ def build_search_queries(raw_text: str, *, mode: str = "chat") -> List[str]:
       - chat: 偏向事实/技术问题检索
       - image: 偏向外观设定/参考资料检索
     """
-    max_len = int(getattr(plugin_config.search, "query_max_len", 120) or 120)
-    max_q = int(getattr(plugin_config.search, "num_queries", 3) or 3)
+    max_len = plugin_config.search.query_max_len
+    max_q = plugin_config.search.num_queries
 
     cleaned = _cleanup_search_text(raw_text)
     core = _extract_core_question(cleaned)
@@ -130,8 +130,8 @@ async def rewrite_search_queries_with_llm(
     使用 LLM 对用户输入进行“检索 query 重写”，输出多条短 query。
     失败时返回空数组，由上层回退到启发式。
     """
-    max_len = int(getattr(plugin_config.search, "query_max_len", 120) or 120)
-    max_q = int(getattr(plugin_config.search, "num_queries", 3) or 3)
+    max_len = plugin_config.search.query_max_len
+    max_q = plugin_config.search.num_queries
 
     system = (
         "你是一个搜索查询（web search query）重写器。"
@@ -188,11 +188,9 @@ async def rewrite_search_queries_with_llm(
 async def _resolve_search_queries(raw_text: str, *, mode: str) -> List[str]:
     queries = build_search_queries(raw_text, mode=mode)
 
-    rewrite_enabled = bool(getattr(plugin_config.search, "query_rewrite", True))
-    use_llm = bool(getattr(plugin_config.search, "query_rewrite_use_llm", True))
-    trigger_len = int(
-        getattr(plugin_config.search, "query_rewrite_llm_trigger_len", 200) or 200
-    )
+    rewrite_enabled = plugin_config.search.query_rewrite
+    use_llm = plugin_config.search.query_rewrite_use_llm
+    trigger_len = plugin_config.search.query_rewrite_llm_trigger_len
 
     if rewrite_enabled and use_llm and raw_text and len(raw_text) >= trigger_len:
         llm_q = await rewrite_search_queries_with_llm(raw_text, mode=mode)
@@ -200,10 +198,10 @@ async def _resolve_search_queries(raw_text: str, *, mode: str) -> List[str]:
         for q in llm_q + queries:
             if q and q not in merged:
                 merged.append(q)
-        queries = merged[: int(getattr(plugin_config.search, "num_queries", 3) or 3)]
+        queries = merged[: plugin_config.search.num_queries]
 
     if not queries:
-        max_len = int(getattr(plugin_config.search, "query_max_len", 120) or 120)
+        max_len = plugin_config.search.query_max_len
         cleaned = _cleanup_search_text(raw_text)
         if cleaned:
             queries = [_truncate_query(cleaned, max_len)]

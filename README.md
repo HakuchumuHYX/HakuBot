@@ -1,6 +1,6 @@
 # HakuBot
 
-项目分为 `plugins/`、`core/` 和根目录 `utils/` 三层，详见 [结构说明](ARCHITECTURE.md)。插件配置集中在 `config/plugins/`，内容保持原样；公共字体、浏览器和模型集中在 `data/shared/`。图片统一由 Chromium 渲染，模板放在各插件的 `templates/` 下。各插件不带帮助命令，用法统一写在帮助站；`help` 只回复 `config/plugins/help_plugin/config.json` 里的一段文字。
+项目分为 `plugins/`、`core/` 和根目录 `utils/` 三层，详见 [结构说明](ARCHITECTURE.md)。插件配置集中在 `config/plugins/<插件名>/config.json`（不入库），脱敏示例在 `config-example/`，新部署时 `cp -rn config-example/. config/plugins/` 后填写；公共字体、浏览器和模型集中在 `data/shared/`。图片统一由 Chromium 渲染，模板放在各插件的 `templates/` 下。各插件不带帮助命令，用法统一写在帮助站；`help` 只回复 `config/plugins/help_plugin/config.json` 里的一段文字。
 
 <div align="center">
 

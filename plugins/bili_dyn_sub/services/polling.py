@@ -5,6 +5,7 @@ from nonebot import get_bot, logger
 from nonebot.adapters.onebot.v11 import Bot, Message
 from utils.logging import get_exc_desc
 from plugins.bili_dyn_sub import api
+from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.backoff import ACTION_REFRESH_COOKIE, backoff_manager
 from plugins.bili_dyn_sub.parser import parse_feed
 from plugins.bili_dyn_sub.render import build_messages
@@ -179,7 +180,7 @@ async def poll_once() -> None:
         )
         return
 
-    gap = _state._cfg_float("uid_request_gap_seconds", 8.0, 0.0)
+    gap = plugin_config.uid_request_gap_seconds
     for index, uid in enumerate(uids):
         if index > 0 and gap > 0:
             # 绝不在同一 tick 并发打多个请求（设计文档 §6）

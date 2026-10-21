@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, urlencode, urlparse
 from aiohttp import ClientSession
 
+from core.settings import ConfigModel, load_config
 from plugins.analysis_bilibili.ExpiringCache import ExpiringCache
 from plugins.analysis_bilibili.sign import get_query, get_ticket
 
@@ -14,12 +15,29 @@ from plugins.analysis_bilibili.sign import get_query, get_ticket
 analysis_stat: Dict[int, ExpiringCache] = {}
 
 
-config = nonebot.get_driver().config
-analysis_display_image = getattr(config, "analysis_display_image", False)
-analysis_display_image_list = getattr(config, "analysis_display_image_list", [])
-images_size = getattr(config, "analysis_images_size", "")
-cover_images_size = getattr(config, "analysis_cover_images_size", "")
-reanalysis_time = getattr(config, "analysis_reanalysis_time", 0)
+class Config(ConfigModel):
+    whitelist: list[str]
+    group_whitelist: list[str]
+    blacklist: list[str]
+    group_blacklist: list[str]
+    desc_blacklist: list[str]
+    trust_env: bool
+    enable_search: bool
+    use_on_message: bool
+    display_image: bool
+    # 只对这些类型附图，例如 ["video"]
+    display_image_list: list[str]
+    images_size: str
+    cover_images_size: str
+    reanalysis_time: int
+
+
+config = load_config("analysis_bilibili", Config)
+analysis_display_image = config.display_image
+analysis_display_image_list = config.display_image_list
+images_size = config.images_size
+cover_images_size = config.cover_images_size
+reanalysis_time = config.reanalysis_time
 
 # 旧 /x/web-interface/view 在无 Referer 时会被 412 成 HTML，aiohttp.json() 即 ContentTypeError。
 # 当前可用接口是带 wbi 的 view（未签名在本机也可，签名更稳）。

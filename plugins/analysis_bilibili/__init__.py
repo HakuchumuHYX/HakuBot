@@ -35,14 +35,14 @@ headers = {
 }
 HTTP_TIMEOUT = ClientTimeout(total=20, connect=8)
 
-whitelist = [str(i) for i in getattr(config, "analysis_whitelist", [])]
-group_whitelist = [str(i) for i in getattr(config, "analysis_group_whitelist", [])]
-blacklist = [str(i) for i in getattr(config, "analysis_blacklist", [])]
-group_blacklist = [str(i) for i in getattr(config, "analysis_group_blacklist", [])]
-desc_blacklist = [str(i) for i in getattr(config, "analysis_desc_blacklist", [])]
-trust_env = getattr(config, "analysis_trust_env", False)
-enable_search = getattr(config, "analysis_enable_search", False)
-use_on_message = getattr(config, "analysis_use_on_message", False)
+whitelist = config.whitelist
+group_whitelist = config.group_whitelist
+blacklist = config.blacklist
+group_blacklist = config.group_blacklist
+desc_blacklist = config.desc_blacklist
+trust_env = config.trust_env
+enable_search = config.enable_search
+use_on_message = config.use_on_message
 
 
 async def is_enable_search() -> bool:

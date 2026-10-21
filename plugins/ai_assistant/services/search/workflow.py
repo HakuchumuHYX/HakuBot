@@ -21,7 +21,7 @@ async def web_chat_search_with_rewrite(
     total_max = int(
         max_results
         if max_results is not None
-        else (getattr(plugin_config.search, "chat_max_results", 5) or 5)
+        else plugin_config.search.chat_max_results
     )
     if total_max < 1:
         total_max = 5
@@ -35,7 +35,7 @@ async def web_chat_search_with_rewrite(
         depth = (
             search_depth
             if search_depth is not None
-            else (getattr(plugin_config.search, "chat_depth", "basic") or "basic")
+            else plugin_config.search.chat_depth
         )
         try:
             data = await _client.tavily_search_full(
@@ -44,23 +44,21 @@ async def web_chat_search_with_rewrite(
                 search_depth=depth,
                 include_answer=include_answer
                 if include_answer is not None
-                else getattr(plugin_config.search, "chat_include_answer", "basic"),
+                else plugin_config.search.chat_include_answer,
                 include_raw_content=include_raw_content
                 if include_raw_content is not None
-                else getattr(plugin_config.search, "chat_include_raw_content", False),
+                else plugin_config.search.chat_include_raw_content,
                 include_images=False,
                 include_image_descriptions=False,
                 chunks_per_source=int(
                     chunks_per_source
                     if chunks_per_source is not None
-                    else (
-                        getattr(plugin_config.search, "chat_chunks_per_source", 1) or 1
-                    )
+                    else plugin_config.search.chat_chunks_per_source
                 ),
                 auto_parameters=bool(
                     auto_parameters
                     if auto_parameters is not None
-                    else getattr(plugin_config.search, "chat_auto_parameters", False)
+                    else plugin_config.search.chat_auto_parameters
                 ),
                 topic="general",
             )
@@ -91,7 +89,7 @@ async def web_chat_search_with_rewrite(
 async def web_image_search_with_rewrite(raw_text: str) -> Tuple[List[str], List[dict]]:
     queries = await _queries._resolve_search_queries(raw_text, mode="image")
 
-    total_max = int(getattr(plugin_config.search, "image_max_results", 5) or 5)
+    total_max = plugin_config.search.image_max_results
     if total_max < 1:
         total_max = 5
     per_query = max(1, int(math.ceil(total_max / max(1, len(queries)))))
@@ -106,28 +104,13 @@ async def web_image_search_with_rewrite(raw_text: str) -> Tuple[List[str], List[
             data = await _client.tavily_search_full(
                 q,
                 max_results=per_query,
-                search_depth=getattr(plugin_config.search, "image_depth", "advanced")
-                or "advanced",
-                include_answer=getattr(
-                    plugin_config.search, "image_include_answer", "basic"
-                ),
-                include_raw_content=getattr(
-                    plugin_config.search, "image_include_raw_content", "text"
-                ),
-                include_images=bool(
-                    getattr(plugin_config.search, "image_include_images", True)
-                ),
-                include_image_descriptions=bool(
-                    getattr(
-                        plugin_config.search, "image_include_image_descriptions", True
-                    )
-                ),
-                chunks_per_source=int(
-                    getattr(plugin_config.search, "image_chunks_per_source", 1) or 1
-                ),
-                auto_parameters=bool(
-                    getattr(plugin_config.search, "image_auto_parameters", False)
-                ),
+                search_depth=plugin_config.search.image_depth,
+                include_answer=plugin_config.search.image_include_answer,
+                include_raw_content=plugin_config.search.image_include_raw_content,
+                include_images=plugin_config.search.image_include_images,
+                include_image_descriptions=plugin_config.search.image_include_image_descriptions,
+                chunks_per_source=plugin_config.search.image_chunks_per_source,
+                auto_parameters=plugin_config.search.image_auto_parameters,
                 topic="general",
             )
         except Exception as e:

@@ -188,7 +188,7 @@ def _format_login_state() -> str:
     status = credential_manager.get_login_status()
     if status is not None:
         return status.summary()
-    if (plugin_config.sessdata or "").strip():
+    if plugin_config.sessdata.strip():
         return "已配置 sessdata，尚未校验（启动后约 30s 完成首次校验）"
     return "未配置 sessdata（匿名取数）"
 
@@ -243,7 +243,9 @@ async def do_subscribe(uid: str, group_id: int, *, note: str = "") -> str:
         name = await api.fetch_user_name(uid)
     except Exception as e:
         # fetch_user_name 内部已兜底，这里只防御意外异常，避免命令直接崩
-        logger.opt(exception=True).warning(f"查询 UID {uid} 昵称失败: {get_exc_desc(e)}")
+        logger.opt(exception=True).warning(
+            f"查询 UID {uid} 昵称失败: {get_exc_desc(e)}"
+        )
         name = None
 
     if not name:

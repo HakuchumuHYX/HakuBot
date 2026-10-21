@@ -21,7 +21,7 @@ from utils.json_io import atomic_write_bytes
 from utils.onebot.media import image_segment
 
 from plugins.buaa_msm import analysis
-from plugins.buaa_msm.config import plugin_config, with_site_link
+from plugins.buaa_msm.config import with_site_link, settings
 from plugins.buaa_msm.domain.models import UserDataContext
 from plugins.buaa_msm.exceptions import (
     AssetDownloadError,
@@ -68,11 +68,11 @@ async def _fetch_jacket_images(
         return result
 
     total_timeout = float(
-        timeout if timeout is not None else plugin_config.jacket_download_timeout
+        timeout if timeout is not None else settings.jacket.download_timeout
     )
-    retries = max(0, int(plugin_config.jacket_download_retries))
-    backoff = max(0.0, float(plugin_config.jacket_retry_backoff_seconds))
-    concurrency = max(1, int(plugin_config.jacket_download_concurrency))
+    retries = settings.jacket.download_retries
+    backoff = settings.jacket.retry_backoff_seconds
+    concurrency = settings.jacket.download_concurrency
     max_attempts = retries + 1
     sem = asyncio.Semaphore(concurrency)
 
@@ -244,7 +244,9 @@ async def _execute_msr_analysis(
 
     await _send_or_raise(
         send_func,
-        with_site_link("分析结果发送完毕。") if sent_any else "抱歉，无法生成任何结果。",
+        with_site_link("分析结果发送完毕。")
+        if sent_any
+        else "抱歉，无法生成任何结果。",
     )
     return sent_any
 

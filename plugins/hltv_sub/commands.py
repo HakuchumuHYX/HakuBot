@@ -34,7 +34,7 @@ LIST_MAX_AGE_SECONDS = 600
 def _may_have_matches(sub: EventSubscription) -> bool:
     """赛事结束后订阅还会保留几天等赛果推送，但赛程页已不再有比赛。
     欧洲赛事决赛常打到北京时间次日凌晨，结束日之后再留 12 小时。"""
-    now = datetime.now(pytz.timezone(plugin_config.hltv_timezone))
+    now = datetime.now(pytz.timezone(plugin_config.timezone))
     return date.fromisoformat(sub.end_date) >= (now - timedelta(hours=12)).date()
 
 

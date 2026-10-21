@@ -60,11 +60,7 @@ def build_runtime_context(
     now: Optional[datetime] = None,
     timezone_name: Optional[str] = None,
 ) -> str:
-    tz_name = (
-        timezone_name
-        or getattr(plugin_config.chat, "runtime_timezone", "Asia/Shanghai")
-        or "Asia/Shanghai"
-    )
+    tz_name = timezone_name or plugin_config.chat.runtime_timezone
     try:
         tz = ZoneInfo(tz_name)
     except ZoneInfoNotFoundError:
@@ -105,12 +101,10 @@ def decide_chat_search(
     if force_search:
         return ChatSearchDecision("deep", search_text, "force_search")
 
-    if not bool(getattr(plugin_config.search, "auto_search_enabled", True)):
+    if not plugin_config.search.auto_search_enabled:
         return ChatSearchDecision("none", search_text, "auto_search_disabled")
 
-    auto_mode = (
-        getattr(plugin_config.search, "auto_search_mode", "smart") or "smart"
-    ).lower()
+    auto_mode = (plugin_config.search.auto_search_mode).lower()
     if auto_mode == "off":
         return ChatSearchDecision("none", search_text, "auto_search_off")
     if auto_mode == "always":
@@ -224,10 +218,7 @@ async def prepare_chat_messages(
             queries, search_payloads = await runner(decision.search_text, decision.mode)
             max_chars = None
             if decision.mode == "quick":
-                max_chars = int(
-                    getattr(plugin_config.search, "auto_search_context_max_chars", 3000)
-                    or 3000
-                )
+                max_chars = plugin_config.search.auto_search_context_max_chars
             evidence = evidence_formatter(search_payloads, max_chars=max_chars)
         except Exception as e:
             search_error = str(e)

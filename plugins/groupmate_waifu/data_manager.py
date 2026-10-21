@@ -16,19 +16,18 @@ from typing import Dict, Set, Any
 
 from nonebot import logger
 
+from core.settings import load_config
 from plugins.groupmate_waifu.config import Config
 from plugins.groupmate_waifu.storage import (
     _load_protect_list,
     _load_record,
     _save_json,
 )
-import nonebot
 
 
 # --- 配置加载 ---
 
-_global_config = nonebot.get_driver().config
-waifu_config = Config.model_validate(_global_config.dict())
+waifu_config = load_config("groupmate_waifu", Config)
 
 # 导出配置项
 waifu_save = waifu_config.waifu_save
@@ -94,9 +93,7 @@ record_CP: Dict[int, Dict[int, int]] = _load_record(
 )
 
 # Stores the "waifu side" of each couple so CP list rendering does not duplicate pairs.
-_raw_record_waifu = _load_record(
-    RECORD_WAIFU_FILE, waifu_reset, Zero_today
-)
+_raw_record_waifu = _load_record(RECORD_WAIFU_FILE, waifu_reset, Zero_today)
 record_waifu: Dict[int, Set[int]] = {
     k: set(v) if isinstance(v, list) else v for k, v in _raw_record_waifu.items()
 }

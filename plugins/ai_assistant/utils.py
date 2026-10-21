@@ -152,12 +152,10 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
     forward_data = await bot.get_forward_msg(id=forward_id)
     nodes = forward_data.get("messages", []) if isinstance(forward_data, dict) else []
 
-    max_nodes = max(1, int(getattr(plugin_config.chat, "forward_max_nodes", 50) or 50))
-    max_images = max(0, int(getattr(plugin_config.chat, "forward_max_images", 8) or 0))
-    max_text_chars = max(
-        500, int(getattr(plugin_config.chat, "forward_max_text_chars", 6000) or 6000)
-    )
-    include_images = bool(getattr(plugin_config.chat, "forward_include_images", True))
+    max_nodes = plugin_config.chat.forward_max_nodes
+    max_images = plugin_config.chat.forward_max_images
+    max_text_chars = plugin_config.chat.forward_max_text_chars
+    include_images = plugin_config.chat.forward_include_images
 
     lines = ["【用户回复的合并转发聊天记录】"]
     image_parts: List[dict] = []

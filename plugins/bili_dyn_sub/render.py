@@ -42,8 +42,6 @@ from plugins.bili_dyn_sub.parser import DELETED_SOURCE_TIPS, ParsedDynamic
 PLATFORM_NAME = "B站"
 #: 分隔线：14 个 "-"，与 basic 主题一字不差
 SEPARATOR = "--------------"
-#: 正文截断长度兜底值（bison 硬编码 500）
-DEFAULT_TRUNCATE_LENGTH = 500
 #: 渲染产物最小字节数（设计文档 §5.3：空白图 / 半截图必须被拦下）
 MIN_IMAGE_BYTES = 4096
 #: 图片下载 / 解码可预期的异常（下载失败只跳过合并，不影响整体推送）
@@ -59,20 +57,9 @@ _PIC_ERRORS = (
 # ---------------------------------------------------------------- 文字模板
 
 
-def _truncate_length() -> int:
-    """正文截断长度；配置缺失 / 非法时回落到 bison 的 500"""
-    limit = getattr(plugin_config, "text_truncate_length", DEFAULT_TRUNCATE_LENGTH)
-    if not isinstance(limit, int) or limit <= 0:
-        logger.warning(
-            f"text_truncate_length 非法（{limit!r}），按 {DEFAULT_TRUNCATE_LENGTH} 处理"
-        )
-        return DEFAULT_TRUNCATE_LENGTH
-    return limit
-
-
 def _truncate(content: str) -> str:
     """照抄 bison：`content if len(content) < 500 else f"{content[:500]}..."`（注意是严格小于）"""
-    limit = _truncate_length()
+    limit = plugin_config.text_truncate_length
     return content if len(content) < limit else f"{content[:limit]}..."
 
 

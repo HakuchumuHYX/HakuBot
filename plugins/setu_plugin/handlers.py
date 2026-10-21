@@ -23,6 +23,8 @@ require("nonebot_plugin_localstore")
 
 from core.access import is_plugin_enabled
 from core.cooldown import check_cd, update_cd
+from core.settings import ConfigModel, load_config
+from pydantic import Field
 
 from plugins.setu_plugin.client import SetuClient
 from utils.onebot.media import image_segment
@@ -93,25 +95,25 @@ PLUGIN_ID = "setu_plugin"
 lzst = on_command("lzst", aliases={"来张涩图"}, priority=5, block=True)
 
 
-def _get_cfg(name: str, default):
-    """
-    Read from NoneBot global config.
+class Config(ConfigModel):
+    timeout: float
+    proxy: Optional[str]
+    r18: int
+    reverse_proxy_domain: Optional[str]
+    # 同时处理的请求数，取图、下载、发送都算在内
+    concurrency: int = Field(ge=1)
+    # 图片 URL 404 时最多重新抽几次
+    refetch_404_times: int = Field(ge=1)
 
-    Supports both:
-    - lowercase: setu_plugin_timeout
-    - uppercase: SETU_PLUGIN_TIMEOUT
-    """
-    cfg = get_driver().config
-    return getattr(cfg, name, getattr(cfg, name.upper(), default))
+
+plugin_config = load_config(PLUGIN_ID, Config)
 
 
 def _get_lzst_semaphore() -> asyncio.Semaphore:
     """Limit concurrent lzst executions to avoid bandwidth/IO spikes."""
     global _lzst_semaphore
     if _lzst_semaphore is None:
-        concurrency = int(_get_cfg("setu_plugin_concurrency", 2))
-        if concurrency < 1:
-            concurrency = 1
+        concurrency = plugin_config.concurrency
         _lzst_semaphore = asyncio.Semaphore(concurrency)
         logger.debug(f"[setu_plugin] concurrency limit = {concurrency}")
     return _lzst_semaphore
@@ -143,10 +145,10 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     tag = args.extract_plain_text().strip() or None
 
     # --- HTTP / API 配置（可选） ---
-    timeout = float(_get_cfg("setu_plugin_timeout", 20.0))
-    proxy = _get_cfg("setu_plugin_proxy", None)
-    r18 = int(_get_cfg("setu_plugin_r18", 0))
-    reverse_proxy_domain = _get_cfg("setu_plugin_reverse_proxy_domain", None)
+    timeout = plugin_config.timeout
+    proxy = plugin_config.proxy
+    r18 = plugin_config.r18
+    reverse_proxy_domain = plugin_config.reverse_proxy_domain
 
     def _mask_proxy(p: Any) -> str:
         if not p:
@@ -176,9 +178,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     async with _get_lzst_semaphore():
         # --- 取图 + 404 自动换图（重新抽一张，不是重下同一张） ---
         # 说明：部分返回的图片 URL 可能已失效（404）。遇到 404 时重新 fetch 抽新的图。
-        max_refetch = int(_get_cfg("setu_plugin_refetch_404_times", 3))
-        if max_refetch < 1:
-            max_refetch = 1
+        max_refetch = plugin_config.refetch_404_times
 
         result = None
         img_seg: Optional[MessageSegment] = None
@@ -293,7 +293,9 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         except FinishedException:
             raise
         except Exception as e:
-            logger.opt(exception=True).warning(f"[setu_plugin] send forward failed: {e}")
+            logger.opt(exception=True).warning(
+                f"[setu_plugin] send forward failed: {e}"
+            )
 
         # 公共转发器已处理明确失败时的逐条补发；仍失败则最后仅发链接。
         if not sent_ok:

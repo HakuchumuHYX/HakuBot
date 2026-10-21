@@ -1,10 +1,11 @@
-from nonebot import on_command
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 
-from plugins.plus_one.config import config
+from plugins.plus_one.config import config, reload_from_file, save_config
+from utils.logging import get_exc_desc
 
 # 配置管理命令
 reload_config = on_command("重载复读配置", permission=SUPERUSER, priority=1, block=True)
@@ -24,7 +25,11 @@ remove_black_list = on_command(
 @reload_config.handle()
 async def reload_config_handler(matcher: Matcher):
     """重新加载配置"""
-    config.load_config()
+    try:
+        reload_from_file()
+    except Exception as e:
+        logger.exception("重载 plus_one 配置失败")
+        await matcher.finish(f"配置无效，继续使用旧配置：{get_exc_desc(e)}")
     await matcher.send("已重新加载复读姬插件配置")
 
 
@@ -51,7 +56,7 @@ async def add_blocked_word_handler(matcher: Matcher, args: Message = CommandArg(
         await matcher.finish(f"屏蔽词 '{word}' 已存在")
 
     config.blocked_words.add(word)
-    if config.save_config():
+    if save_config():
         await matcher.send(f"已添加屏蔽词: {word}")
     else:
         await matcher.send("添加失败，请检查日志")
@@ -68,7 +73,7 @@ async def remove_blocked_word_handler(matcher: Matcher, args: Message = CommandA
         await matcher.finish(f"屏蔽词 '{word}' 不存在")
 
     config.blocked_words.remove(word)
-    if config.save_config():
+    if save_config():
         await matcher.send(f"已移除屏蔽词: {word}")
     else:
         await matcher.send("移除失败，请检查日志")
@@ -88,7 +93,7 @@ async def add_black_list_handler(matcher: Matcher, args: Message = CommandArg())
         await matcher.finish(f"群组 {group_id} 已在黑名单中")
 
     config.plus_one_black_list.append(group_id)
-    if config.save_config():
+    if save_config():
         await matcher.send(f"已添加群组 {group_id} 到黑名单")
     else:
         await matcher.send("添加失败，请检查日志")
@@ -105,7 +110,7 @@ async def remove_black_list_handler(matcher: Matcher, args: Message = CommandArg
         await matcher.finish(f"群组 {group_id} 不在黑名单中")
 
     config.plus_one_black_list.remove(group_id)
-    if config.save_config():
+    if save_config():
         await matcher.send(f"已从黑名单移除群组 {group_id}")
     else:
         await matcher.send("移除失败，请检查日志")

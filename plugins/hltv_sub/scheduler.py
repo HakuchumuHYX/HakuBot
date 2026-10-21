@@ -31,8 +31,8 @@ class _Schedule:
 
 class HLTVScheduler:
     def __init__(self):
-        self._tz = pytz.timezone(plugin_config.hltv_timezone)
-        self._end_grace_days = max(0, plugin_config.hltv_auto_unsub_delay_days)
+        self._tz = pytz.timezone(plugin_config.timezone)
+        self._end_grace_days = max(0, plugin_config.auto_unsub_delay_days)
         self._events: dict[str, _Schedule] = {}
         self._had_receivers = False
         self._round_lock = asyncio.Lock()
@@ -53,7 +53,7 @@ class HLTVScheduler:
         )
         scheduler.add_job(
             self.auto_subscribe_big_events, "interval",
-            days=plugin_config.hltv_auto_sub_interval_days,
+            days=plugin_config.auto_sub_interval_days,
             id="hltv_auto_subscribe", replace_existing=True,
             max_instances=1, coalesce=True,
         )
@@ -140,7 +140,7 @@ class HLTVScheduler:
                 ),
                 360,
             )
-        jitter = random.randint(0, max(0, plugin_config.hltv_scheduler_jitter_seconds))
+        jitter = random.randint(0, max(0, plugin_config.scheduler_jitter_seconds))
         schedule.next_check_at = now + timedelta(minutes=minutes, seconds=jitter)
         if result.retry_at:
             schedule.next_check_at = max(

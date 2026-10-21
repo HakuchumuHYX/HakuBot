@@ -4,12 +4,24 @@ from utils.json_io import load_json, atomic_write_json
 from utils.paths import PluginPaths
 from copy import deepcopy
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+
+class ConfigModel(BaseModel):
+    """插件配置模型的基类：多出来的键直接报错，拼错的键名和废弃字段在启动时就暴露。"""
+
+    model_config = ConfigDict(extra="forbid")
+
 
 def load_config(plugin_id, model, filename="config.json"):
+    """读取并校验插件配置；缺文件、读不出来、校验不过都抛异常，由 NoneBot 记为该插件加载失败。"""
     result = load_json(PluginPaths(plugin_id).config / filename)
     if not result.success:
         raise ValueError(f"Invalid configuration for {plugin_id}: {result.error}")
-    return model.model_validate(result.data)
+    try:
+        return model.model_validate(result.data)
+    except ValidationError as e:
+        raise ValueError(f"Invalid configuration for {plugin_id}: {e}") from e
 
 
 def update_fields(path, changes):

@@ -1,7 +1,7 @@
 # plugins/buaa_msm/services/masterdata_lite.py
 """
 统一 MasterData 读取器（buaa_msm 版）：
-- 从 plugin_config.master_data_dir 读取 JSON
+- 从 settings.master_data_dir 读取 JSON
 - 基于文件 mtime 自动重载
 - 提供 id -> item/name/iconAssetbundleName 查询
 - 提供音乐标题、唱片映射、角色数据查询
@@ -15,7 +15,7 @@ from typing import Any
 
 from nonebot import logger
 
-from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.config import settings
 
 _CATEGORY_MASTERDATA_FILE: dict[str, str] = {
     "material": "materials.json",
@@ -43,7 +43,7 @@ class MasterDataLite:
         self._index_cache: dict[tuple[str, str], dict[int, dict[str, Any]]] = {}
 
     def _file_path(self, filename: str) -> Path:
-        return plugin_config.master_data_dir / filename
+        return settings.master_data_dir / filename
 
     def _load_table(self, filename: str) -> list[dict[str, Any]]:
         path = self._file_path(filename)

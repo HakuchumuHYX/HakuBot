@@ -1,0 +1,16 @@
+{
+    "api": {
+        "cn": {
+            "events_url": "https://predict.example.net/public/events?region=cn",
+            "latest_url_template": "https://predict.example.net/public/event/{event_id}/latest?region=cn"
+        },
+        "jp": {
+            "events_url": "https://predict.example.net/public/events?region=jp",
+            "latest_url_template": "https://predict.example.net/public/event/{event_id}/latest?region=jp"
+        }
+    },
+    "cache": {
+        "ttl_seconds": 60,
+        "clean_after_seconds": 86400
+    }
+}

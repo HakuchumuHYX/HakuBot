@@ -1,7 +1,5 @@
 from core.lifecycle import on_plugin_startup
-from utils.paths import PluginPaths
 from nonebot import require, get_driver, logger
-import json
 
 # 导入定时任务依赖
 require("nonebot_plugin_apscheduler")
@@ -10,27 +8,10 @@ from nonebot_plugin_apscheduler import scheduler
 # 导入管理模块
 from core.access import is_plugin_enabled
 from utils.logging import get_exc_desc
+from plugins.daily_message import config_manager
 
 # 获取所有机器人实例
 bots = get_driver().bots
-
-# 配置文件路径
-CONFIG_FILE = PluginPaths("daily_message").config / "config.json"
-
-
-def load_schedule_config():
-    """加载定时任务配置；文件缺失或读坏时不设置任何任务，避免往群里发占位消息"""
-    if not CONFIG_FILE.exists():
-        logger.warning("配置文件不存在，不设置定时任务")
-        return []
-    try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            schedules = json.load(f).get("schedules", [])
-    except Exception:
-        logger.exception("加载配置文件失败，不设置定时任务")
-        return []
-    logger.info(f"从配置文件加载了 {len(schedules)} 个定时任务")
-    return schedules
 
 
 async def get_group_bot_map():
@@ -84,8 +65,8 @@ async def send_message_to_enabled_groups(message: str):
 
 
 def setup_scheduled_jobs():
-    """设置定时任务"""
-    schedules = load_schedule_config()
+    """按当前配置设置定时任务"""
+    schedules = config_manager.plugin_config.schedules
 
     # 清除所有现有的定时任务（避免重复）
     for job in scheduler.get_jobs():
@@ -93,14 +74,8 @@ def setup_scheduled_jobs():
             scheduler.remove_job(job.id)
 
     for schedule in schedules:
-        job_id = f"daily_message_{schedule.get('id')}"
-        hour = schedule.get("hour")
-        minute = schedule.get("minute")
-        message = schedule.get("message")
-
-        if not all([job_id, hour is not None, minute is not None, message]):
-            logger.error(f"定时任务配置不完整: {schedule}")
-            continue
+        job_id = f"daily_message_{schedule.id}"
+        hour, minute, message = schedule.hour, schedule.minute, schedule.message
 
         # 动态创建定时任务
         @scheduler.scheduled_job("cron", hour=hour, minute=minute, id=job_id)
@@ -108,11 +83,13 @@ def setup_scheduled_jobs():
             await send_message_to_enabled_groups(msg)
 
         logger.debug(f"已设置定时任务 {job_id}: {hour}:{minute:02d} -> {message}")
+    logger.info(f"从配置文件加载了 {len(schedules)} 个定时任务")
 
 
 # 重新加载配置的函数
 def reload_schedule_config():
-    """重新加载定时任务配置"""
+    """重新加载定时任务配置；新配置无效时抛出，原有任务不动"""
+    config_manager.plugin_config = config_manager.read_config()
     setup_scheduled_jobs()
     logger.info("已重新加载定时任务配置")
 

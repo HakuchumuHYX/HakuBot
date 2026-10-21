@@ -1,17 +1,14 @@
 from __future__ import annotations
+from core.settings import ConfigModel, load_config
 from utils.paths import PluginPaths
 
-import json
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from nonebot import logger
+from pydantic import Field, field_validator
 
 PLUGIN_NAME = "juya_daily_fetcher"
 PLUGIN_DIR = Path(__file__).parent
-CONFIG_FILE_PATH = PluginPaths("juya_daily_fetcher").config / "config.json"
 DATA_DIR = PluginPaths("juya_daily_fetcher").data
 STATE_FILE = DATA_DIR / "state.json"
 ARTICLE_DIR = DATA_DIR / "articles"
@@ -23,31 +20,27 @@ DEFAULT_USER_AGENT = (
 )
 
 
-class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+class LLMConfig(ConfigModel):
+    api_key: str
+    base_url: str
+    model: str
+    timeout: float
+    proxy: Optional[str]
+    max_tokens: Optional[int]
+    thinking_enabled: bool
+    reasoning_effort: Optional[str]
+    extra_body: dict
 
 
-class LLMConfig(StrictModel):
-    api_key: str = ""
-    base_url: str = ""
-    model: str = ""
-    timeout: float = 120.0
-    proxy: Optional[str] = None
-    max_tokens: Optional[int] = 1024
-    thinking_enabled: bool = False
-    reasoning_effort: Optional[str] = None
-    extra_body: dict = Field(default_factory=dict)
-
-
-class Config(StrictModel):
-    feed_url: str = "https://daily.juya.uk/rss.xml"
-    targets: list[str] = Field(default_factory=list)
-    debug_user_id: str = ""
-    poll_interval_minutes: int = 15
-    pending_max_age_minutes: int = 60
-    pending_max_failures: int = 3
-    article_retention_days: int = 7
-    llm: LLMConfig = Field(default_factory=LLMConfig)
+class Config(ConfigModel):
+    feed_url: str
+    targets: list[str]
+    debug_user_id: str
+    poll_interval_minutes: int = Field(ge=1)
+    pending_max_age_minutes: int
+    pending_max_failures: int
+    article_retention_days: int = Field(ge=1)
+    llm: LLMConfig
 
     @field_validator("targets")
     @classmethod
@@ -67,27 +60,6 @@ class Config(StrictModel):
         )
 
 
-def load_plugin_config() -> Config:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    ARTICLE_DIR.mkdir(parents=True, exist_ok=True)
-    if not CONFIG_FILE_PATH.exists():
-        logger.info(f"未找到配置文件 {CONFIG_FILE_PATH}，使用内存默认配置")
-        return Config()
-
-    try:
-        raw = json.loads(CONFIG_FILE_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
-        logger.error(f"读取 config.json 失败: {e}，将使用默认配置（不覆盖原文件）")
-        return Config()
-    if not isinstance(raw, dict):
-        logger.error("config.json 顶层不是对象，将使用默认配置（不覆盖原文件）")
-        return Config()
-    try:
-        config = Config.model_validate(raw)
-    except ValueError as e:
-        logger.error(f"校验 config.json 失败: {e}，将使用默认配置（不覆盖原文件）")
-        return Config()
-    return config
-
-
-plugin_config = load_plugin_config()
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+ARTICLE_DIR.mkdir(parents=True, exist_ok=True)
+plugin_config = load_config("juya_daily_fetcher", Config)

@@ -1,31 +1,20 @@
-from utils.json_io import atomic_write_json
-from utils.paths import PluginPaths
-import json
-from nonebot import logger
-
-# 配置文件路径
-CONFIG_FILE = PluginPaths("daily_message").config / "config.json"
+from core.settings import ConfigModel, load_config
 
 
-def load_config():
-    """加载配置文件"""
-    try:
-        if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        else:
-            logger.warning("配置文件不存在")
-            return {"schedules": []}
-    except Exception as e:
-        logger.error(f"加载配置文件失败: {e}")
-        return {"schedules": []}
+class Schedule(ConfigModel):
+    id: str
+    hour: int
+    minute: int
+    message: str
 
 
-def save_config(config_data):
-    """保存配置文件"""
-    try:
-        atomic_write_json(CONFIG_FILE, config_data, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        logger.error(f"保存配置文件失败: {e}")
-        return False
+class Config(ConfigModel):
+    schedules: list[Schedule]
+
+
+def read_config() -> Config:
+    return load_config("daily_message", Config)
+
+
+# 运行中生效的定时任务配置；「重载定时任务」会整体替换
+plugin_config = read_config()

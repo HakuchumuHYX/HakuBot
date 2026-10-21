@@ -3,8 +3,8 @@ from core.lifecycle import on_plugin_startup, on_plugin_shutdown
 
 from nonebot import get_driver
 from nonebot.plugin import PluginMetadata
-from loguru import logger
 
+from core.settings import load_config
 from plugins.webconsole_bridge.config import BridgeConfig
 from plugins.webconsole_bridge.capture import register_capture_hooks
 from plugins.webconsole_bridge.capture import capture_manager
@@ -25,14 +25,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
 )
 
-try:
-    bridge_config = BridgeConfig.from_file()
-except ValueError as exc:
-    logger.bind(webconsole_bridge_internal=True).warning(
-        "WebConsole bridge configuration is invalid; event collection is "
-        f"disabled: {exc}"
-    )
-    bridge_config = BridgeConfig.disabled()
+bridge_config = load_config("webconsole_bridge", BridgeConfig)
 bridge_runtime = BridgeRuntime(bridge_config)
 persistence_writer = PersistenceWriter(bridge_config)
 diagnostic_capture = DiagnosticCapture(bridge_runtime, persistence_writer)

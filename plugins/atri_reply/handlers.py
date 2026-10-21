@@ -1,48 +1,20 @@
-from utils.json_io import atomic_write_json
-from core.lifecycle import on_plugin_startup
-from utils.paths import PluginPaths
-import json
 import random
 
-from nonebot import get_driver, on_message, logger
+from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.rule import Rule
 from nonebot.exception import FinishedException
 from core.access import is_plugin_enabled
-
-# 配置文件路径
-CONFIG_FILE = PluginPaths("atri_reply").config / "config.json"
-
-# 全局配置
-bot_config = {"nicknames": [], "reply_texts": []}
+from core.settings import ConfigModel, load_config
+from utils.logging import get_exc_desc
 
 
-def load_config():
-    """加载配置文件"""
-    try:
-        if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                config_data = json.load(f)
-        else:
-            # 如果配置文件不存在，创建默认配置
-            config_data = {
-                "bot_nicknames": ["小助手", "机器人", "bot", "助手"],
-                "reply_texts": [
-                    "我在呢！有什么需要帮助的吗？",
-                    "你好呀！找我有什么事吗？",
-                    "我在这里呢~",
-                ],
-            }
-            atomic_write_json(CONFIG_FILE, config_data, ensure_ascii=False, indent=2)
-            logger.info("创建默认配置文件成功")
-        # 文件里的键名是 bot_nicknames，内存里是 nicknames，两条路径都要经过这里转换
-        bot_config["nicknames"] = config_data.get("bot_nicknames", [])
-        bot_config["reply_texts"] = config_data.get("reply_texts", [])
-        logger.debug(
-            f"配置文件加载成功，昵称: {bot_config['nicknames']}, 回复文本: {len(bot_config['reply_texts'])} 条"
-        )
-    except Exception as e:
-        logger.exception(f"加载配置文件失败: {e}")
+class Config(ConfigModel):
+    bot_nicknames: list[str]
+    reply_texts: list[str]
+
+
+plugin_config = load_config("atri_reply", Config)
 
 
 def is_calling_bot(event: MessageEvent) -> bool:
@@ -54,7 +26,7 @@ def is_calling_bot(event: MessageEvent) -> bool:
     message_text = event.get_plaintext().strip()
 
     # 检查消息是否刚好是昵称之一
-    return message_text in bot_config["nicknames"]
+    return message_text in plugin_config.bot_nicknames
 
 
 # 创建消息处理器
@@ -66,8 +38,8 @@ async def handle_call_reply(event: MessageEvent):
     """处理呼叫机器人的消息"""
     try:
         # 从回复文本中随机选择一条
-        if bot_config["reply_texts"]:
-            reply_text = random.choice(bot_config["reply_texts"])
+        if plugin_config.reply_texts:
+            reply_text = random.choice(plugin_config.reply_texts)
             await call_reply.finish(reply_text)
         else:
             logger.warning("回复文本列表为空，无法回复")
@@ -77,14 +49,6 @@ async def handle_call_reply(event: MessageEvent):
         raise
     except Exception as e:
         logger.exception(f"处理呼叫回复时出错: {e}")
-
-
-# 插件启动时加载配置
-@on_plugin_startup(get_driver(), "atri_reply")
-async def init_plugin():
-    """插件初始化"""
-    load_config()
-    logger.debug("简单呼叫回复插件初始化完成")
 
 
 # 重新加载配置的命令（可选功能）
@@ -99,6 +63,11 @@ reload_config = on_command(
 
 @reload_config.handle()
 async def handle_reload_config():
-    """重载配置文件"""
-    load_config()
+    """重载配置文件；新配置无效时保留旧配置"""
+    global plugin_config
+    try:
+        plugin_config = load_config("atri_reply", Config)
+    except Exception as e:
+        logger.exception("重载 atri_reply 配置失败")
+        await reload_config.finish(f"配置无效，继续使用旧配置：{get_exc_desc(e)}")
     await reload_config.finish("配置文件重载成功！")

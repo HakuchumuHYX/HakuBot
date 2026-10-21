@@ -1,0 +1,16 @@
+{
+    "refresh_token": "YOUR_PIXIV_REFRESH_TOKEN",
+    "client_id": "MOBrBDS8blbauoSck0ZfDbtuzpyT",
+    "client_secret": "lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj",
+    "proxy": null,
+    "timeout": 20.0,
+    "allow_r18": false,
+    "allow_r18g": false,
+    "send_original": false,
+    "max_pages": 9,
+    "max_bytes": 20971520,
+    "ugoira_zip_max_bytes": 31457280,
+    "ugoira_max_frames": 150,
+    "concurrency": 2,
+    "reverse_proxy_domain": null
+}

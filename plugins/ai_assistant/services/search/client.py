@@ -19,7 +19,7 @@ async def tavily_search_full(
     include_domains: Optional[List[str]] = None,
     exclude_domains: Optional[List[str]] = None,
 ) -> dict:
-    api_key = getattr(plugin_config.search, "tavily_api_key", None)
+    api_key = plugin_config.search.tavily_api_key
     if not api_key:
         raise Exception(
             "未配置 tavily_api_key，请在 config/plugins/ai_assistant/config.json 中填写。"

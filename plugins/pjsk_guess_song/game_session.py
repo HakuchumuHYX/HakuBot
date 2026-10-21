@@ -32,7 +32,6 @@ from plugins.pjsk_guess_song.utils import (
     get_session_id,
     get_user_id,
     get_user_name,
-    _get_setting_for_group,
 )
 
 
@@ -134,7 +133,7 @@ async def _run_game_session(
 ):
     session_id = get_session_id(event)
     debug_mode = plugin_config.debug_mode
-    timeout_seconds = _get_setting_for_group(event, "answer_timeout", 30)
+    timeout_seconds = plugin_config.answer_timeout
 
     try:
         # 1. 发送音频和介绍
@@ -198,7 +197,7 @@ async def handle_game_answer(
     user_id = get_user_id(event)
     user_name = get_user_name(event)
 
-    max_guess_attempts = _get_setting_for_group(event, "max_guess_attempts", 10)
+    max_guess_attempts = plugin_config.max_guess_attempts
 
     # 1. 获取该用户的个人猜测次数
     user_count = game_data.get("user_guess_counts", {}).get(user_id, 0)
@@ -228,12 +227,8 @@ async def handle_game_answer(
             is_first_correct_answer = game_data["first_correct_answer_time"] == 0
             if is_first_correct_answer:
                 game_data["first_correct_answer_time"] = time.time()
-                end_game_early = _get_setting_for_group(
-                    event, "end_game_after_bonus_time", True
-                )
-                bonus_time = _get_setting_for_group(
-                    event, "bonus_time_after_first_answer", 5
-                )
+                end_game_early = plugin_config.end_game_after_bonus_time
+                bonus_time = plugin_config.bonus_time_after_first_answer
 
                 if end_game_early and bonus_time > 0:
 

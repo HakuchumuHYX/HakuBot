@@ -2,11 +2,16 @@ import json
 import re
 from typing import Any, Optional, List
 from nonebot import logger
-from pydantic import Field
-from plugins.ai_assistant.config import StrictBaseModel, plugin_config
+from pydantic import BaseModel, ConfigDict, Field
+from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.services.chat_service import call_chat_completion
 from plugins.ai_assistant.services.search import normalization as _normalization
 from plugins.ai_assistant.services.search import queries as _queries
+
+
+class StrictBaseModel(BaseModel):
+    # 模型返回的 JSON 多出字段就算格式不对
+    model_config = ConfigDict(extra="forbid")
 
 
 class VisualReferenceImage(StrictBaseModel):
@@ -59,7 +64,7 @@ def _collect_reference_images(
     limit: Optional[int] = None,
 ) -> List[VisualReferenceImage]:
     if limit is None:
-        limit = int(getattr(plugin_config.search, "image_max_reference_images", 6) or 6)
+        limit = plugin_config.search.image_max_reference_images
 
     images: List[VisualReferenceImage] = []
     seen = set()
@@ -97,15 +102,9 @@ def _collect_reference_images(
 def build_visual_brief_source_text(
     user_prompt: str, queries: List[str], search_payloads: List[dict]
 ) -> str:
-    raw_limit = int(
-        getattr(plugin_config.search, "image_raw_content_max_chars", 1200) or 1200
-    )
-    content_limit = int(
-        getattr(plugin_config.search, "image_content_max_chars", 500) or 500
-    )
-    image_limit = int(
-        getattr(plugin_config.search, "image_max_reference_images", 6) or 6
-    )
+    raw_limit = plugin_config.search.image_raw_content_max_chars
+    content_limit = plugin_config.search.image_content_max_chars
+    image_limit = plugin_config.search.image_max_reference_images
 
     lines: List[str] = []
     lines.append("【用户生图需求】")
@@ -225,13 +224,8 @@ async def build_visual_brief_from_search(
         "}"
     )
 
-    model = (
-        getattr(plugin_config.search, "image_visual_brief_model", None)
-        or plugin_config.chat.model
-    )
-    max_tokens = int(
-        getattr(plugin_config.search, "image_visual_brief_max_tokens", 65536) or 65536
-    )
+    model = plugin_config.search.image_visual_brief_model or plugin_config.chat.model
+    max_tokens = plugin_config.search.image_visual_brief_max_tokens
 
     try:
         result = await call_chat_completion(

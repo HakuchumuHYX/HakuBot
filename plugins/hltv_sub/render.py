@@ -24,11 +24,11 @@ LEFTOVER_PATTERN = re.compile(r"^\d+\.\s*(.+?)\s+was left over$")
 
 
 async def _render(template_name: str, context: dict, width: int) -> bytes:
-    tz = pytz.timezone(plugin_config.hltv_timezone)
+    tz = pytz.timezone(plugin_config.timezone)
     context = {
         **context,
         "timestamp": datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S"),
-        "watermark_text": plugin_config.hltv_watermark_text,
+        "watermark_text": plugin_config.watermark_text,
     }
     try:
         return await render_template(

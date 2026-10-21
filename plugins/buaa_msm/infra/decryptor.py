@@ -14,12 +14,12 @@ from typing import Any
 from Crypto.Cipher import AES
 from nonebot import logger
 
-from plugins.buaa_msm.config import plugin_config
+from plugins.buaa_msm.config import settings
 
 
 def _api_keyset() -> tuple[bytes, bytes] | None:
-    key = plugin_config.api_crypto_key.encode("utf-8")
-    iv = plugin_config.api_crypto_iv.encode("utf-8")
+    key = settings.api_crypto.key.encode("utf-8")
+    iv = settings.api_crypto.iv.encode("utf-8")
     if not key or not iv:
         logger.error("未配置 api_crypto.key / api_crypto.iv")
         return None

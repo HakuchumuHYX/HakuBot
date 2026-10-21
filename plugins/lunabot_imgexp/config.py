@@ -1,33 +1,16 @@
-from utils.paths import PluginPaths
-import json
-from typing import Any
+from typing import Optional
+
+from core.settings import ConfigModel, load_config
 
 
-# 插件私有配置（只适用于 lunabot_imgexp）
-CONFIG_JSON = PluginPaths("lunabot_imgexp").config / "config.json"
+class Config(ConfigModel):
+    saucenao_apikey: str
+    # 没配就跳过 GoogleLens 搜索
+    serp_apikey: str
+    proxy: Optional[str]
+    watermark_text: str
+    # Ascii2D 搜索要过 FlareSolverr，没配就跳过 Ascii2D
+    flaresolverr_url: str
 
 
-class Config:
-    def __init__(self):
-        self.data = {}
-        self.load()
-
-    def load(self):
-        if CONFIG_JSON.exists():
-            with open(CONFIG_JSON, "r", encoding="utf-8") as f:
-                self.data = json.load(f)
-        else:
-            self.data = {}
-
-    def get(self, key: str, default: Any = None) -> Any:
-        keys = key.split(".")
-        value = self.data
-        for k in keys:
-            if isinstance(value, dict) and k in value:
-                value = value[k]
-            else:
-                return default
-        return value
-
-
-config = Config()
+config = load_config("lunabot_imgexp", Config)
