@@ -13,11 +13,12 @@ from plugins.poke_reply.models.data import data_manager
 from plugins.poke_reply.models.cache import message_cache, text_image_cache
 from plugins.poke_reply.utils.common import get_group_id
 from plugins.poke_reply.services.text import convert_text_to_image
-from core.access import is_feature_enabled
-from core.cooldown import check_cd, update_cd
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
 from utils.onebot.media import image_segment
 
-poke = on_notice()
+PLUGIN_ID = "poke_reply:poke"
+poke = on_notice(rule=switch_rule(PLUGIN_ID), priority=1, block=False)
 
 
 @poke.handle()
@@ -35,13 +36,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
         return
 
     user_id = str(event.user_id)
-    # 检查插件功能开关
-    if not is_feature_enabled("poke_reply", "poke", str(group_id), user_id):
-        return
-
-    # 接入外部CD管理
-    PLUGIN_ID = "poke_reply:poke"
-    remaining_time = check_cd(PLUGIN_ID, str(group_id), str(user_id))
+    remaining_time = cooldown_remaining(PLUGIN_ID, event)
     if remaining_time > 0:
         logger.debug(
             f"群 {group_id} 用户 {user_id} 戳一戳CD中，剩余 {remaining_time}秒"
@@ -141,7 +136,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
                 )
 
         # 成功发送投稿内容后才扣CD（提示性回复不扣，发送失败不扣）
-        update_cd(PLUGIN_ID, str(group_id), str(user_id))
+        mark_cooldown(PLUGIN_ID, event)
     except FinishedException:
         raise
     except Exception as e:

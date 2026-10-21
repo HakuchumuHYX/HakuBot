@@ -3,13 +3,12 @@ from __future__ import annotations
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Message,
-    GroupMessageEvent,
     Bot,
     Event,
 )
 from nonebot.params import CommandArg
 
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
 from plugins.sk_predict.service import (
@@ -22,8 +21,18 @@ from plugins.sk_predict.service import (
 from plugins.sk_predict import scheduler as _scheduler  # noqa: F401
 
 
-cn_shot_cmd = on_command("cnsk预测", rule=command_boundary, priority=5, block=True)
-jp_shot_cmd = on_command("sk预测", rule=command_boundary, priority=5, block=True)
+cn_shot_cmd = on_command(
+    "cnsk预测",
+    rule=command_boundary & switch_rule("sk_predict"),
+    priority=5,
+    block=True,
+)
+jp_shot_cmd = on_command(
+    "sk预测",
+    rule=command_boundary & switch_rule("sk_predict"),
+    priority=5,
+    block=True,
+)
 
 
 async def handle_predict_command(
@@ -34,11 +43,6 @@ async def handle_predict_command(
     region: str,
     region_name: str,
 ) -> None:
-    if isinstance(event, GroupMessageEvent):
-        user_id = str(event.user_id)
-        if not is_plugin_enabled("sk_predict", str(event.group_id), user_id):
-            await matcher.finish()
-
     raw_text = args.extract_plain_text().strip()
     force_reload = "reload" in raw_text.split()
     cache_file = get_cache_file(region)

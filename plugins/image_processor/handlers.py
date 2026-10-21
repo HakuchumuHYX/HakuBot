@@ -5,8 +5,8 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, Message
 from nonebot.params import CommandArg
 from nonebot.rule import to_me
 
-from core.access import is_feature_enabled
-from core.cooldown import check_cd, update_cd
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
 from utils.files import safe_delete_file
 from utils.onebot.media import image_segment
 from utils.onebot.messages import reply_image_segments
@@ -23,12 +23,17 @@ from plugins.image_processor.video_to_gif import convert_video_to_gif
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".webm", ".mkv", ".flv", ".wmv")
 
 
-def _command(name: str):
-    return on_command(name, rule=to_me() & command_boundary, priority=5, block=True)
+def _command(name: str, feature: str):
+    return on_command(
+        name,
+        rule=to_me() & command_boundary & switch_rule(f"image_processor:{feature}"),
+        priority=5,
+        block=True,
+    )
 
 
-gif_speed_handler = _command("imgx")
-video_to_gif_handler = _command("imggif")
+gif_speed_handler = _command("imgx", "speed")
+video_to_gif_handler = _command("imggif", "video_to_gif")
 
 SYMMETRY_COMMANDS = {
     "img对称": ("left", "左对称"),
@@ -49,14 +54,8 @@ ROTATE_COMMANDS = {
 }
 
 
-async def _check_access(matcher, event: MessageEvent, feature: str, label: str):
-    """群聊里检查功能开关和 CD；私聊不限"""
-    if not isinstance(event, GroupMessageEvent):
-        return
-    group_id, user_id = str(event.group_id), str(event.user_id)
-    if not is_feature_enabled("image_processor", feature, group_id, user_id):
-        await matcher.finish(f"{label}功能在本群无法使用！")
-    remaining = check_cd(f"image_processor:{feature}", group_id, user_id)
+async def _check_cooldown(matcher, event: MessageEvent, feature: str, label: str):
+    remaining = cooldown_remaining(f"image_processor:{feature}", event)
     if remaining > 0:
         await matcher.finish(f"{label}功能还在冷却中，请等待 {remaining} 秒")
 
@@ -85,21 +84,20 @@ async def _run_job(matcher, event: MessageEvent, feature: str, label: str, job):
         await matcher.finish(f"{label}失败：{e}")
     finally:
         safe_delete_file(result_path)
-    if isinstance(event, GroupMessageEvent):
-        update_cd(f"image_processor:{feature}", str(event.group_id), str(event.user_id))
+    mark_cooldown(f"image_processor:{feature}", event)
 
 
 async def _handle_image(
     matcher, event: MessageEvent, feature: str, label: str, process
 ):
-    await _check_access(matcher, event, feature, label)
+    await _check_cooldown(matcher, event, feature, label)
     url = await _reply_image_url(matcher, event, label)
     await _run_job(matcher, event, feature, label, lambda: process(url))
 
 
 def _register_image_command(command: str, feature: str, label: str, process):
     """回复一张图、无参数的命令"""
-    matcher = _command(command)
+    matcher = _command(command, feature)
 
     @matcher.handle()
     async def _(event: MessageEvent):
@@ -123,7 +121,7 @@ for command, (direction, label) in MIRROR_COMMANDS.items():
 
 @gif_speed_handler.handle()
 async def handle_gif_speed(event: MessageEvent, cmd_arg: Message = CommandArg()):
-    await _check_access(gif_speed_handler, event, "speed", "GIF倍速")
+    await _check_cooldown(gif_speed_handler, event, "speed", "GIF倍速")
 
     args = cmd_arg.extract_plain_text().strip()
     if not args:
@@ -149,11 +147,11 @@ async def handle_gif_speed(event: MessageEvent, cmd_arg: Message = CommandArg())
 
 
 def _register_rotate(command: str, direction: str, action_name: str):
-    matcher = _command(command)
+    matcher = _command(command, "rotate")
 
     @matcher.handle()
     async def _(event: MessageEvent, cmd_arg: Message = CommandArg()):
-        await _check_access(matcher, event, "rotate", "旋转")
+        await _check_cooldown(matcher, event, "rotate", "旋转")
 
         args = cmd_arg.extract_plain_text().strip()
         speed = 1.0
@@ -185,7 +183,7 @@ for command, (direction, action_name) in ROTATE_COMMANDS.items():
 
 @video_to_gif_handler.handle()
 async def handle_video_to_gif(bot: Bot, event: MessageEvent):
-    await _check_access(video_to_gif_handler, event, "video_to_gif", "视频转GIF")
+    await _check_cooldown(video_to_gif_handler, event, "video_to_gif", "视频转GIF")
     if not event.reply:
         await video_to_gif_handler.finish("请回复一条视频消息来使用视频转GIF功能")
 

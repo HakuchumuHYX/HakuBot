@@ -16,10 +16,6 @@ analysis_stat: Dict[int, ExpiringCache] = {}
 
 
 class Config(ConfigModel):
-    whitelist: list[str]
-    group_whitelist: list[str]
-    blacklist: list[str]
-    group_blacklist: list[str]
     desc_blacklist: list[str]
     trust_env: bool
     enable_search: bool

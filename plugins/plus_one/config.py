@@ -6,7 +6,6 @@ CONFIG_FILE = PluginPaths("plus_one").config / "config.json"
 
 
 class Config(ConfigModel):
-    plus_one_black_list: list[str]
     blocked_words: set[str]
 
 
@@ -22,14 +21,11 @@ def reload_from_file() -> None:
 
 
 def save_config() -> bool:
-    """把命令改过的黑名单和屏蔽词写回配置文件"""
+    """把命令改过的屏蔽词写回配置文件"""
     try:
         update_fields(
             CONFIG_FILE,
-            {
-                "plus_one_black_list": config.plus_one_black_list,
-                "blocked_words": sorted(config.blocked_words),
-            },
+            {"blocked_words": sorted(config.blocked_words)},
         )
     except Exception as e:
         logger.exception(f"保存配置文件失败: {e}")

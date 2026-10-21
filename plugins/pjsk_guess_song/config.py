@@ -17,7 +17,6 @@ class PluginConfig(ConfigModel):
 
     answer_timeout: int
     daily_play_limit: int
-    group_whitelist: List[str]
     game_cooldown_seconds: int
     max_guess_attempts: int
     clip_duration_seconds: int

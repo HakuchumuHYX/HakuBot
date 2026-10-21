@@ -2,7 +2,7 @@ import asyncio
 import re
 from typing import Callable, Any
 from nonebot import logger
-from core.access import is_feature_enabled
+from core.access import is_enabled
 from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.models import (
     AnalysisResult,
@@ -77,18 +77,14 @@ class MessageAnalyzer(StatisticsAnalysis, TopicsAnalysis, TitlesAnalysis):
         )
 
         # 3. 话题、金句顺序分析以复用前缀缓存，与用户称号并发执行。
-        topics_enabled = plugin_config.topic_analysis_enabled and is_feature_enabled(
-            "group_daily_analysis", "topics", group_id, "0"
+        topics_enabled = plugin_config.topic_analysis_enabled and is_enabled(
+            "group_daily_analysis:topics", group_id
         )
-        quotes_enabled = (
-            plugin_config.golden_quote_analysis_enabled
-            and is_feature_enabled(
-                "group_daily_analysis", "golden_quotes", group_id, "0"
-            )
+        quotes_enabled = plugin_config.golden_quote_analysis_enabled and is_enabled(
+            "group_daily_analysis:golden_quotes", group_id
         )
-        titles_enabled = (
-            plugin_config.user_title_analysis_enabled
-            and is_feature_enabled("group_daily_analysis", "user_titles", group_id, "0")
+        titles_enabled = plugin_config.user_title_analysis_enabled and is_enabled(
+            "group_daily_analysis:user_titles", group_id
         )
 
         topics_result, titles_result = await asyncio.gather(

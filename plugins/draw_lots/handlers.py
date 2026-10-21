@@ -5,7 +5,6 @@ from nonebot.adapters.onebot.v11 import (
     GROUP,
     Bot,
     Event,
-    GroupMessageEvent,
     MessageSegment,
     Message,
     MessageEvent,
@@ -24,7 +23,7 @@ from datetime import date
 from typing import Dict, Any, Optional
 
 # 导入管理模块
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment
 
@@ -124,18 +123,17 @@ async def get_or_render_image(sign_index: int, force_refresh: bool = False) -> b
 # --- 响应处理器 ---
 
 command = on_command(
-    "抽签", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "抽签",
+    rule=command_boundary & switch_rule("draw_lots"),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
 @command.handle()
 async def lq_(bot: Bot, event: MessageEvent):
     user_id = str(event.user_id)
-
-    # 群聊权限检查
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("draw_lots", str(event.group_id), user_id):
-            await command.finish()
 
     sign_index = -1
     is_retry = False

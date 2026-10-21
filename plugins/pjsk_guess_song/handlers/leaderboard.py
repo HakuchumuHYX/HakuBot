@@ -15,14 +15,14 @@ from nonebot.adapters.onebot.v11 import (
 )
 
 from plugins.pjsk_guess_song.runtime import db_service, image_service
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment
 
 leaderboard_handler = on_command(
     "群聊猜歌排行",
     aliases={"猜歌排行", "pjsk排行"},
-    rule=command_boundary,
+    rule=command_boundary & switch_rule("pjsk_guess_song"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -31,14 +31,8 @@ leaderboard_handler = on_command(
 
 @leaderboard_handler.handle()
 async def _(bot: Bot, event: MessageEvent, matcher: Matcher):
-    user_id = str(event.user_id)
     if not isinstance(event, GroupMessageEvent):
         await matcher.finish("...此功能仅限群聊使用。")
-
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await leaderboard_handler.finish()
-            return
 
     group_id = str(event.group_id)
 

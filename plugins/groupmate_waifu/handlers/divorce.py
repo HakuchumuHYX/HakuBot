@@ -7,18 +7,14 @@ from nonebot.plugin.on import on_command
 from nonebot.typing import T_State
 
 from plugins.groupmate_waifu import service
-from plugins.groupmate_waifu.constants import BYE_MESSAGES, PLUGIN_NAME
-from plugins.groupmate_waifu.rules import is_bye_enabled, is_plugin_enabled
-from core.cooldown import check_cd, update_cd
+from plugins.groupmate_waifu.constants import BYE_MESSAGES
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
+
+BYE_ID = "groupmate_waifu:bye"
 
 
 async def bye_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:
-    if not is_plugin_enabled(str(event.group_id), str(event.user_id)):
-        return False
-
-    if not is_bye_enabled(str(event.group_id), str(event.user_id)):
-        return False
-
     msg = event.message.extract_plain_text().strip()
     if msg not in ["离婚", "分手"]:
         return False
@@ -29,7 +25,7 @@ async def bye_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:
 bye = on_command(
     "离婚",
     aliases={"分手"},
-    rule=bye_rule,
+    rule=bye_rule & switch_rule(BYE_ID),
     permission=GROUP,
     priority=5,
     block=True,
@@ -38,18 +34,12 @@ bye = on_command(
 
 @bye.handle()
 async def handle_bye(event: GroupMessageEvent):
-    group_id = event.group_id
-    user_id = event.user_id
-    group_id_str = str(group_id)
-    user_id_str = str(user_id)
-
-    cd_feature_id = f"{PLUGIN_NAME}:bye"
-    remaining_cd = check_cd(cd_feature_id, group_id_str, user_id_str)
+    remaining_cd = cooldown_remaining(BYE_ID, event)
 
     if remaining_cd > 0:
         await bye.finish(f"你的离婚cd还有 {remaining_cd} 秒。", at_sender=True)
 
-    service.remove_couple(group_id, user_id)
-    update_cd(cd_feature_id, group_id_str, user_id_str)
+    service.remove_couple(event.group_id, event.user_id)
+    mark_cooldown(BYE_ID, event)
 
     await bye.finish(random.choice(BYE_MESSAGES))

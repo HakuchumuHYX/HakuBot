@@ -9,18 +9,17 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.permission import SUPERUSER
 from nonebot.plugin.on import on_command
-from nonebot.rule import Rule
 
 from plugins.groupmate_waifu import service
 from plugins.groupmate_waifu.render import render_protect_list
-from plugins.groupmate_waifu.rules import check_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.messages import mentioned_users
 from utils.onebot.rules import command_boundary
 
 
 protect = on_command(
     "娶群友保护",
-    rule=Rule(command_boundary, check_plugin_enabled),
+    rule=command_boundary & switch_rule("groupmate_waifu"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -56,7 +55,7 @@ async def handle_protect(bot: Bot, event: GroupMessageEvent):
 
 unprotect = on_command(
     "解除娶群友保护",
-    rule=Rule(command_boundary, check_plugin_enabled),
+    rule=command_boundary & switch_rule("groupmate_waifu"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -99,7 +98,7 @@ async def handle_unprotect(bot: Bot, event: GroupMessageEvent):
 
 show_protect = on_command(
     "查看保护名单",
-    rule=Rule(command_boundary, check_plugin_enabled),
+    rule=command_boundary & switch_rule("groupmate_waifu"),
     permission=GROUP,
     priority=5,
     block=True,

@@ -7,7 +7,6 @@ from openai import BadRequestError
 from nonebot import get_driver, on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
-    GroupMessageEvent,
     Message,
     MessageEvent,
     MessageSegment,
@@ -39,10 +38,11 @@ from plugins.ai_assistant.services.search.visual import (
 )
 from plugins.ai_assistant.services.search.workflow import web_image_search_with_rewrite
 
-from core.access import is_feature_enabled
-from core.cooldown import check_cd, update_cd
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
 
-PLUGIN_NAME = "ai_assistant"
+CHAT_ID = "ai_assistant:chat"
+IMAGEN_ID = "ai_assistant:imagen"
 
 # 自定义 CSS 生成路径
 CUSTOM_CSS_DIR = PluginPaths("ai_assistant").data
@@ -80,20 +80,24 @@ html, body, .markdown-body {{
 
 
 # 注册命令
-chat_matcher = on_command("chat", rule=command_boundary, priority=5, block=True)
+chat_matcher = on_command(
+    "chat", rule=command_boundary & switch_rule(CHAT_ID), priority=5, block=True
+)
 chat_web_matcher = on_command(
     "chat联网",
     aliases={"chat_web", "chatweb", "chat搜索"},
-    rule=command_boundary,
+    rule=command_boundary & switch_rule(CHAT_ID),
     priority=5,
     block=True,
 )
 
-draw_matcher = on_command("生图", rule=command_boundary, priority=5, block=True)
+draw_matcher = on_command(
+    "生图", rule=command_boundary & switch_rule(IMAGEN_ID), priority=5, block=True
+)
 draw_web_matcher = on_command(
     "生图联网",
     aliases={"生图web", "生图搜索"},
-    rule=command_boundary,
+    rule=command_boundary & switch_rule(IMAGEN_ID),
     priority=5,
     block=True,
 )
@@ -105,36 +109,6 @@ model_cmd = on_command(
     priority=5,
     block=True,
 )
-
-
-async def _enforce_group_access(
-    matcher: type[Matcher],
-    event: MessageEvent,
-    *,
-    feature: str,
-    display_name: str,
-) -> None:
-    """Apply the plugin-manager feature gate and cooldown for group commands."""
-    if isinstance(event, GroupMessageEvent):
-        group_id = str(event.group_id)
-        user_id = str(event.user_id)
-
-        if not is_feature_enabled(PLUGIN_NAME, feature, group_id, user_id):
-            await matcher.finish()
-
-        cd_key = f"{PLUGIN_NAME}:{feature}"
-        cd_remain = check_cd(cd_key, group_id, user_id)
-        if cd_remain > 0:
-            await matcher.finish(
-                f"{display_name}功能冷却中，请等待 {cd_remain} 秒",
-                at_sender=True,
-            )
-
-
-def _update_group_cd(event: MessageEvent, feature: str) -> None:
-    """成功执行后再更新群聊 CD。"""
-    if isinstance(event, GroupMessageEvent):
-        update_cd(f"{PLUGIN_NAME}:{feature}", str(event.group_id), str(event.user_id))
 
 
 async def _render_chat_reply(
@@ -167,12 +141,9 @@ async def _handle_chat_command(
     *,
     force_search: bool,
 ) -> None:
-    await _enforce_group_access(
-        matcher,
-        event,
-        feature="chat",
-        display_name="Chat",
-    )
+    cd_remain = cooldown_remaining(CHAT_ID, event)
+    if cd_remain > 0:
+        await matcher.finish(f"Chat功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
     error_prefix = "联网Chat失败" if force_search else "发生错误"
     log_context = "Chat Web Error" if force_search else "Chat Error"
@@ -204,7 +175,7 @@ async def _handle_chat_command(
             top_p=plugin_config.chat.top_p,
         )
         # LLM 调用成功（已产生消耗）后再更新 CD
-        _update_group_cd(event, "chat")
+        mark_cooldown(CHAT_ID, event)
 
         stat_text = (
             f"—— 使用模型: {result.model}"
@@ -243,12 +214,9 @@ async def _handle_draw_command(
     *,
     use_web: bool,
 ) -> None:
-    await _enforce_group_access(
-        matcher,
-        event,
-        feature="imagen",
-        display_name="生图",
-    )
+    cd_remain = cooldown_remaining(IMAGEN_ID, event)
+    if cd_remain > 0:
+        await matcher.finish(f"生图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
     error_prefix = "联网生图失败" if use_web else "生图失败"
     log_context = "Draw Web Error" if use_web else "Draw Error"
@@ -291,7 +259,7 @@ async def _handle_draw_command(
         )
         generation_elapsed = time.perf_counter() - started_at
         # 生图调用成功（已产生消耗）后再更新 CD
-        _update_group_cd(event, "imagen")
+        mark_cooldown(IMAGEN_ID, event)
 
         started_at = time.perf_counter()
         await matcher.send(image_segment(image_url))

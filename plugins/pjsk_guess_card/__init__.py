@@ -32,7 +32,7 @@ from plugins.pjsk_guess_card.image_utils import random_crop_image
 from utils.logging import get_exc_desc
 from utils.network.http import download_image
 from utils.images.formats import image_to_bytes
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
 
@@ -93,18 +93,17 @@ async def _prepare_random_card_image(
 # ==================== 猜卡面游戏主命令 ==================== #
 
 guess_card_cmd = on_command(
-    "pjsk猜卡面", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "pjsk猜卡面",
+    rule=command_boundary & switch_rule(PLUGIN_ID),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
 @guess_card_cmd.handle()
 async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     group_id = event.group_id
-    user_id = str(event.user_id)
-
-    # 检查插件是否启用
-    if not is_plugin_enabled(PLUGIN_ID, str(group_id), user_id):
-        await matcher.finish()
 
     # 检查是否有进行中的游戏
     if group_id in guess_msg_queues or group_id in preparing_guess_groups:

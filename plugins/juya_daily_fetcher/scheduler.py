@@ -26,6 +26,7 @@ from plugins.juya_daily_fetcher.config import (
 )
 from plugins.juya_daily_fetcher.deliver import (
     deliver_pending,
+    enabled_targets,
     get_group_bot_map,
     send_debug,
 )
@@ -163,10 +164,8 @@ async def _prepare_and_queue(
         "summary": summary,
         "image_paths": [str(path) for path in image_paths],
         "source_url": str(document.get("source_url") or ""),
-        "targets": {
-            target: {"summary_sent": False, "report_sent": False}
-            for target in plugin_config.targets
-        },
+        # 投递时按当时开着早报的群逐个记录
+        "targets": {},
         "seen_after": current_seen(items),
         "created_at": now_iso(),
         "fail_count": 0,
@@ -211,8 +210,8 @@ async def run_once(*, force_latest: bool = False) -> str:
                 mark_pending_alerted(state)
             return await _deliver_or_record_failure(state)
 
-    if not plugin_config.targets and not force_latest:
-        logger.debug("未配置 targets，跳过本轮早报轮询")
+    if not force_latest and not enabled_targets(await get_group_bot_map()):
+        logger.debug("没有群开启早报，跳过本轮轮询")
         return "no_targets"
 
     try:
@@ -293,7 +292,7 @@ async def run_once(*, force_latest: bool = False) -> str:
 
     result = await _deliver_or_record_failure(state)
     if result == "delivered":
-        logger.info(f"已向 {len(plugin_config.targets)} 个群投递早报")
+        logger.info(f"已向 {len(state['last_delivery_targets'])} 个群投递早报")
     return result
 
 

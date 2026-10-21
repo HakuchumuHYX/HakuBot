@@ -5,8 +5,7 @@ from nonebot import require, get_driver, logger
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-# 导入管理模块
-from core.access import is_plugin_enabled
+from core.access import is_enabled
 from utils.logging import get_exc_desc
 from plugins.daily_message import config_manager
 
@@ -41,11 +40,10 @@ async def send_message_to_enabled_groups(message: str):
         logger.error("未找到任何群组")
         return
 
-    enabled_groups = []
-    for group_id in group_bot_map:
-        user_id = "0"
-        if is_plugin_enabled("daily_message", group_id, user_id):
-            enabled_groups.append(group_id)
+    # 定时消息默认关，只发给显式开启的群
+    enabled_groups = [
+        group_id for group_id in group_bot_map if is_enabled("daily_message", group_id)
+    ]
 
     if not enabled_groups:
         logger.info("没有启用了定时消息插件的群组")

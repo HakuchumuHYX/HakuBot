@@ -4,14 +4,13 @@ from datetime import datetime
 
 from nonebot import logger
 from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot_plugin_alconna import Alconna, AlconnaMatcher, Args, Match, on_alconna
 from nonebot_plugin_alconna.uniseg import At, UniMessage
 from nonebot_plugin_userinfo import EventUserInfo, UserInfo
 
-from core.access import is_plugin_enabled
-from core.cooldown import check_cd, update_cd
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
 from plugins.deer_pipe.config import config
 from plugins.deer_pipe.constants import PLUGIN_ID
 from plugins.deer_pipe.database import (
@@ -30,6 +29,7 @@ from utils.onebot.media import prepare_image_source
 deer: AlconnaMatcher = on_alconna(
     Alconna("🦌", Args["target?", At]),
     aliases={"鹿"},
+    rule=switch_rule(PLUGIN_ID),
     priority=5,
     block=True,
 )
@@ -38,6 +38,7 @@ deer: AlconnaMatcher = on_alconna(
 deer_past: AlconnaMatcher = on_alconna(
     Alconna("补🦌", Args["day", int]),
     aliases={"补鹿"},
+    rule=switch_rule(PLUGIN_ID),
     priority=5,
     block=True,
 )
@@ -46,6 +47,7 @@ deer_past: AlconnaMatcher = on_alconna(
 deer_calendar: AlconnaMatcher = on_alconna(
     Alconna("🦌历", Args["target?", At]),
     aliases={"鹿历"},
+    rule=switch_rule(PLUGIN_ID),
     priority=5,
     block=True,
 )
@@ -62,21 +64,11 @@ async def handle_deer(
 ):
     """处理签到命令"""
     try:
-        # 检查是否在群聊中
-        is_group = isinstance(event, GroupMessageEvent)
         caller_user_id = str(event.get_user_id())
 
-        if is_group:
-            group_id = str(event.group_id)
-
-            # 检查插件是否启用
-            if not is_plugin_enabled(PLUGIN_ID, group_id, caller_user_id):
-                await deer.finish()
-
-            # 检查CD
-            remaining_cd = check_cd(PLUGIN_ID, group_id, caller_user_id)
-            if remaining_cd > 0:
-                await deer.finish(config.cd_message.format(remaining=remaining_cd))
+        remaining_cd = cooldown_remaining(PLUGIN_ID, event)
+        if remaining_cd > 0:
+            await deer.finish(config.cd_message.format(remaining=remaining_cd))
 
         now = datetime.now()
 
@@ -107,9 +99,7 @@ async def handle_deer(
         # 生成日历图片
         img = await render_calendar(now, deer_map, avatar)
 
-        # 更新CD（仅在群聊中）
-        if is_group:
-            update_cd(PLUGIN_ID, group_id, caller_user_id)
+        mark_cooldown(PLUGIN_ID, event)
 
         # 发送结果
         if target.available:
@@ -146,21 +136,9 @@ async def handle_deer_past(
         if not config.enable_past_deer:
             await deer_past.finish("补签功能已禁用")
 
-        # 检查是否在群聊中
-        is_group = isinstance(event, GroupMessageEvent)
-        caller_user_id = str(event.get_user_id())
-
-        if is_group:
-            group_id = str(event.group_id)
-
-            # 检查插件是否启用
-            if not is_plugin_enabled(PLUGIN_ID, group_id, caller_user_id):
-                await deer_past.finish()
-
-            # 检查CD
-            remaining_cd = check_cd(PLUGIN_ID, group_id, caller_user_id)
-            if remaining_cd > 0:
-                await deer_past.finish(config.cd_message.format(remaining=remaining_cd))
+        remaining_cd = cooldown_remaining(PLUGIN_ID, event)
+        if remaining_cd > 0:
+            await deer_past.finish(config.cd_message.format(remaining=remaining_cd))
 
         now = datetime.now()
         target_day = day.result
@@ -187,8 +165,8 @@ async def handle_deer_past(
         img = await render_calendar(now, deer_map, avatar)
 
         # 补签成功时更新CD
-        if success and is_group:
-            update_cd(PLUGIN_ID, group_id, caller_user_id)
+        if success:
+            mark_cooldown(PLUGIN_ID, event)
 
         # 发送结果
         if success:
@@ -219,16 +197,7 @@ async def handle_deer_calendar(
 ):
     """处理查看日历命令"""
     try:
-        # 检查是否在群聊中
-        is_group = isinstance(event, GroupMessageEvent)
         caller_user_id = str(event.get_user_id())
-
-        if is_group:
-            group_id = str(event.group_id)
-
-            # 检查插件是否启用
-            if not is_plugin_enabled(PLUGIN_ID, group_id, caller_user_id):
-                await deer_calendar.finish()
 
         now = datetime.now()
 

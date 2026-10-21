@@ -10,12 +10,12 @@ from nonebot.adapters.onebot.v11.event import Event as OneBotEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
+from nonebot.rule import Rule
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-from core.access import is_plugin_enabled
-from core.access_state import plugin_status
+from core.access import is_enabled, switch_rule
 from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 
@@ -63,16 +63,23 @@ __plugin_meta__ = PluginMetadata(
 )
 
 # --- 消息记录器 ---
-# 优先级设为 1，确保不阻塞其他命令，但能记录所有消息
-message_recorder = on_message(priority=1, block=False)
+# 优先级设为 1，确保不阻塞其他命令，但能记录所有消息；本群没开日报就不记录
+message_recorder = on_message(
+    rule=switch_rule("group_daily_analysis", superuser_bypass=False),
+    priority=1,
+    block=False,
+)
 
 # --- Bot 自己发出的群消息回流事件记录器 (post_type=message_sent) ---
 message_sent_recorder = on_type(
     OneBotEvent,
-    rule=lambda event: (
-        getattr(event, "post_type", None) == "message_sent"
-        and getattr(event, "message_type", None) == "group"
-    ),
+    rule=Rule(
+        lambda event: (
+            getattr(event, "post_type", None) == "message_sent"
+            and getattr(event, "message_type", None) == "group"
+        )
+    )
+    & switch_rule("group_daily_analysis", superuser_bypass=False),
     priority=1,
     block=False,
 )
@@ -81,9 +88,6 @@ message_sent_recorder = on_type(
 @message_recorder.handle()
 async def record_message(bot: Bot, event: GroupMessageEvent):
     """记录群消息到数据库"""
-    # 群里显式禁用本插件时不记录（user_id 传 "0"，避免 superuser 旁路导致开关失效）
-    if not is_plugin_enabled("group_daily_analysis", str(event.group_id), "0"):
-        return
     try:
         # 获取发送者昵称
         sender = event.sender
@@ -136,10 +140,6 @@ async def record_message_sent(bot: Bot, event: OneBotEvent):
     """
     try:
         group_id = int(getattr(event, "group_id"))
-
-        # 群里显式禁用本插件时不记录（user_id 传 "0"，避免 superuser 旁路导致开关失效）
-        if not is_plugin_enabled("group_daily_analysis", str(group_id), "0"):
-            return
 
         message_id = int(getattr(event, "message_id", 0) or 0)
 
@@ -203,6 +203,7 @@ async def record_message_sent(bot: Bot, event: OneBotEvent):
 analysis_cmd = on_command(
     "daily_analysis",
     aliases={"今日总结", "群日报"},
+    rule=switch_rule("group_daily_analysis"),
     permission=SUPERUSER,
     priority=5,
     block=True,
@@ -305,9 +306,6 @@ async def run_analysis(bot: Bot, group_id: int, retries: int = 3, debug: bool = 
 @analysis_cmd.handle()
 async def handle_analysis(bot: Bot, event: GroupMessageEvent):
     group_id = event.group_id
-
-    if not is_plugin_enabled("group_daily_analysis", str(group_id), str(event.user_id)):
-        return
 
     await analysis_cmd.send("正在生成每日总结，请稍候... (可能需要几十秒)")
 
@@ -426,14 +424,17 @@ async def auto_run_daily_analysis():
         logger.warning("未连接 Bot，跳过定时任务")
         return
 
-    target_groups = []
-    # 从 plugin_manager 获取启用的群列表
-    # 设计决策：自动日报只推送给 plugin_status 中显式开启（True）的群，
-    # 与手动命令的“默认启用”语义不同，避免向未主动开启的群推送日报
-    if "group_daily_analysis" in plugin_status:
-        for gid, enabled in plugin_status["group_daily_analysis"].items():
-            if enabled:
-                target_groups.append(gid)
+    try:
+        groups = await bot.get_group_list()
+    except Exception as e:
+        logger.error(f"获取群列表失败，跳过自动总结: {get_exc_desc(e)}")
+        return
+    # 日报默认关，只推送给显式开启的群
+    target_groups = [
+        str(group["group_id"])
+        for group in groups
+        if is_enabled("group_daily_analysis", str(group["group_id"]))
+    ]
 
     if not target_groups:
         logger.info("没有群开启了每日总结插件，跳过任务")

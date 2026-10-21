@@ -39,8 +39,8 @@ from plugins.lunabot_imgexp.image_utils import (
 )
 from utils.onebot.media import image_segment, outbound_media_path, video_segment
 
-from core.access import is_feature_enabled
-from core.cooldown import check_cd, update_cd
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
 
 PLUGIN_NAME = "lunabot_imgexp"
 
@@ -118,7 +118,7 @@ class ArgumentParser(argparse.ArgumentParser):
 ximg = on_command(
     "ximg",
     aliases={"x img", "tw img", "推图"},
-    rule=command_boundary,
+    rule=command_boundary & switch_rule(f"{PLUGIN_NAME}:ximg"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -129,15 +129,8 @@ ximg = on_command(
 async def _(
     bot: Bot, matcher: Matcher, event: GroupMessageEvent, args: Message = CommandArg()
 ):
-    group_id = str(event.group_id)
-    user_id = str(event.user_id)
-
-    # 检查功能开关
-    if not is_feature_enabled(PLUGIN_NAME, "ximg", group_id, user_id):
-        await ximg.finish()
-
     cd_key = f"{PLUGIN_NAME}:ximg"
-    cd_remain = check_cd(cd_key, group_id, user_id)
+    cd_remain = cooldown_remaining(cd_key, event)
     if cd_remain > 0:
         await ximg.finish(f"功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
@@ -269,4 +262,4 @@ async def _(
         await ximg.send(video_segment(path))
 
     # 发送成功后再更新 CD
-    update_cd(cd_key, group_id, user_id)
+    mark_cooldown(cd_key, event)

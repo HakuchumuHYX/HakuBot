@@ -19,8 +19,8 @@ from nonebot.params import CommandArg
 
 require("nonebot_plugin_localstore")
 
-from core.access import is_plugin_enabled
-from core.cooldown import check_cd, update_cd
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
 from core.settings import ConfigModel, load_config
 from pydantic import Field
 
@@ -94,7 +94,11 @@ async def _stop_setu_cache_cleaner():
 PLUGIN_ID = "setu_plugin"
 
 lzst = on_command(
-    "lzst", aliases={"来张涩图"}, rule=command_boundary, priority=5, block=True
+    "lzst",
+    aliases={"来张涩图"},
+    rule=command_boundary & switch_rule(PLUGIN_ID),
+    priority=5,
+    block=True,
 )
 
 
@@ -126,17 +130,13 @@ def _get_lzst_semaphore() -> asyncio.Semaphore:
 async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     user_id = str(event.get_user_id())
 
-    # --- plugin_manager: 开关 + CD（仅群聊生效） ---
     group_id: Optional[str] = None
     if isinstance(event, GroupMessageEvent):
         group_id = str(event.group_id)
 
-        if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
-            await lzst.finish()
-
-        remaining = check_cd(PLUGIN_ID, group_id, user_id)
-        if remaining > 0:
-            await lzst.finish(f"功能冷却中，请等待 {remaining} 秒", at_sender=True)
+    remaining = cooldown_remaining(PLUGIN_ID, event)
+    if remaining > 0:
+        await lzst.finish(f"功能冷却中，请等待 {remaining} 秒", at_sender=True)
 
     # 给用户即时反馈（失败不影响主流程）
     try:
@@ -307,8 +307,8 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                 logger.exception(f"[setu_plugin] send link failed: {e}")
                 await lzst.finish("发不出图也发不出链接，请稍后再试")
 
-        # --- plugin_manager: 更新CD（仅在成功回应后记录；仅群聊记录） ---
-        if sent_ok and group_id:
-            update_cd(PLUGIN_ID, group_id, user_id)
+        # 成功回应后才扣 CD
+        if sent_ok:
+            mark_cooldown(PLUGIN_ID, event)
 
         await lzst.finish()

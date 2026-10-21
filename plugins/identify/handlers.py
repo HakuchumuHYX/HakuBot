@@ -6,8 +6,7 @@ from typing import Optional
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-# 导入管理模块
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.media import image_segment
 from utils.onebot.forward import ForwardItem, send_forward_msg
 from utils.onebot.rules import command_boundary
@@ -16,12 +15,20 @@ from nonebot.exception import FinishedException
 
 # 注册命令处理器 - 鉴定自己
 identify = on_command(
-    "鉴定", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "鉴定",
+    rule=command_boundary & switch_rule("identify"),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 # 注册命令处理器 - 鉴定别人
 identify_other = on_command(
-    "鉴定你", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "鉴定你",
+    rule=command_boundary & switch_rule("identify"),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
@@ -109,11 +116,6 @@ async def handle_identify(bot: Bot, event: GroupMessageEvent):
     try:
         group_id = event.group_id
         user_id = event.user_id
-        user_id_str = str(event.user_id)
-        # 检查群组是否启用鉴定功能 - 改用管理插件
-        if not is_plugin_enabled("identify", str(group_id), user_id_str):
-            await identify.finish()
-            return
 
         # 检查用户今天的鉴定结果
         today_record = daily_record_manager.get_user_record(group_id, user_id)
@@ -156,12 +158,6 @@ async def handle_identify_other(bot: Bot, event: GroupMessageEvent):
     try:
         group_id = event.group_id
         initiator_id = event.user_id  # 发起鉴定的人
-        user_id_str = str(event.user_id)
-
-        # 检查群组是否启用鉴定功能
-        if not is_plugin_enabled("identify", str(group_id), user_id_str):
-            await identify_other.finish()
-            return
 
         # 获取被@的用户
         target_user_id = get_at_target(event)

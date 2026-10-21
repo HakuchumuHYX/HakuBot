@@ -35,6 +35,15 @@ NoneBot 同一优先级的 matcher 全部会跑，只要有一个 `block=True` �
 - 身份要求写在 `permission=`：超管 `SUPERUSER`，群管 `GROUP_ADMIN | GROUP_OWNER | SUPERUSER`。没权限的人不匹配、不回复，handler 里不再判断。
 - `COMMAND_START` 含空字符串、命令按最长前缀匹配，用户命令都要挂 `utils.onebot.rules.command_boundary`，否则「chatgpt好用吗」会触发 chat。帮助站里写明参数连写的命令（stickers 的「查看947」「看所有miku」）改为在 rule 里检查参数本身。
 
+## 插件开关与 CD
+
+- 能开关的功能都登记在 `core/registry.py`，`a:b` 是 a 的子功能，ID 与 NoneBot 的插件名一致。不请自来的定时推送（日报、定时消息、早报）写 `default=False`；代码里确实检查了 CD 的功能才写 `cooldown=True`，CD 命令只接受这些。
+- 开关写在 rule 里，不在 handler 里查：主动触发的 matcher 挂 `core.access.switch_rule(id)`，超管不受限制；旁听（复读、统计计数、消息记录、入群欢迎）挂 `switch_rule(id, superuser_bypass=False)`，否则关了的群照样处理超管的消息。关掉后 rule 不通过，消息继续往下传。超管命令不挂开关。
+- 定时推送和数据处理用 `is_enabled(id, group_id)`，不看触发者。
+- 子功能要求主插件开着；改主插件不动子功能的单独设置。启动钩子失败（`runtime.health` 为 unavailable）的功能，对谁、在私聊里也都不响应。
+- CD 留在 handler：冷却中要回复剩余秒数，而且成功之后才扣。`cooldown_remaining(id, event)` 检查，成功后 `mark_cooldown(id, event)`；私聊和超管不受 CD 限制，时间戳只在内存里，重启清零。
+- hltv_sub 的群开关由群管理自己开关，并决定是否启动客户端，不接入这套。
+
 ## 日志
 
 统一 `from nonebot import logger`；`webconsole_bridge` 直接用 loguru（挂 sink、`webconsole_bridge_internal` 防回环）。

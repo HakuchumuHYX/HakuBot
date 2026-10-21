@@ -34,18 +34,12 @@ class LLMConfig(ConfigModel):
 
 class Config(ConfigModel):
     feed_url: str
-    targets: list[str]
     debug_user_id: str
     poll_interval_minutes: int = Field(ge=1)
     pending_max_age_minutes: int
     pending_max_failures: int
     article_retention_days: int = Field(ge=1)
     llm: LLMConfig
-
-    @field_validator("targets")
-    @classmethod
-    def _normalize_targets(cls, value: list[str]) -> list[str]:
-        return [str(item).strip() for item in value if str(item).strip()]
 
     @field_validator("debug_user_id", "feed_url")
     @classmethod

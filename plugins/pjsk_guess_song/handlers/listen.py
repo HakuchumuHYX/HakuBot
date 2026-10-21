@@ -5,7 +5,7 @@
 
 import time
 from pathlib import Path
-from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GROUP
 from typing import Optional
 from nonebot import on_command, logger
 from nonebot.matcher import Matcher
@@ -28,13 +28,12 @@ from plugins.pjsk_guess_song.utils import (
     get_session_id,
     get_user_id,
     get_user_name,
-    _is_group_allowed,
 )
-from core.access import (
-    is_feature_enabled,
-)
+from core.access import switch_rule
 from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment, audio_segment
+
+LISTEN_SWITCH = switch_rule("pjsk_guess_song:listen")
 
 
 async def _handle_listen_command(
@@ -44,24 +43,12 @@ async def _handle_listen_command(
     mode: str,
     search_term: Optional[str],
 ):
-    user_id = str(event.user_id)
-    # 检查听歌子功能是否启用
-    if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled(
-            "pjsk_guess_song", "listen", str(event.group_id), user_id
-        ):
-            await matcher.finish("听歌功能在此群无法使用！")
-            return
-
     if not plugin_config.full_mode:
         await matcher.finish("......当前为 Light 模式，预处理音轨听歌不可用。")
         return
     """
     (重构) 统一处理所有"听歌"类指令的通用逻辑。
     """
-    if not await _is_group_allowed(event):
-        return
-
     session_id = get_session_id(event)
     lock = game_session_locks[session_id]
 
@@ -169,11 +156,19 @@ for cmd, mode in listen_commands.items():
         return handler
 
     on_command(
-        cmd, rule=command_boundary, permission=GROUP, priority=5, block=True
+        cmd,
+        rule=command_boundary & LISTEN_SWITCH,
+        permission=GROUP,
+        priority=5,
+        block=True,
     ).handle()(create_handler(mode))
 
 listen_normal = on_command(
-    "听", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "听",
+    rule=command_boundary & LISTEN_SWITCH,
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
@@ -181,18 +176,6 @@ listen_normal = on_command(
 async def _(
     matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = CommandArg()
 ):
-    user_id = str(event.user_id)
-    # 检查听歌子功能是否启用
-    if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled(
-            "pjsk_guess_song", "listen", str(event.group_id), user_id
-        ):
-            await matcher.finish("听歌功能在此群无法使用！")
-            return
-
-    if not await _is_group_allowed(event):
-        return
-
     session_id = get_session_id(event)
     lock = game_session_locks[session_id]
 
@@ -326,7 +309,7 @@ async def _(
 listen_anvo = on_command(
     "听anvo",
     aliases={"listen_anvo", "listen_anov", "听anov", "anvo", "anov"},
-    rule=command_boundary,
+    rule=command_boundary & LISTEN_SWITCH,
     permission=GROUP,
     priority=5,
     block=True,
@@ -337,18 +320,6 @@ listen_anvo = on_command(
 async def _(
     matcher: Matcher, bot: Bot, event: MessageEvent, args: Message = CommandArg()
 ):
-    user_id = str(event.user_id)
-    # 检查听歌子功能是否启用
-    if isinstance(event, GroupMessageEvent):
-        if not is_feature_enabled(
-            "pjsk_guess_song", "listen", str(event.group_id), user_id
-        ):
-            await matcher.finish("听歌功能在此群无法使用！")
-            return
-
-    if not await _is_group_allowed(event):
-        return
-
     session_id = get_session_id(event)
     lock = game_session_locks[session_id]
 

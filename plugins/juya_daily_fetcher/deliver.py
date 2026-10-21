@@ -8,6 +8,7 @@ from nonebot import get_driver, logger
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.exception import ActionFailed, NetworkError
 
+from core.access import is_enabled
 from utils.onebot.media import image_segment
 from utils.onebot.forward import ForwardItem, ForwardStatus, send_forward_msg
 from utils.logging import get_exc_desc
@@ -43,6 +44,15 @@ def _onebot_bots() -> list[Bot]:
     except ValueError:
         return []
     return [bot for bot in driver.bots.values() if isinstance(bot, Bot)]
+
+
+def enabled_targets(bots_by_group: dict[str, Bot]) -> list[str]:
+    """早报默认关，只推送给显式开启的群"""
+    return [
+        group_id
+        for group_id in bots_by_group
+        if is_enabled("juya_daily_fetcher", group_id)
+    ]
 
 
 async def get_group_bot_map() -> dict[str, Bot]:
@@ -134,8 +144,8 @@ async def send_report(bot: Bot, image_paths: list[Path], target: str) -> None:
 async def send_debug(
     bot: Bot, user_id: str, summary: str, image_paths: list[Path]
 ) -> None:
-    forbidden = set(plugin_config.targets)
-    if user_id in forbidden:
+    # 防止 debug_user_id 误填成开着早报的群号
+    if is_enabled("juya_daily_fetcher", user_id):
         raise RuntimeError("debug 目标不能是生产群")
     if user_id != plugin_config.debug_user_id:
         raise RuntimeError(f"debug 目标必须是 {plugin_config.debug_user_id}")
@@ -181,8 +191,9 @@ async def deliver_pending(
 
     if bots_by_group is None:
         bots_by_group = await get_group_bot_map()
+    targets = enabled_targets(bots_by_group)
 
-    for index, target in enumerate(plugin_config.targets):
+    for index, target in enumerate(targets):
         if index > 0:
             await asyncio.sleep(SEND_INTERVAL_SECONDS)
         bot = _bot_for_target(target, bots_by_group)
@@ -200,14 +211,14 @@ async def deliver_pending(
             save_state(state)
             logger.info(f"已向群 {target} 合并转发 {len(image_paths)} 页早报长图")
 
-    if plugin_config.targets and all(
+    if targets and all(
         isinstance(pending.get("targets", {}).get(target), dict)
         and pending["targets"][target].get("summary_sent")
         and pending["targets"][target].get("report_sent")
-        for target in plugin_config.targets
+        for target in targets
     ):
         state["seen"] = pending.get("seen_after", state.get("seen", {}))
         state["pending"] = None
         state["last_notified_at"] = now_iso()
-        state["last_delivery_targets"] = list(plugin_config.targets)
+        state["last_delivery_targets"] = targets
         save_state(state)

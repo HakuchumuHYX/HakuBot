@@ -9,11 +9,15 @@ from nonebot.plugin import on_command
 from nonebot.params import CommandArg
 from typing import List
 import time
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.rules import command_boundary
 
 jrrp = on_command(
-    "jrrp", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "jrrp",
+    rule=command_boundary & switch_rule("jrrp"),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 message: List[dict] = [
     {
@@ -35,10 +39,6 @@ message: List[dict] = [
 
 @jrrp.handle()
 async def _h(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
-    user_id = str(event.user_id)
-    if not is_plugin_enabled("jrrp", str(event.group_id), user_id):
-        await jrrp.finish()
-
     words = args.extract_plain_text()
     if not words:
         session = event.get_session_id()

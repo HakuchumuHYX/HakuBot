@@ -13,7 +13,7 @@ from plugins.analysis_bilibili.analysis_bilibili import (
     search_bili_by_title,
     extract_share_url,
 )
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.logging import get_exc_desc
 from utils.onebot.media import prepare_image_source
 
@@ -35,10 +35,6 @@ headers = {
 }
 HTTP_TIMEOUT = ClientTimeout(total=20, connect=8)
 
-whitelist = config.whitelist
-group_whitelist = config.group_whitelist
-blacklist = config.blacklist
-group_blacklist = config.group_blacklist
 desc_blacklist = config.desc_blacklist
 trust_env = config.trust_env
 enable_search = config.enable_search
@@ -49,33 +45,6 @@ async def is_enable_search() -> bool:
     return enable_search
 
 
-async def is_normal(event: Event) -> bool:
-    user_id = str(event.user_id)
-    if hasattr(event, "group_id") and event.group_id:
-        if not is_plugin_enabled("analysis_bilibili", str(event.group_id), user_id):
-            return False
-
-    user_id = str(event.get_user_id())
-    group_id = str(
-        event.group_id
-        if hasattr(event, "group_id")
-        else event.channel_id
-        if hasattr(event, "channel_id")
-        else None
-    )
-
-    if user_id in whitelist or group_id in group_whitelist:
-        return True
-
-    if len(whitelist) > 0 or len(group_whitelist) > 0:
-        return False
-
-    if user_id in blacklist or group_id in group_blacklist:
-        return False
-
-    return True
-
-
 pattern = (
     r"^(?:(?:av|cv)\d+|BV[a-zA-Z0-9]{10})|"
     r"(?:b23\.tv|bili(?:22|23|33|2233)\.cn|\.bilibili\.com|QQ小程序(?:&amp;#93;|&#93;|\])哔哩哔哩).{0,500}"
@@ -83,17 +52,23 @@ pattern = (
 
 analysis_bili = on_regex(
     pattern,
-    rule=is_normal,
+    rule=switch_rule("analysis_bilibili"),
     priority=10,
     block=False,
 )
 
 if use_on_message:
-    analysis_bili = on_message(rule=is_normal, priority=10, block=False)
+    analysis_bili = on_message(
+        rule=switch_rule("analysis_bilibili"), priority=10, block=False
+    )
 
 
-rule = Rule(is_enable_search, is_normal)
-search_bili = on_regex(r"^搜视频.*", rule=rule, priority=5, block=True)
+search_bili = on_regex(
+    r"^搜视频.*",
+    rule=Rule(is_enable_search) & switch_rule("analysis_bilibili"),
+    priority=5,
+    block=True,
+)
 
 
 def is_image(msg: str) -> bool:

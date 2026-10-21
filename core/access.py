@@ -1,106 +1,75 @@
 from nonebot import get_driver
-from typing import Optional
-from core.registry import get_plugin_catalog
-from core.access_state import (
-    plugin_status,
-    save_plugin_status,
-)
+from nonebot.adapters import Event
+from nonebot.rule import Rule
+
+from core.access_state import plugin_status, save_plugin_status
+from core.lifecycle import runtime
+from core.registry import FEATURES_BY_ID
 
 
 def is_superuser(user_id: str) -> bool:
     return user_id in get_driver().config.superusers
 
 
-def get_status_override(status_key: str, group_id: str) -> Optional[bool]:
-    """获取某个状态键在指定群的显式配置；未配置时返回 None。"""
-    group_status = plugin_status.get(status_key)
-    if not isinstance(group_status, dict):
-        return None
-    return group_status.get(group_id)
+def _parent(feature_id: str) -> str:
+    return feature_id.split(":", 1)[0]
 
 
-def get_plugin_feature_keys(plugin_name: str) -> list[str]:
-    """从注册表查找主插件对应的所有子功能键。"""
-    prefix = f"{plugin_name}:"
-    return [
-        plugin_id
-        for plugin_id in get_plugin_catalog().keys()
-        if plugin_id.startswith(prefix)
-    ]
+def _unavailable(feature_id: str) -> bool:
+    """功能自己或主插件的启动钩子失败过"""
+    return any(
+        runtime.health.get(key, "").startswith("unavailable:")
+        for key in (feature_id, _parent(feature_id))
+    )
 
 
-def sync_feature_statuses(plugin_name: str, group_id: str, enabled: bool):
-    """同步指定主插件下所有子功能在当前群的状态。"""
-    for feature_key in get_plugin_feature_keys(plugin_name):
-        if feature_key not in plugin_status:
-            plugin_status[feature_key] = {}
-        plugin_status[feature_key][group_id] = enabled
+def _switched_on(feature_id: str, group_id: str) -> bool:
+    override = plugin_status.get(feature_id, {}).get(group_id)
+    return FEATURES_BY_ID[feature_id].default if override is None else override
 
 
-def is_plugin_enabled(plugin_name: str, group_id: str, user_id: str) -> bool:
-    """检查插件在指定群是否启用"""
-
-    from core.lifecycle import runtime
-
-    if runtime.health.get(plugin_name, "").startswith("unavailable:"):
+def is_enabled(feature_id: str, group_id: str) -> bool:
+    """本群开没开，不看触发者。子功能要求主插件也开着。"""
+    if _unavailable(feature_id):
         return False
-    if is_superuser(user_id):
-        return True  # SuperUser无视开关
-
-    # 默认启用
-    if plugin_name not in plugin_status:
-        return True
-    if group_id not in plugin_status[plugin_name]:
-        return True
-    return plugin_status[plugin_name][group_id]
+    parent = _parent(feature_id)
+    if parent != feature_id and not _switched_on(parent, group_id):
+        return False
+    return _switched_on(feature_id, group_id)
 
 
-def set_plugin_status(plugin_name: str, group_id: str, enabled: bool):
-    """设置插件状态"""
-    if plugin_name not in plugin_status:
-        plugin_status[plugin_name] = {}
-    plugin_status[plugin_name][group_id] = enabled
+def switch_rule(feature_id: str, *, superuser_bypass: bool = True) -> Rule:
+    """挂在 matcher 上的群开关，私聊不限。
 
-    if ":" not in plugin_name:
-        sync_feature_statuses(plugin_name, group_id, enabled)
+    旁听类（复读、统计计数、消息记录、入群欢迎）传 superuser_bypass=False，
+    否则关了的群照样会处理超管的消息。启动失败对超管也拦。
+    """
+    if feature_id not in FEATURES_BY_ID:
+        raise KeyError(f"未登记的功能: {feature_id}")
 
+    async def _check(event: Event) -> bool:
+        if _unavailable(feature_id):
+            return False
+        group_id = getattr(event, "group_id", None)
+        if group_id is None:
+            return True
+        # 通知事件不一定有 user_id，get_user_id() 会抛
+        if superuser_bypass and is_superuser(str(getattr(event, "user_id", ""))):
+            return True
+        return is_enabled(feature_id, str(group_id))
+
+    return Rule(_check)
+
+
+def set_enabled(feature_id: str, group_id: str, enabled: bool) -> None:
+    plugin_status.setdefault(feature_id, {})[group_id] = enabled
     save_plugin_status(plugin_status)
 
 
-def is_feature_enabled(
-    plugin_name: str, feature_name: str, group_id: str, user_id: str
-) -> bool:
-    """检查插件的特定功能是否启用"""
-
-    from core.lifecycle import runtime
-
-    if runtime.health.get(f"{plugin_name}:{feature_name}", "").startswith(
-        "unavailable:"
-    ):
-        return False
-
-    if is_superuser(user_id):
-        return True  # SuperUser无视开关
-
-    feature_key = f"{plugin_name}:{feature_name}"
-    feature_override = get_status_override(feature_key, group_id)
-
-    # 主插件禁用时，子功能一律禁用，不允许单独启用。
-    if not is_plugin_enabled(plugin_name, group_id, user_id):
-        return False
-
-    # 主插件启用时，子功能默认启用，但允许显式关闭。
-    if feature_override is False:
-        return False
-    return True
-
-
-def set_feature_status(
-    plugin_name: str, feature_name: str, group_id: str, enabled: bool
-):
-    """设置插件特定功能状态"""
-    feature_key = f"{plugin_name}:{feature_name}"
-    if feature_key not in plugin_status:
-        plugin_status[feature_key] = {}
-    plugin_status[feature_key][group_id] = enabled
+def reset_group(group_id: str) -> None:
+    """清空本群所有开关记录，各功能回到默认值"""
+    for feature_id in list(plugin_status):
+        plugin_status[feature_id].pop(group_id, None)
+        if not plugin_status[feature_id]:
+            del plugin_status[feature_id]
     save_plugin_status(plugin_status)

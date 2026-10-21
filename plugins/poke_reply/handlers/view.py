@@ -11,22 +11,23 @@ from plugins.poke_reply.config import get_group_image_dir
 from utils.onebot.media import image_segment
 from utils.onebot.forward import send_forward_msg
 from utils.onebot.rules import command_boundary
+from core.access import switch_rule
 
 view_all_contributions = on_command(
     "查看所有投稿",
-    rule=ensure_at_me() & to_me() & command_boundary,
+    rule=ensure_at_me() & to_me() & command_boundary & switch_rule("poke_reply"),
     priority=5,
     block=True,
 )
 view_all_texts = on_command(
     "查看所有文本",
-    rule=ensure_at_me() & to_me() & command_boundary,
+    rule=ensure_at_me() & to_me() & command_boundary & switch_rule("poke_reply"),
     priority=5,
     block=True,
 )
 view_all_images = on_command(
     "查看所有图片",
-    rule=ensure_at_me() & to_me() & command_boundary,
+    rule=ensure_at_me() & to_me() & command_boundary & switch_rule("poke_reply"),
     priority=5,
     block=True,
 )

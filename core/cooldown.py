@@ -1,84 +1,53 @@
 import time
+from typing import Optional
+
+from nonebot.adapters import Event
+
 from core.access import is_superuser
-from core.registry import get_plugin_catalog
-from core.access_state import (
-    cd_config,
-    save_cd_config,
-    cd_runtime,
-    save_cd_runtime,
-)
+from core.access_state import cd_config, save_cd_config
+
+# 上次使用时间只放内存：最长的 CD 也就几分钟，重启清零无所谓，不值得每次扣 CD 都重写文件
+_last_used: dict[tuple[str, str, str], float] = {}
 
 
-def get_plugin_cd_duration(plugin_id: str, group_id: str) -> int:
-    """
-    获取某个插件/功能在指定群的CD时长（单位：秒）
-    :param plugin_id: 插件标识符
-    :param group_id: 群号
-    :return: CD时长（秒），如果未设置为 0
-    """
-    # 从分群配置中读取
-    return cd_config.get(group_id, {}).get(plugin_id, 0)
+def get_cooldown(feature_id: str, group_id: str) -> int:
+    """本群给这个功能设的 CD 秒数，没设为 0"""
+    return cd_config.get(group_id, {}).get(feature_id, 0)
 
 
-def check_cd(plugin_id: str, group_id: str, user_id: str) -> int:
-    """
-    检查用户是否处于CD中
-    :return: 剩余CD时间（秒）。如果为 0，则表示CD结束。
-    """
-    if is_superuser(user_id):
-        return 0  # SuperUser无视CD
+def _cooldown_key(feature_id: str, event: Event) -> Optional[tuple[str, str, str]]:
+    """私聊和超管不受 CD 限制，返回 None"""
+    group_id = getattr(event, "group_id", None)
+    user_id = event.get_user_id()
+    if group_id is None or is_superuser(user_id):
+        return None
+    return feature_id, str(group_id), user_id
 
-    cd_duration = get_plugin_cd_duration(plugin_id, group_id)
 
-    if cd_duration == 0:
-        return 0  # 插件未设置CD
-
-    last_call_time = cd_runtime.get(group_id, {}).get(user_id, {}).get(plugin_id, 0)
-    now = time.time()
-
-    passed_time = now - last_call_time
-    if passed_time >= cd_duration:
+def cooldown_remaining(feature_id: str, event: Event) -> int:
+    """剩余冷却秒数，0 表示可以用"""
+    key = _cooldown_key(feature_id, event)
+    if key is None:
         return 0
+    duration = get_cooldown(feature_id, key[1])
+    passed = time.time() - _last_used.get(key, 0)
+    return 0 if passed >= duration else int(duration - passed)
+
+
+def mark_cooldown(feature_id: str, event: Event) -> None:
+    """成功之后再调用：失败不扣 CD"""
+    key = _cooldown_key(feature_id, event)
+    if key is not None and get_cooldown(feature_id, key[1]) > 0:
+        _last_used[key] = time.time()
+
+
+def set_cooldown(feature_id: str, group_id: str, seconds: int) -> None:
+    """seconds 为 0 时取消本群的 CD"""
+    group_config = cd_config.setdefault(group_id, {})
+    if seconds > 0:
+        group_config[feature_id] = seconds
     else:
-        return int(cd_duration - passed_time)
-
-
-def update_cd(plugin_id: str, group_id: str, user_id: str):
-    """
-    更新用户的CD时间戳（标记为“已使用”）
-    """
-    if is_superuser(user_id):
-        return  # SuperUser不记录CD
-
-    if get_plugin_cd_duration(plugin_id, group_id) > 0:
-        now = time.time()
-        if group_id not in cd_runtime:
-            cd_runtime[group_id] = {}
-        if user_id not in cd_runtime[group_id]:
-            cd_runtime[group_id][user_id] = {}
-
-        cd_runtime[group_id][user_id][plugin_id] = now
-        save_cd_runtime(cd_runtime)
-
-
-def set_plugin_cd(plugin_id: str, group_id: str, cd_seconds: int) -> bool:
-    """内部函数：设置或移除指定群的CD"""
-    plugin_catalog = get_plugin_catalog()
-    if plugin_id not in plugin_catalog:
-        return False  # 插件不存在
-
-    if cd_seconds > 0:
-        # 设置CD
-        if group_id not in cd_config:
-            cd_config[group_id] = {}
-        cd_config[group_id][plugin_id] = cd_seconds
-    else:
-        # 移除CD
-        if group_id in cd_config and plugin_id in cd_config[group_id]:
-            del cd_config[group_id][plugin_id]
-            # 如果该群配置为空，则移除该群
-            if not cd_config[group_id]:
-                del cd_config[group_id]
-
-    save_cd_config(cd_config)  # 使用导入的保存函数
-    return True
+        group_config.pop(feature_id, None)
+        if not group_config:
+            del cd_config[group_id]
+    save_cd_config(cd_config)

@@ -14,16 +14,17 @@ from utils.onebot.rules import command_boundary
 
 # 导入共享上下文
 from plugins.send_and_reply.content import message_context, prune_message_context
-from core.access import (
-    is_plugin_enabled,
-)
+from core.access import switch_rule
 
 # 获取配置中的超级用户列表
 superusers = get_driver().config.superusers
 
 # 创建命令处理器，需要@机器人触发
 send_to_superuser = on_command(
-    "send", rule=to_me() & command_boundary, priority=5, block=True
+    "send",
+    rule=to_me() & command_boundary & switch_rule("send_and_reply"),
+    priority=5,
+    block=True,
 )
 
 
@@ -51,9 +52,6 @@ async def get_group_info(bot: Bot, group_id: str) -> str:
 async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg()):
     """处理send命令"""
     user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("send_and_reply", str(event.group_id), user_id):
-            return
 
     # 额外检查：确保消息是@机器人的
     if isinstance(event, GroupMessageEvent):

@@ -2,18 +2,17 @@
 
 from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent
 from nonebot.plugin.on import on_command
-from nonebot.rule import Rule
 
 from plugins.groupmate_waifu import service
 from plugins.groupmate_waifu.render import render_cp_list, render_member_pool
-from plugins.groupmate_waifu.rules import check_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.rules import command_boundary
 
 
 waifu_list = on_command(
     "查看群友卡池",
     aliases={"群友卡池"},
-    rule=Rule(command_boundary, check_plugin_enabled),
+    rule=command_boundary & switch_rule("groupmate_waifu"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -38,7 +37,7 @@ async def handle_waifu_list(bot: Bot, event: GroupMessageEvent):
 cp_list = on_command(
     "本群CP",
     aliases={"本群cp"},
-    rule=Rule(command_boundary, check_plugin_enabled),
+    rule=command_boundary & switch_rule("groupmate_waifu"),
     permission=GROUP,
     priority=5,
     block=True,

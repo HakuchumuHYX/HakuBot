@@ -20,28 +20,22 @@ from plugins.pjsk_guess_song.runtime import (
     resources_dir,
 )
 from plugins.pjsk_guess_song.tools.get_aliases import fetch_all_aliases
-from plugins.pjsk_guess_song.utils import _is_group_allowed
-from core.access import (
-    is_plugin_enabled,
-)
+from core.access import switch_rule
 from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment
 
 # --- 资源版本 ---
 show_resource_version = on_command(
-    "猜歌资源", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "猜歌资源",
+    rule=command_boundary & switch_rule("pjsk_guess_song"),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
 @show_resource_version.handle()
 async def _(bot: Bot, event: MessageEvent):
-    user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await show_resource_version.finish()
-            return
-    if not await _is_group_allowed(event):
-        return
 
     # 1. 统计当前加载的资源
     stats = {
@@ -95,7 +89,11 @@ async def _(bot: Bot, event: MessageEvent):
 
 # --- 获取别名 ---
 fetch_aliases_cmd = on_command(
-    "获取别名", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "获取别名",
+    rule=command_boundary & switch_rule("pjsk_guess_song"),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 # 简单的运行锁，防止重复触发
@@ -105,14 +103,6 @@ _alias_task_running = False
 @fetch_aliases_cmd.handle()
 async def _(bot: Bot, event: MessageEvent):
     global _alias_task_running
-
-    user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await fetch_aliases_cmd.finish()
-            return
-    if not await _is_group_allowed(event):
-        return
 
     if _alias_task_running:
         await fetch_aliases_cmd.finish("别名获取任务正在运行中，请稍后再试。")

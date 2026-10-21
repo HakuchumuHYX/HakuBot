@@ -1,7 +1,6 @@
 {
     "answer_timeout": 30,
     "daily_play_limit": 15,
-    "group_whitelist": [],
     "game_cooldown_seconds": 60,
     "max_guess_attempts": 10,
     "clip_duration_seconds": 10,

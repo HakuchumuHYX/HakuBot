@@ -4,9 +4,8 @@ from nonebot.adapters.onebot.v11 import (
     Bot,
     MessageEvent,
     MessageSegment,
-    GroupMessageEvent,
 )
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
 
@@ -22,7 +21,7 @@ __plugin_meta__ = PluginMetadata(
 face_extractor = on_command(
     "save",
     aliases={"保存图片", "保存表情", "保存"},
-    rule=command_boundary,
+    rule=command_boundary & switch_rule("sticker_saver"),
     priority=5,
     block=True,
 )
@@ -33,11 +32,6 @@ TARGET_REDIRECT_URL_NT = "https://ntpic.colanns.me"
 
 @face_extractor.handle()
 async def handle_face_extraction(bot: Bot, event: MessageEvent):
-    user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("sticker_saver", str(event.group_id), user_id):
-            await face_extractor.finish()
-
     if event.reply:
         # 获取被回复的消息内容
         original_message = event.reply.message

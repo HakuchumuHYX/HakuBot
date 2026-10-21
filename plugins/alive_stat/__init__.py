@@ -9,7 +9,6 @@ from datetime import datetime
 from nonebot import on_command, require, get_driver
 from nonebot.adapters import Bot, Event, Message
 from nonebot.params import CommandArg
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from plugins.alive_stat.runtime import (
     save_data,
@@ -22,10 +21,7 @@ from plugins.alive_stat import drawer
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
 
-try:
-    from core.access import is_plugin_enabled
-except Exception:
-    is_plugin_enabled = None  # type: ignore
+from core.access import switch_rule
 
 # ================= 定时保存 & 关闭保存 =================
 
@@ -46,16 +42,13 @@ if _driver is not None:
 
 # ================= 响应器 =================
 
-alive = on_command("alive", rule=command_boundary, priority=5, block=True)
+alive = on_command(
+    "alive", rule=command_boundary & switch_rule("alive_stat"), priority=5, block=True
+)
 
 
 @alive.handle()
 async def handle_alive(bot: Bot, event: Event, args: Message = CommandArg()):
-    user_id = str(event.get_user_id())
-    if isinstance(event, GroupMessageEvent) and is_plugin_enabled is not None:
-        if not is_plugin_enabled("alive_stat", str(event.group_id), user_id):
-            await alive.finish()
-
     now = datetime.now()
 
     # 日夜模式

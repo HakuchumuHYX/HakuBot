@@ -3,7 +3,6 @@ from nonebot.adapters.onebot.v11 import (
     Message,
     Bot,
     MessageEvent,
-    GroupMessageEvent,
 )
 from nonebot.adapters.onebot.v11.helpers import extract_image_urls
 from nonebot.params import CommandArg
@@ -15,8 +14,8 @@ from utils.onebot.forward import send_forward_msg
 from utils.onebot.media import image_segment
 from plugins.lunabot_imgexp import twitter  # noqa: F401
 
-from core.access import is_feature_enabled
-from core.cooldown import check_cd, update_cd
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
 from utils.onebot.rules import command_boundary
 
 PLUGIN_NAME = "lunabot_imgexp"
@@ -24,7 +23,7 @@ PLUGIN_NAME = "lunabot_imgexp"
 imgexp = on_command(
     "搜图",
     aliases={"以图搜图", "imgexp", "search"},
-    rule=command_boundary,
+    rule=command_boundary & switch_rule(f"{PLUGIN_NAME}:search"),
     priority=5,
     block=True,
 )
@@ -38,21 +37,9 @@ async def _(
     matcher: Matcher,
     arg: Message = CommandArg(),
 ):
-    if isinstance(event, GroupMessageEvent):
-        group_id = str(event.group_id)
-        user_id = str(event.user_id)
-
-        # 1. 检查功能开关
-        if not is_feature_enabled(PLUGIN_NAME, "search", group_id, user_id):
-            await imgexp.finish()
-
-        # 2. 检查功能 CD (key: lunabot_imgexp:search)
-        cd_key = f"{PLUGIN_NAME}:search"
-        cd_remain = check_cd(cd_key, group_id, user_id)
-        if cd_remain > 0:
-            await imgexp.finish(
-                f"搜图功能冷却中，请等待 {cd_remain} 秒", at_sender=True
-            )
+    cd_remain = cooldown_remaining(f"{PLUGIN_NAME}:search", event)
+    if cd_remain > 0:
+        await imgexp.finish(f"搜图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
 
     # 尝试从参数中提取图片
     img_urls = extract_image_urls(arg)
@@ -120,11 +107,9 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
 
             await send_forward_msg(bot, event, items=forward_messages)
 
-            # 发送成功后再更新 CD（仅群聊，多张图只扣一次）
-            if not cd_updated and isinstance(event, GroupMessageEvent):
-                update_cd(
-                    f"{PLUGIN_NAME}:search", str(event.group_id), str(event.user_id)
-                )
+            # 发送成功后再更新 CD（多张图只扣一次）
+            if not cd_updated:
+                mark_cooldown(f"{PLUGIN_NAME}:search", event)
                 cd_updated = True
 
         except Exception as e:

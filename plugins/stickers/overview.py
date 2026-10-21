@@ -35,7 +35,7 @@ from plugins.stickers.config import (
 )
 from plugins.stickers import send
 from utils.rendering.fonts import load_font
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
 
@@ -95,7 +95,7 @@ async def _view_single_rule(arg: Message = CommandArg()) -> bool:
 view_all_matcher = on_command(
     "看所有",
     aliases={"查看所有", "view all"},
-    rule=_view_all_rule,
+    rule=_view_all_rule & switch_rule("stickers"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -103,7 +103,7 @@ view_all_matcher = on_command(
 view_single_matcher = on_command(
     "sticker",
     aliases={"看表情", "No.", "NO", "查看", "no", "no."},
-    rule=_view_single_rule,
+    rule=_view_single_rule & switch_rule("stickers"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -120,9 +120,6 @@ def get_sort_key(file_path: Path):
 
 @view_single_matcher.handle()
 async def handle_view_single(event: GroupMessageEvent, args: Message = CommandArg()):
-    if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
-        return
-
     id_list = args.extract_plain_text().split()
 
     # 上限检查
@@ -205,9 +202,6 @@ async def handle_view_single(event: GroupMessageEvent, args: Message = CommandAr
 
 @view_all_matcher.handle()
 async def handle_view_all(event: GroupMessageEvent, args: Message = CommandArg()):
-    if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
-        return
-
     folder_name = args.extract_plain_text().strip()
 
     if not folder_name:

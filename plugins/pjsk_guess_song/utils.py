@@ -7,8 +7,7 @@ import time
 from datetime import datetime
 from typing import Tuple, Optional
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
-from nonebot import get_bot, logger
-from utils.logging import get_exc_desc
+from nonebot import logger
 
 # 导入服务和配置
 from plugins.pjsk_guess_song.runtime import db_service, plugin_config
@@ -34,32 +33,10 @@ def get_user_name(event: MessageEvent) -> str:
     return event.sender.card or event.sender.nickname or str(event.user_id)
 
 
-async def _is_group_allowed(event: MessageEvent) -> bool:
-    """检查群组是否在白名单中"""
-    whitelist = plugin_config.group_whitelist
-    if not whitelist:
-        return True  # 白名单为空，允许所有
-
-    if isinstance(event, GroupMessageEvent):
-        is_in_whitelist = str(event.group_id) in whitelist
-        if not is_in_whitelist:
-            try:
-                # 尝试发送消息，失败也无妨
-                await get_bot().send(event, "本群未启用猜歌功能")
-            except Exception as e:
-                logger.warning(f"发送非白名单群聊消息失败: {get_exc_desc(e)}")
-        return is_in_whitelist
-
-    return True  # 私聊默认允许
-
-
 async def _check_game_start_conditions(
     event: MessageEvent,
 ) -> Tuple[bool, Optional[str]]:
     """检查是否可以开始新游戏"""
-    if not await _is_group_allowed(event):
-        return False, None
-
     # --- 检查游戏是否在禁用时段 ---
     now_time = datetime.now().time()
     disable_periods = plugin_config.disable_guess_song_periods

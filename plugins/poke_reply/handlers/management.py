@@ -28,10 +28,14 @@ from plugins.poke_reply.models.request import delete_request_manager
 from plugins.poke_reply.services.image import invalidate_cache_for_file
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
+from core.access import switch_rule
 
 # --- 注册命令 ---
 apply_delete = on_command(
-    "申请删除", rule=to_me() & command_boundary, priority=5, block=True
+    "申请删除",
+    rule=to_me() & command_boundary & switch_rule("poke_reply"),
+    priority=5,
+    block=True,
 )
 su_direct_delete = on_command(
     "poke删除", permission=SUPERUSER, rule=to_me(), priority=5, block=True

@@ -9,10 +9,8 @@ from nonebot.permission import SUPERUSER
 from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
-from core.access import (
-    is_plugin_enabled,
-)
-from core.cooldown import check_cd, update_cd
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
 
 from plugins.stickers.send import (
     load_sticker_list,
@@ -43,15 +41,23 @@ from plugins.stickers import overview  # noqa: F401  导入即注册查看命令
 
 load_sticker_list()
 
-sticker_matcher = on_message(priority=10, block=False)
+sticker_matcher = on_message(rule=switch_rule("stickers"), priority=10, block=False)
 clean_duplicates_matcher = on_command(
     "清除重复", rule=command_boundary, permission=SUPERUSER, priority=5, block=True
 )
 clean_confirm_matcher = on_command(
-    "确认清理", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "确认清理",
+    rule=command_boundary & switch_rule("stickers"),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 clean_cancel_matcher = on_command(
-    "取消", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "取消",
+    rule=command_boundary & switch_rule("stickers"),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 cleanup_state = {}
@@ -123,8 +129,6 @@ async def handle_clean_duplicates(event: GroupMessageEvent):
 @clean_confirm_matcher.handle()
 async def handle_clean_confirm(event: GroupMessageEvent):
     """处理确认清理命令"""
-    if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
-        return
     group_id = event.group_id
     user_id = event.user_id
 
@@ -160,8 +164,6 @@ async def handle_clean_confirm(event: GroupMessageEvent):
 @clean_cancel_matcher.handle()
 async def handle_clean_cancel(event: GroupMessageEvent):
     """处理取消清理命令"""
-    if not is_plugin_enabled("stickers", str(event.group_id), str(event.user_id)):
-        return
     group_id = event.group_id
     user_id = event.user_id
 
@@ -199,11 +201,6 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
     # 只处理群聊消息
     if not isinstance(event, GroupMessageEvent):
         return
-    user_id = str(event.user_id)
-    # 检查插件总开关
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("stickers", str(event.group_id), user_id):
-            return
 
     # 获取纯文本消息
     message_text = event.get_plaintext().strip()
@@ -230,11 +227,7 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
 
     # 检查是否是单图随机命令
     if message_text.startswith("随机"):
-        PLUGIN_ID_RANDOM = "stickers"  # 使用插件主ID
-        group_id = str(event.group_id)
-        user_id = str(event.user_id)
-
-        remaining_cd = check_cd(PLUGIN_ID_RANDOM, group_id, user_id)
+        remaining_cd = cooldown_remaining("stickers", event)
         if remaining_cd > 0:
             # 冷却中，静默处理，不回复
             return
@@ -252,7 +245,7 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
                     for sticker_file in sticker_files:
                         message_segments.append(image_segment(sticker_file))
 
-                    update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
+                    mark_cooldown("stickers", event)  # 成功则更新CD
 
                     await sticker_matcher.finish(Message(message_segments))
                 except FinishedException:
@@ -275,7 +268,7 @@ async def handle_sticker(bot: Bot, event: GroupMessageEvent):
             if sticker_file:
                 # 发送图片
                 try:
-                    update_cd(PLUGIN_ID_RANDOM, group_id, user_id)  # 成功则更新CD
+                    mark_cooldown("stickers", event)  # 成功则更新CD
 
                     await sticker_matcher.finish(image_segment(sticker_file))
                 except FinishedException:

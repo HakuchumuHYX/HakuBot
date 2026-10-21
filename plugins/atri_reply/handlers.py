@@ -4,7 +4,7 @@ from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.rule import Rule
 from nonebot.exception import FinishedException
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from core.settings import ConfigModel, load_config
 from utils.logging import get_exc_desc
 
@@ -18,10 +18,6 @@ plugin_config = load_config("atri_reply", Config)
 
 
 def is_calling_bot(event: MessageEvent) -> bool:
-    user_id = str(event.user_id)
-    if hasattr(event, "group_id") and event.group_id:
-        if not is_plugin_enabled("atri_reply", str(event.group_id), user_id):
-            return False
     """检查消息是否刚好在呼叫机器人"""
     message_text = event.get_plaintext().strip()
 
@@ -30,7 +26,9 @@ def is_calling_bot(event: MessageEvent) -> bool:
 
 
 # 创建消息处理器
-call_reply = on_message(rule=Rule(is_calling_bot), priority=10, block=True)
+call_reply = on_message(
+    rule=Rule(is_calling_bot) & switch_rule("atri_reply"), priority=10, block=True
+)
 
 
 @call_reply.handle()

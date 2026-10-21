@@ -16,8 +16,8 @@ from plugins.poke_reply.services.contribute import (
     handle_text_contribution,
     handle_image_contribution,
 )
-from core.access import is_feature_enabled
-from core.cooldown import check_cd, update_cd
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
 from utils.onebot.forward import send_forward_msg
 from utils.onebot.rules import command_boundary
 
@@ -31,11 +31,18 @@ async def _convert_to_text_rule(event: MessageEvent) -> bool:
     return is_convert_to_text_message(event)
 
 
+PLUGIN_ID_CONTRIB = "poke_reply:contribute"
+
 contribute = on_command(
-    "投稿", rule=ensure_at_me() & to_me() & command_boundary, priority=5, block=True
+    "投稿",
+    rule=ensure_at_me() & to_me() & command_boundary & switch_rule(PLUGIN_ID_CONTRIB),
+    priority=5,
+    block=True,
 )
 convert_to_text = on_message(
-    rule=to_me() & Rule(_convert_to_text_rule), priority=10, block=True
+    rule=to_me() & Rule(_convert_to_text_rule) & switch_rule("poke_reply"),
+    priority=10,
+    block=True,
 )
 
 
@@ -50,13 +57,7 @@ async def handle_contribute(
     if group_id == 0:
         await contribute.finish("请在群聊中使用投稿功能喵！")
 
-    user_id = str(event.user_id)
-    if not is_feature_enabled("poke_reply", "contribute", str(group_id), user_id):
-        await contribute.finish("本群未开启投稿功能！")
-
-    # CD检查
-    PLUGIN_ID_CONTRIB = "poke_reply:contribute"
-    remaining_time = check_cd(PLUGIN_ID_CONTRIB, str(group_id), str(user_id))
+    remaining_time = cooldown_remaining(PLUGIN_ID_CONTRIB, event)
     if remaining_time > 0:
         await contribute.finish(f"投稿功能冷却中，请等待 {remaining_time} 秒喵！")
 
@@ -67,35 +68,27 @@ async def handle_contribute(
         target_message = replied_message.message
         has_images, images = extract_image_data(target_message)
         if has_images:
-            await process_image_contribution(
-                bot, group_id, images, PLUGIN_ID_CONTRIB, user_id
-            )
+            await process_image_contribution(bot, event, group_id, images)
         else:
             text_to_add = target_message.extract_plain_text().strip()
             if not text_to_add:
                 await contribute.finish("回复的消息没有文本内容喵！")
-            await process_text_contribution(
-                bot, group_id, text_to_add, PLUGIN_ID_CONTRIB, user_id
-            )
+            await process_text_contribution(bot, event, group_id, text_to_add)
     else:
         has_images, images = extract_image_data(target_message)
         if has_images:
-            await process_image_contribution(
-                bot, group_id, images, PLUGIN_ID_CONTRIB, user_id
-            )
+            await process_image_contribution(bot, event, group_id, images)
         else:
             args_text = args.extract_plain_text().strip()
-            await process_text_contribution(
-                bot, group_id, args_text, PLUGIN_ID_CONTRIB, user_id
-            )
+            await process_text_contribution(bot, event, group_id, args_text)
 
 
 async def process_text_contribution(
-    bot: Bot, group_id: int, text: str, plugin_id: str, user_id: str
+    bot: Bot, event: GroupMessageEvent, group_id: int, text: str
 ):
     success, message = await handle_text_contribution(group_id, text)
     if success:
-        update_cd(plugin_id, str(group_id), user_id)
+        mark_cooldown(PLUGIN_ID_CONTRIB, event)
         result = await bot.send_group_msg(group_id=group_id, message=message)
         message_cache.add_message(
             group_id=group_id,
@@ -108,17 +101,13 @@ async def process_text_contribution(
 
 
 async def process_image_contribution(
-    bot: Bot,
-    group_id: int,
-    images: list,
-    plugin_id: str,
-    user_id: str,
+    bot: Bot, event: GroupMessageEvent, group_id: int, images: list
 ):
     success, message, saved_filenames = await handle_image_contribution(
         group_id, images
     )
     if success:
-        update_cd(plugin_id, str(group_id), user_id)
+        mark_cooldown(PLUGIN_ID_CONTRIB, event)
         result = await bot.send_group_msg(group_id=group_id, message=message)
         content_info = f"图片投稿: {', '.join(saved_filenames)}"
         message_cache.add_message(

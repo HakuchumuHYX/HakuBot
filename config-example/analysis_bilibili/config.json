@@ -1,8 +1,4 @@
 {
-    "whitelist": [],
-    "group_whitelist": [],
-    "blacklist": [],
-    "group_blacklist": [],
     "desc_blacklist": [],
     "trust_env": false,
     "enable_search": false,

@@ -6,7 +6,7 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 import random
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.media import image_segment
 
 require("nonebot_plugin_localstore")
@@ -22,16 +22,14 @@ welcome_base_dir = PluginPaths("welcome").data
 normal_dir = welcome_base_dir / "normal"
 special_dir = welcome_base_dir / "special"
 
-welcome = on_notice()
+welcome = on_notice(
+    rule=switch_rule("welcome", superuser_bypass=False), priority=1, block=False
+)
 
 
 @welcome.handle()
 async def handle_welcome(event: GroupIncreaseNoticeEvent):
     if event.notice_type != "group_increase":
-        return
-
-    group_id = str(event.group_id)
-    if not is_plugin_enabled("welcome", group_id, "0"):
         return
 
     user_id = event.user_id

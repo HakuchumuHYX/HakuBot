@@ -6,10 +6,14 @@ from nonebot.adapters import Event, Message, Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from plugins.plus_one.config import config
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.logging import get_exc_desc
 
-plus = on_message(rule=regex(""), priority=1, block=False)
+plus = on_message(
+    rule=regex("") & switch_rule("plus_one", superuser_bypass=False),
+    priority=1,
+    block=False,
+)
 msg_dict = {}
 
 
@@ -69,13 +73,6 @@ async def plush_handler(bot: Bot, event: Event):
         return
 
     group_id = str(event.group_id)
-
-    # 检查插件是否启用
-    if not is_plugin_enabled("plus_one", group_id, "0"):
-        return
-
-    if group_id in config.plus_one_black_list:
-        return
 
     # 如果是机器人自己发的消息（虽然通常 on_message 不会触发，但以防万一有 echo）
     if event.get_user_id() == bot.self_id:

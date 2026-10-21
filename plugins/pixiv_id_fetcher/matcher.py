@@ -10,7 +10,6 @@ from typing import List, Optional
 from nonebot import get_driver, on_command, require, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
-    GroupMessageEvent,
     Message,
     MessageEvent,
     MessageSegment,
@@ -40,14 +39,18 @@ from plugins.pixiv_id_fetcher.formatter import (
 )
 from plugins.pixiv_id_fetcher.models import PixivIllust, PixivPage
 
-from core.cooldown import check_cd, update_cd
-from core.access import is_plugin_enabled
+from core.cooldown import cooldown_remaining, mark_cooldown
+from core.access import switch_rule
 
 
 PLUGIN_ID = "pixiv_id_fetcher"
 
 pixiv_cmd = on_command(
-    "pixiv", aliases={"pid", "p站图"}, rule=command_boundary, priority=5, block=True
+    "pixiv",
+    aliases={"pid", "p站图"},
+    rule=command_boundary & switch_rule(PLUGIN_ID),
+    priority=5,
+    block=True,
 )
 
 _client: Optional[PixivClient] = None
@@ -327,17 +330,9 @@ async def _send_link_fallback(
 
 @pixiv_cmd.handle()
 async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    user_id = str(event.get_user_id())
-    group_id: Optional[str] = None
-
-    if isinstance(event, GroupMessageEvent):
-        group_id = str(event.group_id)
-        if not is_plugin_enabled(PLUGIN_ID, group_id, user_id):
-            await pixiv_cmd.finish()
-
-        remaining = check_cd(PLUGIN_ID, group_id, user_id)
-        if remaining > 0:
-            await pixiv_cmd.finish(f"功能冷却中，请等待 {remaining} 秒", at_sender=True)
+    remaining = cooldown_remaining(PLUGIN_ID, event)
+    if remaining > 0:
+        await pixiv_cmd.finish(f"功能冷却中，请等待 {remaining} 秒", at_sender=True)
 
     pid = parse_pid(args.extract_plain_text())
     if pid is None:
@@ -395,8 +390,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                     pid=illust.pid,
                 )
 
-            if group_id:
-                update_cd(PLUGIN_ID, group_id, user_id)
+            mark_cooldown(PLUGIN_ID, event)
 
     except FinishedException:
         raise

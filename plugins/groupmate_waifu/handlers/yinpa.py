@@ -9,7 +9,6 @@ import random
 from nonebot.plugin.on import on_command, on_message
 from nonebot.typing import T_State
 from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent
-from nonebot.rule import Rule
 
 # 本地模块导入
 from plugins.groupmate_waifu import service
@@ -21,11 +20,7 @@ from plugins.groupmate_waifu.render import (
     render_yinpa_record,
 )
 from utils.onebot.messages import mentioned_users
-from plugins.groupmate_waifu.rules import (
-    check_plugin_enabled,
-    check_yinpa_enabled,
-    is_yinpa_enabled,
-)
+from core.access import switch_rule
 
 # 外部模块导入
 from utils.onebot.rules import command_boundary
@@ -42,10 +37,6 @@ async def yinpa_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool
     透群友命令的匹配规则
     只做基本的格式匹配和权限检查，不处理业务逻辑
     """
-    # 检查功能是否启用
-    if not is_yinpa_enabled(str(event.group_id), str(event.user_id)):
-        return False
-
     # 检查消息格式
     msg = event.message.extract_plain_text()
     at_list = mentioned_users(event.message)
@@ -65,7 +56,9 @@ async def yinpa_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool
     return True
 
 
-yinpa = on_message(rule=yinpa_rule, priority=10, block=True)
+yinpa = on_message(
+    rule=yinpa_rule & switch_rule("groupmate_waifu:yinpa"), priority=10, block=True
+)
 
 
 @yinpa.handle()
@@ -139,7 +132,7 @@ async def handle_yinpa(bot: Bot, event: GroupMessageEvent, state: T_State):
 yinpa_list = on_command(
     "涩涩记录",
     aliases={"色色记录"},
-    rule=Rule(command_boundary, check_plugin_enabled),
+    rule=command_boundary & switch_rule("groupmate_waifu:yinpa"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -149,10 +142,6 @@ yinpa_list = on_command(
 @yinpa_list.handle()
 async def handle_yinpa_list(bot: Bot, event: GroupMessageEvent):
     """查看涩涩记录"""
-    # 检查 yinpa 功能是否启用
-    if not await check_yinpa_enabled(event):
-        await yinpa_list.finish("本群禁止涩涩！")
-
     group_id = event.group_id
     msg_list = []
 

@@ -3,11 +3,11 @@ import re
 from typing import Optional, Tuple
 
 from nonebot import on_message, logger
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.rule import Rule
 
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from core.settings import ConfigModel, load_config
 from utils.logging import get_exc_desc
 
@@ -159,11 +159,6 @@ def is_two_choice_message(event: MessageEvent) -> bool:
     - 群聊：不需要 @，只要以 1d 开头即可触发
     - 私聊：同样以 1d 开头触发
     """
-    user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("two_choices", str(event.group_id), user_id):
-            return False
-
     message_text = event.get_plaintext().strip()
 
     # 仅以 1d 开头触发
@@ -175,7 +170,11 @@ def is_two_choice_message(event: MessageEvent) -> bool:
 
 
 # 创建消息处理器
-two_choice = on_message(rule=Rule(is_two_choice_message), priority=10, block=True)
+two_choice = on_message(
+    rule=Rule(is_two_choice_message) & switch_rule("two_choices"),
+    priority=10,
+    block=True,
+)
 
 
 @two_choice.handle()

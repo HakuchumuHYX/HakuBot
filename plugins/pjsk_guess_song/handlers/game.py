@@ -15,7 +15,6 @@ from nonebot.adapters.onebot.v11 import (
     Message,
     MessageEvent,
     Bot,
-    GroupMessageEvent,
 )
 
 from plugins.pjsk_guess_song.runtime import (
@@ -37,7 +36,7 @@ from plugins.pjsk_guess_song.utils import (
     _check_game_start_conditions,
 )
 from plugins.pjsk_guess_song.game_session import _run_game_session
-from core.access import is_plugin_enabled
+from core.access import switch_rule
 from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment
 
@@ -61,7 +60,7 @@ start_guess_song_unified = on_command(
         "gs6",
         "gs7",
     },
-    rule=command_boundary,
+    rule=command_boundary & switch_rule("pjsk_guess_song"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -70,12 +69,6 @@ start_guess_song_unified = on_command(
 
 @start_guess_song_unified.handle()
 async def _(bot: Bot, event: MessageEvent, state: T_State):
-    user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await start_guess_song_unified.finish()
-            return
-
     session_id = get_session_id(event)
     lock = game_session_locks[session_id]
 
@@ -211,7 +204,7 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
 start_random_guess_song = on_command(
     "随机猜歌",
     aliases={"rgs"},
-    rule=command_boundary,
+    rule=command_boundary & switch_rule("pjsk_guess_song"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -220,12 +213,6 @@ start_random_guess_song = on_command(
 
 @start_random_guess_song.handle()
 async def _(bot: Bot, event: MessageEvent):
-    user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await start_random_guess_song.finish()
-            return
-
     if not plugin_config.full_mode:
         await start_random_guess_song.finish(
             "......当前为 Light 模式，随机猜歌不可用。"
@@ -345,18 +332,16 @@ async def _(bot: Bot, event: MessageEvent):
 
 # --- 猜歌手 ---
 start_vocalist_game = on_command(
-    "猜歌手", rule=command_boundary, permission=GROUP, priority=5, block=True
+    "猜歌手",
+    rule=command_boundary & switch_rule("pjsk_guess_song"),
+    permission=GROUP,
+    priority=5,
+    block=True,
 )
 
 
 @start_vocalist_game.handle()
 async def _(bot: Bot, event: MessageEvent):
-    user_id = str(event.user_id)
-    if isinstance(event, GroupMessageEvent):
-        if not is_plugin_enabled("pjsk_guess_song", str(event.group_id), user_id):
-            await start_vocalist_game.finish()
-            return
-
     if not cache_service.another_vocal_songs:
         await start_vocalist_game.finish(
             "......抱歉，没有找到包含 another_vocal 的歌曲，无法开始游戏。"

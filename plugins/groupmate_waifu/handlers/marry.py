@@ -21,7 +21,7 @@ from plugins.groupmate_waifu.render import (
     send_with_fallback,
 )
 from utils.onebot.messages import mentioned_users
-from plugins.groupmate_waifu.rules import is_plugin_enabled
+from core.access import switch_rule
 
 # ============================================================
 # 娶群友核心功能
@@ -33,10 +33,6 @@ async def waifu_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool
     娶群友命令的匹配规则
     只做基本的格式匹配和权限检查，不处理业务逻辑
     """
-    # 检查插件是否启用
-    if not is_plugin_enabled(str(event.group_id), str(event.user_id)):
-        return False
-
     # 检查消息格式
     msg = event.message.extract_plain_text()
     at_list = mentioned_users(event.message)
@@ -59,7 +55,9 @@ async def waifu_rule(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool
     return True
 
 
-waifu = on_message(rule=waifu_rule, priority=10, block=True)
+waifu = on_message(
+    rule=waifu_rule & switch_rule("groupmate_waifu"), priority=10, block=True
+)
 
 # 按群加锁，避免两人同时娶同一目标时在多次 await 之间产生竞态
 _group_locks = defaultdict(asyncio.Lock)

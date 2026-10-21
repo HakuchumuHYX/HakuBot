@@ -4,8 +4,7 @@ from datetime import datetime, timedelta, timezone
 from nonebot import get_bot, logger
 from nonebot_plugin_apscheduler import scheduler
 
-# 导入管理模块
-from core.access import is_plugin_enabled
+from core.access import is_enabled
 
 from plugins.group_statistics.data_manager import data_manager
 from plugins.group_statistics.utils import (
@@ -27,7 +26,7 @@ async def send_daily_report(bot, group_id: int) -> bool | None:
     注意：发送发生在次日 00:00，但统计日期应为前一天。
     """
     # 检查插件是否启用
-    if not is_plugin_enabled("group_statistics", str(group_id), "0"):
+    if not is_enabled("group_statistics", str(group_id)):
         return None
 
     total = get_total_messages(group_id)
