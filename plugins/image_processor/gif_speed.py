@@ -1,9 +1,9 @@
 # gif_speed.py
+import asyncio
 import os
 
 from nonebot import logger
 
-from utils.concurrency import run_in_pool
 from plugins.image_processor.utils import (
     UserInputError,
     download_image,
@@ -39,4 +39,4 @@ async def change_gif_speed(image_url: str, speed_factor: float) -> str:
     async with download_image(image_url) as (image_path, animated):
         if not animated:
             raise UserInputError("回复的图片不是 GIF 动图")
-        return await run_in_pool(_change_gif_speed_file, image_path, speed_factor)
+        return await asyncio.to_thread(_change_gif_speed_file, image_path, speed_factor)

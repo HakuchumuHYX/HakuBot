@@ -33,7 +33,6 @@ from utils.rendering.engine import render_text
 from utils.onebot.media import image_segment
 from utils.network.http import HttpError, download_bytes
 from utils.logging import get_exc_desc
-from utils.concurrency import run_in_pool
 from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.parser import DELETED_SOURCE_TIPS, ParsedDynamic
 
@@ -147,7 +146,7 @@ async def render_text_image(text: str) -> bytes:
     data = bytes(data)
     if len(data) < MIN_IMAGE_BYTES:
         raise ValueError(f"文字卡片产物过小（{len(data)} 字节），疑似空白图")
-    await run_in_pool(_verify_image_bytes, data)
+    await asyncio.to_thread(_verify_image_bytes, data)
     return data
 
 
@@ -215,7 +214,7 @@ async def merge_pics(pic_urls: list[str]) -> list[Union[bytes, str]]:
             return loaded[index]
         try:
             data = await download_bytes(pics[index], proxy=plugin_config.proxy)
-            image = await run_in_pool(_open_image, data)
+            image = await asyncio.to_thread(_open_image, data)
         except _PIC_ERRORS as e:
             logger.warning(
                 f"配图下载/解码失败，放弃合并: {pics[index]} ({get_exc_desc(e)})"
@@ -276,7 +275,9 @@ async def merge_pics(pic_urls: list[str]) -> list[Union[bytes, str]]:
             matrix = (3, 3)
 
     try:
-        merged = await run_in_pool(_compose_grid, images, matrix, x_coord, y_coord)
+        merged = await asyncio.to_thread(
+            _compose_grid, images, matrix, x_coord, y_coord
+        )
     except (OSError, ValueError) as e:
         logger.warning(f"配图拼接失败，退回原图列表: {get_exc_desc(e)}")
         return list(pics)

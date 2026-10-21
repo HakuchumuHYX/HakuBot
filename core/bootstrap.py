@@ -16,12 +16,9 @@ def configure(driver):
     access_state.initialize()
     from utils.network.http import close_sessions
     from utils.rendering.browser import browser_pool
-    from utils.concurrency import close_pool
     from utils.files import close_temporary_files
 
-    runtime.closers.extend(
-        (close_pool, close_sessions, browser_pool.close, close_temporary_files)
-    )
+    runtime.closers.extend((close_sessions, browser_pool.close, close_temporary_files))
 
     # NoneBot 自己的 "Bot N connected" 是 INFO，被 bot.py 的 stdout 过滤掉了，这里补一行
     @driver.on_bot_connect

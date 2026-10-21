@@ -12,8 +12,6 @@ import psutil
 
 from plugins.alive_stat.config import config
 
-from utils.concurrency import run_in_pool
-
 
 # ================= 数据类 =================
 
@@ -234,7 +232,7 @@ def _parse_docker_mem(s: str) -> int:
 
 
 async def get_processes() -> list[ProcessInfo]:
-    results = await run_in_pool(_get_processes_psutil)
+    results = await asyncio.to_thread(_get_processes_psutil)
     for entry in config.docker_processes:
         running, mem_bytes = await _get_docker_process(entry.container)
         results.append(
@@ -286,7 +284,7 @@ async def get_network() -> list[NetworkResult]:
 
 
 async def collect_server_status() -> ServerStatus:
-    resources = await run_in_pool(get_resources)
+    resources = await asyncio.to_thread(get_resources)
     processes = await get_processes()
     network = await get_network()
 

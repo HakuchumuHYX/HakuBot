@@ -23,7 +23,6 @@ require("nonebot_plugin_localstore")
 
 from utils.onebot.media import image_segment
 from utils.onebot.forward import ForwardSendError, ForwardStatus, send_forward_msg
-from utils.concurrency import run_in_pool
 from plugins.pixiv_id_fetcher.client import PixivClient, PixivClientError
 from plugins.pixiv_id_fetcher.config import config
 from plugins.pixiv_id_fetcher.formatter import (
@@ -171,7 +170,7 @@ async def _download_page(
             return image_segment(path)
         data = path.read_bytes()
         ext = detect_image_ext(data, path.suffix.lstrip(".") or page.ext)
-        data, ext = await run_in_pool(
+        data, ext = await asyncio.to_thread(
             _get_client().normalize_static_image_for_forward, data, ext
         )
         path = _cache_path_with_ext(illust, page, ext)
@@ -185,7 +184,7 @@ async def _download_page(
     )
     ext = detect_image_ext(data, page.ext)
     if normalize_for_forward:
-        data, ext = await run_in_pool(
+        data, ext = await asyncio.to_thread(
             _get_client().normalize_static_image_for_forward, data, ext
         )
     path = _cache_path_with_ext(illust, page, ext)
@@ -205,7 +204,7 @@ async def _download_ugoira(illust: PixivIllust) -> MessageSegment:
         metadata.zip_url,
         max_bytes=int(config.get("ugoira_zip_max_bytes", 30 * 1024 * 1024)),
     )
-    gif_data = await run_in_pool(
+    gif_data = await asyncio.to_thread(
         client.render_ugoira_gif,
         zip_data,
         metadata,
@@ -335,9 +334,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
 
         remaining = check_cd(PLUGIN_ID, group_id, user_id)
         if remaining > 0:
-            await pixiv_cmd.finish(
-                f"功能冷却中，请等待 {remaining} 秒", at_sender=True
-            )
+            await pixiv_cmd.finish(f"功能冷却中，请等待 {remaining} 秒", at_sender=True)
 
     pid = parse_pid(args.extract_plain_text())
     if pid is None:

@@ -1,9 +1,9 @@
 # gif_reverse.py
+import asyncio
 import os
 
 from nonebot import logger
 
-from utils.concurrency import run_in_pool
 from plugins.image_processor.utils import (
     UserInputError,
     download_image,
@@ -39,4 +39,4 @@ async def reverse_gif(image_url: str) -> str:
     async with download_image(image_url) as (image_path, animated):
         if not animated:
             raise UserInputError("回复的图片不是 GIF 动图")
-        return await run_in_pool(_reverse_gif_file, image_path)
+        return await asyncio.to_thread(_reverse_gif_file, image_path)

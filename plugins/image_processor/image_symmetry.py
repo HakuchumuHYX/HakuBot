@@ -1,10 +1,10 @@
 # image_symmetry.py
+import asyncio
 import os
 
 from PIL import Image
 from nonebot import logger
 
-from utils.concurrency import run_in_pool
 from plugins.image_processor.utils import (
     convert_to_supported_mode,
     download_image,
@@ -146,4 +146,4 @@ async def process_image_symmetry(image_url: str, symmetry_type: str) -> str:
         process = (
             _process_gif_symmetry_file if animated else _process_static_symmetry_file
         )
-        return await run_in_pool(process, image_path, symmetry_type)
+        return await asyncio.to_thread(process, image_path, symmetry_type)

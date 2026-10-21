@@ -1,11 +1,11 @@
 # image_rotate.py
+import asyncio
 import math
 import os
 
 from nonebot import logger
 from PIL import Image
 
-from utils.concurrency import run_in_pool
 from plugins.image_processor.utils import (
     download_image,
     load_gif_frames,
@@ -71,6 +71,6 @@ def _process_rotate_file(
 
 async def process_image_rotate(image_url: str, direction: str, speed: float) -> str:
     async with download_image(image_url) as (image_path, animated):
-        return await run_in_pool(
+        return await asyncio.to_thread(
             _process_rotate_file, image_path, animated, direction, speed
         )

@@ -167,7 +167,7 @@ class Store:
     def to_dict(self) -> dict[str, Any]:
         """导出当前状态的**快照副本**（供落盘与调试，改它不会影响内部状态）。
 
-        必须是副本：save() 会被 run_in_pool 丢到线程里执行（scheduler._save_state /
+        必须是副本：save() 会被 asyncio.to_thread 丢到线程里执行（scheduler._save_state /
         prune_state），若把内部 dict/list 直接交给 json.dump，事件循环侧的 mark_seen
         追加一个 id 就会让线程里抛 RuntimeError: dictionary changed size during iteration。
         """

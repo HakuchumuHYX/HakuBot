@@ -25,14 +25,7 @@ class PluginPaths:
 
     @property
     def data(self):
-        if self.plugin_id == "identify":
-            return project_root() / "plugins/identify/data"
-        directory = {
-            "groupmate_waifu": "waifu",
-            "alive_stat": "alive_stats",
-            "sk_predict": "sekai_cache",
-        }.get(self.plugin_id, self.plugin_id)
-        return project_root() / "data" / directory
+        return project_root() / "data" / self.plugin_id
 
     @property
     def cache(self):

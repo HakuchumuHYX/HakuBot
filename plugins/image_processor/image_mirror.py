@@ -1,9 +1,9 @@
 # image_mirror.py
+import asyncio
 import os
 
 from PIL import Image
 
-from utils.concurrency import run_in_pool
 from plugins.image_processor.utils import (
     convert_to_supported_mode,
     download_image,
@@ -51,4 +51,4 @@ def _process_gif_mirror_file(image_path: str, direction: str) -> str:
 async def process_image_mirror(image_url: str, direction: str) -> str:
     async with download_image(image_url) as (image_path, animated):
         process = _process_gif_mirror_file if animated else _process_static_mirror_file
-        return await run_in_pool(process, image_path, direction)
+        return await asyncio.to_thread(process, image_path, direction)

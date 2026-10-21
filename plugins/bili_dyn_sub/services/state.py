@@ -2,7 +2,6 @@ from __future__ import annotations
 import asyncio
 from typing import Optional
 from nonebot import logger
-from utils.concurrency import run_in_pool
 from plugins.bili_dyn_sub.backoff import backoff_manager
 from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.store import store
@@ -51,7 +50,7 @@ def _cfg_int(name: str, default: int, minimum: int = 0) -> int:
 
 async def _save_state() -> None:
     """把去重状态落盘（同步原子写下线程池，不阻塞事件循环）"""
-    await run_in_pool(store.save)
+    await asyncio.to_thread(store.save)
 
 
 def _log_error(uid: str, error_key: str, message: str) -> None:

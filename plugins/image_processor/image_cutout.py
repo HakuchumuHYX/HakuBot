@@ -10,7 +10,6 @@ from nonebot import get_driver, logger
 from PIL import Image
 
 from core.lifecycle import on_plugin_startup
-from utils.concurrency import run_in_pool
 from utils.files import ensure_output_dir, safe_delete_file
 from utils.network.http import download_to_file
 from plugins.image_processor.utils import (
@@ -329,12 +328,14 @@ async def remove_background(image_url: str) -> str:
     """主抠图函数：静态图 已有透明 → 纯色背景 → isnet-anime；GIF 只走前两步"""
     async with download_image(image_url) as (image_path, animated):
         if animated:
-            return await run_in_pool(_cutout_gif_file, image_path)
+            return await asyncio.to_thread(_cutout_gif_file, image_path)
 
         output_dir = ensure_output_dir("nonebot_image_cutout")
         output_path = output_dir / f"cutout_{os.urandom(4).hex()}.png"
         try:
-            if not await run_in_pool(_cutout_static_file, image_path, output_path):
+            if not await asyncio.to_thread(
+                _cutout_static_file, image_path, output_path
+            ):
                 await _isnet_cutout(image_path, output_path)
         except BaseException:
             safe_delete_file(output_path)

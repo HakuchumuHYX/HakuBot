@@ -4,7 +4,6 @@ data/
 !plugins/buaa_msm/config.example.json
 !plugins/webconsole_bridge/config.example.json
 !plugins/pjsk_event_summary/config.example.json
-plugins/identify/data/
 .env.prod
 cache/
 output.log

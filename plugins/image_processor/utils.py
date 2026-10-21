@@ -8,7 +8,6 @@ import aiohttp
 from nonebot import logger
 from PIL import Image, ImageOps, ImageSequence, UnidentifiedImageError
 
-from utils.concurrency import run_in_pool
 from utils.network.http import DownloadTooLarge, HttpError, temporary_download
 
 # 静态图和 GIF 共用一个上限：QQ 图片链接没有扩展名，下载前分不出是不是 GIF
@@ -74,7 +73,7 @@ async def download_image(url: str):
         max_bytes=IMAGE_PROCESSOR_MAX_IMAGE_BYTES,
         timeout=IMAGE_PROCESSOR_IMAGE_DOWNLOAD_TIMEOUT,
     ) as path:
-        yield path, await run_in_pool(_is_animated, path)
+        yield path, await asyncio.to_thread(_is_animated, path)
 
 
 async def run_command(cmd: list[str], *, timeout: float, label: str) -> bytes:

@@ -18,7 +18,6 @@ CONFIG_FILE = PluginPaths("two_choices").config / "config.json"
 
 # 全局配置
 plugin_config = {
-    "keywords": [],  # 已弃用：不再以关键词触发（保留字段以兼容旧配置结构）
     "responses": [],
     "error_responses": [],
 }
@@ -31,18 +30,16 @@ def load_config():
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
-                plugin_config["keywords"] = config_data.get("keywords", [])
                 plugin_config["responses"] = config_data.get("responses", [])
                 plugin_config["error_responses"] = config_data.get(
                     "error_responses", []
                 )
             logger.debug(
-                f"二择插件配置加载成功，关键词: {len(plugin_config['keywords'])} 个，回复模板: {len(plugin_config['responses'])} 个"
+                f"二择插件配置加载成功，回复模板: {len(plugin_config['responses'])} 个"
             )
         else:
             # 如果配置文件不存在，创建默认配置
             default_config = {
-                "keywords": [],
                 "responses": [
                     "我建议选择：{choice}",
                     "我觉得 {choice} 更好一些",
@@ -284,9 +281,7 @@ view_config = on_command(
 async def handle_view_config():
     """查看当前配置"""
     config_info = (
-        f"关键词数量: {len(plugin_config['keywords'])}\n"
         f"回复模板数量: {len(plugin_config['responses'])}\n"
-        f"错误回复数量: {len(plugin_config['error_responses'])}\n\n"
-        f"关键词示例: {', '.join(plugin_config['keywords'][:5]) if plugin_config['keywords'] else '(空)'}"
+        f"错误回复数量: {len(plugin_config['error_responses'])}"
     )
     await view_config.finish(config_info)

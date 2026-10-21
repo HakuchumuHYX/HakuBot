@@ -15,7 +15,6 @@ from PIL import Image
 
 from plugins.lunabot_imgexp.config import config
 from utils.logging import get_exc_desc
-from utils.concurrency import run_in_pool
 from utils.text import truncate
 from utils.files import TemporaryPath
 from utils.onebot.forward import send_forward_msg
@@ -68,9 +67,7 @@ def pick_video_url(media: dict) -> str:
     if not mp4s:
         return media["url"]
     duration = media.get("duration") or 0
-    fitting = [
-        f for f in mp4s if f.get("bitrate", 0) * duration / 8 <= VIDEO_MAX_BYTES
-    ]
+    fitting = [f for f in mp4s if f.get("bitrate", 0) * duration / 8 <= VIDEO_MAX_BYTES]
     return (fitting[-1] if fitting else mp4s[0])["url"]
 
 
@@ -207,7 +204,7 @@ async def _(
 
     if concat_mode and images:
         try:
-            images = [await run_in_pool(concat_images, images, concat_mode)]
+            images = [await asyncio.to_thread(concat_images, images, concat_mode)]
         except Exception as e:
             logger.exception("拼图失败")
             await ximg.finish(f"拼图失败: {e}")
@@ -218,7 +215,7 @@ async def _(
             if args_obj.gif:
                 gif_path_ctx = TemporaryPath("gif", remove_after=timedelta(minutes=3))
                 gif_path = stack.enter_context(gif_path_ctx)
-                await run_in_pool(save_transparent_static_gif, img, str(gif_path))
+                await asyncio.to_thread(save_transparent_static_gif, img, str(gif_path))
                 messages.append(image_segment(gif_path))
 
             elif isinstance(img, Image.Image):

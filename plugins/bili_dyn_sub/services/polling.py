@@ -4,7 +4,6 @@ from typing import Any, Optional
 from nonebot import get_bot, logger
 from nonebot.adapters.onebot.v11 import Bot, Message
 from utils.logging import get_exc_desc
-from utils.concurrency import run_in_pool
 from plugins.bili_dyn_sub import api
 from plugins.bili_dyn_sub.backoff import ACTION_REFRESH_COOKIE, backoff_manager
 from plugins.bili_dyn_sub.parser import parse_feed
@@ -194,6 +193,6 @@ async def poll_once() -> None:
 
 async def prune_state() -> None:
     """每日裁剪：清理已退订 uid 的残留状态与超限 seen_ids（§4.1）"""
-    removed = await run_in_pool(store.prune)
+    removed = await asyncio.to_thread(store.prune)
     if removed:
         logger.info(f"去重状态裁剪完成，清理 {removed} 条记录")
