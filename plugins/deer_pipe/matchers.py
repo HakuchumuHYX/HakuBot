@@ -1,13 +1,11 @@
 """deer_pipe 插件命令处理器模块"""
 
 from datetime import datetime
-from typing import Optional
 
 from nonebot import logger
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.exception import FinishedException
-from nonebot.params import Depends
 from nonebot_plugin_alconna import Alconna, AlconnaMatcher, Args, Match, on_alconna
 from nonebot_plugin_alconna.uniseg import At, UniMessage
 from nonebot_plugin_userinfo import EventUserInfo, UserInfo

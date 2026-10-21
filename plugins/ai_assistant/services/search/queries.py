@@ -1,11 +1,8 @@
-import httpx
 import json
 import re
-import math
-from typing import Any, Tuple, Optional, List
+from typing import List
 from nonebot import logger
-from pydantic import Field
-from plugins.ai_assistant.config import StrictBaseModel, plugin_config
+from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.services.chat_service import call_chat_completion
 
 

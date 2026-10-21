@@ -1,30 +1,16 @@
 from core.lifecycle import runtime as app_runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 from nonebot import get_driver, logger
-from nonebot.plugin import PluginMetadata
-from plugins.pjsk_guess_song.config import plugin_config, data_dir
-from plugins.pjsk_guess_song.services.db_service import DBService
-from plugins.pjsk_guess_song.services.cache_service import CacheService
-from plugins.pjsk_guess_song.services.audio_processor import AudioProcessor
-from plugins.pjsk_guess_song.services.image_service import ImageService
-from plugins.pjsk_guess_song.services.game_service import GameService
 from plugins.pjsk_guess_song.tools.generate_guess_song import (
     generate as generate_guess_song,
 )
 from plugins.pjsk_guess_song.runtime import (
-    PLUGIN_VERSION,
-    plugin_dir,
     resources_dir,
-    output_dir,
-    db_path,
     db_service,
     cache_service,
     executor,
     audio_processor,
-    image_service,
-    game_service,
     plugin_config,
 )
 
@@ -73,5 +59,5 @@ async def _on_shutdown():
 
 # --- 5. 导入处理器模块以注册 Matcher ---
 # 导入时，它们会从本文件导入已实例化的 `game_service`, `image_service` 等
-from plugins.pjsk_guess_song import game_session
-from plugins.pjsk_guess_song.handlers import game, listen, other, leaderboard
+from plugins.pjsk_guess_song import game_session  # noqa: F401
+from plugins.pjsk_guess_song.handlers import game, listen, other, leaderboard  # noqa: F401

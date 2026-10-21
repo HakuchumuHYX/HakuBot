@@ -9,7 +9,6 @@ from nonebot.matcher import Matcher
 from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import (
     MessageEvent,
-    MessageSegment,
     Bot,
     GroupMessageEvent,
 )

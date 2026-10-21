@@ -7,7 +7,7 @@ PJSK 猜卡面插件
 on_message 监听器将消息事件放入队列，主循环通过 wait_for 实现超时。
 """
 
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import runtime, on_plugin_startup
 import asyncio
 import time
 from typing import Dict, Optional, Set, Tuple

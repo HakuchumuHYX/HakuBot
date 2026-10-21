@@ -1,7 +1,7 @@
 """Image identification based on actual file contents."""
 
 from io import BytesIO
-from PIL import Image, ImageOps
+from PIL import Image
 
 MIME_TYPES = {
     "jpg": "image/jpeg",

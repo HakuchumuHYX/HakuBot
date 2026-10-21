@@ -1,13 +1,11 @@
 from utils.json_io import atomic_write_json
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import on_plugin_startup
 from utils.paths import PluginPaths
 import json
 import random
-from pathlib import Path
-from typing import List
 
 from nonebot import get_driver, on_message, logger
-from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.rule import Rule
 from nonebot.exception import FinishedException
 from core.access import is_plugin_enabled
@@ -21,19 +19,13 @@ bot_config = {"nicknames": [], "reply_texts": []}
 
 def load_config():
     """加载配置文件"""
-    global bot_config
     try:
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
-                bot_config["nicknames"] = config_data.get("bot_nicknames", [])
-                bot_config["reply_texts"] = config_data.get("reply_texts", [])
-            logger.debug(
-                f"配置文件加载成功，昵称: {bot_config['nicknames']}, 回复文本: {len(bot_config['reply_texts'])} 条"
-            )
         else:
             # 如果配置文件不存在，创建默认配置
-            default_config = {
+            config_data = {
                 "bot_nicknames": ["小助手", "机器人", "bot", "助手"],
                 "reply_texts": [
                     "我在呢！有什么需要帮助的吗？",
@@ -41,9 +33,14 @@ def load_config():
                     "我在这里呢~",
                 ],
             }
-            atomic_write_json(CONFIG_FILE, default_config, ensure_ascii=False, indent=2)
-            bot_config = default_config
+            atomic_write_json(CONFIG_FILE, config_data, ensure_ascii=False, indent=2)
             logger.info("创建默认配置文件成功")
+        # 文件里的键名是 bot_nicknames，内存里是 nicknames，两条路径都要经过这里转换
+        bot_config["nicknames"] = config_data.get("bot_nicknames", [])
+        bot_config["reply_texts"] = config_data.get("reply_texts", [])
+        logger.debug(
+            f"配置文件加载成功，昵称: {bot_config['nicknames']}, 回复文本: {len(bot_config['reply_texts'])} 条"
+        )
     except Exception as e:
         logger.exception(f"加载配置文件失败: {e}")
 

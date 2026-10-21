@@ -5,7 +5,6 @@ import io
 import httpx
 import re
 from typing import Any, Dict, List, Literal, Optional, Tuple
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from PIL import Image, ImageOps
 from plugins.ai_assistant.config import plugin_config
 

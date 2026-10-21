@@ -1,13 +1,11 @@
 from nonebot.plugin import on_command, PluginMetadata
-from nonebot import on_message, logger
+from nonebot import logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
-    Message,
     MessageEvent,
     MessageSegment,
     GroupMessageEvent,
 )
-from httpx import AsyncClient
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
 

@@ -24,7 +24,6 @@ from PIL import Image, ImageFont
 from nonebot import logger
 
 from plugins.buaa_msm.config import plugin_config
-from plugins.buaa_msm.domain.constants import SCENE_KEY_TO_NAME
 
 # 从配置获取路径
 resource_dir: Path = plugin_config.resource_dir

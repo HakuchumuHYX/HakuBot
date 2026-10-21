@@ -1,5 +1,5 @@
 from __future__ import annotations
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import on_plugin_startup, on_plugin_shutdown
 
 from nonebot import get_driver
 from nonebot.plugin import PluginMetadata

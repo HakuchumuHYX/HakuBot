@@ -1,8 +1,6 @@
 from utils.paths import PluginPaths
 from typing import List, Set
 import json
-import os
-from pathlib import Path
 from nonebot import logger
 
 from utils.json_io import atomic_write_json

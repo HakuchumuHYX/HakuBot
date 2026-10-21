@@ -1,7 +1,4 @@
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
-from nonebot.rule import Rule
-import asyncio
-from inspect import iscoroutinefunction
 import re
 
 

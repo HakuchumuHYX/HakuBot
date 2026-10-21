@@ -1,18 +1,10 @@
-import time
-from typing import Dict, Any
-from nonebot import on_command, get_driver, logger
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.permission import SUPERUSER
 from utils.onebot.forward import send_forward_msg
 from core.registry import get_plugin_catalog
-from core.access_state import (
-    cd_config,
-    save_cd_config,
-    cd_runtime,
-    save_cd_runtime,
-)
 
-from core.cooldown import get_plugin_cd_duration, check_cd, update_cd, set_plugin_cd
+from core.cooldown import get_plugin_cd_duration, set_plugin_cd
 
 enable_cd = on_command("启用CD", permission=SUPERUSER, priority=1, block=True)
 

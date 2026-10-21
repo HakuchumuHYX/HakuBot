@@ -13,7 +13,6 @@ from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import (
     Message,
     MessageEvent,
-    MessageSegment,
     Bot,
     GroupMessageEvent,
 )

@@ -10,17 +10,14 @@ from PIL import Image
 
 # 忽略 PIL 的 EXIF 损坏警告（不影响图片处理）
 warnings.filterwarnings("ignore", message="Corrupt EXIF data")
-from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot import logger
 from plugins.stickers.send import (
     sticker_folders,
     sticker_dir,
     resolve_folder_name,
-    count_images_in_folder,
     refresh_max_id,
     invalidate_count_cache,
 )
-from plugins.stickers.manage import is_superuser
 from plugins.stickers.config import (
     IMAGE_EXTENSIONS,
     DHASH_SIZE,
@@ -32,8 +29,6 @@ from plugins.stickers.cache_db import (
     get_cached_hash,
     update_cache,
     invalidate_cache,
-    clear_all_cache,
-    get_cache_stats,
 )
 
 # ==================== dHash 算法实现 ====================

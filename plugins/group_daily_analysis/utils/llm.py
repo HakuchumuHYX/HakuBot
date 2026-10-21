@@ -1,7 +1,7 @@
 """The analysis plugin's own request configuration and concurrency policy."""
 
 import asyncio
-from utils.llm.client import LLMClientConfig, chat_completion, is_retryable_llm_error
+from utils.llm.client import LLMClientConfig, chat_completion
 from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.models import TokenUsage
 

@@ -1,11 +1,10 @@
 import time
-from typing import Tuple, Union
+from typing import Tuple
 from nonebot import on_command, on_message, logger, get_driver
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     PrivateMessageEvent,
     Message,
-    MessageSegment,
     Bot,
 )
 from nonebot.rule import to_me, is_type

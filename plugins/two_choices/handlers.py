@@ -1,10 +1,9 @@
 from utils.json_io import atomic_write_json
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import on_plugin_startup
 from utils.paths import PluginPaths
 import json
 import random
 import re
-from pathlib import Path
 from typing import Optional, Tuple
 
 from nonebot import get_driver, on_message, logger

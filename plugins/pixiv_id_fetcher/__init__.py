@@ -7,4 +7,4 @@ try:
 except Exception:
     pass
 else:
-    from plugins.pixiv_id_fetcher import matcher
+    from plugins.pixiv_id_fetcher import matcher  # noqa: F401

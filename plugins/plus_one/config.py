@@ -1,8 +1,6 @@
 from utils.paths import PluginPaths
 import json
-from pathlib import Path
 from nonebot import logger
-from typing import Set
 
 # 配置文件路径
 CONFIG_FILE = PluginPaths("plus_one").config / "config.json"

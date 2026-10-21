@@ -1,10 +1,8 @@
 from nonebot import on_command, logger
-from nonebot.adapters.onebot.v11 import Message
-from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 
-from plugins.daily_message.config_manager import load_config, save_config
+from plugins.daily_message.config_manager import load_config
 
 # 配置管理命令
 list_schedules = on_command(

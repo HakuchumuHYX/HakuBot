@@ -2,7 +2,7 @@ from utils.paths import PluginPaths
 # pjsk_guess_song/config.py
 
 import json
-from typing import List, Dict, Any
+from typing import List, Dict
 from pydantic import BaseModel, Extra
 from nonebot import logger
 

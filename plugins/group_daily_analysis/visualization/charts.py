@@ -1,4 +1,4 @@
-from typing import Dict, List, Any
+from typing import Dict, Any
 from datetime import datetime
 from collections import defaultdict
 from plugins.group_daily_analysis.models import ActivityVisualization

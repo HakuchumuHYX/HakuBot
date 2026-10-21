@@ -14,7 +14,7 @@ try:
     import torch
     import librosa
     import pretty_midi
-    import numpy as np
+    import numpy as np  # noqa: F401
     from transformers import Pop2PianoForConditionalGeneration, AutoProcessor
     from midi2audio import FluidSynth
     from pydub import AudioSegment

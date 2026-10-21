@@ -1,7 +1,6 @@
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import on_plugin_startup
 from utils.paths import PluginPaths
 import time
-from pathlib import Path
 
 import aiofiles
 from openai import BadRequestError

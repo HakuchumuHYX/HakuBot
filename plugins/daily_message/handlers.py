@@ -1,9 +1,7 @@
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import on_plugin_startup
 from utils.paths import PluginPaths
 from nonebot import require, get_driver, logger
-from nonebot.adapters.onebot.v11 import Bot
 import json
-from pathlib import Path
 
 # 导入定时任务依赖
 require("nonebot_plugin_apscheduler")
@@ -127,4 +125,4 @@ async def init_plugin():
 
 
 # 模块底部导入命令处理器，注册命令（command_handler 内对本模块使用延迟导入，避免循环导入）
-from plugins.daily_message import command_handler
+from plugins.daily_message import command_handler  # noqa: F401

@@ -2,7 +2,6 @@ from utils.paths import PluginPaths
 from pathlib import Path
 from typing import Set
 from nonebot import logger
-import nonebot_plugin_localstore as localstore
 
 from utils.json_io import atomic_write_json, load_json
 

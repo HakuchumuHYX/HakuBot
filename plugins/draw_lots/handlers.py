@@ -20,7 +20,6 @@ from plugins.draw_lots.message import message_sign
 import random
 import json
 from datetime import date
-from pathlib import Path
 from typing import Dict, Any, Optional
 
 # 导入管理模块

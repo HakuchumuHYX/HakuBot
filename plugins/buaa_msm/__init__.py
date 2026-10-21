@@ -20,8 +20,8 @@ from plugins.buaa_msm.infra.storage import load_user_latest_files
 load_user_latest_files()
 
 # 导入 handlers 完成命令注册
-from plugins.buaa_msm.handlers import admin as _admin
-from plugins.buaa_msm.handlers import bind as _bind
-from plugins.buaa_msm.handlers import msr as _msr
-from plugins.buaa_msm.handlers import upload as _upload
-from plugins.buaa_msm.handlers import web as _web
+from plugins.buaa_msm.handlers import admin as _admin  # noqa: F401
+from plugins.buaa_msm.handlers import bind as _bind  # noqa: F401
+from plugins.buaa_msm.handlers import msr as _msr  # noqa: F401
+from plugins.buaa_msm.handlers import upload as _upload  # noqa: F401
+from plugins.buaa_msm.handlers import web as _web  # noqa: F401

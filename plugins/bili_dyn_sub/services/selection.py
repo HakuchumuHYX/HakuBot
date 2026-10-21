@@ -1,8 +1,13 @@
 from __future__ import annotations
+import time
+from typing import NamedTuple
+from nonebot import logger
+from plugins.bili_dyn_sub.parser import ParsedDynamic, should_skip
+from plugins.bili_dyn_sub.store import dyn_id_to_int, store
 from plugins.bili_dyn_sub.services import state as _state
 
 
-def _track_empty_feed(uid: str, parsed_list: list[_state.ParsedDynamic]) -> int:
+def _track_empty_feed(uid: str, parsed_list: list[ParsedDynamic]) -> int:
     """维护 per-UID 的连续空 feed 计数并在基线已建立时按阈值告警，返回当前连续次数。
 
     「code==0 且一条动态都没有」既可能是该 UP 真没动态，也可能是软风控
@@ -15,7 +20,7 @@ def _track_empty_feed(uid: str, parsed_list: list[_state.ParsedDynamic]) -> int:
 
     streak = _state._empty_feed_streak.get(uid, 0) + 1
     _state._empty_feed_streak[uid] = streak
-    if _state.store.is_baseline_initialized(uid):
+    if store.is_baseline_initialized(uid):
         message = (
             f"UID {uid} 已连续 {streak} 轮取数成功但 feed 为空（既无 -352 也无动态），"
             f"疑似软风控；cookie 会随时间自愈，长期不恢复请在 config.json 配置 sessdata"
@@ -24,13 +29,13 @@ def _track_empty_feed(uid: str, parsed_list: list[_state.ParsedDynamic]) -> int:
             streak > _state._EMPTY_FEED_WARN_THRESHOLD
             and streak % _state._EMPTY_FEED_WARN_THRESHOLD == 0
         ):
-            _state.logger.warning(message)
+            logger.warning(message)
         else:
-            _state.logger.debug(message)
+            logger.debug(message)
     return streak
 
 
-def _init_baseline(uid: str, parsed_list: list[_state.ParsedDynamic]) -> None:
+def _init_baseline(uid: str, parsed_list: list[ParsedDynamic]) -> None:
     """首次订阅 / 状态缺失：全部标 seen，只 log 不推送（设计文档 §4.2）。
 
     空 feed 不立即建基线（见 _EMPTY_FEED_BASELINE_THRESHOLD 的说明）：
@@ -40,25 +45,23 @@ def _init_baseline(uid: str, parsed_list: list[_state.ParsedDynamic]) -> None:
     if not ids:
         streak = _state._empty_feed_streak.get(uid, 0)
         if streak < _state._EMPTY_FEED_BASELINE_THRESHOLD:
-            _state.logger.info(
+            logger.info(
                 f"UID {uid} 取数成功但没有任何动态（第 {streak}/{_state._EMPTY_FEED_BASELINE_THRESHOLD} 次），"
                 "可能是软风控而非真的没动态，暂不建立基线"
             )
             return
-        _state.store.init_baseline(uid, [], _state._EMPTY_FEED_CURSOR)
+        store.init_baseline(uid, [], _state._EMPTY_FEED_CURSOR)
         _state._empty_feed_streak.pop(uid, None)
-        _state.logger.info(
+        logger.info(
             f"UID {uid} 连续 {streak} 轮均无历史动态，已用哨兵游标建立基线，之后的新动态会正常推送"
         )
         return
-    cursor = max((_state.dyn_id_to_int(i) or 0) for i in ids)
-    _state.store.init_baseline(uid, ids, cursor)
-    _state.logger.info(
-        f"UID {uid} 首次建立基线：{len(ids)} 条历史动态标记为已读，本轮不推送"
-    )
+    cursor = max((dyn_id_to_int(i) or 0) for i in ids)
+    store.init_baseline(uid, ids, cursor)
+    logger.info(f"UID {uid} 首次建立基线：{len(ids)} 条历史动态标记为已读，本轮不推送")
 
 
-class PushSelection(_state.NamedTuple):
+class PushSelection(NamedTuple):
     """一轮筛选的结果。
 
     两个计数**故意分开**，因为它们的对外语义完全不同：
@@ -69,40 +72,36 @@ class PushSelection(_state.NamedTuple):
       若还发一条"另有 X 条动态未展示"，等于把本该无声的停机公告出去，与该需求直接矛盾。
     """
 
-    to_push: list[_state.ParsedDynamic]
+    to_push: list[ParsedDynamic]
     overflow: int
     stale: int
 
 
-def _select_pushable(
-    uid: str, parsed_list: list[_state.ParsedDynamic]
-) -> PushSelection:
+def _select_pushable(uid: str, parsed_list: list[ParsedDynamic]) -> PushSelection:
     """筛出真正要推的动态（升序）；被跳过/闸掉的一律只标 seen。
 
     两个抑制计数的差别见 PushSelection。二者都不含"跳过类型"与"未订阅分类"，
     那两类不属于"未展示的动态"，无需向用户提示。
     """
-    fresh = [
-        p for p in parsed_list if p.dyn_id and not _state.store.is_seen(uid, p.dyn_id)
-    ]
+    fresh = [p for p in parsed_list if p.dyn_id and not store.is_seen(uid, p.dyn_id)]
     if not fresh:
         return PushSelection([], 0, 0)
 
-    categories = set(_state.store.get_categories(uid))
-    candidates: list[_state.ParsedDynamic] = []
+    categories = set(store.get_categories(uid))
+    candidates: list[ParsedDynamic] = []
     for parsed in fresh:
-        if _state.should_skip(parsed):
+        if should_skip(parsed):
             # 直播推荐/广告等：跳过推送但同样推进状态，否则每轮重复处理（§4.2）
-            _state.logger.debug(
+            logger.debug(
                 f"UID {uid} 动态 {parsed.dyn_id} 类型 {parsed.dyn_type} 跳过推送，仅标记已读"
             )
-            _state.store.mark_seen(uid, parsed.dyn_id, save=False)
+            store.mark_seen(uid, parsed.dyn_id, save=False)
             continue
         if parsed.category and parsed.category not in categories:
-            _state.logger.debug(
+            logger.debug(
                 f"UID {uid} 动态 {parsed.dyn_id} 分类 {parsed.category} 未订阅，仅标记已读"
             )
-            _state.store.mark_seen(uid, parsed.dyn_id, save=False)
+            store.mark_seen(uid, parsed.dyn_id, save=False)
             continue
         candidates.append(parsed)
 
@@ -115,15 +114,15 @@ def _select_pushable(
     # 超窗口的一律**静默**标记已读：只记日志、不进群消息，避免下一轮反复处理。
     age_limit_seconds = _state._cfg_int("max_dynamic_age_minutes", 30, 0) * 60
     if age_limit_seconds > 0 and candidates:
-        deadline = _state.time.time() - age_limit_seconds
-        kept: list[_state.ParsedDynamic] = []
+        deadline = time.time() - age_limit_seconds
+        kept: list[ParsedDynamic] = []
         for parsed in candidates:
             if parsed.pub_ts and parsed.pub_ts < deadline:
-                _state.logger.info(
+                logger.info(
                     f"UID {uid} 动态 {parsed.dyn_id} 发布已超 {age_limit_seconds // 60}min，"
                     "超出推送窗口，仅标记已读"
                 )
-                _state.store.mark_seen(uid, parsed.dyn_id, save=False)
+                store.mark_seen(uid, parsed.dyn_id, save=False)
                 stale += 1
             else:
                 kept.append(parsed)
@@ -136,9 +135,9 @@ def _select_pushable(
         extra = candidates[:-max_count]
         candidates = candidates[-max_count:]
         for parsed in extra:
-            _state.store.mark_seen(uid, parsed.dyn_id, save=False)
+            store.mark_seen(uid, parsed.dyn_id, save=False)
         overflow = len(extra)
-        _state.logger.info(
+        logger.info(
             f"UID {uid} 本轮新动态超过 {max_count} 条上限，较旧的 {overflow} 条仅标记已读"
         )
 

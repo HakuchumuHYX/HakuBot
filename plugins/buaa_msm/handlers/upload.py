@@ -21,10 +21,9 @@ from urllib.parse import unquote
 
 import aiofiles
 import aiohttp
-from nonebot import on_command, on_message, require, logger
+from nonebot import on_command, on_message, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.exception import FinishedException
-from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type
 
 from plugins.buaa_msm.config import plugin_config, with_site_link
@@ -158,7 +157,6 @@ async def handle_file_message(
 
         if decrypted_data:
             try:
-                import nonebot_plugin_localstore as store
 
                 display_path = saved_file_path.relative_to(PluginPaths("buaa_msm").data)
             except (ValueError, Exception):

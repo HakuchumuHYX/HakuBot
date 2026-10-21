@@ -1,7 +1,6 @@
 from utils.json_io import atomic_write_json
 from utils.paths import PluginPaths
 import json
-from pathlib import Path
 from nonebot import logger
 
 # 配置文件路径

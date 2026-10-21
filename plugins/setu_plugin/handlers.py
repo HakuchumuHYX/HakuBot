@@ -20,7 +20,6 @@ from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 
 require("nonebot_plugin_localstore")
-import nonebot_plugin_localstore as localstore
 
 from core.access import is_plugin_enabled
 from core.cooldown import check_cd, update_cd

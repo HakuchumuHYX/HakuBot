@@ -1,13 +1,13 @@
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import on_plugin_startup, on_plugin_shutdown
 from nonebot import get_driver, logger
 from nonebot.plugin import PluginMetadata
 
 # 导入所有 Handlers 以注册事件响应器
-from plugins.poke_reply.handlers import poke
-from plugins.poke_reply.handlers import contribute
-from plugins.poke_reply.handlers import management
-from plugins.poke_reply.handlers import view
-from plugins.poke_reply.handlers import stats
+from plugins.poke_reply.handlers import poke  # noqa: F401
+from plugins.poke_reply.handlers import contribute  # noqa: F401
+from plugins.poke_reply.handlers import management  # noqa: F401
+from plugins.poke_reply.handlers import view  # noqa: F401
+from plugins.poke_reply.handlers import stats  # noqa: F401
 
 # 导入文件监听器
 from plugins.poke_reply.file_monitor import file_monitor

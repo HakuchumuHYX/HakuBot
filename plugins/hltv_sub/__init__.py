@@ -16,7 +16,7 @@ from plugins.hltv_sub.data_manager import data_manager
 from plugins.hltv_sub.scheduler import hltv_scheduler
 
 # 导入即注册命令。
-from plugins.hltv_sub import commands as _commands
+from plugins.hltv_sub import commands as _commands  # noqa: F401
 
 
 __plugin_meta__ = PluginMetadata(

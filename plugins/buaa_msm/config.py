@@ -11,14 +11,13 @@ from utils.paths import PluginPaths
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, Sequence
+from typing import Any, Sequence
 
 from pydantic import BaseModel
 from nonebot import require, logger
 
 # 声明依赖并导入 nonebot-plugin-localstore
 require("nonebot_plugin_localstore")
-import nonebot_plugin_localstore as store
 
 
 class CleanupConfig(BaseModel):

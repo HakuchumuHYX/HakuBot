@@ -2,7 +2,6 @@ from utils.json_io import atomic_write_json
 import json
 import time
 import random
-from pathlib import Path
 from typing import Dict, Optional
 from nonebot import logger
 

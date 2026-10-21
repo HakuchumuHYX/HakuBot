@@ -2,7 +2,6 @@ from utils.json_io import atomic_write_json
 import json
 import os
 from collections import defaultdict
-from pathlib import Path
 from nonebot import logger
 
 # 默认源文件目录（独立运行时使用）

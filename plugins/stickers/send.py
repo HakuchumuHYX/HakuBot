@@ -12,7 +12,6 @@ import threading
 from pathlib import Path
 from typing import Dict, Set, List, Optional
 
-from nonebot_plugin_localstore import get_data_dir
 from nonebot import logger
 
 from plugins.stickers.config import IMAGE_EXTENSIONS

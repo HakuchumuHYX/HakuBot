@@ -2,8 +2,7 @@ from utils.paths import PluginPaths
 import sqlite3
 import threading
 import time
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from nonebot import logger
 
 # 数据目录

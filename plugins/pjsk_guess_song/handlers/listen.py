@@ -32,13 +32,7 @@ from plugins.pjsk_guess_song.utils import (
     _get_setting_for_group,
 )
 from core.access import (
-    get_status_override,
-    get_plugin_feature_keys,
-    sync_feature_statuses,
-    is_plugin_enabled,
-    set_plugin_status,
     is_feature_enabled,
-    set_feature_status,
 )
 from utils.onebot.rules import create_exact_command_rule
 from utils.onebot.media import image_segment, audio_segment

@@ -16,7 +16,6 @@ from nonebot.plugin.on import on_command
 from nonebot.permission import SUPERUSER
 
 from plugins.groupmate_waifu.config import Config
-from plugins.groupmate_waifu.constants import PLUGIN_NAME
 
 
 # --- 插件元数据 ---
@@ -65,4 +64,4 @@ async def handle_reset_command():
 
 
 # Importing handlers registers all NoneBot matchers via module side effects.
-from plugins.groupmate_waifu import handlers
+from plugins.groupmate_waifu import handlers  # noqa: F401

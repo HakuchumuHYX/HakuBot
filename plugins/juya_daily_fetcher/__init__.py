@@ -7,7 +7,7 @@ from nonebot.plugin import PluginMetadata
 
 from utils.logging import get_exc_desc
 from plugins.juya_daily_fetcher.config import Config, plugin_config
-from plugins.juya_daily_fetcher import scheduler as _scheduler
+from plugins.juya_daily_fetcher import scheduler as _scheduler  # noqa: F401
 from plugins.juya_daily_fetcher.scheduler import run_debug
 
 __plugin_meta__ = PluginMetadata(

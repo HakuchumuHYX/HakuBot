@@ -3,7 +3,7 @@
 存放核心的游戏会话管理逻辑和答案处理器
 """
 
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import runtime
 import asyncio
 import time
 from pathlib import Path

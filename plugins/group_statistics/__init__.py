@@ -1,4 +1,4 @@
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import on_plugin_startup, on_plugin_shutdown
 import asyncio
 
 from nonebot import get_driver, require, logger
@@ -9,15 +9,14 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler as apscheduler
 
 # 导入管理模块
-from core.access import is_plugin_enabled
 
 from plugins.group_statistics.data_manager import data_manager
 from plugins.group_statistics.handlers import (
-    message_handler,
-    stat_command,
-    sent_handler,
+    message_handler,  # noqa: F401
+    stat_command,  # noqa: F401
+    sent_handler,  # noqa: F401
 )
-from plugins.group_statistics.scheduler import daily_statistics_task
+from plugins.group_statistics.scheduler import daily_statistics_task  # noqa: F401
 
 
 # 在插件加载时

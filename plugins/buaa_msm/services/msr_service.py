@@ -7,7 +7,7 @@ MSR 分析服务（完整编排）：
 """
 
 from __future__ import annotations
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from core.lifecycle import runtime
 
 import asyncio
 import io

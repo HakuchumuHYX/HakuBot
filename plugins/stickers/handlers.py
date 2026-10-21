@@ -2,22 +2,14 @@
 import asyncio
 import re
 from typing import Optional
-from nonebot import on_message, on_command, get_bot, logger
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment, Bot
-from nonebot.params import CommandArg
+from nonebot import on_message, on_command, logger
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, Bot
 from nonebot.exception import FinishedException
 
-from utils.onebot.rules import create_exact_command_rule
 from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 from core.access import (
-    get_status_override,
-    get_plugin_feature_keys,
-    sync_feature_statuses,
     is_plugin_enabled,
-    set_plugin_status,
-    is_feature_enabled,
-    set_feature_status,
 )
 from core.cooldown import check_cd, update_cd
 
@@ -25,7 +17,6 @@ from plugins.stickers.send import (
     load_sticker_list,
     get_random_sticker,
     get_random_stickers,
-    resolve_folder_name,
 )
 from plugins.stickers.contribution import (
     extract_contribution_info,
@@ -43,12 +34,11 @@ from plugins.stickers.manage import handle_manage_command, is_superuser
 from plugins.stickers.config import SITE_URL
 from plugins.stickers.check import (
     find_all_duplicates,
-    remove_duplicates,
     safe_remove_duplicates,
     batch_rename_stickers,
 )
 
-from plugins.stickers import overview
+from plugins.stickers import overview  # noqa: F401  导入即注册查看命令
 
 load_sticker_list()
 

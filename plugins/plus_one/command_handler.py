@@ -1,4 +1,4 @@
-from nonebot import on_command, logger
+from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.params import CommandArg
 from nonebot.matcher import Matcher

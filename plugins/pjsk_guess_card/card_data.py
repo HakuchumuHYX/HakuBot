@@ -115,7 +115,6 @@ def get_card_hint(card: Dict, used_hints: set) -> Optional[str]:
     获取一个未使用过的提示，返回提示文本。
     如果没有更多提示，返回 None。
     """
-    from plugins.pjsk_guess_card.nickname import get_character_name_by_id
 
     # 角色ID -> 团名映射
     CID_UNIT_MAP = {

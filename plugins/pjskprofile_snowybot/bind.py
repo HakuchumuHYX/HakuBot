@@ -1,4 +1,3 @@
-import re
 from nonebot import on_regex, logger
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
 from nonebot.params import RegexGroup

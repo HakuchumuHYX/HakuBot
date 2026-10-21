@@ -1,8 +1,7 @@
 """角色昵称映射模块"""
 
 import json
-from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 from nonebot import logger
 
 from plugins.pjsk_guess_card.config import data_dir

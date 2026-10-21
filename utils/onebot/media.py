@@ -16,7 +16,7 @@ from threading import Lock
 from typing import TypeAlias
 from urllib.parse import unquote, urlparse
 
-from nonebot import get_driver, logger
+from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageSegment
 
 

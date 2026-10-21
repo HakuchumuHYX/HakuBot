@@ -3,7 +3,6 @@ from utils.paths import PluginPaths
 import json
 from pathlib import Path
 from typing import Dict, Optional
-import nonebot_plugin_localstore as store
 from nonebot import logger
 
 DATA_FILE = "pjsk_bindings.json"

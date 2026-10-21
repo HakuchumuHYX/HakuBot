@@ -20,7 +20,6 @@ from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 
 require("nonebot_plugin_localstore")
-import nonebot_plugin_localstore as localstore
 
 from utils.onebot.media import image_segment
 from utils.onebot.forward import ForwardSendError, ForwardStatus, send_forward_msg

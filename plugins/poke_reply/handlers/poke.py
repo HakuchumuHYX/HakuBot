@@ -2,7 +2,7 @@ import random
 import os
 import hashlib
 from nonebot import on_notice, logger
-from nonebot.adapters.onebot.v11 import PokeNotifyEvent, Message, MessageSegment, Bot
+from nonebot.adapters.onebot.v11 import PokeNotifyEvent, Message, Bot
 from nonebot.exception import FinishedException
 
 from plugins.poke_reply.config import (

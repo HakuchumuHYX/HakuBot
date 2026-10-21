@@ -3,7 +3,6 @@ from nonebot import on_command, get_driver, logger
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import (
     Bot,
-    PrivateMessageEvent,
     GroupMessageEvent,
     Message,
 )
@@ -15,13 +14,7 @@ from utils.logging import get_exc_desc
 # 导入共享上下文
 from plugins.send_and_reply.content import message_context, prune_message_context
 from core.access import (
-    get_status_override,
-    get_plugin_feature_keys,
-    sync_feature_statuses,
     is_plugin_enabled,
-    set_plugin_status,
-    is_feature_enabled,
-    set_feature_status,
 )
 
 # 获取配置中的超级用户列表

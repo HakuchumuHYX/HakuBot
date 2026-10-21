@@ -21,7 +21,6 @@ from nonebot import logger
 
 from plugins.buaa_msm.domain.constants import (
     CHARACTER_NAMES,
-    MAP_ORDER,
     MAP_TITLE_CN,
     RESOURCE_NAME_CN,
 )

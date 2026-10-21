@@ -1,4 +1,3 @@
-from typing import Optional
 from nonebot import on_command, on_message, logger
 from nonebot.adapters.onebot.v11 import Message, GroupMessageEvent, MessageEvent, Bot
 from nonebot.rule import Rule, to_me

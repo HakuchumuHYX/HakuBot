@@ -1,7 +1,5 @@
 from nonebot import on_message, on_command, on
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, Event
-from nonebot.params import CommandArg
-from nonebot.permission import SUPERUSER
 
 # 导入管理模块
 from core.access import is_plugin_enabled

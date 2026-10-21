@@ -1,9 +1,8 @@
-from nonebot import get_driver
 from nonebot.plugin import PluginMetadata
 
 # 导入功能模块
-from plugins.send_and_reply import send
-from plugins.send_and_reply import reply
+from plugins.send_and_reply import send  # noqa: F401
+from plugins.send_and_reply import reply  # noqa: F401
 
 __plugin_meta__ = PluginMetadata(
     name="消息转发与回复插件",

@@ -40,7 +40,7 @@ from plugins.bili_dyn_sub.render import build_messages, build_text
 from plugins.bili_dyn_sub.store import store
 
 # 导入 scheduler 以注册定时任务（import 即注册），并复用其发送分发逻辑
-from plugins.bili_dyn_sub import scheduler as _scheduler
+from plugins.bili_dyn_sub import scheduler as _scheduler  # noqa: F401
 from plugins.bili_dyn_sub.services.delivery import SendTarget
 from plugins.bili_dyn_sub.services.delivery import dispatch_segments
 

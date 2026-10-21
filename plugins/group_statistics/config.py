@@ -1,6 +1,5 @@
 from utils.paths import PluginPaths
 import os
-from typing import Set, Dict, List, Tuple
 
 # 数据文件路径
 DATA_DIR = str(PluginPaths("group_statistics").data)

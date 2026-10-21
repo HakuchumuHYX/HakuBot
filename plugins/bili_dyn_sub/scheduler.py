@@ -1,5 +1,13 @@
 from __future__ import annotations
 from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+from nonebot import get_driver, require, logger
+
+require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler as apscheduler
+from utils.logging import get_exc_desc
+from plugins.bili_dyn_sub.config import plugin_config
+from plugins.bili_dyn_sub.credential import credential_manager
+from plugins.bili_dyn_sub.store import store
 from plugins.bili_dyn_sub.services import login as _login
 from plugins.bili_dyn_sub.services import polling as _polling
 from plugins.bili_dyn_sub.services import state as _state
@@ -10,7 +18,7 @@ def _register_jobs() -> None:
     interval = _state._cfg_int("poll_interval_seconds", 100, 30)
     jitter = _state._cfg_int("poll_jitter_seconds", 20, 0)
     try:
-        _state.apscheduler.add_job(
+        apscheduler.add_job(
             _polling.poll_once,
             trigger="interval",
             seconds=interval,
@@ -20,7 +28,7 @@ def _register_jobs() -> None:
             max_instances=1,
             coalesce=True,
         )
-        _state.apscheduler.add_job(
+        apscheduler.add_job(
             _polling.prune_state,
             trigger="cron",
             hour=4,
@@ -31,11 +39,11 @@ def _register_jobs() -> None:
             coalesce=True,
         )
     except (ValueError, TypeError, LookupError) as e:
-        _state.logger.error(f"注册 B 站动态轮询任务失败: {_state.get_exc_desc(e)}")
+        logger.error(f"注册 B 站动态轮询任务失败: {get_exc_desc(e)}")
         return
-    _state.logger.info(
+    logger.info(
         f"B 站动态轮询任务已注册：间隔 {interval}s（jitter {jitter}s），"
-        f"当前订阅 {len(_state.store.get_all_uids())} 个 UID"
+        f"当前订阅 {len(store.get_all_uids())} 个 UID"
     )
 
 
@@ -46,9 +54,9 @@ def _register_login_check() -> None:
     不配就一个 job、一次请求都不产生（启动那次校验在未配置时也是纯内存操作，
     只用来在日志里说明「本次以匿名方式取数」）。
     """
-    if (_state.plugin_config.sessdata or "").strip():
+    if (plugin_config.sessdata or "").strip():
         try:
-            _state.apscheduler.add_job(
+            apscheduler.add_job(
                 _login.login_check_job,
                 trigger="interval",
                 hours=_state.LOGIN_CHECK_INTERVAL_HOURS,
@@ -58,25 +66,21 @@ def _register_login_check() -> None:
                 coalesce=True,
             )
         except (ValueError, TypeError, LookupError) as e:
-            _state.logger.error(
-                f"注册 B 站登录态校验任务失败: {_state.get_exc_desc(e)}"
-            )
+            logger.error(f"注册 B 站登录态校验任务失败: {get_exc_desc(e)}")
         else:
-            _state.logger.info(
+            logger.info(
                 f"B 站登录态校验任务已注册：每 {_state.LOGIN_CHECK_INTERVAL_HOURS} 小时确认一次 sessdata 是否有效"
             )
     else:
-        _state.logger.debug(
+        logger.debug(
             "未配置 sessdata，不注册登录态校验周期任务（匿名取数无登录态可校验）"
         )
 
     try:
-        driver = _state.get_driver()
+        driver = get_driver()
     except ValueError as e:
         # 脱离 bot.py 单跑插件代码时没有 driver，周期任务仍在，只是少一次启动校验
-        _state.logger.debug(
-            f"当前没有 driver，跳过启动时的登录态校验: {_state.get_exc_desc(e)}"
-        )
+        logger.debug(f"当前没有 driver，跳过启动时的登录态校验: {get_exc_desc(e)}")
         return
 
     async def _on_startup() -> None:
@@ -93,7 +97,7 @@ _register_jobs()
 _register_login_check()
 
 
-@on_plugin_shutdown(_state.get_driver(), "bili_dyn_sub")
+@on_plugin_shutdown(get_driver(), "bili_dyn_sub")
 async def flush_subscription_state():
-    await _state.credential_manager.flush()
+    await credential_manager.flush()
     await _state._save_state()

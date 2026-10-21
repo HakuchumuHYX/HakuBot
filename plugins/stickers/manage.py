@@ -3,9 +3,8 @@ from utils.json_io import atomic_write_json
 # stickers/manage.py
 import json
 import re
-from pathlib import Path
-from typing import Tuple, Optional, Dict, List
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
+from typing import Optional, List
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot import get_driver, logger
 
 

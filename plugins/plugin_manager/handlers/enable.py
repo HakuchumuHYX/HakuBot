@@ -1,13 +1,10 @@
-from nonebot import on_command, get_loaded_plugins, get_driver, logger
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
-from typing import Optional
 from utils.onebot.media import image_segment
 from core.registry import get_plugin_catalog
 from core.access_state import (
-    plugin_status,
-    save_plugin_status,
     watermark_config,
 )
 from plugins.plugin_manager.render import (
@@ -18,8 +15,6 @@ from plugins.plugin_manager.render import (
 
 from core.access import (
     get_status_override,
-    get_plugin_feature_keys,
-    sync_feature_statuses,
     is_plugin_enabled,
     set_plugin_status,
     is_feature_enabled,
@@ -53,21 +48,16 @@ async def handle_enable(bot: Bot, event: MessageEvent):
     if not plugin_name:
         await enable_plugin.finish("请指定要启用的插件名称，例如：启用help")
 
-    # 检查插件
-    plugin_catalog = get_plugin_catalog()
-    if plugin_name not in plugin_catalog:
-        plugins = get_loaded_plugins()
-        plugin_names = {p.name for p in plugins}
-        if plugin_name not in plugin_names:
-            await enable_plugin.finish(f"未找到插件: {plugin_name}")
-            return
+    # 只有登记过的插件才会检查开关，未登记的设了也不生效
+    if plugin_name not in get_plugin_catalog():
+        await enable_plugin.finish(f"未登记此插件: {plugin_name}")
 
     group_id = str(event.group_id)
-    user_id = str(event.user_id)
 
     if ":" in plugin_name:
         parent_name, feature_name = plugin_name.split(":", 1)
-        if not is_plugin_enabled(parent_name, group_id, user_id):
+        # 发命令的是超管，is_plugin_enabled 对超管恒为 True，这里只看本群开关
+        if get_status_override(parent_name, group_id) is False:
             await enable_plugin.finish(
                 f"插件 {parent_name} 当前为禁用状态，不能单独启用子功能 {feature_name}。"
                 "请先启用主插件。"
@@ -91,14 +81,8 @@ async def handle_disable(bot: Bot, event: MessageEvent):
     if not plugin_name:
         await disable_plugin.finish("请指定要禁用的插件名称，例如：禁用help")
 
-    # 检查插件
-    plugin_catalog = get_plugin_catalog()
-    if plugin_name not in plugin_catalog:
-        plugins = get_loaded_plugins()
-        plugin_names = {p.name for p in plugins}
-        if plugin_name not in plugin_names:
-            await disable_plugin.finish(f"未找到插件: {plugin_name}")
-            return
+    if plugin_name not in get_plugin_catalog():
+        await disable_plugin.finish(f"未登记此插件: {plugin_name}")
 
     group_id = str(event.group_id)
 
@@ -280,9 +264,8 @@ async def handle_enable_feature(bot: Bot, event: MessageEvent):
         return
 
     group_id = str(event.group_id)
-    user_id = str(event.user_id)
 
-    if not is_plugin_enabled(plugin_name, group_id, user_id):
+    if get_status_override(plugin_name, group_id) is False:
         await enable_feature.finish(
             f"插件 {plugin_name} 当前为禁用状态，不能单独启用子功能 {feature_name}。"
             "请先启用主插件。"

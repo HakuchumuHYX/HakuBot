@@ -1,10 +1,7 @@
-from typing import List, Union
-from nonebot import on_command, on_message, logger
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Message,
-    MessageSegment,
     Bot,
-    Event,
     MessageEvent,
     GroupMessageEvent,
 )
@@ -12,14 +9,11 @@ from nonebot.adapters.onebot.v11.helpers import extract_image_urls
 from nonebot.params import CommandArg
 from nonebot.typing import T_State
 from nonebot.matcher import Matcher
-from nonebot.rule import to_me
 
 from plugins.lunabot_imgexp.core import search_image
-from plugins.lunabot_imgexp.config import config
 from utils.onebot.forward import send_forward_msg
-from utils.network.http import download_image
 from utils.onebot.media import image_segment
-from plugins.lunabot_imgexp import twitter
+from plugins.lunabot_imgexp import twitter  # noqa: F401
 
 from core.access import is_feature_enabled
 from core.cooldown import check_cd, update_cd

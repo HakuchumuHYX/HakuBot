@@ -8,7 +8,6 @@ from pathlib import Path
 import tempfile
 import aiohttp
 from PIL import Image
-from utils.json_io import atomic_write_bytes
 
 DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=120, connect=30, sock_read=120)
 INSECURE_SSL = os.environ.get("HAKUBOT_INSECURE_SSL", "").strip() in (

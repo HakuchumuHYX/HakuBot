@@ -1,7 +1,7 @@
 import asyncio
 from typing import List
 from nonebot import on_command, logger
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, Bot
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
 from nonebot.rule import to_me
 from nonebot.exception import FinishedException
 

@@ -1,6 +1,5 @@
 from utils.paths import PluginPaths
 import json
-from pathlib import Path
 from pydantic import BaseModel
 from nonebot import logger
 

@@ -6,12 +6,10 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 import random
-from pathlib import Path
 from core.access import is_plugin_enabled
 from utils.onebot.media import image_segment
 
 require("nonebot_plugin_localstore")
-import nonebot_plugin_localstore as store
 
 # === 配置区域 ===
 # 触发特殊图片的概率 (0.0 - 1.0)

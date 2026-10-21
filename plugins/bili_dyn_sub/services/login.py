@@ -1,8 +1,14 @@
 from __future__ import annotations
+import asyncio
+import time
+from nonebot import get_bot, logger
+from nonebot.exception import ActionFailed, NetworkError
+from utils.logging import get_exc_desc
+from plugins.bili_dyn_sub.credential import LoginStatus, credential_manager
 from plugins.bili_dyn_sub.services import state as _state
 
 
-def _build_login_expired_text(status: _state.LoginStatus) -> str:
+def _build_login_expired_text(status: LoginStatus) -> str:
     """失效告警文案：说清后果（功能不中断但风控概率上升）与具体处置动作"""
     return (
         "【B站动态订阅】登录态失效\n"
@@ -13,7 +19,7 @@ def _build_login_expired_text(status: _state.LoginStatus) -> str:
     )
 
 
-async def _notify_superusers_login_expired(status: _state.LoginStatus) -> bool:
+async def _notify_superusers_login_expired(status: LoginStatus) -> bool:
     """私聊提醒超管更换 sessdata。
 
     返回 False 仅代表「本次没能提醒、之后应重试」（当前无 Bot 连接）；
@@ -21,33 +27,33 @@ async def _notify_superusers_login_expired(status: _state.LoginStatus) -> bool:
     """
     text = _build_login_expired_text(status)
     try:
-        bot = _state.get_bot()
+        bot = get_bot()
     except (ValueError, KeyError) as e:
-        _state.logger.warning(
-            f"登录态失效提醒暂时无法发送（无可用 Bot 连接），下次校验再试: {_state.get_exc_desc(e)}"
+        logger.warning(
+            f"登录态失效提醒暂时无法发送（无可用 Bot 连接），下次校验再试: {get_exc_desc(e)}"
         )
         return False
 
     superusers = getattr(bot.config, "superusers", None) or []
     if not superusers:
-        _state.logger.warning("B 站登录态已失效，但未配置 superusers，无法私聊提醒")
+        logger.warning("B 站登录态已失效，但未配置 superusers，无法私聊提醒")
         return True
 
     for superuser in superusers:
         try:
             await bot.send_private_msg(user_id=int(superuser), message=text)
         except (ValueError, TypeError) as e:
-            _state.logger.warning(
-                f"超管 QQ 号 {superuser!r} 非法，跳过提醒: {_state.get_exc_desc(e)}"
+            logger.warning(
+                f"超管 QQ 号 {superuser!r} 非法，跳过提醒: {get_exc_desc(e)}"
             )
-        except (_state.ActionFailed, _state.NetworkError) as e:
-            _state.logger.warning(
-                f"向超管 {superuser} 发送登录态失效提醒失败: {_state.get_exc_desc(e)}"
+        except (ActionFailed, NetworkError) as e:
+            logger.warning(
+                f"向超管 {superuser} 发送登录态失效提醒失败: {get_exc_desc(e)}"
             )
     return True
 
 
-async def _handle_login_transition(status: _state.LoginStatus) -> None:
+async def _handle_login_transition(status: LoginStatus) -> None:
     """按状态跃迁决定是否告警（有效→失效私聊超管；失效→有效只记日志）"""
     pass
 
@@ -61,7 +67,7 @@ async def _handle_login_transition(status: _state.LoginStatus) -> None:
 
     if status.is_login:
         if _state._last_known_login is False:
-            _state.logger.debug(
+            logger.debug(
                 f"B 站登录态已恢复（uname={status.uname or '-'}），无需再提醒超管"
             )
         _state._last_known_login = True
@@ -69,27 +75,27 @@ async def _handle_login_transition(status: _state.LoginStatus) -> None:
 
     # 到这里是「配了 sessdata + 校验成功 + isLogin=false」，即确定需要人工更换
     if _state._last_known_login is False:
-        _state.logger.debug("B 站登录态仍处于失效状态，已提醒过超管，不重复打扰")
+        logger.debug("B 站登录态仍处于失效状态，已提醒过超管，不重复打扰")
         return
-    _state.logger.info(
+    logger.info(
         "B 站登录态失效：取数已退化为匿名请求（功能不中断但更易被风控），正在私聊提醒超管更换 sessdata"
     )
     if await _notify_superusers_login_expired(status):
         _state._last_known_login = False
 
 
-async def check_login_status(*, force: bool = False) -> _state.LoginStatus:
+async def check_login_status(*, force: bool = False) -> LoginStatus:
     """校验登录态并按跃迁触发告警；返回本次结论。
 
     force=True 用于「怀疑掉登录」的即时确认（如取数意外返回 -101），会绕过 30 分钟缓存。
     未配置 sessdata 时 credential 侧不发任何请求，本函数等价于零开销。
     """
-    status = await _state.credential_manager.verify_login(force=force)
+    status = await credential_manager.verify_login(force=force)
     await _handle_login_transition(status)
     return status
 
 
-async def confirm_login_after_auth_error() -> _state.LoginStatus:
+async def confirm_login_after_auth_error() -> LoginStatus:
     """取数返回 -101 时向 nav 确认真实登录态；**带冷却**，避免每轮都打 nav。
 
     -101 不会自动进退避（它不是风控），所以出现一次就会每轮复发。若每次都
@@ -98,7 +104,7 @@ async def confirm_login_after_auth_error() -> _state.LoginStatus:
     冷却窗口内退回普通校验：命中 30 分钟缓存则一个请求都不发，结论照样驱动跃迁告警。
     """
     pass
-    now = _state.time.time()
+    now = time.time()
     force = (
         now - _state._last_forced_login_check_ts
         >= _state.FORCED_LOGIN_CHECK_COOLDOWN_SECONDS
@@ -111,22 +117,20 @@ async def confirm_login_after_auth_error() -> _state.LoginStatus:
 async def login_check_job() -> None:
     """周期任务：确认 sessdata 是否还在登录态（仅在配置了 sessdata 时注册）"""
     status = await check_login_status()
-    _state.logger.debug(f"B 站登录态周期校验完成：{status.summary()}")
+    logger.debug(f"B 站登录态周期校验完成：{status.summary()}")
 
 
 async def _startup_login_check() -> None:
     """启动后台校验：等 Bot 连上再校验一次，并把结论写进日志"""
-    await _state.asyncio.sleep(_state.LOGIN_CHECK_STARTUP_DELAY_SECONDS)
+    await asyncio.sleep(_state.LOGIN_CHECK_STARTUP_DELAY_SECONDS)
     try:
         status = await check_login_status()
     except Exception as e:
         # 后台任务边界：任何意外都不能变成「Task exception was never retrieved」
-        _state.logger.opt(exception=True).warning(
-            f"启动时校验 B 站登录态失败: {_state.get_exc_desc(e)}"
+        logger.opt(exception=True).warning(
+            f"启动时校验 B 站登录态失败: {get_exc_desc(e)}"
         )
         return
     # 配了 sessdata 时结论已由 credential 按跃迁记过，这里只补「未配置」这一种
     if not status.configured:
-        _state.logger.info(
-            "未配置 sessdata，B 站动态订阅将以匿名方式取数（风控概率略高）"
-        )
+        logger.info("未配置 sessdata，B 站动态订阅将以匿名方式取数（风控概率略高）")

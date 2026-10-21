@@ -3,7 +3,6 @@ from __future__ import annotations
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Message,
-    MessageSegment,
     GroupMessageEvent,
     Bot,
     Event,
@@ -19,7 +18,7 @@ from plugins.sk_predict.service import (
     refresh_prediction_cache,
 )
 
-from plugins.sk_predict import scheduler as _scheduler
+from plugins.sk_predict import scheduler as _scheduler  # noqa: F401
 
 
 cn_shot_cmd = on_command("cnsk预测", priority=5, block=True)

@@ -1,6 +1,5 @@
-from typing import Tuple, List, Optional
+from typing import Tuple, List
 from nonebot import logger
-from nonebot.exception import FinishedException
 
 from plugins.poke_reply.models.data import data_manager
 from plugins.poke_reply.services import image as image_service

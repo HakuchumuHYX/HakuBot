@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import msgpack
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from Crypto.Cipher import AES
 from nonebot import logger

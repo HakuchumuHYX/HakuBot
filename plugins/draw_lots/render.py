@@ -1,6 +1,6 @@
 from pathlib import Path
 from utils.rendering.engine import render_template
-from typing import List, Dict, Any
+from typing import Dict
 import re
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"

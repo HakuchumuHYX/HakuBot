@@ -1,5 +1,3 @@
-import nonebot
-
 # 导入各个模块
 from plugins.add_friend import config
 from plugins.add_friend import data_manager

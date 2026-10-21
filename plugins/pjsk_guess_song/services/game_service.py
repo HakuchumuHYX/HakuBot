@@ -10,9 +10,7 @@ import time
 import itertools
 from typing import List, Dict, Optional, Tuple, Union
 from pathlib import Path
-from functools import partial
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 
 from nonebot import logger
 from plugins.pjsk_guess_song.config import PluginConfig

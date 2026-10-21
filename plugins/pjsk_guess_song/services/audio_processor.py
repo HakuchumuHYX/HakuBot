@@ -12,7 +12,7 @@ import os
 import subprocess
 import aiohttp
 import random
-from typing import Optional, Tuple, Union, Dict
+from typing import Optional, Union, Dict
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial

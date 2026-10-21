@@ -4,8 +4,8 @@ from nonebot import require
 require("nonebot_plugin_session")
 
 from plugins.plus_one.config import Config
-from plugins.plus_one.handler import plus
-from plugins.plus_one import command_handler
+from plugins.plus_one.handler import plus  # noqa: F401
+from plugins.plus_one import command_handler  # noqa: F401
 
 
 __plugin_meta__ = PluginMetadata(

@@ -3,14 +3,12 @@
 资源版本、别名更新等其他指令
 """
 
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
-import asyncio
+from core.lifecycle import runtime
 import json
 from pathlib import Path
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     MessageEvent,
-    MessageSegment,
     Bot,
     GroupMessageEvent,
 )
@@ -23,13 +21,7 @@ from plugins.pjsk_guess_song.runtime import (
 from plugins.pjsk_guess_song.tools.get_aliases import fetch_all_aliases
 from plugins.pjsk_guess_song.utils import _is_group_allowed
 from core.access import (
-    get_status_override,
-    get_plugin_feature_keys,
-    sync_feature_statuses,
     is_plugin_enabled,
-    set_plugin_status,
-    is_feature_enabled,
-    set_feature_status,
 )
 from utils.onebot.rules import create_exact_command_rule
 from utils.onebot.media import image_segment

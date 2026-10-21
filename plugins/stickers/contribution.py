@@ -16,7 +16,6 @@ from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 
 from plugins.stickers.send import (
-    sticker_dir,
     sticker_folders,
     resolve_folder_name,
     count_images_in_folder,
