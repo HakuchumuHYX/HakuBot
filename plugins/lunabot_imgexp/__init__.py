@@ -68,7 +68,6 @@ async def _(bot: Bot, event: MessageEvent, state: T_State):
     cd_updated = False  # 成功发送结果后才扣 CD，多张图只扣一次
     for url in img_urls:
         try:
-            # search_image 内部会先下载图片并限制大小
             res_img, results = await search_image(url)
 
             # 发送结果图片

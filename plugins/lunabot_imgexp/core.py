@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import html
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,14 +10,11 @@ from urllib.parse import quote, urlencode
 
 import aiohttp
 from nonebot import logger
-from PicImageSearch import Network, SauceNAO
-from PicImageSearch.model import Ascii2DResponse
+from PicImageSearch.model import Ascii2DResponse, SauceNAOResponse
 
 from plugins.lunabot_imgexp.config import config
 from utils.network.http import (
     DEFAULT_TIMEOUT,
-    DownloadTooLarge,
-    download_bytes,
     get_client_session,
     get_effective_proxy,
 )
@@ -112,23 +111,45 @@ def _work_key(url: str) -> str:
 
 
 async def search_saucenao(
-    client: Any,
-    img_bytes: bytes,
+    img_url: str,
     limit: int = 10,
     min_similarity: int = 60,
 ) -> ImageSearchResult:
     try:
-        if limit == 0:
-            return ImageSearchResult(source="SauceNAO", results=[])
+        if not config.flaresolverr_url:
+            return ImageSearchResult(
+                source="SauceNAO", results=[], error="未配置 FlareSolverr"
+            )
         logger.debug("开始从 SauceNAO 搜索图片...")
 
-        saucenao = SauceNAO(
-            client=client,
-            api_key=config.saucenao_apikey,
-            numres=limit,
+        # search.php 在 Cloudflare 托管质询后面，非浏览器客户端（伪装 TLS 指纹也不行）一律 403；
+        # FlareSolverr 的 POST 只能发表单传不了文件，只能让它的浏览器按链接搜
+        query = urlencode(
+            {
+                "output_type": 2,
+                "numres": limit,
+                "api_key": config.saucenao_apikey,
+                "url": img_url,
+            }
         )
-        # 直接上传图片，不依赖 SauceNAO 能否回源拉到带时效 rkey 的 QQ 图链
-        results = await saucenao.search(file=img_bytes)
+        async with aiohttp.ClientSession() as http:
+            result = await _flaresolverr(
+                http,
+                cmd="request.get",
+                url=f"https://saucenao.com/search.php?{query}",
+            )
+        solution = result["solution"]
+        # 浏览器把 JSON 包在 <pre> 里显示
+        pre = re.search(r"<pre[^>]*>(.*?)</pre>", solution["response"], re.S)
+        if not pre:
+            raise Exception(f"返回的不是 JSON（HTTP {solution['status']}）")
+        data = json.loads(html.unescape(pre.group(1)))
+        # status 小于 0 是请求本身被拒（key 无效、额度用完、图片拉不到等）
+        if data["header"]["status"] < 0:
+            raise Exception(data["header"].get("message"))
+        results = SauceNAOResponse(
+            {**data, "status_code": solution["status"]}, solution["url"]
+        )
 
         # 转载号与原作者的相似度往往几乎相同：同一作品只保留最高分，并显示作者便于分辨
         best = {}
@@ -303,22 +324,12 @@ async def search_googlelens(
 
 
 async def search_image(img_url: str) -> Tuple[bytes, List[ImageSearchResult]]:
-    SIZE_LIMIT_MB = 15
-    proxy = get_effective_proxy(config.proxy)
-    try:
-        img_bytes = await download_bytes(
-            img_url, proxy=config.proxy, max_bytes=SIZE_LIMIT_MB * 1024 * 1024
-        )
-    except DownloadTooLarge:
-        raise ValueError(f"图片大小超过{SIZE_LIMIT_MB}MB，请先缩小后再进行搜索")
-
-    async with Network(timeout=120, proxies=proxy) as client:
-        results = await asyncio.gather(
-            _with_timeout(search_saucenao(client, img_bytes), "SauceNAO"),
-            # Cloudflare 偶尔要长时间验证，单独限时，别拖慢整体出结果
-            _with_timeout(search_ascii2d(img_url), "Ascii2D", 45),
-            _with_timeout(search_googlelens(img_url), "GoogleLens"),
-        )
+    results = await asyncio.gather(
+        _with_timeout(search_saucenao(img_url), "SauceNAO"),
+        # Cloudflare 偶尔要长时间验证，单独限时，别拖慢整体出结果
+        _with_timeout(search_ascii2d(img_url), "Ascii2D", 45),
+        _with_timeout(search_googlelens(img_url), "GoogleLens"),
+    )
 
     image = await render_template(
         TEMPLATE_DIR,
