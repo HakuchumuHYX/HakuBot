@@ -35,21 +35,14 @@ from plugins.buaa_msm.renderers.msr import (
     generate_msr_summary_image_bytes,
 )
 from plugins.buaa_msm.services.ingest_service import RESULT_FILES
-from plugins.buaa_msm.services.rip_asset_lite import rip_asset_lite
+from plugins.buaa_msm.services.rip_asset_lite import (
+    is_retryable_exception,
+    is_retryable_http_status,
+    rip_asset_lite,
+)
 from plugins.buaa_msm.services.user_data_service import get_user_context
 
 SendFunc = Callable[[str], Any]
-
-
-# ============== HTTP 重试工具 ==============
-
-
-def _is_retryable_http_status(status: int) -> bool:
-    return status in (408, 409, 425, 429) or status >= 500
-
-
-def _is_retryable_exception(exc: Exception) -> bool:
-    return isinstance(exc, (asyncio.TimeoutError, aiohttp.ClientError))
 
 
 # ============== 封面下载 ==============
@@ -97,7 +90,7 @@ async def _fetch_jacket_images(
                             f"封面下载失败 [{record_id}]: HTTP {resp.status} (attempt {attempt}/{max_attempts})"
                         )
                         if (
-                            not _is_retryable_http_status(resp.status)
+                            not is_retryable_http_status(resp.status)
                             or attempt >= max_attempts
                         ):
                             return
@@ -105,7 +98,7 @@ async def _fetch_jacket_images(
                     logger.debug(
                         f"封面下载失败 [{record_id}]: {e} (attempt {attempt}/{max_attempts})"
                     )
-                    if not _is_retryable_exception(e) or attempt >= max_attempts:
+                    if not is_retryable_exception(e) or attempt >= max_attempts:
                         return
 
                 if backoff > 0:

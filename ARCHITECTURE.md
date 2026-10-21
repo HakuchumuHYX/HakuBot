@@ -16,6 +16,8 @@
 
 配置一律是插件里定义的 pydantic 模型（继承 `core.settings.ConfigModel`，多余的键直接报错），用 `core.settings.load_config` 读取，不读 `.env`。模型只声明类型和约束（`Field(ge=...)` 等），不写默认值，调用点也不写 `getattr(..., 默认值)`、`or 默认值` 兜底；默认值只存在于 `config-example/`。缺文件、缺字段、写坏、校验不过时插件加载失败并报 ERROR。加字段时同时改示例和线上 `config.json`。命令改配置走 `update_fields`。
 
+一次性下载（拿一个 URL 的字节或文件）走 `utils/network`（`download_bytes`、`download_to_file`、`fetch_image`），自带大小上限、重试和原子写入；有自己的鉴权、请求头或会话状态的 API 客户端才自建会话。
+
 群日报和早报各用自己的 LLM 配置，不读取其他插件的配置作为回退。正常运行使用 `uv run python bot.py`。
 
 ## 日志

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import re
 from dataclasses import dataclass
 from typing import Optional, Any, Dict
 
-import httpx
+import aiohttp
+
+from utils.network.http import download_bytes, get_client_session, get_effective_proxy
 
 
 _LOLICON_URL = "https://api.lolicon.app/setu/v2"
+_HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
 @dataclass
@@ -29,38 +31,18 @@ class SetuClient:
     - Optionally rewrites image domain via reverse proxy domain.
     """
 
-    def _build_client_kwargs(self) -> Dict[str, Any]:
-        client_kwargs: Dict[str, Any] = {
-            "timeout": self._timeout,
-            "headers": {"User-Agent": "Mozilla/5.0"},
-            "follow_redirects": True,
-        }
-
-        # httpx 不同版本对代理参数命名不同：proxy / proxies
-        if self._proxy:
-            client_kwargs["proxy"] = self._proxy
-
-        return client_kwargs
-
     async def _request_json(
         self, url: str, *, params: Dict[str, Any]
     ) -> Dict[str, Any]:
-        client_kwargs = self._build_client_kwargs()
-        try:
-            async with httpx.AsyncClient(**client_kwargs) as client:
-                resp = await client.get(url, params=params)
-                resp.raise_for_status()
-                payload = resp.json()
-        except TypeError:
-            # 回退到旧版参数名 proxies=
-            if self._proxy:
-                client_kwargs.pop("proxy", None)
-                client_kwargs["proxies"] = self._proxy  # type: ignore
-
-            async with httpx.AsyncClient(**client_kwargs) as client:
-                resp = await client.get(url, params=params)
-                resp.raise_for_status()
-                payload = resp.json()
+        async with get_client_session().get(
+            url,
+            params=params,
+            headers=_HEADERS,
+            proxy=get_effective_proxy(self._proxy),
+            timeout=aiohttp.ClientTimeout(total=self._timeout),
+        ) as resp:
+            resp.raise_for_status()
+            payload = await resp.json()
 
         if not isinstance(payload, dict):
             return {}
@@ -132,46 +114,14 @@ class SetuClient:
 
         NapCat 在发送合并转发时会自行下载 URL；这里由 bot 下载后交给共享文件发送层。
         """
-        last_exc: Optional[Exception] = None
-
-        for attempt in range(retries + 1):
-            try:
-                client_kwargs = self._build_client_kwargs()
-                try:
-                    async with httpx.AsyncClient(**client_kwargs) as client:
-                        resp = await client.get(url)
-                        resp.raise_for_status()
-                except TypeError:
-                    # 回退到旧版参数名 proxies=
-                    if self._proxy:
-                        client_kwargs.pop("proxy", None)
-                        client_kwargs["proxies"] = self._proxy  # type: ignore
-                    async with httpx.AsyncClient(**client_kwargs) as client:
-                        resp = await client.get(url)
-                        resp.raise_for_status()
-
-                # 简单大小保护
-                content_length = resp.headers.get("Content-Length")
-                if content_length:
-                    try:
-                        if int(content_length) > max_bytes:
-                            raise ValueError(f"image too large: {content_length} bytes")
-                    except ValueError:
-                        # content-length 非法时忽略
-                        pass
-
-                data = resp.content
-                if len(data) > max_bytes:
-                    raise ValueError(f"image too large: {len(data)} bytes")
-
-                return data
-            except Exception as e:
-                last_exc = e
-                # 简单退避
-                if attempt < retries:
-                    await asyncio.sleep(0.5 * (attempt + 1))
-
-        raise last_exc or RuntimeError("download failed")
+        return await download_bytes(
+            url,
+            proxy=self._proxy,
+            headers=_HEADERS,
+            max_bytes=max_bytes,
+            timeout=self._timeout,
+            attempts=retries + 1,
+        )
 
     def _rewrite_domain(self, url: str) -> str:
         """

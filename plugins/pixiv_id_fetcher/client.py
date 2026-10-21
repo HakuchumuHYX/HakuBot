@@ -103,21 +103,14 @@ class PixivClient:
             kwargs["proxy"] = self._proxy
         return kwargs
 
-    async def _request_with_proxy_compat(
+    async def _request(
         self,
         method: str,
         url: str,
         **kwargs: Any,
     ) -> httpx.Response:
-        client_kwargs = self._client_kwargs()
         try:
-            async with httpx.AsyncClient(**client_kwargs) as client:
-                return await client.request(method, url, **kwargs)
-        except TypeError:
-            if self._proxy:
-                client_kwargs.pop("proxy", None)
-                client_kwargs["proxies"] = self._proxy
-            async with httpx.AsyncClient(**client_kwargs) as client:
+            async with httpx.AsyncClient(**self._client_kwargs()) as client:
                 return await client.request(method, url, **kwargs)
         except httpx.TimeoutException as e:
             raise PixivTimeoutError(str(e)) from e
@@ -154,7 +147,7 @@ class PixivClient:
                 "get_secure_url": "true",
                 "include_policy": "true",
             }
-            resp = await self._request_with_proxy_compat("POST", OAUTH_URL, data=data)
+            resp = await self._request("POST", OAUTH_URL, data=data)
             if resp.status_code >= 400:
                 raise PixivAuthError(f"Pixiv 登录失败: HTTP {resp.status_code}")
 
@@ -174,7 +167,7 @@ class PixivClient:
         self, pid: int, *, send_original: bool = False
     ) -> PixivIllust:
         token = await self._ensure_access_token()
-        resp = await self._request_with_proxy_compat(
+        resp = await self._request(
             "GET",
             f"{API_BASE}/v1/illust/detail",
             params={"illust_id": pid},
@@ -194,7 +187,7 @@ class PixivClient:
 
     async def fetch_ugoira_metadata(self, pid: int) -> UgoiraMetadata:
         token = await self._ensure_access_token()
-        resp = await self._request_with_proxy_compat(
+        resp = await self._request(
             "GET",
             f"{API_BASE}/v1/ugoira/metadata",
             params={"illust_id": pid},
@@ -209,7 +202,7 @@ class PixivClient:
         return await self.download_bytes(url, max_bytes=max_bytes)
 
     async def download_bytes(self, url: str, *, max_bytes: int) -> bytes:
-        resp = await self._request_with_proxy_compat(
+        resp = await self._request(
             "GET",
             url,
             headers={

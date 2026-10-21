@@ -5,14 +5,15 @@ Stickers 插件 - 投稿功能模块
 
 import re
 import asyncio
-import aiohttp
 import aiofiles
 import tempfile
 from pathlib import Path
-from typing import List, Tuple, Set, Dict, Optional
+from typing import List, Tuple, Set, Optional
 from nonebot.adapters.onebot.v11 import Message, MessageSegment, GroupMessageEvent, Bot
 from nonebot import logger
+from utils.images.formats import MIME_TYPES
 from utils.logging import get_exc_desc
+from utils.network.images import fetch_image
 from utils.onebot.media import image_segment
 
 from plugins.stickers.send import (
@@ -45,92 +46,40 @@ def extract_contribution_info(message_text: str) -> Tuple[str, bool, bool]:
     return "", False, False
 
 
-def determine_image_extension(
-    image_segment: MessageSegment, response: aiohttp.ClientResponse = None
-) -> str:
-    """根据图片消息段确定文件扩展名"""
-    if response:
-        content_type = response.headers.get("Content-Type", "")
-        if content_type:
-            type_map = {
-                "image/jpeg": ".jpg",
-                "image/jpg": ".jpg",
-                "image/png": ".png",
-                "image/gif": ".gif",
-                "image/bmp": ".bmp",
-                "image/webp": ".webp",
-            }
-            for mime_type, ext in type_map.items():
-                if mime_type in content_type:
-                    return ext
-
-    url = image_segment.data.get("url", "")
-    if url:
-        for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"]:
-            if ext in url.lower():
-                return ext if ext != ".jpeg" else ".jpg"
-
-    return ".jpg"
-
-
-async def download_single_image(
-    session: aiohttp.ClientSession, image_url: str, segment: MessageSegment
-) -> Optional[Path]:
-    """下载单张图片到临时文件"""
+async def download_single_image(image_url: str) -> Optional[Path]:
+    """下载单张图片到临时文件，扩展名按图片内容判断"""
     try:
-        async with session.get(
-            image_url, timeout=aiohttp.ClientTimeout(total=30)
-        ) as response:
-            if response.status == 200:
-                image_data = await response.read()
-                file_extension = determine_image_extension(segment, response)
-
-                temp_file = tempfile.NamedTemporaryFile(
-                    delete=False, suffix=file_extension
-                )
-                temp_path = Path(temp_file.name)
-                temp_file.close()
-
-                async with aiofiles.open(temp_path, "wb") as f:
-                    await f.write(image_data)
-
-                return temp_path
-            else:
-                logger.warning(f"下载图片失败: {image_url}, 状态码: {response.status}")
-    except asyncio.TimeoutError:
-        logger.warning(f"下载图片超时: {image_url}")
+        image = await fetch_image(
+            image_url, timeout=30, allowed_formats=tuple(MIME_TYPES)
+        )
     except Exception as e:
-        logger.warning(f"下载图片异常: {image_url}, 错误: {e}")
-    return None
+        logger.warning(f"下载图片失败: {image_url}, 错误: {get_exc_desc(e)}")
+        return None
+
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f".{image.extension}")
+    temp_path = Path(temp_file.name)
+    temp_file.close()
+
+    async with aiofiles.open(temp_path, "wb") as f:
+        await f.write(image.data)
+    return temp_path
 
 
-async def download_images_parallel(image_urls: Dict[str, MessageSegment]) -> List[Path]:
+async def download_images_parallel(image_urls: List[str]) -> List[Path]:
     """并行下载多张图片"""
     if not image_urls:
         return []
 
-    temp_files: List[Path] = []
     semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
 
-    async def download_with_semaphore(
-        session: aiohttp.ClientSession, url: str, segment: MessageSegment
-    ):
+    async def download_with_semaphore(url: str):
         async with semaphore:
-            return await download_single_image(session, url, segment)
+            return await download_single_image(url)
 
-    connector = aiohttp.TCPConnector(limit=DOWNLOAD_CONCURRENCY)
-    async with aiohttp.ClientSession(connector=connector) as session:
-        tasks = [
-            download_with_semaphore(session, url, seg)
-            for url, seg in image_urls.items()
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for result in results:
-            if isinstance(result, Path):
-                temp_files.append(result)
-            elif isinstance(result, Exception):
-                logger.warning(f"下载任务异常: {result}")
+    results = await asyncio.gather(
+        *(download_with_semaphore(url) for url in image_urls)
+    )
+    temp_files = [path for path in results if path is not None]
 
     logger.debug(f"并行下载完成: {len(temp_files)}/{len(image_urls)} 张图片成功")
     return temp_files
@@ -225,11 +174,13 @@ async def save_contribution_images(
             )
 
         # --- 并行下载图片 ---
-        image_urls: Dict[str, MessageSegment] = {}
-        for segment in image_segments:
-            image_url = segment.data.get("url")
-            if image_url:
-                image_urls[image_url] = segment
+        image_urls = list(
+            dict.fromkeys(
+                segment.data["url"]
+                for segment in image_segments
+                if segment.data.get("url")
+            )
+        )
 
         temp_files = await download_images_parallel(image_urls)
 

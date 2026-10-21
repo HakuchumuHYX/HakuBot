@@ -10,7 +10,6 @@ from plugins.pjsk_guess_song.runtime import (
     db_service,
     cache_service,
     executor,
-    audio_processor,
     plugin_config,
 )
 
@@ -51,7 +50,6 @@ async def _on_startup():
 @on_plugin_shutdown(driver, "pjsk_guess_song")
 async def _on_shutdown():
     """Nonebot 关闭时执行清理"""
-    await audio_processor.terminate()
     await cache_service.terminate()
     executor.shutdown(wait=False)
     logger.debug("PJSK 猜歌插件服务已终止。")

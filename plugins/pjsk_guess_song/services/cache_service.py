@@ -8,11 +8,11 @@ import difflib
 from pathlib import Path
 from typing import List, Dict, Optional, Union
 from collections import defaultdict
-import aiohttp
 
 # --- Nonebot Imports ---
 from nonebot import logger
 from plugins.pjsk_guess_song.config import PluginConfig
+from utils.network.http import download_bytes
 
 
 # -------------------------
@@ -192,30 +192,25 @@ class CacheService:
             return
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(manifest_url, timeout=10) as response:
-                    response.raise_for_status()
-                    manifest_data = await response.json()
+            manifest_data = json.loads(await download_bytes(manifest_url, timeout=10))
 
-                    for mode in [
-                        "accompaniment",
-                        "bass_only",
-                        "drums_only",
-                        "vocals_only",
-                    ]:
-                        self.preprocessed_tracks[mode] = set(
-                            manifest_data.get(mode, [])
-                        )
-                        logger.debug(
-                            f"成功从 manifest 加载 {len(self.preprocessed_tracks[mode])} 个 '{mode}' 模式的音轨。"
-                        )
+            for mode in [
+                "accompaniment",
+                "bass_only",
+                "drums_only",
+                "vocals_only",
+            ]:
+                self.preprocessed_tracks[mode] = set(manifest_data.get(mode, []))
+                logger.debug(
+                    f"成功从 manifest 加载 {len(self.preprocessed_tracks[mode])} 个 '{mode}' 模式的音轨。"
+                )
 
-                    self.available_piano_songs_bundles = set(
-                        manifest_data.get("songs_piano_trimmed_mp3", [])
-                    )
-                    logger.debug(
-                        f"成功从 manifest 加载 {len(self.available_piano_songs_bundles)} 个钢琴模式的音轨。"
-                    )
+            self.available_piano_songs_bundles = set(
+                manifest_data.get("songs_piano_trimmed_mp3", [])
+            )
+            logger.debug(
+                f"成功从 manifest 加载 {len(self.available_piano_songs_bundles)} 个钢琴模式的音轨。"
+            )
 
         except Exception as e:
             logger.exception(

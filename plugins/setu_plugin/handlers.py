@@ -6,8 +6,6 @@ import asyncio
 import time
 from typing import Optional, Any
 
-import httpx
-
 from nonebot import on_command, get_driver, require, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -27,6 +25,8 @@ from core.settings import ConfigModel, load_config
 from pydantic import Field
 
 from plugins.setu_plugin.client import SetuClient
+from utils.logging import get_exc_desc
+from utils.network.http import HttpError
 from utils.onebot.media import image_segment
 from utils.onebot.forward import send_forward_msg
 
@@ -138,8 +138,8 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     # 给用户即时反馈（失败不影响主流程）
     try:
         await bot.send(event, "在找了在找了…")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[setu_plugin] 发送等待提示失败: {get_exc_desc(e)}")
 
     # --- 参数解析：lzst <tag> ---
     tag = args.extract_plain_text().strip() or None
@@ -203,9 +203,8 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                 cache_path = PluginPaths("setu_plugin").cache / f"setu_{result.pid}.jpg"
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 cache_path.write_bytes(img_bytes)
-            except httpx.HTTPStatusError as e:
-                status = e.response.status_code if e.response else None
-                if status == 404:
+            except HttpError as e:
+                if e.status_code == 404:
                     logger.info(
                         f"[setu_plugin] image 404, refetch another one ({attempt + 1}/{max_refetch}) url={result.display_url}"
                     )
@@ -220,9 +219,8 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                             )
                             cache_path.parent.mkdir(parents=True, exist_ok=True)
                             cache_path.write_bytes(img_bytes)
-                        except httpx.HTTPStatusError as e2:
-                            status2 = e2.response.status_code if e2.response else None
-                            if status2 == 404:
+                        except HttpError as e2:
+                            if e2.status_code == 404:
                                 logger.info(
                                     f"[setu_plugin] original url also 404, refetch another one ({attempt + 1}/{max_refetch}) url={result.url}"
                                 )

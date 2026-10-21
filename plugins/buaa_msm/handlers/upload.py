@@ -11,6 +11,7 @@
 """
 
 from __future__ import annotations
+from utils.network.http import download_to_file
 from utils.paths import PluginPaths
 
 import shutil
@@ -19,8 +20,6 @@ from pathlib import Path
 from typing import Dict
 from urllib.parse import unquote
 
-import aiofiles
-import aiohttp
 from nonebot import on_command, on_message, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.exception import FinishedException
@@ -230,24 +229,13 @@ async def save_file(file_path: str, destination_path: Path, user_id: str):
     把 QQ 文件（URL 或本地路径）保存到 destination_path（由 reserve_storage_path 生成）
     """
     if file_path.startswith(("http://", "https://")):
-        await download_file(file_path, destination_path)
+        await download_to_file(file_path, destination_path)
     else:
         await copy_local_file(file_path, destination_path)
 
     logger.info(
         f"用户 {user_id} 上传文件: {destination_path.name}，保存至 {destination_path}"
     )
-
-
-async def download_file(url: str, destination_path: Path):
-    """从URL下载文件"""
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status != 200:
-                raise Exception(f"下载失败，HTTP状态码: {response.status}")
-            async with aiofiles.open(str(destination_path), "wb") as f:
-                async for chunk in response.content.iter_chunked(1024):
-                    await f.write(chunk)
 
 
 async def copy_local_file(source_path: str, destination_path: Path):

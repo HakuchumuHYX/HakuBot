@@ -10,7 +10,6 @@ import io
 import re
 import os
 import subprocess
-import aiohttp
 import random
 from typing import Optional, Union, Dict
 from pathlib import Path
@@ -20,6 +19,7 @@ from functools import partial
 from nonebot import logger
 
 from utils.logging import get_exc_desc
+from utils.network.http import download_bytes
 
 from pydub import AudioSegment
 
@@ -36,13 +36,6 @@ class AudioProcessor:
         self.cache_service = cache_service
         self.output_dir = output_dir
         self.executor = executor
-        self._session: Optional[aiohttp.ClientSession] = None
-
-    async def _get_session(self) -> Optional[aiohttp.ClientSession]:
-        """延迟初始化并获取 aiohttp session"""
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
 
     async def get_segment_mean_dbfs_ffmpeg(
         self, file_path: Union[Path, str], start_s: float, duration_s: float
@@ -258,20 +251,9 @@ class AudioProcessor:
             if isinstance(audio_source, str) and audio_source.startswith(
                 ("http://", "https://")
             ):
-                session = await self._get_session()
-                if not session:
-                    logger.error("无法获取 aiohttp session")
-                    return None
-                async with session.get(audio_source) as response:
-                    response.raise_for_status()
-                    return io.BytesIO(await response.read())
+                return io.BytesIO(await download_bytes(audio_source))
             else:
                 return audio_source
         except Exception as e:
             logger.warning(f"获取音频数据 {audio_source} 失败: {get_exc_desc(e)}")
             return None
-
-    async def terminate(self):
-        """关闭 aiohttp session"""
-        if self._session and not self._session.closed:
-            await self._session.close()

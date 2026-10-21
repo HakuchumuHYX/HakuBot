@@ -1,8 +1,10 @@
+from nonebot import logger
 from utils.images.formats import to_rgb
+from utils.logging import get_exc_desc
+from utils.network.http import download_bytes
 from utils.onebot.messages import find_forward_id, normalize_message_segments
 import base64
 import io
-import httpx
 import re
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from PIL import Image, ImageOps
@@ -79,12 +81,9 @@ async def download_image_as_data_url(
     else:
         raise ValueError(f"Unsupported image purpose: {purpose}")
 
-    async with httpx.AsyncClient(proxy=plugin_config.proxy, timeout=20.0) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-
+    data = await download_bytes(url, proxy=plugin_config.proxy, timeout=20)
     raw, mime_type = _prepare_image_data(
-        resp.content,
+        data,
         max_size=max_size,
         preserve_format=preserve_format,
     )
@@ -186,8 +185,10 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
                                 "image_url": {"url": b64_img},
                             }
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(
+                            f"转发消息中的图片下载失败，已跳过: {get_exc_desc(e)}"
+                        )
 
             text = _text_from_segment(segment, image_index=image_index)
             if text:

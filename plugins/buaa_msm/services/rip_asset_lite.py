@@ -21,6 +21,14 @@ _DYNAMIC_ICON_CATEGORIES: Set[str] = {
 }
 
 
+def is_retryable_http_status(status: int) -> bool:
+    return status in (408, 409, 425, 429) or status >= 500
+
+
+def is_retryable_exception(exc: Exception) -> bool:
+    return isinstance(exc, (asyncio.TimeoutError, aiohttp.ClientError))
+
+
 class RipAssetLite:
     """
     轻量 Rip 资源管理（buaa_msm 版）：
@@ -164,14 +172,6 @@ class RipAssetLite:
             "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
         }
 
-    @staticmethod
-    def _is_retryable_http_status(status: int) -> bool:
-        return status in (408, 409, 425, 429) or status >= 500
-
-    @staticmethod
-    def _is_retryable_exception(exc: Exception) -> bool:
-        return isinstance(exc, (asyncio.TimeoutError, aiohttp.ClientError))
-
     async def _download_first_success(
         self,
         session: aiohttp.ClientSession,
@@ -201,7 +201,7 @@ class RipAssetLite:
                                 f"HTTP {resp.status} @ {url} (attempt {attempt}/{max_attempts})"
                             )
                             if (
-                                not self._is_retryable_http_status(resp.status)
+                                not is_retryable_http_status(resp.status)
                                 or attempt >= max_attempts
                             ):
                                 break
@@ -209,31 +209,13 @@ class RipAssetLite:
                         errors.append(
                             f"{type(e).__name__} @ {url}: {e} (attempt {attempt}/{max_attempts})"
                         )
-                        if (
-                            not self._is_retryable_exception(e)
-                            or attempt >= max_attempts
-                        ):
+                        if not is_retryable_exception(e) or attempt >= max_attempts:
                             break
 
                     if backoff > 0:
                         await asyncio.sleep(backoff * (2 ** (attempt - 1)))
 
         return None, errors
-
-    async def get_harvest_fixture_icon_path(
-        self,
-        session: aiohttp.ClientSession,
-        fixture_id: int,
-        *,
-        allow_error: bool = True,
-    ) -> Optional[str]:
-        """
-        Harvest fixture icon 走本地静态资源读取，不走 rip HTTP 下载。
-        返回“本地可用路径”（缓存或静态目录）。
-        """
-        _ = session
-        _ = allow_error
-        return self.get_local_harvest_fixture_icon_path(int(fixture_id))
 
     async def get_asset_cache_path(
         self,
@@ -327,20 +309,12 @@ class RipAssetLite:
         if not wanted or not settings.mysekai_icon.enabled:
             return result
 
-        sem = asyncio.Semaphore(settings.mysekai_icon.prefetch_concurrency)
-
-        async def _one(session: aiohttp.ClientSession, fixture_id: int) -> None:
-            async with sem:
-                p = await self.get_harvest_fixture_icon_path(
-                    session, fixture_id, allow_error=True
-                )
-                if p:
-                    result[fixture_id] = p
-
-        async with aiohttp.ClientSession() as session:
-            await asyncio.gather(*[_one(session, fid) for fid in wanted])
-
         # 该类别不进行远程下载；这里统计“本地可用命中”（缓存 + data 静态 + resources 静态）。
+        for fixture_id in wanted:
+            p = self.get_local_harvest_fixture_icon_path(fixture_id)
+            if p:
+                result[fixture_id] = p
+
         logger.debug(
             f"MySekai harvest fixture icon 本地可用命中: {len(result)}/{len(wanted)}"
         )

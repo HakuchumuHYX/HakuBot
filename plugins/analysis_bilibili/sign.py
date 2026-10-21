@@ -124,10 +124,3 @@ async def get_ticket():
             ticket = json_content["data"]["ticket"]
             _ticket_cache.update(ticket=ticket, ts=now)
             return ticket
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(get_ticket())
