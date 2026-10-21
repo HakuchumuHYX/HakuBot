@@ -5,22 +5,35 @@
 <style>
 {{ font_css | safe }}
 
+/* 配电箱：每个功能是一个空开，子功能挂在主插件的母线上，主插件断开时母线变灰 */
 :root {
-    --paper: #f4f5f3;
-    --ink: #1e2420;
-    --sub: #5d655f;
-    --muted: #a3aaa5;
-    --line: #e1e4e0;
-    --on: #1f9d55;
-    --off: #b9bfbb;
+    --panel: #e3e7e2;
+    --ink: #1f2528;
+    --sub: #586265;
+    --muted: #9aa3a0;
+    --on: #23934f;
+    --trip: #cf3f2e;
+    --knob: #ffffff;
 }
+
+{% if dark %}
+:root {
+    --panel: #1d2225;
+    --ink: #e4e9e5;
+    --sub: #a5aeab;
+    --muted: #677170;
+    --on: #3fb46c;
+    --trip: #e8604f;
+    --knob: #1d2225;
+}
+{% endif %}
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
     font-family: Haku, 'Noto Color Emoji', sans-serif;
     color: var(--ink);
-    background: var(--paper);
+    background: var(--panel);
     padding: 36px 40px 28px;
 }
 
@@ -29,101 +42,191 @@ header {
     justify-content: space-between;
     align-items: flex-end;
     padding-bottom: 16px;
-    border-bottom: 2px solid var(--ink);
+    border-bottom: 3px solid var(--ink);
 }
 
-h1 { font-size: 36px; font-weight: 900; }
+h1 { font-size: 36px; font-weight: 900; letter-spacing: 2px; }
 
 .group { margin-top: 4px; font-size: 16px; color: var(--sub); }
 
-.summary { display: flex; gap: 22px; font-size: 16px; color: var(--sub); }
+.summary { font-size: 16px; color: var(--sub); text-align: right; line-height: 1.6; }
 
-.summary b { margin-right: 4px; font-size: 34px; font-weight: 900; color: var(--ink); }
+.summary b { margin: 0 3px; font-size: 24px; font-weight: 900; color: var(--ink); }
 
-.summary .off b { color: var(--muted); }
+.summary .trip b { color: var(--trip); }
 
-.list { margin-top: 18px; column-count: {{ columns }}; column-gap: 36px; }
+.list { margin-top: 20px; column-count: {{ columns }}; column-gap: 48px; }
 
-.plugin {
-    break-inside: avoid;
-    padding: 9px 0 10px;
-    border-bottom: 1px solid var(--line);
+.plugin { break-inside: avoid; padding-bottom: 10px; }
+
+.row {
+    display: grid;
+    grid-template-columns: 14px 1fr auto 52px;
+    align-items: center;
+    column-gap: 10px;
+    min-height: 32px;
 }
 
-.row { display: flex; align-items: center; gap: 10px; }
+/* 拨杆：开在上、关在下，启动失败停在中间（空开跳闸的位置） */
+.lever {
+    position: relative;
+    width: 14px;
+    height: 24px;
+    border: 2px solid var(--muted);
+    border-radius: 4px;
+}
 
-/* 实心绿点开启，空心灰圈关闭 */
-.dot {
+.lever::after {
+    content: "";
+    position: absolute;
+    left: 1px;
+    bottom: 1px;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--muted);
+}
+
+.on .lever { border-color: var(--on); background: var(--on); }
+
+.on .lever::after { top: 1px; bottom: auto; background: var(--knob); }
+
+.trip .lever { border-color: var(--trip); }
+
+.trip .lever::after { top: 6px; bottom: auto; background: var(--trip); }
+
+.name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 18px; font-weight: 700; }
+
+.off .name { color: var(--sub); font-weight: 500; }
+
+.trip .name { color: var(--trip); }
+
+.tag {
     flex: none;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--on);
+    padding: 0 5px;
+    border: 1.5px solid currentColor;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 17px;
+    color: var(--sub);
 }
 
-.disabled > .dot, .feature.disabled .dot { background: none; border: 2px solid var(--off); }
+.tag.trip-tag { border-color: var(--trip); background: var(--trip); color: var(--knob); }
 
-.name { font-size: 18px; font-weight: 700; }
+.id { font-size: 13.5px; font-weight: 500; color: var(--sub); }
 
-.id { margin-left: auto; font-size: 13px; color: var(--muted); }
+.cd { font-size: 15px; font-weight: 700; text-align: right; }
 
-.disabled > .name { color: var(--muted); font-weight: 400; }
+.cd.unset { font-weight: 400; color: var(--muted); }
 
-.features { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 5px 0 0 22px; }
+/* 母线：从主插件拨杆正下方引出，子功能横着接上去 */
+.bus { margin-left: 6px; }
 
-.feature { display: flex; align-items: center; gap: 6px; font-size: 14.5px; color: var(--sub); }
+.bus .row {
+    position: relative;
+    grid-template-columns: 10px 1fr auto 52px;
+    min-height: 28px;
+    padding-left: 12px;
+}
 
-.feature .dot { width: 8px; height: 8px; }
+.bus .row::before,
+.bus .row::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    border-color: var(--ink);
+}
 
-.feature.disabled { color: var(--muted); }
+.bus .row::before { top: 50%; width: 10px; border-top: 2px solid; }
+
+.bus .row::after { top: 0; bottom: 0; border-left: 2px solid; }
+
+/* 最后一个子功能收成 └ */
+.bus .row:last-child::after { bottom: calc(50% - 2px); }
+
+.bus.dead .row::before,
+.bus.dead .row::after { border-color: var(--muted); }
+
+.bus .lever { width: 10px; height: 18px; border-width: 1.5px; border-radius: 3px; }
+
+.bus .lever::after { width: 5px; height: 5px; left: 1px; bottom: 1px; }
+
+.bus .on .lever::after,
+.bus .row.on .lever::after { top: 1px; }
+
+.bus .row.trip .lever::after { top: 5px; }
+
+.bus .name { font-size: 15.5px; font-weight: 500; }
+
+.bus .cd { font-size: 14px; }
 
 footer {
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    margin-top: 20px;
+    gap: 24px;
+    margin-top: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--muted);
     font-size: 13px;
-    color: var(--muted);
+    color: var(--sub);
 }
 
-.legend { display: flex; align-items: center; gap: 6px; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
 
-.legend .dot { width: 9px; height: 9px; }
+.legend > span { display: flex; align-items: center; gap: 6px; }
 
-.legend .dot.hollow { margin-left: 10px; background: none; border: 2px solid var(--off); }
+.legend .lever { width: 10px; height: 18px; border-width: 1.5px; border-radius: 3px; }
+
+.legend .lever::after { width: 5px; height: 5px; }
+
+.legend .on .lever::after { top: 1px; }
+
+.legend .trip .lever::after { top: 5px; }
+
+.legend b { font-weight: 700; color: var(--ink); }
 
 .watermark {
     white-space: pre-line;
     text-align: right;
+    color: var(--muted);
 }
 
-div.watermark { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; }
+div.watermark { margin-top: 10px; font-size: 13px; text-align: center; }
 </style>
 </head>
 <body>
+{% macro row_state(row) %}{% if row.unavailable %}trip{% elif row.enabled %}on{% else %}off{% endif %}{% endmacro %}
+{% macro feature_row(row, label) %}
+<div class="row {{ row_state(row) }}">
+    <span class="lever"></span>
+    <span class="name">{{ row.name }}{% if row.unavailable %}<span class="tag trip-tag">启动失败</span>{% endif %}{% if not row.default_on %}<span class="tag">默认关</span>{% endif %}</span>
+    <span class="id">{{ label }}</span>
+    {% if row.cooldown %}<span class="cd">{{ row.cooldown }}s</span>{% elif row.cooldown is not none %}<span class="cd unset">—</span>{% else %}<span></span>{% endif %}
+</div>
+{% endmacro %}
 <header>
     <div>
         <h1>{{ title }}</h1>
         <div class="group">群 {{ group_id }}</div>
     </div>
     <div class="summary">
-        <span><b>{{ enabled_count }}</b>开启</span>
-        <span class="off"><b>{{ disabled_count }}</b>关闭</span>
+        <span><b>{{ enabled_count }}</b>项开启</span>
+        <span><b>{{ disabled_count }}</b>项关闭</span>
+        {% if unavailable_count %}<span class="trip"><b>{{ unavailable_count }}</b>项启动失败</span>{% endif %}
+        <br><span><b>{{ cooldown_count }}</b>项设了 CD</span>
     </div>
 </header>
 
 <div class="list">
     {% for group in groups %}
     <div class="plugin">
-        <div class="row{% if not group.parent.enabled %} disabled{% endif %}">
-            <span class="dot"></span>
-            <span class="name">{{ group.parent.name }}</span>
-            <span class="id">{{ group.parent.plugin_id }}</span>
-        </div>
+        {{ feature_row(group.parent, group.parent.plugin_id) }}
         {% if group.children %}
-        <div class="features">
+        <div class="bus{% if not group.parent.enabled %} dead{% endif %}">
             {% for row in group.children %}
-            <span class="feature{% if not row.enabled %} disabled{% endif %}"><span class="dot"></span>{{ row.name }}</span>
+            {{ feature_row(row, ":" ~ row.plugin_id.split(":", 1)[1]) }}
             {% endfor %}
         </div>
         {% endif %}
@@ -132,7 +235,13 @@ div.watermark { margin-top: 10px; font-size: 13px; color: var(--muted); text-ali
 </div>
 
 <footer>
-    <span class="legend"><span class="dot"></span>开启 <span class="dot hollow"></span>关闭</span>
+    <div class="legend">
+        <span class="on"><span class="lever"></span>开启</span>
+        <span class="off"><span class="lever"></span>关闭</span>
+        <span class="trip"><span class="lever"></span>启动失败，启用也无效</span>
+        <span><span class="tag">默认关</span>重置开关后为关</span>
+        <span><b>60s</b>本群 CD，— 为可设未设</span>
+    </div>
     {% if watermark_text and watermark_position != "bottom" %}<span class="watermark">{{ watermark_text }}</span>{% endif %}
 </footer>
 {% if watermark_text and watermark_position == "bottom" %}<div class="watermark">{{ watermark_text }}</div>{% endif %}

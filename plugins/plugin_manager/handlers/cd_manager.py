@@ -1,17 +1,14 @@
-from nonebot import on_command, logger
-from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent
+from nonebot import on_command
+from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
-from utils.onebot.forward import send_forward_msg
-from core.cooldown import get_cooldown, set_cooldown
-from core.registry import FEATURES, FEATURES_BY_ID
+from core.cooldown import set_cooldown
+from core.registry import FEATURES_BY_ID
 from plugins.plugin_manager.handlers.enable import group_id_of
 
 enable_cd = on_command("启用CD", permission=SUPERUSER, priority=5, block=True)
 
 disable_cd = on_command("禁用CD", permission=SUPERUSER, priority=5, block=True)
-
-list_cd = on_command("CD列表", permission=SUPERUSER, priority=5, block=True)
 
 
 def cooldown_error(feature_id: str) -> str:
@@ -20,7 +17,7 @@ def cooldown_error(feature_id: str) -> str:
     if spec is None:
         return f"未登记此功能: {feature_id}"
     if not spec.cooldown:
-        return f"{spec.name} ({feature_id}) 不支持 CD，可设置的见「CD列表」"
+        return f"{spec.name} ({feature_id}) 不支持 CD，可设置的见「插件状态」"
     return ""
 
 
@@ -54,23 +51,3 @@ async def handle_disable_cd(event: MessageEvent, args: Message = CommandArg()):
         await disable_cd.finish(error)
     set_cooldown(feature_id, group_id, 0)
     await disable_cd.finish(f"已在本群取消 {feature_id} 的 CD")
-
-
-@list_cd.handle()
-async def handle_list_cd(bot: Bot, event: MessageEvent):
-    """列出本群可设 CD 的功能"""
-    group_id = await group_id_of(list_cd, event)
-    lines = []
-    for item in FEATURES:
-        if item.cooldown:
-            seconds = get_cooldown(item.id, group_id)
-            lines.append(
-                f"{item.name} ({item.id}) - {f'{seconds} 秒' if seconds else '无CD'}"
-            )
-    message = "本群可设 CD 的功能:\n" + "\n".join(lines)
-
-    try:
-        await send_forward_msg(bot, event, items=[message])
-    except Exception as e:
-        logger.opt(exception=True).warning(f"合并转发失败: {e}")
-        await list_cd.finish(message)

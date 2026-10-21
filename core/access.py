@@ -15,7 +15,7 @@ def _parent(feature_id: str) -> str:
     return feature_id.split(":", 1)[0]
 
 
-def _unavailable(feature_id: str) -> bool:
+def is_unavailable(feature_id: str) -> bool:
     """功能自己或主插件的启动钩子失败过"""
     return any(
         runtime.health.get(key, "").startswith("unavailable:")
@@ -30,7 +30,7 @@ def _switched_on(feature_id: str, group_id: str) -> bool:
 
 def is_enabled(feature_id: str, group_id: str) -> bool:
     """本群开没开，不看触发者。子功能要求主插件也开着。"""
-    if _unavailable(feature_id):
+    if is_unavailable(feature_id):
         return False
     parent = _parent(feature_id)
     if parent != feature_id and not _switched_on(parent, group_id):
@@ -48,7 +48,7 @@ def switch_rule(feature_id: str, *, superuser_bypass: bool = True) -> Rule:
         raise KeyError(f"未登记的功能: {feature_id}")
 
     async def _check(event: Event) -> bool:
-        if _unavailable(feature_id):
+        if is_unavailable(feature_id):
             return False
         group_id = getattr(event, "group_id", None)
         if group_id is None:

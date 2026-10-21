@@ -8,7 +8,8 @@ from utils.json_io import load_json
 from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 from utils.paths import PluginPaths
-from core.access import is_enabled, reset_group, set_enabled
+from core.access import is_enabled, is_unavailable, reset_group, set_enabled
+from core.cooldown import get_cooldown
 from core.registry import FEATURES, FEATURES_BY_ID
 from plugins.plugin_manager.render import (
     PluginStatusGroup,
@@ -22,7 +23,7 @@ enable_plugin = on_command("启用", permission=SUPERUSER, priority=5, block=Tru
 
 disable_plugin = on_command("禁用", permission=SUPERUSER, priority=5, block=True)
 
-list_plugins = on_command("插件开关状态", permission=SUPERUSER, priority=5, block=True)
+list_plugins = on_command("插件状态", permission=SUPERUSER, priority=5, block=True)
 
 reset_switches = on_command("重置开关", permission=SUPERUSER, priority=5, block=True)
 
@@ -97,7 +98,7 @@ async def handle_disable_all(event: MessageEvent):
 
 @list_plugins.handle()
 async def handle_list(event: MessageEvent):
-    """按主插件分组出图，子功能合并在主插件的卡片里"""
+    """开关、默认值、启动失败和 CD 出一张图，子功能挂在主插件下面"""
     group_id = await group_id_of(list_plugins, event)
 
     groups: dict[str, PluginStatusGroup] = {}
@@ -106,9 +107,11 @@ async def handle_list(event: MessageEvent):
             name=item.name,
             plugin_id=item.id,
             enabled=is_enabled(item.id, group_id),
-            is_child=":" in item.id,
+            default_on=item.default,
+            unavailable=is_unavailable(item.id),
+            cooldown=get_cooldown(item.id, group_id) if item.cooldown else None,
         )
-        if row.is_child:
+        if ":" in item.id:
             groups[item.id.split(":", 1)[0]].children.append(row)
         else:
             groups[item.id] = PluginStatusGroup(parent=row, children=[])
@@ -140,10 +143,24 @@ async def handle_list(event: MessageEvent):
         # finish() 会抛 FinishedException 用于中断流程；不要当作渲染失败处理
         raise
     except Exception as e:
-        logger.opt(exception=True).warning(f"渲染插件开关状态图片失败: {e}")
+        logger.opt(exception=True).warning(f"渲染插件状态图片失败: {e}")
         lines = [
-            f"{row.name} ({row.plugin_id}) - {'✅ 启用' if row.enabled else '❌ 禁用'}"
+            text_line(row)
             for group in ordered
             for row in (group.parent, *group.children)
         ]
-        await list_plugins.finish("目前接入了管理插件的有:\n" + "\n".join(lines))
+        await list_plugins.finish("本群插件状态:\n" + "\n".join(lines))
+
+
+def text_line(row: PluginStatusRow) -> str:
+    """出图失败时的文字版，信息和图上一样"""
+    if row.unavailable:
+        state = "启动失败"
+    else:
+        state = "开启" if row.enabled else "关闭"
+    parts = [f"{row.name} ({row.plugin_id}) - {state}"]
+    if not row.default_on:
+        parts.append("默认关")
+    if row.cooldown is not None:
+        parts.append(f"CD {row.cooldown}s" if row.cooldown else "CD 未设")
+    return "，".join(parts)
