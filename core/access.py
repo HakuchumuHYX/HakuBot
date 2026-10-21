@@ -5,9 +5,9 @@ from nonebot.rule import Rule
 from core.lifecycle import runtime
 from core.registry import FEATURES_BY_ID
 from utils.json_io import atomic_write_json, load_json
-from utils.paths import PluginPaths
+from utils.paths import project_root
 
-STATUS_FILE = PluginPaths("plugin_manager").data / "plugin_status.json"
+STATUS_FILE = project_root() / "data/core/plugin_status.json"
 
 # {功能 ID: {群号: 开关}}，只记和默认值不同的群
 plugin_status: dict[str, dict[str, bool]] = {}

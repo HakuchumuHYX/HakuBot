@@ -2,9 +2,8 @@ import re
 import asyncio
 import argparse
 from dataclasses import dataclass
-from datetime import timedelta
+from io import BytesIO
 from typing import List, Tuple
-from contextlib import ExitStack
 
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
@@ -22,7 +21,6 @@ from PIL import Image
 from plugins.lunabot_imgexp.config import config
 from utils.logging import get_exc_desc
 from utils.text import truncate
-from utils.files import TemporaryPath
 from utils.onebot.forward import send_forward_msg
 from utils.onebot.rules import command_boundary
 from utils.network.http import (
@@ -216,27 +214,24 @@ async def _(
             logger.exception("拼图失败")
             await ximg.finish(f"拼图失败: {e}")
 
-    # 使用 ExitStack 管理多个临时文件
-    with ExitStack() as stack:
-        for img in images:
-            if args_obj.gif:
-                gif_path_ctx = TemporaryPath("gif", remove_after=timedelta(minutes=3))
-                gif_path = stack.enter_context(gif_path_ctx)
-                await asyncio.to_thread(save_transparent_static_gif, img, str(gif_path))
-                messages.append(image_segment(gif_path))
+    for img in images:
+        if args_obj.gif:
+            buffer = BytesIO()
+            await asyncio.to_thread(save_transparent_static_gif, img, buffer)
+            messages.append(image_segment(buffer))
 
-            elif isinstance(img, Image.Image):
-                tmp_path = stack.enter_context(TemporaryPath("png"))
-                img.save(tmp_path, format="PNG")
-                messages.append(image_segment(tmp_path))
+        elif isinstance(img, Image.Image):
+            buffer = BytesIO()
+            img.save(buffer, format="PNG")
+            messages.append(image_segment(buffer))
 
-            else:
-                messages.append(image_segment(img))
-
-        if images:
-            await send_forward_msg(bot, event, items=messages)
         else:
-            await ximg.send(msg_content)
+            messages.append(image_segment(img))
+
+    if images:
+        await send_forward_msg(bot, event, items=messages)
+    else:
+        await ximg.send(msg_content)
 
     # 合并转发里的视频节点不稳定，视频逐条单独发
     for media_id, video_url in tweet.videos:

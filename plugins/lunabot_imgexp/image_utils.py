@@ -212,7 +212,7 @@ def gif_to_frames(img: Image.Image) -> List[Image.Image]:
 def save_transparent_gif(
     image_or_frames: Union[Image.Image, List[Image.Image]],
     duration: int,
-    save_path: str,
+    save_file,
     alpha_threshold: float = 0.5,
 ):
     """
@@ -225,17 +225,15 @@ def save_transparent_gif(
             image_or_frames = gif_to_frames(image_or_frames)
         else:
             image_or_frames = [image_or_frames]
-    _save_transparent_gif(image_or_frames, duration, save_path, alpha_threshold)
+    _save_transparent_gif(image_or_frames, duration, save_file, alpha_threshold)
 
 
-def save_transparent_static_gif(
-    img: Image, save_path: str, alpha_threshold: float = 0.5
-):
+def save_transparent_static_gif(img: Image, save_file, alpha_threshold: float = 0.5):
     """
     保存静态透明GIF图像
     """
     return save_transparent_gif(
-        img, duration=50, save_path=save_path, alpha_threshold=alpha_threshold
+        img, duration=50, save_file=save_file, alpha_threshold=alpha_threshold
     )
 
 

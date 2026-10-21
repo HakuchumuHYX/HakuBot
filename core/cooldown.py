@@ -5,9 +5,9 @@ from nonebot.adapters import Event
 
 from core.access import is_superuser, load_state_file
 from utils.json_io import atomic_write_json
-from utils.paths import PluginPaths
+from utils.paths import project_root
 
-CD_CONFIG_FILE = PluginPaths("plugin_manager").data / "cd_config.json"
+CD_CONFIG_FILE = project_root() / "data/core/cd_config.json"
 
 # {群号: {功能 ID: 秒}}
 cd_config: dict[str, dict[str, int]] = {}
