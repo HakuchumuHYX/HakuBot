@@ -16,6 +16,7 @@ from nonebot_plugin_apscheduler import scheduler
 
 from core.access import is_plugin_enabled
 from core.access_state import plugin_status
+from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 
 from plugins.group_daily_analysis.config import plugin_config
@@ -120,8 +121,7 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
         )
     except Exception as e:
         # 记录失败不应影响主流程，仅打日志
-        # logger.debug(f"记录消息失败: {e}")
-        pass
+        logger.warning(f"记录群 {event.group_id} 消息失败: {get_exc_desc(e)}")
 
 
 @message_sent_recorder.handle()

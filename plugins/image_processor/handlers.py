@@ -83,11 +83,9 @@ async def _run_job(matcher, event: MessageEvent, feature: str, label: str, job):
         logger.exception(f"{label}失败")
         await matcher.finish(f"{label}失败：{e}")
     finally:
-        await safe_delete_file(result_path)
+        safe_delete_file(result_path)
     if isinstance(event, GroupMessageEvent):
-        update_cd(
-            f"image_processor:{feature}", str(event.group_id), str(event.user_id)
-        )
+        update_cd(f"image_processor:{feature}", str(event.group_id), str(event.user_id))
 
 
 async def _handle_image(

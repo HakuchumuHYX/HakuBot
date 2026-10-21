@@ -1,8 +1,8 @@
 from __future__ import annotations
 from utils.paths import project_root
 from utils.images.formats import detect_format
+from utils.json_io import atomic_write_bytes
 
-import asyncio
 import base64
 import binascii
 import hashlib
@@ -12,7 +12,6 @@ import tempfile
 import time
 from io import BytesIO
 from pathlib import Path
-from threading import Lock
 from typing import TypeAlias
 from urllib.parse import unquote, urlparse
 
@@ -24,10 +23,6 @@ ImageSource: TypeAlias = str | Path | bytes | bytearray | BytesIO
 
 _KNOWN_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 _OUTBOUND_MEDIA_TTL_SECONDS = 24 * 60 * 60
-_CLEAN_INTERVAL_SECONDS = 6 * 60 * 60
-_cleanup_lock = Lock()
-_last_cleanup_at = 0.0
-_cleanup_task: asyncio.Task | None = None
 _PROJECT_ROOT = project_root()
 
 
@@ -91,20 +86,7 @@ def _write_cached_image(data: bytes, filename: str | None = None) -> Path:
         target.touch()
         return target
 
-    fd, temporary_name = tempfile.mkstemp(
-        prefix=f".{digest}.", suffix=".tmp", dir=target.parent
-    )
-    try:
-        with os.fdopen(fd, "wb") as temporary_file:
-            temporary_file.write(data)
-            temporary_file.flush()
-            os.fsync(temporary_file.fileno())
-        os.replace(temporary_name, target)
-    finally:
-        try:
-            Path(temporary_name).unlink(missing_ok=True)
-        except OSError:
-            pass
+    atomic_write_bytes(target, data)
     return target
 
 
@@ -179,9 +161,9 @@ def _decode_encoded_image(source: str, filename: str | None) -> Path:
         raise ImagePreparationError("图片 base64 数据无效") from exc
 
 
-def cleanup_outbound_media(*, now: float | None = None) -> int:
-    """Delete expired files created by this module and return the removed count."""
-    cutoff = (time.time() if now is None else now) - _OUTBOUND_MEDIA_TTL_SECONDS
+def cleanup_outbound_media() -> None:
+    """Delete expired files created by this module."""
+    cutoff = time.time() - _OUTBOUND_MEDIA_TTL_SECONDS
     removed = 0
     for path in _outbound_media_dir().iterdir():
         try:
@@ -193,21 +175,8 @@ def cleanup_outbound_media(*, now: float | None = None) -> int:
             removed += 1
         except OSError as exc:
             logger.warning(f"[outbound_media] 清理失败 path={path}: {exc}")
-    return removed
-
-
-def _maybe_cleanup_outbound_media() -> None:
-    global _last_cleanup_at
-    now = time.time()
-    if now - _last_cleanup_at < _CLEAN_INTERVAL_SECONDS:
-        return
-    with _cleanup_lock:
-        if now - _last_cleanup_at < _CLEAN_INTERVAL_SECONDS:
-            return
-        removed = cleanup_outbound_media(now=now)
-        _last_cleanup_at = now
-        if removed:
-            logger.info(f"[outbound_media] 已清理 {removed} 个过期文件")
+    if removed:
+        logger.info(f"[outbound_media] 已清理 {removed} 个过期文件")
 
 
 def _container_path_for_host_file(path: Path) -> Path:
@@ -228,8 +197,6 @@ def prepare_image_source(
     filename: str | None = None,
 ) -> str | Path:
     """Prepare an outgoing image as a URL or a NapCat-readable local path."""
-    _maybe_cleanup_outbound_media()
-
     if isinstance(source, BytesIO):
         source = source.getvalue()
     if isinstance(source, bytearray):

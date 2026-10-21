@@ -1,5 +1,5 @@
 import time
-from nonebot import get_driver
+from core.access import is_superuser
 from core.registry import get_plugin_catalog
 from core.access_state import (
     cd_config,
@@ -25,12 +25,8 @@ def check_cd(plugin_id: str, group_id: str, user_id: str) -> int:
     检查用户是否处于CD中
     :return: 剩余CD时间（秒）。如果为 0，则表示CD结束。
     """
-    try:
-        superusers = get_driver().config.superusers
-        if user_id in superusers:
-            return 0  # SuperUser无视CD
-    except:
-        pass  # 驱动未加载等异常情况，继续执行
+    if is_superuser(user_id):
+        return 0  # SuperUser无视CD
 
     cd_duration = get_plugin_cd_duration(plugin_id, group_id)
 
@@ -51,12 +47,8 @@ def update_cd(plugin_id: str, group_id: str, user_id: str):
     """
     更新用户的CD时间戳（标记为“已使用”）
     """
-    try:
-        superusers = get_driver().config.superusers
-        if user_id in superusers:
-            return  # SuperUser不记录CD
-    except:
-        pass
+    if is_superuser(user_id):
+        return  # SuperUser不记录CD
 
     if get_plugin_cd_duration(plugin_id, group_id) > 0:
         now = time.time()

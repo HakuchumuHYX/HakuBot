@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import json
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot import logger
+from utils.logging import get_exc_desc
 
 from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.database import db
@@ -58,6 +59,9 @@ class MessageFetcher:
                     }
                     valid_messages.append(msg_obj)
                 except Exception as e:
+                    logger.warning(
+                        f"跳过无法解析的消息 id={row.get('id')}: {get_exc_desc(e)}"
+                    )
                     continue
 
             # 限制最大消息数 (如果配置 > 0)

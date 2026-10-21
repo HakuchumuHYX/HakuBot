@@ -11,7 +11,7 @@ from utils.json_io import atomic_write_json
 import json
 from typing import Dict, Optional
 
-from nonebot import get_driver, on_command, logger
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
@@ -20,6 +20,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.params import CommandArg
 
+from core.access import is_superuser
 from plugins.buaa_msm.config import plugin_config, with_site_link
 
 
@@ -187,8 +188,7 @@ view_all_binds = on_command("buaa查看所有绑定", priority=10, block=True)
 
 @view_all_binds.handle()
 async def handle_view_all_command(bot: Bot, event: PrivateMessageEvent):
-    superusers = get_driver().config.superusers
-    if str(event.user_id) not in superusers:
+    if not is_superuser(str(event.user_id)):
         await view_all_binds.finish("权限不足，仅超级用户可使用此命令")
         return
 

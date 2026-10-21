@@ -6,14 +6,8 @@ from utils.paths import project_root
 from core import access_state
 from core.lifecycle import runtime
 
-_installed = False
-
 
 def configure(driver):
-    global _installed
-    if _installed:
-        return
-    _installed = True
     from utils.paths import PluginPaths
 
     for directory in (project_root() / "plugins").iterdir():
@@ -52,6 +46,7 @@ def configure(driver):
 
 def finalize(driver):
     """NoneBot shuts down in reverse registration order: cancel producers first."""
+
     @driver.on_shutdown
     async def cancel_background_work():
         from nonebot import get_plugin

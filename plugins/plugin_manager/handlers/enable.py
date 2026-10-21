@@ -2,11 +2,11 @@ from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.permission import SUPERUSER
+from utils.json_io import load_json
+from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
+from utils.paths import PluginPaths
 from core.registry import get_plugin_catalog
-from core.access_state import (
-    watermark_config,
-)
 from plugins.plugin_manager.render import (
     PluginStatusGroup,
     PluginStatusRow,
@@ -20,6 +20,8 @@ from core.access import (
     is_feature_enabled,
     set_feature_status,
 )
+
+WATERMARK_CONFIG_FILE = PluginPaths("plugin_manager").data / "watermark_config.json"
 
 enable_plugin = on_command("启用", permission=SUPERUSER, priority=1, block=True)
 
@@ -173,6 +175,12 @@ async def handle_list(bot: Bot, event: MessageEvent):
 
     # 主插件按英文 id 排序
     groups.sort(key=lambda g: g.parent.plugin_id.lower())
+
+    # 每次现读，改了水印不用重启
+    result = load_json(WATERMARK_CONFIG_FILE, default={}, missing_ok=True)
+    if not result.success:
+        logger.warning(f"水印配置读取失败，本次不加水印: {get_exc_desc(result.error)}")
+    watermark_config = result.data
 
     try:
         wm_text = str(watermark_config.get("text", "")).strip()

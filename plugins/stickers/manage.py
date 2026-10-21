@@ -5,7 +5,8 @@ import json
 import re
 from typing import Optional, List
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
-from nonebot import get_driver, logger
+from nonebot import logger
+from core.access import is_superuser
 
 
 from plugins.stickers import send
@@ -18,23 +19,6 @@ from plugins.stickers.send import (
     sticker_folders,
     resolve_folder_name,
 )
-
-
-def is_superuser(user_id: str) -> bool:
-    """
-    检查用户是否为超级用户
-
-    返回: 是否为超级用户
-    """
-    try:
-        # 从 NoneBot 配置中获取超级用户列表
-        superusers = get_driver().config.superusers
-        if superusers and user_id in superusers:
-            return True
-    except:
-        pass
-
-    return False
 
 
 async def handle_manage_command(

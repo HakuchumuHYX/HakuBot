@@ -60,12 +60,9 @@ async def handle_contribute(
 
     # CD检查
     PLUGIN_ID_CONTRIB = "poke_reply:contribute"
-    is_superuser = str(user_id) in bot.config.superusers
-
-    if not is_superuser:
-        remaining_time = check_cd(PLUGIN_ID_CONTRIB, str(group_id), str(user_id))
-        if remaining_time > 0:
-            await contribute.finish(f"投稿功能冷却中，请等待 {remaining_time} 秒喵！")
+    remaining_time = check_cd(PLUGIN_ID_CONTRIB, str(group_id), str(user_id))
+    if remaining_time > 0:
+        await contribute.finish(f"投稿功能冷却中，请等待 {remaining_time} 秒喵！")
 
     replied_message = event.reply
     target_message = event.get_message()
@@ -75,35 +72,34 @@ async def handle_contribute(
         has_images, images = extract_image_data(target_message)
         if has_images:
             await process_image_contribution(
-                bot, group_id, images, PLUGIN_ID_CONTRIB, user_id, is_superuser
+                bot, group_id, images, PLUGIN_ID_CONTRIB, user_id
             )
         else:
             text_to_add = target_message.extract_plain_text().strip()
             if not text_to_add:
                 await contribute.finish("回复的消息没有文本内容喵！")
             await process_text_contribution(
-                bot, group_id, text_to_add, PLUGIN_ID_CONTRIB, user_id, is_superuser
+                bot, group_id, text_to_add, PLUGIN_ID_CONTRIB, user_id
             )
     else:
         has_images, images = extract_image_data(target_message)
         if has_images:
             await process_image_contribution(
-                bot, group_id, images, PLUGIN_ID_CONTRIB, user_id, is_superuser
+                bot, group_id, images, PLUGIN_ID_CONTRIB, user_id
             )
         else:
             args_text = args.extract_plain_text().strip()
             await process_text_contribution(
-                bot, group_id, args_text, PLUGIN_ID_CONTRIB, user_id, is_superuser
+                bot, group_id, args_text, PLUGIN_ID_CONTRIB, user_id
             )
 
 
 async def process_text_contribution(
-    bot: Bot, group_id: int, text: str, plugin_id: str, user_id: str, is_superuser: bool
+    bot: Bot, group_id: int, text: str, plugin_id: str, user_id: str
 ):
     success, message = await handle_text_contribution(group_id, text)
     if success:
-        if not is_superuser:
-            update_cd(plugin_id, str(group_id), user_id)
+        update_cd(plugin_id, str(group_id), user_id)
         result = await bot.send_group_msg(group_id=group_id, message=message)
         message_cache.add_message(
             group_id=group_id,
@@ -121,14 +117,12 @@ async def process_image_contribution(
     images: list,
     plugin_id: str,
     user_id: str,
-    is_superuser: bool,
 ):
     success, message, saved_filenames = await handle_image_contribution(
         group_id, images
     )
     if success:
-        if not is_superuser:
-            update_cd(plugin_id, str(group_id), user_id)
+        update_cd(plugin_id, str(group_id), user_id)
         result = await bot.send_group_msg(group_id=group_id, message=message)
         content_info = f"图片投稿: {', '.join(saved_filenames)}"
         message_cache.add_message(

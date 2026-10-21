@@ -337,6 +337,6 @@ async def remove_background(image_url: str) -> str:
             if not await run_in_pool(_cutout_static_file, image_path, output_path):
                 await _isnet_cutout(image_path, output_path)
         except BaseException:
-            await safe_delete_file(output_path)
+            safe_delete_file(output_path)
             raise
         return str(output_path)

@@ -92,6 +92,15 @@ async def read_limited_response(response, max_bytes):
     return b"".join(chunks)
 
 
+_RETRYABLE_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+
+
+def _should_retry(exc, attempt, attempts):
+    if isinstance(exc, HttpError) and exc.status_code not in _RETRYABLE_STATUSES:
+        return False
+    return attempt < attempts - 1
+
+
 async def download_bytes(
     url,
     *,
@@ -124,16 +133,7 @@ async def download_bytes(
                         raise HttpError(response.status, "Download failed")
                     return await read_limited_response(response, max_bytes)
             except (aiohttp.ClientError, asyncio.TimeoutError, HttpError) as exc:
-                if isinstance(exc, HttpError) and exc.status_code not in (
-                    408,
-                    429,
-                    500,
-                    502,
-                    503,
-                    504,
-                ):
-                    raise
-                if attempt == attempts - 1:
+                if not _should_retry(exc, attempt, attempts):
                     raise
                 await asyncio.sleep(2**attempt)
     finally:
@@ -192,16 +192,7 @@ async def download_to_file(url, path, **options):
                 os.replace(name, path)
                 return path
             except (aiohttp.ClientError, asyncio.TimeoutError, HttpError) as exc:
-                if isinstance(exc, HttpError) and exc.status_code not in (
-                    408,
-                    429,
-                    500,
-                    502,
-                    503,
-                    504,
-                ):
-                    raise
-                if attempt == attempts - 1:
+                if not _should_retry(exc, attempt, attempts):
                     raise
                 await asyncio.sleep(2**attempt)
     finally:

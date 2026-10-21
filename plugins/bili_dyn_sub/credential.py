@@ -377,7 +377,7 @@ class CredentialManager:
             return
         self._last_save_ts = now  # 先占位，避免节流窗口内重复排任务
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
             logger.debug("当前无事件循环，cookie 回写将在下次刷新时落盘")
             return

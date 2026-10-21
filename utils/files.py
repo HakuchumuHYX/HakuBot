@@ -71,50 +71,25 @@ class TemporaryPath:
                         # 如果没有运行的 loop，直接删除
                         try:
                             os.remove(self.path)
-                        except:
-                            pass
+                        except OSError as e:
+                            logger.warning(f"删除临时文件 {self.path} 失败: {e}")
         return False
 
 
-from urllib.parse import urlparse
-
-
-async def safe_delete_file(file_path: str | Path | None, max_retries: int = 3) -> bool:
+def safe_delete_file(file_path: str | Path | None) -> bool:
     if not file_path:
         return True
 
     path = Path(file_path)
-    for i in range(max_retries):
-        try:
-            if path.exists():
-                path.unlink()
-            return True
-        except PermissionError as e:
-            if i < max_retries - 1:
-                await asyncio.sleep(0.1)
-            else:
-                logger.warning(f"删除文件失败: {path}: {e}")
-                return False
-        except Exception as e:
-            logger.warning(f"删除文件失败: {path}: {e}")
-            return False
-    return False
-
-
-async def cleanup_files(*paths: str | Path | None) -> None:
-    for path in paths:
-        await safe_delete_file(path)
+    try:
+        path.unlink(missing_ok=True)
+        return True
+    except OSError as e:
+        logger.warning(f"删除文件失败: {path}: {e}")
+        return False
 
 
 def ensure_output_dir(name: str) -> Path:
     output_dir = Path(tempfile.gettempdir()) / name
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
-
-
-def guess_ext_from_url(url: str, default: str = "tmp") -> str:
-    path = urlparse(url).path
-    suffix = Path(path).suffix.lower().lstrip(".")
-    if suffix and len(suffix) <= 8:
-        return suffix
-    return default.lstrip(".") or "tmp"

@@ -41,15 +41,12 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
 
     # 接入外部CD管理
     PLUGIN_ID = "poke_reply:poke"
-    is_superuser = str(user_id) in bot.config.superusers
-
-    if not is_superuser:
-        remaining_time = check_cd(PLUGIN_ID, str(group_id), str(user_id))
-        if remaining_time > 0:
-            logger.debug(
-                f"群 {group_id} 用户 {user_id} 戳一戳CD中，剩余 {remaining_time}秒"
-            )
-            return
+    remaining_time = check_cd(PLUGIN_ID, str(group_id), str(user_id))
+    if remaining_time > 0:
+        logger.debug(
+            f"群 {group_id} 用户 {user_id} 戳一戳CD中，剩余 {remaining_time}秒"
+        )
+        return
 
     try:
         if not data_manager.ensure_group_data_loaded(group_id):
@@ -144,8 +141,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
                 )
 
         # 成功发送投稿内容后才扣CD（提示性回复不扣，发送失败不扣）
-        if not is_superuser:
-            update_cd(PLUGIN_ID, str(group_id), str(user_id))
+        update_cd(PLUGIN_ID, str(group_id), str(user_id))
     except FinishedException:
         raise
     except Exception as e:

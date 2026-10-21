@@ -75,7 +75,8 @@ async def send_forward_msg(
         login_info = await bot.get_login_info()
         default_uin = str(login_info.get("user_id", bot.self_id))
         default_name = str(login_info.get("nickname") or "Bot")
-    except Exception:
+    except Exception as e:
+        logger.warning(f"获取登录信息失败，合并转发使用默认昵称: {get_exc_desc(e)}")
         default_uin = str(bot.self_id)
         default_name = "Bot"
 

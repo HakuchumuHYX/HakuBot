@@ -41,9 +41,3 @@ class PluginPaths:
     @property
     def resources(self):
         return project_root() / "plugins" / self.plugin_id / "resources"
-
-
-def shared_cache(name: str) -> Path:
-    if not name.isidentifier():
-        raise ValueError("Invalid cache namespace")
-    return project_root() / "cache/shared" / name

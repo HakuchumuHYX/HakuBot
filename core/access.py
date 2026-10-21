@@ -7,6 +7,10 @@ from core.access_state import (
 )
 
 
+def is_superuser(user_id: str) -> bool:
+    return user_id in get_driver().config.superusers
+
+
 def get_status_override(status_key: str, group_id: str) -> Optional[bool]:
     """获取某个状态键在指定群的显式配置；未配置时返回 None。"""
     group_status = plugin_status.get(status_key)
@@ -40,12 +44,8 @@ def is_plugin_enabled(plugin_name: str, group_id: str, user_id: str) -> bool:
 
     if runtime.health.get(plugin_name, "").startswith("unavailable:"):
         return False
-    try:
-        superusers = get_driver().config.superusers
-        if user_id in superusers:
-            return True  # SuperUser无视开关
-    except:
-        pass
+    if is_superuser(user_id):
+        return True  # SuperUser无视开关
 
     # 默认启用
     if plugin_name not in plugin_status:
@@ -79,12 +79,8 @@ def is_feature_enabled(
     ):
         return False
 
-    try:
-        superusers = get_driver().config.superusers
-        if user_id in superusers:
-            return True  # SuperUser无视开关
-    except:
-        pass
+    if is_superuser(user_id):
+        return True  # SuperUser无视开关
 
     feature_key = f"{plugin_name}:{feature_name}"
     feature_override = get_status_override(feature_key, group_id)

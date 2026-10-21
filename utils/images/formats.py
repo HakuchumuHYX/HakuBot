@@ -12,15 +12,6 @@ MIME_TYPES = {
 }
 
 
-def extension_for_mime(content_type: str):
-    mime = content_type.split(";", 1)[0].strip().lower()
-    if mime == "image/jpg":
-        mime = "image/jpeg"
-    return next(
-        (extension for extension, value in MIME_TYPES.items() if value == mime), None
-    )
-
-
 def detect_format(data: bytes) -> str:
     if data.startswith(b"\xff\xd8\xff"):
         return "jpg"

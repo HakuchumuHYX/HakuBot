@@ -1,4 +1,4 @@
-from nonebot import get_driver, on_message, logger
+from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import Bot, PrivateMessageEvent, MessageSegment
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
@@ -6,24 +6,9 @@ from nonebot.exception import FinishedException
 # 导入共享上下文
 from plugins.send_and_reply.content import message_context
 
-# 获取配置中的超级用户列表
-superusers = get_driver().config.superusers
-
-
-async def get_user_info(bot: Bot, user_id: str) -> str:
-    """获取用户信息"""
-    try:
-        user_info = await bot.get_stranger_info(user_id=int(user_id))
-        return f"{user_info['nickname']}({user_id})"
-    except Exception as e:
-        logger.warning(f"获取用户 {user_id} 信息失败: {e}")
-        return f"用户{user_id}"
-
 
 reply_message = on_message(
-    rule=lambda event: (
-        isinstance(event, PrivateMessageEvent) and event.get_user_id() in superusers
-    ),
+    rule=lambda event: isinstance(event, PrivateMessageEvent),
     permission=SUPERUSER,
     priority=1,
     block=False,
@@ -55,7 +40,6 @@ async def handle_reply_message(bot: Bot, event: PrivateMessageEvent):
     user_id = context["user_id"]
     user_info = context["user_info"]
     superuser_id = event.get_user_id()
-    superuser_info = await get_user_info(bot, superuser_id)
 
     logger.debug(
         f"找到消息上下文: 用户 {user_id}, 原消息来自 {'群聊' if 'group_id' in context else '私聊'}"

@@ -30,7 +30,8 @@ from plugins.stickers.render import (
     render_stickers_preview,
     preview_duplicates_before_cleanup,
 )
-from plugins.stickers.manage import handle_manage_command, is_superuser
+from plugins.stickers.manage import handle_manage_command
+from core.access import is_superuser
 from plugins.stickers.config import SITE_URL
 from plugins.stickers.check import (
     find_all_duplicates,

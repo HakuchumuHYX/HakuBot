@@ -12,13 +12,17 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
 from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 
+from core.access import is_superuser
 from utils.onebot.media import image_segment
 from plugins.hltv_sub.client import HLTVFetchError, hltv_client
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.data_manager import EventSubscription, data_manager
 from plugins.hltv_sub.handler import hltv_handler
 from plugins.hltv_sub.render import (
-    render_events, render_matches, render_results, render_stats,
+    render_events,
+    render_matches,
+    render_results,
+    render_stats,
 )
 from plugins.hltv_sub.scheduler import hltv_scheduler
 
@@ -36,8 +40,7 @@ def _may_have_matches(sub: EventSubscription) -> bool:
 
 async def check_permission(bot: Bot, group_id: int, user_id: int) -> bool:
     """检查权限：群主、管理员或超级用户"""
-    superusers = getattr(bot.config, "superusers", set())
-    if str(user_id) in superusers:
+    if is_superuser(str(user_id)):
         return True
 
     try:
@@ -131,8 +134,10 @@ async def handle_event_subscribe(
             event_info = await hltv_client.get_event_info(event_id)
 
         if (
-            event_info and event_info.title
-            and event_info.start_date and event_info.end_date
+            event_info
+            and event_info.title
+            and event_info.start_date
+            and event_info.end_date
         ):
             # 在写入订阅前完成网络操作，避免失败后留下半完成订阅。
             if event_info.is_ongoing:
@@ -267,7 +272,9 @@ async def handle_matches_list(bot: Bot, event: GroupMessageEvent):
             key=lambda x: int(x.event_id) if x.event_id.isdigit() else x.event_id,
         ):
             page = await hltv_client.get_event_matches(
-                sub.event_id, include_partial_tbd=True, max_age=LIST_MAX_AGE_SECONDS,
+                sub.event_id,
+                include_partial_tbd=True,
+                max_age=LIST_MAX_AGE_SECONDS,
             )
             matches = page.matches
 
@@ -324,7 +331,8 @@ async def handle_results_list(bot: Bot, event: GroupMessageEvent):
             key=lambda x: int(x.event_id) if x.event_id.isdigit() else x.event_id,
         ):
             results = await hltv_client.get_event_results(
-                sub.event_id, max_age=LIST_MAX_AGE_SECONDS,
+                sub.event_id,
+                max_age=LIST_MAX_AGE_SECONDS,
             )
             if results:
                 event_key = f"#{sub.event_id} {sub.event_title}"
@@ -365,7 +373,9 @@ async def handle_stats(
         # 获取最新比赛数据
         subscriptions = hltv_handler.active_subscriptions()
         if not subscriptions:
-            await stats_cmd.finish(f"{NO_ACTIVE_HINT}\n或提供比赛ID，例如：stats 2370931")
+            await stats_cmd.finish(
+                f"{NO_ACTIVE_HINT}\n或提供比赛ID，例如：stats 2370931"
+            )
             return
 
         await stats_cmd.send("正在获取最新比赛数据...")
@@ -453,8 +463,7 @@ hltv_check = on_command("hltv_check", priority=1, block=True)
 async def handle_hltv_check(bot: Bot, event: GroupMessageEvent):
     user_id = str(event.user_id)
 
-    superusers = getattr(bot.config, "superusers", set())
-    if user_id not in superusers:
+    if not is_superuser(user_id):
         return
 
     await hltv_check.send("正在检查即将开始的比赛...")
@@ -470,7 +479,10 @@ async def handle_hltv_check(bot: Bot, event: GroupMessageEvent):
 
         for match in upcoming[:10]:
             minutes_until = math.ceil(
-                (match.start_time - datetime.now(match.start_time.tzinfo)).total_seconds() / 60
+                (
+                    match.start_time - datetime.now(match.start_time.tzinfo)
+                ).total_seconds()
+                / 60
             )
             if minutes_until >= 60:
                 hours = minutes_until // 60
@@ -508,8 +520,7 @@ hltv_trigger = on_command("hltv_trigger", priority=1, block=True)
 async def handle_hltv_trigger(bot: Bot, event: GroupMessageEvent):
     user_id = str(event.user_id)
 
-    superusers = getattr(bot.config, "superusers", set())
-    if user_id not in superusers:
+    if not is_superuser(user_id):
         return
 
     await hltv_trigger.send("正在手动执行定时任务检查...")

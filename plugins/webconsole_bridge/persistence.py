@@ -355,7 +355,6 @@ class PersistenceWriter:
         await asyncio.to_thread(path.unlink, missing_ok=True)
 
     async def _insert_response(self, payload: dict[str, Any]) -> None:
-        connection = self._require_connection()
         request_gzip, request_sha = _encode_full_value(payload.get("request_raw"))
         response_gzip, response_sha = _encode_full_value(payload.get("response_raw"))
         logs_gzip, logs_sha = _encode_full_value(payload.get("logs_raw"))

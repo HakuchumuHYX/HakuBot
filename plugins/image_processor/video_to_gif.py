@@ -158,7 +158,7 @@ async def convert_video_to_gif(
                 label="ffmpeg 转码",
             )
         except BaseException:
-            await safe_delete_file(output_path)
+            safe_delete_file(output_path)
             raise
 
     logger.debug(f"视频转GIF成功: {output_path}, 大小: {os.path.getsize(output_path)}")
