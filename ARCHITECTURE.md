@@ -7,12 +7,13 @@
 - `data/shared/fonts/`：公共字体 `MiSans-{Regular,Medium,Semibold,Bold,Heavy}.ttf`，每个字重必须是真实文件，否则模板里的粗体不生效。
 - `data/shared/playwright/`：浏览器资源。
 - `data/shared/rembg_models/`：抠图模型。
+- `../haruki-sekai-master/`：PJSK 的 masterdata，和项目根目录并列，各插件统一用 `utils.paths.sekai_master_dir()` 取路径，不写进配置。
 
-公共工具不依赖具体插件。业务数据通过 `PluginPaths` 访问，现有记录和外部路径保持有效；不需要额外的迁移或验收流程。
+公共工具不依赖具体插件。业务数据通过 `PluginPaths` 访问。
 
 图片渲染统一走 Chromium：每个插件把模板放在自己的 `templates/`，通过 `utils/rendering/engine.py` 的 `render_template` 截图。模板可直接使用 `font_css`（本地 MiSans 五个字重，family 为 `Haku`）和 `dark`（上海时间 18:00–06:00 为夜间）。PIL 只用于贴图合成与图片处理（buaa_msm 地图、stickers 概览拼图、B 站九宫格、ximg 拼图等）。
 
-插件不带帮助命令，用法统一写在帮助站。`utils/rendering/templates/` 只保留通用的 Markdown / 纯文本转图模板。
+插件不带帮助命令，用法统一写在帮助站；也不写 `__plugin_meta__`，没有地方读它。`utils/rendering/templates/` 只保留通用的 Markdown / 纯文本转图模板。
 
 配置一律是插件里定义的 pydantic 模型（继承 `core.settings.ConfigModel`，多余的键直接报错），用 `core.settings.load_config` 读取，不读 `.env`。模型只声明类型和约束（`Field(ge=...)` 等），不写默认值，调用点也不写 `getattr(..., 默认值)`、`or 默认值` 兜底；默认值只存在于 `config-example/`。缺文件、缺字段、写坏、校验不过时插件加载失败并报 ERROR。加字段时同时改示例和线上 `config.json`。命令改配置走 `update_fields`。
 

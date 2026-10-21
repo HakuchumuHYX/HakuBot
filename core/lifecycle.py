@@ -1,4 +1,4 @@
-"""Owned asynchronous tasks and explicit resource shutdown."""
+"""后台任务登记与资源关闭；插件启动失败时记进 health，开关据此拦截"""
 
 import asyncio
 import inspect
@@ -17,10 +17,10 @@ class Lifecycle:
     def spawn(self, coroutine, *, name: str, shutdown: str = "cancel"):
         if shutdown not in ("cancel", "drain", "owner"):
             coroutine.close()
-            raise ValueError("Unknown task shutdown policy")
+            raise ValueError(f"未知的任务关闭策略: {shutdown}")
         if self.stopping:
             coroutine.close()
-            raise RuntimeError("Runtime is stopping")
+            raise RuntimeError("正在关闭，不再接收新任务")
         task = asyncio.create_task(coroutine, name=name)
         self.tasks.add(task)
         self.task_policies[task] = shutdown
@@ -32,7 +32,7 @@ class Lifecycle:
         self.task_policies.pop(task, None)
         if not task.cancelled() and task.exception() is not None:
             logger.opt(exception=task.exception()).error(
-                f"Background task failed: {task.get_name()}"
+                f"后台任务异常退出: {task.get_name()}"
             )
 
     async def cancel_tasks(self):
@@ -56,7 +56,7 @@ class Lifecycle:
             try:
                 await close()
             except Exception:
-                logger.exception("Resource shutdown failed")
+                logger.exception("资源关闭失败")
 
 
 runtime = Lifecycle()
@@ -74,7 +74,7 @@ def on_plugin_startup(driver, plugin_id):
                 runtime.health.setdefault(plugin_id, "ready")
             except Exception as exc:
                 runtime.health[plugin_id] = f"unavailable: {type(exc).__name__}"
-                logger.exception(f"Plugin initialization failed: {plugin_id}")
+                logger.exception(f"插件启动失败: {plugin_id}")
 
         driver.on_startup(guarded)
         return function
@@ -92,7 +92,7 @@ def on_plugin_shutdown(driver, plugin_id):
                 else:
                     await asyncio.to_thread(function)
             except Exception:
-                logger.exception(f"Plugin shutdown failed: {plugin_id}")
+                logger.exception(f"插件关闭失败: {plugin_id}")
 
         driver.on_shutdown(guarded)
         return function

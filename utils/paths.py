@@ -34,3 +34,8 @@ class PluginPaths:
     @property
     def resources(self):
         return project_root() / "plugins" / self.plugin_id / "resources"
+
+
+def sekai_master_dir() -> Path:
+    """haruki-sekai-master 仓库（PJSK masterdata），和项目根目录并列"""
+    return project_root().parent / "haruki-sekai-master"

@@ -13,9 +13,6 @@ dependencies = [
     "pymdown-extensions",
     "python-markdown-math",
     "pygments",
-    "nonebot-plugin-localstore",
-    "nonebot-plugin-send-anything-anywhere",
-    "nonebot-plugin-session",
     "nonebot-plugin-alconna",
     "nonebot-plugin-userinfo",
     # 通用依赖
@@ -36,13 +33,10 @@ dependencies = [
     "sqlmodel",
     "PicImageSearch",
     "pydantic",
-    "msgspec>=0.20.0",
     "watchdog>=6.0.0",
     "pycryptodome",
     "json-repair>=0.58.0",
     "psutil>=7.2.2",
-    "playwright-stealth>=2.0.2",
-    "python-multipart>=0.0.22",
     "openai>=2.32.0",
     "onnxruntime>=1.24.3",
 ]

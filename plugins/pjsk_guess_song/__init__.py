@@ -1,7 +1,7 @@
 from core.lifecycle import runtime as app_runtime, on_plugin_startup, on_plugin_shutdown
 import asyncio
-from pathlib import Path
 from nonebot import get_driver, logger
+from utils.paths import sekai_master_dir
 from plugins.pjsk_guess_song.tools.generate_guess_song import (
     generate as generate_guess_song,
 )
@@ -9,16 +9,12 @@ from plugins.pjsk_guess_song.runtime import (
     resources_dir,
     db_service,
     cache_service,
-    executor,
     plugin_config,
 )
 
 driver = get_driver()
 
-# masterdata 源目录
-MASTERDATA_DIR = str(
-    Path(__file__).parent.parent.parent.parent / "haruki-sekai-master" / "master"
-)
+MASTERDATA_DIR = str(sekai_master_dir() / "master")
 
 
 @on_plugin_startup(driver, "pjsk_guess_song")
@@ -28,10 +24,9 @@ async def _on_startup():
 
     # 从 masterdata 重新生成 guess_song.json
     guess_song_output = str(resources_dir / "guess_song.json")
-    loop = asyncio.get_running_loop()
     try:
-        success = await loop.run_in_executor(
-            executor, generate_guess_song, MASTERDATA_DIR, guess_song_output
+        success = await asyncio.to_thread(
+            generate_guess_song, MASTERDATA_DIR, guess_song_output
         )
         if not success:
             logger.warning("guess_song.json 生成失败，将尝试使用已有文件。")
@@ -51,7 +46,6 @@ async def _on_startup():
 async def _on_shutdown():
     """Nonebot 关闭时执行清理"""
     await cache_service.terminate()
-    executor.shutdown(wait=False)
     logger.debug("PJSK 猜歌插件服务已终止。")
 
 

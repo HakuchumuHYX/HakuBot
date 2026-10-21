@@ -4,8 +4,8 @@
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.9+-blue?style=flat-square)
-![NoneBot](https://img.shields.io/badge/NoneBot-2.0+-green?style=flat-square)
+![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square)
+![NoneBot](https://img.shields.io/badge/NoneBot-2.4+-green?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
 </div>
@@ -20,7 +20,7 @@
 
 ### 🎸 PJSK 相关
 
-- **[sk-predict](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/cnsk_predict)**: PJSK 预测线。本质上是访问榜线预测api获得结果并渲染成图片。可访问[榜线预测站](https://pjsk.moe/prediction/)。
+- **[sk-predict](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/sk_predict)**: PJSK 预测线。本质上是访问榜线预测api获得结果并渲染成图片。可访问[榜线预测站](https://pjsk.moe/prediction/)。
 - **[pjsk_event_summary](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/pjsk_event_summary)**: PJSK 剧情总结，数据来源于 [MoeSekai-Hub](https://github.com/moe-sekai/MoeSekai-Hub/tree/main/story/detail/)。
 - **[pjsk_guess_song](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/pjsk_guess_song)**: PJSK 猜歌以及听歌插件。主要逻辑来自于 [astrbot-plugin-pjsk-guess-song](https://github.com/nichinichisou0609/astrbot_plugin_pjsk_guess_song) 并由我进行了一些修改。
 - **[pjskprofile_snowybot](https://github.com/HakuchumuHYX/HakuBot/tree/main/plugins/pjskprofile_snowybot)**: 获取SnowyBot版的PJSK个人信息（已废弃）。

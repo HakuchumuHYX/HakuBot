@@ -13,7 +13,6 @@ import subprocess
 import random
 from typing import Optional, Union, Dict
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 from nonebot import logger
@@ -31,11 +30,9 @@ class AudioProcessor:
         self,
         cache_service: CacheService,
         output_dir: Path,
-        executor: ThreadPoolExecutor,
     ):
         self.cache_service = cache_service
         self.output_dir = output_dir
-        self.executor = executor
 
     async def get_segment_mean_dbfs_ffmpeg(
         self, file_path: Union[Path, str], start_s: float, duration_s: float
@@ -232,9 +229,7 @@ class AudioProcessor:
                 text=True,
                 encoding="utf-8",
             )
-            result = await asyncio.get_running_loop().run_in_executor(
-                self.executor, run_subprocess
-            )
+            result = await asyncio.to_thread(run_subprocess)
             if result.returncode != 0:
                 logger.warning(f"ffmpeg clipping failed: {result.stderr}")
                 return False

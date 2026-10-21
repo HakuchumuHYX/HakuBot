@@ -54,7 +54,6 @@ class DeerPipeConfig(BaseModel):
 
 - `nonebot_plugin_alconna` - 命令解析
 - `nonebot_plugin_apscheduler` - 定时任务
-- `nonebot_plugin_localstore` - 本地存储
 - `nonebot_plugin_userinfo` - 用户信息获取
 
 ## 文件结构

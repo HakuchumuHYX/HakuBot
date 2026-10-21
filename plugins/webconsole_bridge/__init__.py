@@ -2,7 +2,6 @@ from __future__ import annotations
 from core.lifecycle import on_plugin_startup, on_plugin_shutdown
 
 from nonebot import get_driver
-from nonebot.plugin import PluginMetadata
 
 from core.settings import load_config
 from plugins.webconsole_bridge.config import BridgeConfig
@@ -16,14 +15,6 @@ from plugins.webconsole_bridge.status import (
     register_bot_status_hooks,
 )
 
-__plugin_meta__ = PluginMetadata(
-    name="WebConsole Bridge",
-    description="异步采集 HakuBot 真实事件响应、诊断日志和当前在线状态",
-    usage="无用户命令",
-    type="application",
-    homepage="",
-    supported_adapters={"~onebot.v11"},
-)
 
 bridge_config = load_config("webconsole_bridge", BridgeConfig)
 bridge_runtime = BridgeRuntime(bridge_config)

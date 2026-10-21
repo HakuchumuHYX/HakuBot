@@ -168,7 +168,7 @@ def _load_sign_module() -> Optional[ModuleType]:
     """按文件路径单独加载 plugins/analysis_bilibili/sign.py（复用其 wbi 实现），失败返回 None。
 
     不写 `from ..analysis_bilibili.sign import ...`：那会连带执行该插件包的 __init__.py
-    （on_regex 注册 + require("nonebot_plugin_saa") + get_driver().config），等于把另一个插件的
+    （on_regex 注册 + get_driver().config），等于把另一个插件的
     注册副作用拖进取数路径，在非 NoneBot 上下文（单测/命令行）里会直接抛 ValueError。
     sign.py 自身只依赖 stdlib + aiohttp，按路径加载即可安全复用；代价是本模块持有一份独立的
     wbi key 缓存（启用 wbi 时每小时最多多一次 nav 请求）。

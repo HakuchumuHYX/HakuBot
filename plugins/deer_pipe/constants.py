@@ -7,7 +7,6 @@ from pathlib import Path
 
 # 插件信息
 PLUGIN_PATH: Path = Path(__file__).parent.resolve()
-PLUGIN_VERSION: str = "1.0.1"
 PLUGIN_ID: str = "deer_pipe"
 
 # 日历模板与贴图（模板通过相对路径 ../assets 引用贴图和字体）

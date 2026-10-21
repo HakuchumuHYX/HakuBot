@@ -75,16 +75,21 @@ async def handle_group_upload(bot: Bot, event: GroupMessageEvent):
 
 # ============== 文件接收处理 ==============
 
-file_handler = on_message(priority=10, block=False)
+
+async def _is_waiting_for_file(
+    event: PrivateMessageEvent | GroupMessageEvent,
+) -> bool:
+    """只有执行过「buaa上传文件」、还没超时的人发的消息才处理"""
+    _cleanup_expired_waiting()
+    return str(event.user_id) in waiting_for_file
+
+
+file_handler = on_message(rule=_is_waiting_for_file, priority=10, block=False)
 
 
 @file_handler.handle()
 async def handle_file_message(bot: Bot, event: PrivateMessageEvent | GroupMessageEvent):
-    _cleanup_expired_waiting()
     user_id = str(event.user_id)
-
-    if user_id not in waiting_for_file:
-        return
 
     # 检查是否有文件
     file_segments = [seg for seg in event.message if seg.type == "file"]

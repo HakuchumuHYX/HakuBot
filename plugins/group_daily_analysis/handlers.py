@@ -7,7 +7,6 @@ from collections import defaultdict
 from nonebot import require, on_command, on_message, on_type, get_bot, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.adapters.onebot.v11.event import Event as OneBotEvent
-from nonebot.plugin import PluginMetadata
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
 from nonebot.rule import Rule
@@ -54,13 +53,6 @@ def _is_recent_report_message_id(group_id: int, message_id: int | None) -> bool:
 
     return mid in bucket
 
-
-__plugin_meta__ = PluginMetadata(
-    name="群聊每日总结",
-    description="分析群聊记录，生成每日总结报告（话题、活跃度、金句等）",
-    usage="指令：/daily_analysis, /今日总结, /群日报\n设置：/设置模板, /查看模板",
-    config=plugin_config.__class__,
-)
 
 # --- 消息记录器 ---
 # 优先级设为 1，确保不阻塞其他命令，但能记录所有消息；本群没开日报就不记录

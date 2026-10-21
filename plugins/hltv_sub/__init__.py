@@ -5,11 +5,9 @@ HLTV 订阅插件入口
 import asyncio
 
 from nonebot import get_driver, logger
-from nonebot.plugin import PluginMetadata
 
 from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 
-from plugins.hltv_sub.config import Config
 from plugins.hltv_sub.client import HLTVFetchError, hltv_client
 from plugins.hltv_sub.handler import hltv_handler
 from plugins.hltv_sub.data_manager import data_manager
@@ -18,29 +16,6 @@ from plugins.hltv_sub.scheduler import hltv_scheduler
 # 导入即注册命令。
 from plugins.hltv_sub import commands as _commands  # noqa: F401
 
-
-__plugin_meta__ = PluginMetadata(
-    name="HLTV订阅",
-    description="HLTV CS2 赛事订阅和比赛信息查询",
-    usage="""命令列表：
-- event列表：查看近期大型赛事
-- event订阅 [ID]：全局订阅赛事，决赛后播报 MVP（有接收群时，启动及每 7 天自动订阅近期赛事）
-- event取消订阅 [ID]：全局取消订阅，后续自动订阅可能重新加入
-- 我的订阅：查看已订阅赛事
-
-- matches列表：查看已订阅赛事的比赛
-- results列表：查看已订阅赛事的结果
-- stats：按订阅顺序查看首个有数据赛事的最新比赛
-- stats [ID]：查看指定比赛数据
-
-- hltv开启：开启本群功能
-- hltv关闭：关闭本群功能
-""",
-    type="application",
-    homepage="",
-    config=Config,
-    supported_adapters={"~onebot.v11"},
-)
 
 driver = get_driver()
 

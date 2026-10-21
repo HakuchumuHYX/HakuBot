@@ -1,6 +1,5 @@
 {
     "link": "",
-    "master_data_dir": "/abs/path/to/haruki-sekai-master/master",
     "asset": {
         "url_base": "https://sekai-assets.example.net/",
         "server": "jp"

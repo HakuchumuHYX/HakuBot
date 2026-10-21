@@ -31,9 +31,7 @@ class GameService:
         self.audio_processor = audio_processor  # 依赖注入
         self.plugin_version = plugin_version
 
-        # (注意) output_dir 和 executor 现在从 audio_processor 间接访问或不再需要
         self.output_dir = self.audio_processor.output_dir
-        self.executor = self.audio_processor.executor
 
         # --- 游戏模式定义 ---
         self.vocals_silence_detection = True
@@ -213,7 +211,6 @@ class GameService:
 
         preprocessed_mode = kwargs.get("play_preprocessed")
         is_piano_mode = kwargs.get("melody_to_piano", False)
-        loop = asyncio.get_running_loop()
 
         song = kwargs.get("force_song_object")
         audio_source = None
@@ -318,8 +315,7 @@ class GameService:
             if self.vocals_silence_detection and preprocessed_mode == "vocals_only":
                 try:
                     target_duration_s = self.config.clip_duration_seconds
-                    total_duration_ms = await loop.run_in_executor(
-                        self.executor,
+                    total_duration_ms = await asyncio.to_thread(
                         self.audio_processor.get_duration_ms_ffprobe_sync,
                         audio_source,
                     )
@@ -432,8 +428,7 @@ class GameService:
         if not use_slow_path:
             try:
                 #  调用 audio_processor
-                total_duration_ms = await loop.run_in_executor(
-                    self.executor,
+                total_duration_ms = await asyncio.to_thread(
                     self.audio_processor.get_duration_ms_ffprobe_sync,
                     audio_source,
                 )
@@ -488,8 +483,7 @@ class GameService:
                 "force_start_ms": forced_start_ms,
             }
 
-            clip = await loop.run_in_executor(
-                self.executor,
+            clip = await asyncio.to_thread(
                 self.audio_processor.process_audio_with_pydub,
                 audio_data,
                 "mp3",

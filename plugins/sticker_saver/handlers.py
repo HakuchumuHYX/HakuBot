@@ -1,4 +1,4 @@
-from nonebot.plugin import on_command, PluginMetadata
+from nonebot.plugin import on_command
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -9,14 +9,6 @@ from core.access import switch_rule
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
 
-__plugin_meta__ = PluginMetadata(
-    name="表情包保存器",
-    description="一款很简单的，用于保存已经不提供保存选项的 QQ 表情包的 Nonebot 插件",
-    usage="以 .save 命令回复表情包即可.\n机器人回复的静态表情可以直接保存，动态表情可以通过短链接保存。",
-    type="application",
-    homepage="https://github.com/colasama/nonebot-plugin-sticker-saver",
-    supported_adapters={"~onebot.v11"},
-)
 
 face_extractor = on_command(
     "save",

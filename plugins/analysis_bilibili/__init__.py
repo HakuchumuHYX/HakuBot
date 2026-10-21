@@ -2,10 +2,11 @@ import asyncio
 import re
 from typing import List, Union
 from aiohttp import ClientError, ClientSession, ClientTimeout
-from nonebot import on_regex, logger, require, on_message
+from nonebot import on_regex, logger, on_message
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from nonebot.matcher import Matcher
 from nonebot.rule import Rule
-from nonebot.plugin import PluginMetadata
 from plugins.analysis_bilibili.analysis_bilibili import (
     config,
     b23_extract,
@@ -15,18 +16,8 @@ from plugins.analysis_bilibili.analysis_bilibili import (
 )
 from core.access import switch_rule
 from utils.logging import get_exc_desc
-from utils.onebot.media import prepare_image_source
+from utils.onebot.media import image_segment
 
-require("nonebot_plugin_saa")
-from nonebot_plugin_saa import MessageFactory, MessageSegmentFactory, Text, Image
-
-__plugin_meta__ = PluginMetadata(
-    name="analysis_bilibili",
-    description="自动解析bilibili链接内容",
-    usage="https://github.com/mengshouer/nonebot_plugin_analysis_bilibili?tab=readme-ov-file#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F",
-    type="application",
-    homepage="https://github.com/mengshouer/nonebot_plugin_analysis_bilibili",
-)
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0",
@@ -91,20 +82,15 @@ def flatten(container):
             yield i
 
 
-def format_msg(msg_list: List[Union[List[str], str]], is_plain_text: bool = False):
-    flatten_msg_list = list(flatten(msg_list))
-    if is_plain_text:
-        return "".join([i for i in flatten_msg_list if not is_image(i)])
-
-    msg: List[MessageSegmentFactory] = []
-
-    for i in flatten_msg_list:
+def format_msg(msg_list: List[Union[List[str], str]]) -> Message:
+    msg = Message()
+    for i in flatten(msg_list):
         if not i:
             continue
         elif is_image(i):
-            msg.append(Image(prepare_image_source(i)))
+            msg.append(image_segment(i))
         else:
-            msg.append(Text(i))
+            msg.append(MessageSegment.text(i))
     return msg
 
 
@@ -127,7 +113,9 @@ def _message_json_text(event: Event) -> str:
     return ""
 
 
-async def send_msg(msg_list: List[Union[List[str], str, bool]]) -> None:
+async def send_msg(
+    matcher: type[Matcher], msg_list: List[Union[List[str], str, bool]]
+) -> None:
     if msg_list is False:
         return
     if not msg_list:
@@ -135,9 +123,7 @@ async def send_msg(msg_list: List[Union[List[str], str, bool]]) -> None:
         return
 
     try:
-        await MessageFactory(format_msg(msg_list)).send()
-    except RuntimeError:
-        await analysis_bili.send(format_msg(msg_list, is_plain_text=True))
+        await matcher.send(format_msg(msg_list))
     except Exception:
         logger.exception(f"发送解析结果失败（可能被风控）: {msg_list}")
 
@@ -200,10 +186,10 @@ async def handle_analysis(event: Event) -> None:
     # on_regex
     text = _message_json_text(event) or str(message)
     msg = await get_msg(event, text)
-    await send_msg(msg)
+    await send_msg(analysis_bili, msg)
 
 
 @search_bili.handle()
 async def handle_search(event: Event) -> None:
     msg = await get_msg(event, str(event.get_message())[3:].strip(), search=True)
-    await send_msg(msg)
+    await send_msg(search_bili, msg)

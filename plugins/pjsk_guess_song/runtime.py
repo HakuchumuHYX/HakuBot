@@ -1,5 +1,4 @@
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 from plugins.pjsk_guess_song.config import plugin_config, data_dir
 from plugins.pjsk_guess_song.services.db_service import DBService
 from plugins.pjsk_guess_song.services.cache_service import CacheService
@@ -19,11 +18,8 @@ db_path = data_dir / "guess_song_data.db"
 db_service = DBService(str(db_path))
 cache_service = CacheService(resources_dir, output_dir, plugin_config)
 
-# 创建一个共享的线程池
-executor = ThreadPoolExecutor(max_workers=5)
-
 # 实例化新的子服务
-audio_processor = AudioProcessor(cache_service, output_dir, executor)
+audio_processor = AudioProcessor(cache_service, output_dir)
 
 image_service = ImageService(
     cache_service, resources_dir, PLUGIN_VERSION, plugin_config

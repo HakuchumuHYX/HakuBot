@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from nonebot import get_driver, on_command, require, logger
+from nonebot import get_driver, on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     Message,
@@ -17,8 +17,6 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.adapters.onebot.v11.exception import ActionFailed, NetworkError
 from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
-
-require("nonebot_plugin_localstore")
 
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary

@@ -2,9 +2,35 @@ from nonebot import get_driver
 from nonebot.adapters import Event
 from nonebot.rule import Rule
 
-from core.access_state import plugin_status, save_plugin_status
 from core.lifecycle import runtime
 from core.registry import FEATURES_BY_ID
+from utils.json_io import atomic_write_json, load_json
+from utils.paths import PluginPaths
+
+STATUS_FILE = PluginPaths("plugin_manager").data / "plugin_status.json"
+
+# {功能 ID: {群号: 开关}}，只记和默认值不同的群
+plugin_status: dict[str, dict[str, bool]] = {}
+
+
+def load_state_file(path) -> dict:
+    """读开关、CD 这类核心状态文件；文件坏了就报错，不带着空状态继续跑"""
+    result = load_json(
+        path, expected_type=dict, default={}, missing_ok=True, backup_on_error=True
+    )
+    if not result.success:
+        raise ValueError(f"核心状态文件无法读取: {path.name}") from result.error
+    return result.data
+
+
+def load() -> None:
+    """启动时由 bootstrap 显式调用"""
+    plugin_status.clear()
+    plugin_status.update(load_state_file(STATUS_FILE))
+
+
+def _save() -> None:
+    atomic_write_json(STATUS_FILE, plugin_status, indent=2, ensure_ascii=False)
 
 
 def is_superuser(user_id: str) -> bool:
@@ -63,7 +89,7 @@ def switch_rule(feature_id: str, *, superuser_bypass: bool = True) -> Rule:
 
 def set_enabled(feature_id: str, group_id: str, enabled: bool) -> None:
     plugin_status.setdefault(feature_id, {})[group_id] = enabled
-    save_plugin_status(plugin_status)
+    _save()
 
 
 def reset_group(group_id: str) -> None:
@@ -72,4 +98,4 @@ def reset_group(group_id: str) -> None:
         plugin_status[feature_id].pop(group_id, None)
         if not plugin_status[feature_id]:
             del plugin_status[feature_id]
-    save_plugin_status(plugin_status)
+    _save()

@@ -12,12 +12,10 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
-from nonebot import require, logger
+from nonebot import logger
 
 from core.settings import ConfigModel, load_config
-
-# 声明依赖并导入 nonebot-plugin-localstore
-require("nonebot_plugin_localstore")
+from utils.paths import sekai_master_dir
 
 
 class AssetConfig(ConfigModel):
@@ -58,7 +56,6 @@ class Settings(ConfigModel):
 
     # 网页版地址；配了就附在部分回复末尾
     link: str
-    master_data_dir: Path
     asset: AssetConfig
     mysekai_icon: MysekaiIconConfig
     jacket: JacketConfig
@@ -132,26 +129,18 @@ def _mask_url_origin(url: str) -> str:
     return "(invalid-url)"
 
 
-def _mask_path(path: Path) -> str:
-    parts = list(path.parts)
-    if len(parts) <= 2:
-        return str(path)
-    return str(Path(parts[0]) / "..." / parts[-1])
-
-
 # 全局配置实例
 plugin_config = PluginConfig()
 
-if not settings.master_data_dir.exists():
+if not (sekai_master_dir() / "master").exists():
     logger.warning(
-        f"BUAA_MSM master_data_dir 不存在: {_mask_path(settings.master_data_dir)}，"
+        f"BUAA_MSM 找不到 masterdata 目录: {sekai_master_dir() / 'master'}，"
         "运行时将可能无法读取 master data。"
     )
 logger.info(
     "BUAA_MSM 配置已初始化: "
     f"asset_origin={_mask_url_origin(settings.asset.url_base)}, "
-    f"icon_origin={_mask_url_origin(settings.mysekai_icon.url_base)}, "
-    f"master_data_dir={_mask_path(settings.master_data_dir)}"
+    f"icon_origin={_mask_url_origin(settings.mysekai_icon.url_base)}"
 )
 
 

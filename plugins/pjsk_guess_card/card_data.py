@@ -2,23 +2,18 @@
 
 import json
 import random
-from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Tuple
 from nonebot import logger
 
 from plugins.pjsk_guess_card.config import plugin_config
+from utils.paths import sekai_master_dir
 
 
 # 可用卡牌列表（已过滤）
 _available_cards: List[Dict] = []
 
 CardImageType = Literal["normal", "after_training"]
-
-# masterdata 路径
-MASTERDATA_DIR = (
-    Path(__file__).parent.parent.parent.parent / "haruki-sekai-master" / "master"
-)
 
 
 def _has_after_training(card: Dict) -> bool:
@@ -38,11 +33,7 @@ def load_cards():
     global _available_cards
     _available_cards.clear()
 
-    masterdata_path = plugin_config.masterdata_path
-    if masterdata_path:
-        cards_file = Path(masterdata_path) / "cards.json"
-    else:
-        cards_file = MASTERDATA_DIR / "cards.json"
+    cards_file = sekai_master_dir() / "master" / "cards.json"
 
     try:
         with open(cards_file, "r", encoding="utf-8") as f:

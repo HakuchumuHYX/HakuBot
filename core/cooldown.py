@@ -3,11 +3,23 @@ from typing import Optional
 
 from nonebot.adapters import Event
 
-from core.access import is_superuser
-from core.access_state import cd_config, save_cd_config
+from core.access import is_superuser, load_state_file
+from utils.json_io import atomic_write_json
+from utils.paths import PluginPaths
+
+CD_CONFIG_FILE = PluginPaths("plugin_manager").data / "cd_config.json"
+
+# {群号: {功能 ID: 秒}}
+cd_config: dict[str, dict[str, int]] = {}
 
 # 上次使用时间只放内存：最长的 CD 也就几分钟，重启清零无所谓，不值得每次扣 CD 都重写文件
 _last_used: dict[tuple[str, str, str], float] = {}
+
+
+def load() -> None:
+    """启动时由 bootstrap 显式调用"""
+    cd_config.clear()
+    cd_config.update(load_state_file(CD_CONFIG_FILE))
 
 
 def get_cooldown(feature_id: str, group_id: str) -> int:
@@ -50,4 +62,4 @@ def set_cooldown(feature_id: str, group_id: str, seconds: int) -> None:
         group_config.pop(feature_id, None)
         if not group_config:
             del cd_config[group_id]
-    save_cd_config(cd_config)
+    atomic_write_json(CD_CONFIG_FILE, cd_config, indent=2, ensure_ascii=False)

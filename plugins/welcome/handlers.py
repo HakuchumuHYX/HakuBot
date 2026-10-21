@@ -1,5 +1,5 @@
 from utils.paths import PluginPaths
-from nonebot import on_notice, require
+from nonebot import on_notice
 from nonebot.adapters.onebot.v11 import (
     GroupIncreaseNoticeEvent,
     Message,
@@ -8,8 +8,6 @@ from nonebot.adapters.onebot.v11 import (
 import random
 from core.access import switch_rule
 from utils.onebot.media import image_segment
-
-require("nonebot_plugin_localstore")
 
 # === 配置区域 ===
 # 触发特殊图片的概率 (0.0 - 1.0)

@@ -15,7 +15,6 @@ from typing import Dict, Optional, Set, Tuple
 from nonebot import on_command, on_message, get_driver, logger
 from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent, MessageSegment
 from nonebot.matcher import Matcher
-from nonebot.plugin import PluginMetadata
 from PIL import Image
 
 from plugins.pjsk_guess_card.config import plugin_config
@@ -38,11 +37,6 @@ from utils.onebot.rules import command_boundary
 
 PLUGIN_ID = "pjsk_guess_card"
 
-__plugin_meta__ = PluginMetadata(
-    name="PJSK猜卡面",
-    description="Project Sekai 猜卡面娱乐功能",
-    usage="/pjsk猜卡面 - 开始猜卡面游戏",
-)
 
 HINT_KEYWORDS = ("提示",)
 STOP_KEYWORDS = ("结束猜卡", "停止猜卡")

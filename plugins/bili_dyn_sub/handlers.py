@@ -27,13 +27,12 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
-from nonebot.plugin import PluginMetadata
 
 from utils.logging import get_exc_desc
 from utils.text import truncate
 from plugins.bili_dyn_sub import api
 from plugins.bili_dyn_sub.backoff import backoff_manager
-from plugins.bili_dyn_sub.config import Config, plugin_config
+from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.credential import credential_manager
 from plugins.bili_dyn_sub.parser import CATEGORY_NAMES, parse_feed
 from plugins.bili_dyn_sub.render import build_messages, build_text
@@ -43,26 +42,6 @@ from plugins.bili_dyn_sub.store import store
 from plugins.bili_dyn_sub import scheduler as _scheduler  # noqa: F401
 from plugins.bili_dyn_sub.services.delivery import SendTarget
 from plugins.bili_dyn_sub.services.delivery import dispatch_segments
-
-__plugin_meta__ = PluginMetadata(
-    name="B站动态订阅",
-    description="自研 B 站 UP 主动态订阅推送（持久化去重 + 推送窗口闸门，替换 nonebot-bison）",
-    usage="""命令列表（均仅限超级用户；群聊与私聊都可用）：
-- b站订阅 <UID / UID:xxx / 空间链接> [群号]
-    群聊：省略群号即订阅到当前群；私聊：必须显式给出群号
-- b站退订 <UID> [群号]
-    群聊：省略群号即从当前群退订；私聊：必须显式给出群号
-- b站订阅列表
-    群聊：列出本群订阅；私聊：列出全局订阅（标注每条推送到哪些群）
-- b站订阅测试 <UID> [text]
-    群聊 / 私聊均可用；立即拉取一次（不改状态）。默认按**真实推送流程**渲染最新一条
-    并发到当前会话（私聊即只发给自己），所见即所得；加 text 则只回显解析出的文本
-""",
-    type="application",
-    homepage="",
-    config=Config,
-    supported_adapters={"~onebot.v11"},
-)
 
 
 # ---------------------------------------------------------------- 参数解析

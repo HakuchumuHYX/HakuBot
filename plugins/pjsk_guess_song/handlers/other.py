@@ -5,7 +5,6 @@
 
 from core.lifecycle import runtime
 import json
-from pathlib import Path
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     GROUP,
@@ -23,6 +22,7 @@ from plugins.pjsk_guess_song.tools.get_aliases import fetch_all_aliases
 from core.access import switch_rule
 from utils.onebot.rules import command_boundary
 from utils.onebot.media import image_segment
+from utils.paths import sekai_master_dir
 
 # --- 资源版本 ---
 show_resource_version = on_command(
@@ -48,27 +48,12 @@ async def _(bot: Bot, event: MessageEvent):
     }
 
     # 2. 读取外部数据版本
-    target_json_path = (
-        Path("..") / "haruki-sekai-master" / "versions" / "current_version.json"
-    )
+    version_file = sekai_master_dir() / "versions" / "current_version.json"
 
     external_version_info = "未知 (文件未找到)"
-
-    # 尝试读取文件
-    found_path = None
-    if target_json_path.exists():
-        found_path = target_json_path
-    else:
-        # 回退逻辑：尝试相对路径
-        relative_path = (
-            Path("..") / "haruki-sekai-master" / "versions" / "current_version.json"
-        )
-        if relative_path.exists():
-            found_path = relative_path
-
-    if found_path:
+    if version_file.exists():
         try:
-            with open(found_path, "r", encoding="utf-8") as f:
+            with open(version_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 external_version_info = data.get("dataVersion", "未知 (字段缺失)")
         except Exception as e:

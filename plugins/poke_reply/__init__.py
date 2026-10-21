@@ -1,6 +1,5 @@
 from core.lifecycle import on_plugin_startup, on_plugin_shutdown
 from nonebot import get_driver, logger
-from nonebot.plugin import PluginMetadata
 
 # 导入所有 Handlers 以注册事件响应器
 from plugins.poke_reply.handlers import poke  # noqa: F401
@@ -19,22 +18,6 @@ from plugins.poke_reply.services.health import (
 )
 from plugins.poke_reply.services.image import clean_expired_hash_cache
 
-__plugin_meta__ = PluginMetadata(
-    name="戳一戳回复",
-    description="在群聊中戳一戳机器人，随机回复已投稿的文本或图片",
-    usage="""
-    用法：
-    1. 戳一戳机器人：随机回复一条已投稿的内容（文本或图片）
-    2. 投稿 [文本/图片]：直接发送或回复消息进行投稿
-    3. 申请删除：回复机器人发送的消息，申请删除该内容
-    4. 查看投稿数：查看本群投稿统计
-    5. 查看所有投稿：以合并转发形式查看本群所有投稿
-    6. 启用/禁用文本转图片：(管理员) 开启后，长文本将转为图片发送
-    """,
-    type="application",
-    homepage="https://github.com/HakuchumuHYX/HakuBot",
-    supported_adapters={"~onebot.v11"},
-)
 
 driver = get_driver()
 

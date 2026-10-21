@@ -3,22 +3,12 @@ from __future__ import annotations
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, Event, PrivateMessageEvent
 from nonebot.permission import SUPERUSER
-from nonebot.plugin import PluginMetadata
 
 from utils.logging import get_exc_desc
-from plugins.juya_daily_fetcher.config import Config, plugin_config
+from plugins.juya_daily_fetcher.config import plugin_config
 from plugins.juya_daily_fetcher import scheduler as _scheduler  # noqa: F401
 from plugins.juya_daily_fetcher.scheduler import run_debug
 
-__plugin_meta__ = PluginMetadata(
-    name="橘鸦 AI 早报",
-    description="订阅橘鸦 AI 早报 RSS，渲染原文长图并合并转发到指定群",
-    usage="超管私聊命令：早报测试（只发到配置的 debug 私聊，不改生产 seen）",
-    type="application",
-    homepage="",
-    config=Config,
-    supported_adapters={"~onebot.v11"},
-)
 
 debug_cmd = on_command("早报测试", permission=SUPERUSER, priority=5, block=True)
 

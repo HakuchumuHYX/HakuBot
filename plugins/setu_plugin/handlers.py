@@ -6,7 +6,7 @@ import asyncio
 import time
 from typing import Optional, Any
 
-from nonebot import on_command, get_driver, require, logger
+from nonebot import on_command, get_driver, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     MessageEvent,
@@ -16,8 +16,6 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
-
-require("nonebot_plugin_localstore")
 
 from core.access import switch_rule
 from core.cooldown import cooldown_remaining, mark_cooldown
