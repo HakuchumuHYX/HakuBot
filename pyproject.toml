@@ -17,7 +17,6 @@ dependencies = [
     "nonebot-plugin-userinfo",
     # 通用依赖
     "httpx",
-    "requests",
     "aiohttp",
     "aiofiles",
     "pillow",
@@ -25,7 +24,6 @@ dependencies = [
     "opencv-python-headless",
     "beautifulsoup4",
     "pytz",
-    "pydub",
     "aiosqlite",
     "tenacity",
     "jinja2",
