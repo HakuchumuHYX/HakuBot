@@ -1,16 +1,14 @@
-# plugins/buaa_msm/handlers/web.py
 """
 网页版接口，挂在 NoneBot 自带的 FastAPI 上。
 
 - nginx 只把 /api/* 转发到这里的 /buaa_msm/api/*，NoneBot 端口上的其他路径不对外
 - 登录：ATRI 私聊发验证码；验证码和限流只放内存，重启后作废无所谓
-- 上传：请求体就是 .bin 原文，流程与 QQ 私聊上传共用 ingest_bin + render_msr，网页上传不私聊推送结果
+- 上传：请求体就是 .bin 原文，与 QQ 私聊上传共用 msr.ingest + msr.generate，网页上传不私聊推送结果
 - 响应一律不缓存（Cache-Control 由 nginx 统一加）：所有人的结果图 URL 都一样，被 Cloudflare 缓存就会串号
 """
 
-from __future__ import annotations
-
 import asyncio
+import hashlib
 import re
 import secrets
 import time
@@ -21,21 +19,14 @@ from fastapi.responses import FileResponse
 from nonebot import logger
 from pydantic import BaseModel
 
-from plugins.buaa_msm.handlers.bind import bind_manager
-from plugins.buaa_msm.infra import storage
-from plugins.buaa_msm.infra.web_sessions import SESSION_TTL_SECONDS, web_sessions
-from plugins.buaa_msm.services.ingest_service import (
-    RESULT_FILES,
-    ingest_bin,
-    reserve_storage_path,
-    user_output_dir,
-)
-from plugins.buaa_msm.services.msr_service import render_msr
-from plugins.buaa_msm.services.processing_guard import is_processing, set_processing
-from plugins.buaa_msm.services.user_data_service import get_user_context
+from utils.json_io import atomic_write_json, load_json
 from utils.logging import get_exc_desc
+from plugins.buaa_msm import msr, store
+from plugins.buaa_msm.config import WEB_SESSIONS_FILE
+from plugins.buaa_msm.gamedata import MsmError
 
 COOKIE_NAME = "msm_session"
+SESSION_TTL_SECONDS = 30 * 24 * 3600
 CODE_TTL_SECONDS = 300
 CODE_MAX_ATTEMPTS = 5
 QQ_SEND_INTERVAL_SECONDS = 60
@@ -52,6 +43,56 @@ _codes: dict[str, dict] = {}
 _qq_last_sent: dict[str, float] = {}
 # {ip: [发码时间, ...]}
 _ip_sends: dict[str, list[float]] = {}
+
+
+# ============== 登录会话 ==============
+
+
+def _hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+class WebSessionStore:
+    """文件里只存 token 的 sha256，泄露了也不能直接拿来登录；过期的在加载和读取时顺手删掉"""
+
+    def __init__(self):
+        result = load_json(WEB_SESSIONS_FILE, default={}, missing_ok=True)
+        if not result.success:
+            logger.error(f"加载网页会话失败，所有人需要重新登录: {result.error}")
+        now = time.time()
+        # {token_sha256: {"qq": "...", "created": epoch}}
+        self._data: dict[str, dict] = {
+            k: v
+            for k, v in result.data.items()
+            if now - v["created"] < SESSION_TTL_SECONDS
+        }
+
+    def _save(self) -> None:
+        atomic_write_json(WEB_SESSIONS_FILE, self._data)
+
+    def create(self, qq: str) -> str:
+        token = secrets.token_urlsafe(32)
+        self._data[_hash(token)] = {"qq": qq, "created": time.time()}
+        self._save()
+        return token
+
+    def get_qq(self, token: str) -> str | None:
+        key = _hash(token)
+        session = self._data.get(key)
+        if session is None:
+            return None
+        if time.time() - session["created"] >= SESSION_TTL_SECONDS:
+            del self._data[key]
+            self._save()
+            return None
+        return session["qq"]
+
+    def delete(self, token: str) -> None:
+        if self._data.pop(_hash(token), None) is not None:
+            self._save()
+
+
+web_sessions = WebSessionStore()
 
 router = APIRouter(prefix="/buaa_msm/api")
 
@@ -89,18 +130,16 @@ def _current_qq(msm_session: str | None = Cookie(default=None)) -> str:
 
 
 def _me(qq: str) -> dict:
-    latest = storage.user_latest_files.get(qq)
-    uploaded_at = latest.stat().st_mtime if latest and latest.exists() else None
-    out_dir = user_output_dir(qq)
+    latest = store.latest_upload(qq)
     result = {}
-    for kind, name in RESULT_FILES.items():
-        path = out_dir / name
+    for kind in store.RESULT_FILES:
+        path = store.result_path(qq, kind)
         # 图的版本号：前端拼进 ?v=，换了图就换地址
         result[kind] = path.stat().st_mtime_ns if path.exists() else None
     return {
         "qq": qq,
-        "bind": bind_manager.get(qq),
-        "uploaded_at": uploaded_at,
+        "bind": store.get_bind(qq),
+        "uploaded_at": latest.stat().st_mtime if latest else None,
         **result,
     }
 
@@ -201,15 +240,13 @@ async def set_bind(body: BindRequest, qq: str = Depends(_current_qq)):
     content = body.content.strip()
     if not content or len(content) > BIND_MAX_CHARS:
         raise HTTPException(400, f"绑定名要在 1 到 {BIND_MAX_CHARS} 个字之间")
-    if not bind_manager.set(qq, content):
-        raise HTTPException(500, "保存失败，请稍后重试")
+    store.set_bind(qq, content)
     return _me(qq)
 
 
 @router.delete("/bind")
 async def delete_bind(qq: str = Depends(_current_qq)):
-    if bind_manager.get(qq) is not None and bind_manager.delete(qq) is None:
-        raise HTTPException(500, "保存失败，请稍后重试")
+    store.delete_bind(qq)
     return _me(qq)
 
 
@@ -219,35 +256,34 @@ async def upload(request: Request, name: str, qq: str = Depends(_current_qq)):
         raise HTTPException(400, "请上传 .bin 文件")
     if int(request.headers.get("content-length") or 0) > UPLOAD_MAX_BYTES:
         raise HTTPException(413, "文件太大了")
-    if await is_processing(qq):
-        raise HTTPException(409, "上一份还在处理，等它完成再传")
 
-    await set_processing(qq, True)
-    try:
-        body = await request.body()
-        if not body:
-            raise HTTPException(400, "文件是空的")
+    with store.exclusive(qq) as acquired:
+        if not acquired:
+            raise HTTPException(409, "上一份还在处理，等它完成再传")
+        try:
+            body = await request.body()
+            if not body:
+                raise HTTPException(400, "文件是空的")
 
-        saved_path = reserve_storage_path(name, qq)
-        await asyncio.to_thread(saved_path.write_bytes, body)
-        logger.info(f"网页上传：用户 {qq} 上传文件 {saved_path.name}（{len(body)} 字节）")
+            path = store.reserve_upload_path(qq, name)
+            await asyncio.to_thread(path.write_bytes, body)
+            logger.info(f"网页上传：用户 {qq} 上传文件 {path.name}（{len(body)} 字节）")
 
-        if not await ingest_bin(qq, saved_path):
-            raise HTTPException(400, "解密失败，请确认上传的是 MySekai 数据包")
-
-        ctx_res = await get_user_context(qq)
-        if not ctx_res.ok:
-            raise HTTPException(400, ctx_res.error)
-        summary, map_image = await render_msr(ctx_res.ctx)
-        if summary is None and map_image is None:
-            raise HTTPException(500, "统计图和位置图都没生成出来，请稍后重试")
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception(f"网页上传：用户 {qq} 的数据处理失败")
-        raise HTTPException(500, "生成失败，请稍后重试")
-    finally:
-        await set_processing(qq, False)
+            try:
+                await msr.ingest(qq, path)
+            except MsmError:
+                raise HTTPException(400, "解密失败，请确认上传的是 MySekai 数据包")
+            try:
+                summary, map_image = await msr.generate(qq)
+            except MsmError as e:
+                raise HTTPException(400, str(e))
+            if summary is None and map_image is None:
+                raise HTTPException(500, "统计图和位置图都没生成出来，请稍后重试")
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception(f"网页上传：用户 {qq} 的数据处理失败")
+            raise HTTPException(500, "生成失败，请稍后重试")
 
     logger.info(f"网页上传：用户 {qq} 的分析结果已生成")
     return _me(qq)
@@ -255,9 +291,9 @@ async def upload(request: Request, name: str, qq: str = Depends(_current_qq)):
 
 @router.get("/result/{kind}")
 async def result_image(kind: str, qq: str = Depends(_current_qq)):
-    if kind not in RESULT_FILES:
+    if kind not in store.RESULT_FILES:
         raise HTTPException(404)
-    path = user_output_dir(qq) / RESULT_FILES[kind]
+    path = store.result_path(qq, kind)
     if not path.exists():
         raise HTTPException(404, "结果图不存在，可能已被清理")
     return FileResponse(path, media_type="image/png")
