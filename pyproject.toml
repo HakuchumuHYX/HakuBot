@@ -33,7 +33,6 @@ dependencies = [
     "sqlmodel",
     "PicImageSearch",
     "pydantic",
-    "watchdog>=6.0.0",
     "pycryptodome",
     "json-repair>=0.58.0",
     "psutil>=7.2.2",
