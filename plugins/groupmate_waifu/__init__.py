@@ -1,39 +1,29 @@
 """
-groupmate_waifu/__init__.py
-娶群友插件主入口
-
-功能：
-- 娶群友：随机或指定娶一个群友
-- 透群友：随机或指定透一个群友
-- 保护名单：保护指定成员不被娶/透
-- 离婚：与 CP 分手
-- 列表查询：查看卡池、CP 列表、涩涩记录
+娶群友插件
+娶群友（随机或指定，可 NTR、锁 CP）、透群友、离婚、保护名单，以及卡池、CP、涩涩记录查询。
+记录按天清空，保护名单长期保存。
 """
 
-from nonebot import require
-from nonebot.plugin.on import on_command
+from nonebot import get_driver
 from nonebot.permission import SUPERUSER
+from nonebot.plugin.on import on_command
+
+from core.lifecycle import on_plugin_startup
+from plugins.groupmate_waifu import store
 
 
-# --- 定时任务：每日重置记录 ---
+@on_plugin_startup(get_driver(), "groupmate_waifu")
+def _on_startup() -> None:
+    store.load()
 
-require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler
 
-from plugins.groupmate_waifu.service import reset_records
-
-# 注册定时任务
-scheduler.add_job(reset_records, "cron", hour=0, misfire_grace_time=120)
-
-# 注册手动重置命令
 reset_command = on_command("重置记录", permission=SUPERUSER, priority=5, block=True)
 
 
 @reset_command.handle()
 async def handle_reset_command():
-    reset_records()
+    store.reset()
     await reset_command.finish("娶群友记录已重置。")
 
 
-# Importing handlers registers all NoneBot matchers via module side effects.
-from plugins.groupmate_waifu import handlers  # noqa: F401
+from plugins.groupmate_waifu import marry, protect, yinpa  # noqa: E402, F401
