@@ -1,6 +1,5 @@
 from core.settings import ConfigModel, load_config
-from utils.paths import PluginPaths
-from pathlib import Path
+from utils.paths import PluginPaths, sekai_master_dir
 
 
 class PluginConfig(ConfigModel):
@@ -8,13 +7,11 @@ class PluginConfig(ConfigModel):
 
     asset_base_url: str  # 资源站地址只放 config.json
     guess_timeout: int  # 猜测超时（秒）
-    crop_rate_min: float  # 裁剪最小比例
-    crop_rate_max: float  # 裁剪最大比例
+    crop_rate_min: float  # 裁剪区域占原图宽高的最小比例
+    crop_rate_max: float  # 裁剪区域占原图宽高的最大比例
 
-
-PLUGIN_NAME = "pjsk_guess_card"
-PLUGIN_DIR = Path(__file__).parent
-data_dir = PluginPaths("pjsk_guess_card").data
-data_dir.mkdir(parents=True, exist_ok=True)
 
 plugin_config = load_config("pjsk_guess_card", PluginConfig)
+
+NICKNAMES_FILE = PluginPaths("pjsk_guess_card").data / "nicknames.json"
+MASTER_DIR = sekai_master_dir() / "master"

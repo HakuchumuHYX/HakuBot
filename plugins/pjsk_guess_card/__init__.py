@@ -3,92 +3,105 @@ PJSK 猜卡面插件
 用户发送 /pjsk猜卡面 开始游戏，bot 发送一张随机裁剪的卡面图片，
 用户通过发送角色昵称来猜测卡面属于哪个角色。
 
-采用消息队列模式：游戏主循环在一个协程中完成，
+采用消息队列模式：游戏主循环在开局命令的 handler 里走完，
 on_message 监听器将消息事件放入队列，主循环通过 wait_for 实现超时。
 """
 
-from core.lifecycle import runtime, on_plugin_startup
 import asyncio
 import time
-from typing import Dict, Optional, Set, Tuple
 
-from nonebot import on_command, on_message, get_driver, logger
-from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent, MessageSegment
+from nonebot import get_driver, logger, on_command, on_message
+from nonebot.adapters.onebot.v11 import (
+    GROUP,
+    GroupMessageEvent,
+    Message,
+    MessageSegment,
+)
 from nonebot.matcher import Matcher
 from PIL import Image
 
-from plugins.pjsk_guess_card.config import plugin_config
-from plugins.pjsk_guess_card.card_data import (
-    CardImageType,
-    load_cards,
-    random_card,
-    get_card_image_url,
-    get_card_title,
-    get_card_hint,
-)
-from plugins.pjsk_guess_card.nickname import get_cid_by_nickname
-from plugins.pjsk_guess_card.image_utils import random_crop_image
+from core.access import switch_rule
+from core.lifecycle import on_plugin_startup, runtime
+from utils.images.formats import image_to_bytes
 from utils.logging import get_exc_desc
 from utils.network.http import download_image
-from utils.images.formats import image_to_bytes
-from core.access import switch_rule
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
+from plugins.pjsk_guess_card import cards
+from plugins.pjsk_guess_card.config import plugin_config
 
-PLUGIN_ID = "pjsk_guess_card"
-
-
-HINT_KEYWORDS = ("提示",)
-STOP_KEYWORDS = ("结束猜卡", "停止猜卡")
+HINT_WORD = "提示"
+STOP_WORDS = {"结束猜卡", "停止猜卡"}
+# 随机到的卡在资源站下载失败时换一张（新卡可能还没上传）
+CARD_ATTEMPTS = 3
+# 下载超过这么久才提示“正在抽卡”
 PREPARING_NOTICE_DELAY = 1.5
 
 # 群ID -> 消息队列（游戏进行中时存在）
-guess_msg_queues: Dict[int, asyncio.Queue] = {}
-
+_queues: dict[int, asyncio.Queue[GroupMessageEvent]] = {}
 # 正在抽卡/下载图片但还未开始倒计时的群
-preparing_guess_groups: Set[int] = set()
+_preparing: set[int] = set()
 
 
-# ==================== 启动时加载数据 ==================== #
-
-driver = get_driver()
-
-
-@on_plugin_startup(driver, "pjsk_guess_card")
-async def _on_startup():
-    load_cards()
-    logger.debug("PJSK 猜卡面插件已启动")
+@on_plugin_startup(get_driver(), "pjsk_guess_card")
+def _on_startup() -> None:
+    cards.load()
+    logger.info(f"PJSK 猜卡面已启动：{cards.count()} 张可用卡牌（3星/4星/生日卡）")
 
 
-async def _prepare_random_card_image(
-    group_id: int,
-    max_retry: int,
-) -> Tuple[Optional[dict], Optional[CardImageType], Optional[Image.Image]]:
-    """随机选卡并从远程加载卡图。"""
-    for attempt in range(max_retry):
-        card, image_type = random_card()
-        url = get_card_image_url(card, image_type)
-        logger.debug(
-            f"[猜卡面] 群 {group_id} 第 {attempt + 1} 次尝试: "
-            f"card_id={card['id']}, image_type={image_type}"
-        )
-
+async def _draw_card() -> tuple[dict, str, Image.Image] | None:
+    """随机选卡并下载卡面，返回 (卡牌数据, 卡图类型, 卡面)"""
+    for attempt in range(1, CARD_ATTEMPTS + 1):
+        card, image_type = cards.random_card()
         try:
-            card_image = await download_image(url)
-            logger.debug(f"[猜卡面] 在线下载卡面成功: {url}")
-            return card, image_type, card_image
+            image = await download_image(cards.image_url(card, image_type))
+            return card, image_type, image
         except Exception as e:
-            logger.info(f"[猜卡面] 第 {attempt + 1} 次下载失败，重新选卡: {get_exc_desc(e)}")
+            logger.info(
+                f"[猜卡面] 第 {attempt} 次下载卡面失败，重新选卡: "
+                f"card_id={card['id']}, {get_exc_desc(e)}"
+            )
+    return None
 
-    logger.error(f"[猜卡面] 群 {group_id} 连续 {max_retry} 次下载卡面均失败")
-    return None, None, None
+
+async def _play(
+    matcher: Matcher, queue: asyncio.Queue, card: dict, title: str
+) -> Message:
+    """等群友作答直到猜对、手动结束或超时，返回揭晓答案的那条消息"""
+    used_hints: set[str] = set()
+    guessed_cids: set[int] = set()
+    end_time = time.time() + plugin_config.guess_timeout
+    while True:
+        try:
+            event: GroupMessageEvent = await asyncio.wait_for(
+                queue.get(), timeout=end_time - time.time()
+            )
+        except asyncio.TimeoutError:
+            return Message(f"时间到！\n正确答案：\n{title}")
+
+        text = event.get_plaintext().strip()
+        if text in STOP_WORDS:
+            logger.info(f"[猜卡面] 群 {event.group_id} 手动结束 user={event.user_id}")
+            return Message(f"猜卡面已手动结束！\n正确答案：\n{title}")
+        if text == HINT_WORD:
+            await matcher.send(cards.next_hint(card, used_hints) or "没有更多提示了！")
+            continue
+
+        # 同一个角色只算一次
+        cid = cards.character_by_nickname(text)
+        if cid is None or cid in guessed_cids:
+            continue
+        guessed_cids.add(cid)
+        if cid == card["characterId"]:
+            logger.info(f"[猜卡面] 群 {event.group_id} 猜对了 user={event.user_id}")
+            return MessageSegment.reply(event.message_id) + f"猜对了！\n{title}"
 
 
 # ==================== 猜卡面游戏主命令 ==================== #
 
 guess_card_cmd = on_command(
     "pjsk猜卡面",
-    rule=command_boundary & switch_rule(PLUGIN_ID),
+    rule=command_boundary & switch_rule("pjsk_guess_card"),
     permission=GROUP,
     priority=5,
     block=True,
@@ -96,150 +109,46 @@ guess_card_cmd = on_command(
 
 
 @guess_card_cmd.handle()
-async def handle_guess_card(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
+async def handle_guess_card(event: GroupMessageEvent, matcher: Matcher):
     group_id = event.group_id
-
-    # 检查是否有进行中的游戏
-    if group_id in guess_msg_queues or group_id in preparing_guess_groups:
+    if group_id in _queues or group_id in _preparing:
         await matcher.finish("当前已有猜卡面游戏正在进行中！")
 
-    preparing_guess_groups.add(group_id)
+    _preparing.add(group_id)
     try:
+        draw_task = runtime.spawn(_draw_card(), name="pjsk_guess_card")
         try:
-            prepare_task = runtime.spawn(
-                _prepare_random_card_image(group_id, 3), name="pjsk_guess_card"
+            drawn = await asyncio.wait_for(
+                asyncio.shield(draw_task), timeout=PREPARING_NOTICE_DELAY
             )
-            try:
-                card, image_type, card_image = await asyncio.wait_for(
-                    asyncio.shield(prepare_task),
-                    timeout=PREPARING_NOTICE_DELAY,
-                )
-            except asyncio.TimeoutError:
-                await bot.send(event, "正在抽卡，请稍等...")
-                card, image_type, card_image = await prepare_task
-        except RuntimeError as e:
-            await matcher.finish(str(e))
-            return
-
-        if card is None or image_type is None or card_image is None:
+        except asyncio.TimeoutError:
+            await matcher.send("正在抽卡，请稍等...")
+            drawn = await draw_task
+        if drawn is None:
             await matcher.finish("多次尝试加载卡面图片均失败，请稍后再试")
-            return
 
-        # 准备图片数据
-        full_image_bytes = image_to_bytes(card_image)
-        cropped = random_crop_image(
-            card_image,
-            rate_min=plugin_config.crop_rate_min,
-            rate_max=plugin_config.crop_rate_max,
-        )
-        cropped_bytes = image_to_bytes(cropped)
-        title = get_card_title(card, image_type)
-
-        # 发送裁剪图；发送成功后才开始倒计时
+        card, image_type, image = drawn
+        title = cards.title(card, image_type)
         timeout = plugin_config.guess_timeout
-        msg = (
-            image_segment(cropped_bytes)
+        # 发送裁剪图；发送成功后才开始倒计时
+        await matcher.send(
+            image_segment(image_to_bytes(cards.crop(image)))
             + f"\n猜卡面开始！限时 {timeout} 秒"
             + "\n直接发送角色昵称/简称来猜测（如 ick, saki, miku）"
             + "\n发送「提示」获取提示，发送「结束猜卡」提前结束"
         )
-        await bot.send(event, msg)
-
-        # 创建消息队列，开始游戏主循环
         queue: asyncio.Queue[GroupMessageEvent] = asyncio.Queue()
-        guess_msg_queues[group_id] = queue
-        preparing_guess_groups.discard(group_id)
-
-        used_hints: Set[str] = set()
-        guessed_cids: Set[int] = set()
-        end_time = time.time() + timeout
-
+        _queues[group_id] = queue
+        _preparing.discard(group_id)
         logger.info(
             f"[猜卡面] 群 {group_id} 游戏开始: card_id={card['id']}, timeout={timeout}s"
         )
 
-        try:
-            while True:
-                rest = end_time - time.time()
-                if rest <= 0:
-                    # 超时
-                    logger.info(f"[猜卡面] 群 {group_id} 超时")
-                    await bot.send(event, f"时间到！\n正确答案：\n{title}")
-                    await bot.send(event, image_segment(full_image_bytes))
-                    return
-
-                try:
-                    msg_event: GroupMessageEvent = await asyncio.wait_for(
-                        queue.get(), timeout=rest
-                    )
-                except asyncio.TimeoutError:
-                    logger.info(f"[猜卡面] 群 {group_id} 超时")
-                    await bot.send(event, f"时间到！\n正确答案：\n{title}")
-                    await bot.send(event, image_segment(full_image_bytes))
-                    return
-
-                text = msg_event.get_plaintext().strip()
-                if not text:
-                    continue
-
-                # 停止关键词
-                if any(kw in text for kw in STOP_KEYWORDS):
-                    logger.info(
-                        f"[猜卡面] 群 {group_id} 手动停止 user={msg_event.user_id}"
-                    )
-                    await bot.send(event, f"猜卡面已手动结束！\n正确答案：\n{title}")
-                    await bot.send(event, image_segment(full_image_bytes))
-                    return
-
-                # 提示关键词
-                if any(kw in text for kw in HINT_KEYWORDS):
-                    hint = get_card_hint(card, used_hints)
-                    if hint:
-                        await bot.send(event, hint)
-                    else:
-                        await bot.send(event, "没有更多提示了！")
-                    continue
-
-                # 尝试解析为角色昵称
-                cid = get_cid_by_nickname(text)
-                if cid is None:
-                    continue
-
-                # 已猜过的角色跳过
-                if cid in guessed_cids:
-                    continue
-                guessed_cids.add(cid)
-
-                # 检查答案
-                if cid == card["characterId"]:
-                    logger.info(
-                        f"[猜卡面] 群 {group_id} 猜对了！ user={msg_event.user_id}, cid={cid}"
-                    )
-                    await bot.send(
-                        event,
-                        MessageSegment.reply(msg_event.message_id)
-                        + f"猜对了！\n{title}",
-                    )
-                    await bot.send(event, image_segment(full_image_bytes))
-                    return
-                else:
-                    logger.debug(
-                        f"[猜卡面] 群 {group_id} 猜错 cid={cid}, guessed={len(guessed_cids)}"
-                    )
-
-        except Exception as e:
-            logger.exception(f"[猜卡面] 群 {group_id} 游戏主循环异常: {e}")
-            try:
-                await bot.send(event, f"猜卡面出错了，正确答案：\n{title}")
-                await bot.send(event, image_segment(full_image_bytes))
-            except Exception as send_err:
-                logger.warning(f"[猜卡面] 群 {group_id} 补发答案失败: {get_exc_desc(send_err)}")
+        await matcher.send(await _play(matcher, queue, card, title))
+        await matcher.send(image_segment(image_to_bytes(image)))
     finally:
-        preparing_guess_groups.discard(group_id)
-        # 清理队列
-        if group_id in guess_msg_queues:
-            del guess_msg_queues[group_id]
-        logger.debug(f"[猜卡面] 群 {group_id} 游戏结束")
+        _preparing.discard(group_id)
+        _queues.pop(group_id, None)
 
 
 # ==================== 消息监听（将消息放入队列） ==================== #
@@ -248,8 +157,7 @@ answer_listener = on_message(priority=3, block=False)
 
 
 @answer_listener.handle()
-async def handle_answer(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
-    group_id = event.group_id
-    queue = guess_msg_queues.get(group_id)
+async def handle_answer(event: GroupMessageEvent):
+    queue = _queues.get(event.group_id)
     if queue is not None:
         queue.put_nowait(event)
