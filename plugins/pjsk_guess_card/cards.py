@@ -66,9 +66,12 @@ def count() -> int:
     return len(_cards)
 
 
-def random_card() -> tuple[dict, str]:
-    """随机一张卡，返回 (卡牌数据, 卡图类型 normal / after_training)"""
-    card = random.choice(_cards)
+def random_card(character_id: int | None = None) -> tuple[dict, str]:
+    """随机一张卡（可限定角色），返回 (卡牌数据, 卡图类型 normal / after_training)"""
+    pool = _cards
+    if character_id is not None:
+        pool = [c for c in _cards if c["characterId"] == character_id]
+    card = random.choice(pool)
     if card["cardRarityType"] in TRAINABLE:
         return card, random.choice(("normal", "after_training"))
     return card, "normal"
