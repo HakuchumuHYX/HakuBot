@@ -1007,15 +1007,15 @@
                     24H 活跃轨迹
                 </div>
                 <div style="margin-top: 15px;">
-                    {{hourly_chart_html}}
+                    {% include "activity_chart.html" %}
                 </div>
             </div>
 
-            {{topics_html}}
+            {% include "topic_item.html" %}
 
-            {{titles_html}}
+            {% include "user_title_item.html" %}
 
-            {{quotes_html}}
+            {% include "quote_item.html" %}
 
         </div>
 

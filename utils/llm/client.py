@@ -44,6 +44,8 @@ class ChatResult:
     elapsed: float
     # 有工具调用时 content 可能为空；每项是 SDK 对象 model_dump() 的结果
     tool_calls: list[dict] = field(default_factory=list)
+    # "length" 表示正文被 max_tokens 截断
+    finish_reason: Optional[str] = None
 
 
 @dataclass
@@ -238,6 +240,7 @@ async def chat_completion(
         usage=_usage_from_response(resp),
         elapsed=elapsed,
         tool_calls=_tool_calls_from_response(resp),
+        finish_reason=resp.choices[0].finish_reason if resp.choices else None,
     )
 
 
