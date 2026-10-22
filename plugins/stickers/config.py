@@ -14,34 +14,7 @@ from core.settings import ConfigModel, load_config
 IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 
 
-# ==================== 哈希算法配置 ====================
-
-# dHash 尺寸 (产生 DHASH_SIZE * DHASH_SIZE 位哈希)
-DHASH_SIZE: int = 8
-
-# 汉明距离阈值，<= 此值认为图片相似
-HAMMING_THRESHOLD: int = 5
-
-# MSE 验证阈值
-MSE_THRESHOLD_NUMPY: float = 100.0
-
-
-# ==================== 缓存配置 ====================
-
-# 缓存版本号 - 算法变更时需更新此版本
-CACHE_VERSION: str = "3.0"
-
-# 缓存有效期（秒），30天
-CACHE_TTL: int = 30 * 24 * 60 * 60
-
-
-# ==================== 并行处理配置 ====================
-
-# 每批并行处理的图片数量
-BATCH_SIZE: int = 50
-
-# 最大工作线程数（预留）
-MAX_WORKERS: int = 8
+# ==================== 投稿配置 ====================
 
 # 图片下载并发数
 DOWNLOAD_CONCURRENCY: int = 5

@@ -15,11 +15,12 @@ from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.rule import is_type, to_me
 
-from plugins.poke_reply import dedupe, store
+from plugins.poke_reply import store
 from plugins.poke_reply.config import (
     DEFAULT_TEXT_TO_IMAGE_THRESHOLD,
     MIN_TEXT_TO_IMAGE_THRESHOLD,
 )
+from utils.images.dedupe import find_duplicate_pairs
 from utils.logging import get_exc_desc
 from utils.onebot.media import image_segment
 
@@ -232,9 +233,7 @@ async def handle_view_all_counts(matcher: Matcher):
 @clear_duplicates.handle()
 async def handle_clear_duplicates(matcher: Matcher, event: GroupMessageEvent):
     await matcher.send("正在开始检查本群所有图片，这可能需要几分钟，请稍候...")
-    pairs = await asyncio.to_thread(
-        dedupe.find_duplicate_pairs, store.images(event.group_id)
-    )
+    pairs = await asyncio.to_thread(find_duplicate_pairs, store.images(event.group_id))
     if not pairs:
         await matcher.finish("检查完毕，未在本群发现重复的图片喵！")
     duplicate = {"kind": "image", "filenames": [path.name for _, path in pairs]}

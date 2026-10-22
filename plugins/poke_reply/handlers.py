@@ -2,7 +2,9 @@
 
 import asyncio
 import random
+import re
 from collections.abc import Callable
+from difflib import SequenceMatcher
 from pathlib import Path
 
 from nonebot import logger, on_command, on_message, on_notice
@@ -19,9 +21,10 @@ from nonebot.rule import Rule, to_me
 
 from core.access import switch_rule
 from core.cooldown import cooldown_remaining, mark_cooldown
-from plugins.poke_reply import dedupe, store
+from plugins.poke_reply import store
 from plugins.poke_reply.admin import notify_superusers
-from plugins.poke_reply.config import MAX_TEXT_LENGTH
+from plugins.poke_reply.config import MAX_TEXT_LENGTH, TEXT_SIMILARITY_THRESHOLD
+from utils.images.dedupe import find_duplicate
 from utils.logging import get_exc_desc
 from utils.network.images import fetch_image
 from utils.onebot.forward import ForwardItem, send_forward_msg
@@ -135,10 +138,23 @@ contribute = on_command(
 )
 
 
+def _normalize(text: str) -> str:
+    return re.sub(r"[^\w\s]", "", text).lower()
+
+
+def _similar_text_exists(text: str, existing: list[str]) -> bool:
+    normalized = _normalize(text)
+    return any(
+        SequenceMatcher(None, normalized, _normalize(old)).ratio()
+        >= TEXT_SIMILARITY_THRESHOLD
+        for old in existing
+    )
+
+
 async def _save_text(matcher: Matcher, group_id: int, text: str) -> dict:
     if len(text) > MAX_TEXT_LENGTH:
         await matcher.finish(f"文本太长了，请控制在{MAX_TEXT_LENGTH}字以内喵！")
-    if dedupe.similar_text_exists(text, store.texts(group_id)):
+    if _similar_text_exists(text, store.texts(group_id)):
         await matcher.finish("投稿失败，本群已经有类似的话了喵！")
     store.add_text(group_id, text)
     return {"kind": "text", "text": text}
@@ -153,7 +169,7 @@ async def _save_images(matcher: Matcher, group_id: int, urls: list[str]) -> dict
             logger.warning(f"下载投稿图片失败: {url}: {get_exc_desc(e)}")
             await matcher.finish("图片投稿失败，下载图片时出错喵")
         duplicate = await asyncio.to_thread(
-            dedupe.find_duplicate, image.data, store.images(group_id)
+            find_duplicate, image.data, store.images(group_id)
         )
         if duplicate:
             logger.info(f"群 {group_id} 图片投稿重复: {duplicate.name}")
