@@ -42,6 +42,8 @@ class ChatResult:
     model: str
     usage: TokenUsage
     elapsed: float
+    # 有工具调用时 content 可能为空；每项是 SDK 对象 model_dump() 的结果
+    tool_calls: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -127,6 +129,13 @@ def _message_content_from_response(resp: Any) -> str:
     return str(content or "")
 
 
+def _tool_calls_from_response(resp: Any) -> list[dict]:
+    choices = getattr(resp, "choices", None) or []
+    if not choices:
+        return []
+    return [call.model_dump() for call in choices[0].message.tool_calls or []]
+
+
 def _build_chat_completion_kwargs(
     config: LLMClientConfig,
     messages: list,
@@ -139,6 +148,8 @@ def _build_chat_completion_kwargs(
     thinking_enabled: Optional[bool] = None,
     extra_body: Optional[dict[str, Any]] = None,
     response_format: Optional[dict[str, Any]] = None,
+    tools: Optional[list[dict[str, Any]]] = None,
+    tool_choice: Optional[Any] = None,
 ) -> dict[str, Any]:
     used_model = model or config.model
     used_max_tokens = max_tokens if max_tokens is not None else config.max_tokens
@@ -169,6 +180,10 @@ def _build_chat_completion_kwargs(
         kwargs["extra_body"] = request_extra_body
     if response_format:
         kwargs["response_format"] = response_format
+    if tools:
+        kwargs["tools"] = tools
+    if tool_choice is not None:
+        kwargs["tool_choice"] = tool_choice
 
     if not use_thinking:
         if temperature is not None:
@@ -191,6 +206,8 @@ async def chat_completion(
     thinking_enabled: Optional[bool] = None,
     extra_body: Optional[dict[str, Any]] = None,
     response_format: Optional[dict[str, Any]] = None,
+    tools: Optional[list[dict[str, Any]]] = None,
+    tool_choice: Optional[Any] = None,
 ) -> ChatResult:
     kwargs = _build_chat_completion_kwargs(
         config,
@@ -203,6 +220,8 @@ async def chat_completion(
         thinking_enabled=thinking_enabled,
         extra_body=extra_body,
         response_format=response_format,
+        tools=tools,
+        tool_choice=tool_choice,
     )
 
     client = _make_client(config)
@@ -218,6 +237,7 @@ async def chat_completion(
         model=str(kwargs["model"]),
         usage=_usage_from_response(resp),
         elapsed=elapsed,
+        tool_calls=_tool_calls_from_response(resp),
     )
 
 

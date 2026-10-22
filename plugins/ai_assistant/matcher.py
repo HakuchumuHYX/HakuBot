@@ -1,13 +1,14 @@
 from core.lifecycle import on_plugin_startup
 from utils.paths import PluginPaths
 import time
-from typing import NoReturn
+from typing import Awaitable, NoReturn
 
 import aiofiles
-from openai import BadRequestError
+from openai import APIStatusError, BadRequestError
 from nonebot import get_driver, on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
+    GroupMessageEvent,
     Message,
     MessageEvent,
     MessageSegment,
@@ -20,23 +21,23 @@ from utils.rendering.engine import render_markdown, read_tpl
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
 from utils.logging import get_exc_desc
+from utils.llm.client import chat_completion
+from plugins.ai_assistant.chat import (
+    MAX_SEARCHES,
+    build_chat_messages,
+    chat_llm_config,
+    chat_search,
+    load_thread,
+    run_tool_loop,
+    save_thread,
+)
 from plugins.ai_assistant.config import plugin_config
+from plugins.ai_assistant.imagen import draw, draw_from_plan, research
 from plugins.ai_assistant.utils import (
     extract_pure_text,
     parse_message_content,
     remove_markdown,
 )
-from plugins.ai_assistant.services.chat_service import call_chat_completion
-from plugins.ai_assistant.services.chat_harness import (
-    decide_chat_search,
-    prepare_chat_messages,
-)
-from plugins.ai_assistant.services.imagen_service import call_image_generation
-from plugins.ai_assistant.services.search.visual import build_visual_brief_from_search
-from plugins.ai_assistant.services.search.visual import (
-    compile_image_prompt_from_visual_brief,
-)
-from plugins.ai_assistant.services.search.workflow import web_image_search_with_rewrite
 
 from core.access import switch_rule
 from core.cooldown import cooldown_remaining, mark_cooldown
@@ -82,13 +83,6 @@ html, body, .markdown-body {{
 # 注册命令
 chat_matcher = on_command(
     "chat", rule=command_boundary & switch_rule(CHAT_ID), priority=5, block=True
-)
-chat_web_matcher = on_command(
-    "chat联网",
-    aliases={"chat_web", "chatweb", "chat搜索"},
-    rule=command_boundary & switch_rule(CHAT_ID),
-    priority=5,
-    block=True,
 )
 
 draw_matcher = on_command(
@@ -140,57 +134,53 @@ async def _finish_failed(
     if isinstance(exc, BadRequestError):
         # 上游拒绝这条请求（内容审核、输入过长等），是对用户输入的判定，不算故障
         logger.warning(f"{log_context}: 请求被上游拒绝: {get_exc_desc(exc)}")
-    else:
-        logger.exception(log_context)
+        await matcher.finish(f"{error_prefix}: {exc}")
+    if isinstance(exc, APIStatusError) and exc.status_code >= 500:
+        # 上游故障（含 524、CPA 冷却期的 auth_unavailable），原始 JSON 对群友没有意义
+        logger.warning(f"{log_context}: 上游不可用: {get_exc_desc(exc)}")
+        await matcher.finish(
+            f"{error_prefix}: 上游服务暂时不可用（HTTP {exc.status_code}），请稍后再试"
+        )
+    logger.exception(log_context)
     await matcher.finish(f"{error_prefix}: {exc}")
 
 
-async def _handle_chat_command(
-    matcher: type[Matcher],
-    bot: Bot,
-    event: MessageEvent,
-    args: Message,
-    *,
-    force_search: bool,
-) -> None:
+def _thread_session(event: MessageEvent) -> str:
+    # 不用 event.get_session_id()：群里它带用户 id，别人就续不了这条线
+    if isinstance(event, GroupMessageEvent):
+        return f"group_{event.group_id}"
+    return f"private_{event.user_id}"
+
+
+@chat_matcher.handle()
+async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     cd_remain = cooldown_remaining(CHAT_ID, event)
     if cd_remain > 0:
-        await matcher.finish(f"Chat功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
+        await chat_matcher.finish(
+            f"Chat功能冷却中，请等待 {cd_remain} 秒", at_sender=True
+        )
 
-    error_prefix = "联网Chat失败" if force_search else "发生错误"
-    log_context = "Chat Web Error" if force_search else "Chat Error"
-
+    session = _thread_session(event)
+    history = load_thread(session, event.reply.message_id) if event.reply else None
     try:
+        # 接上历史时模型读的是历史原文，不再解析被回复的那张回答截图
         content_list = await parse_message_content(
-            bot,
-            event,
-            args,
-            include_forward=True,
+            event, args, bot=bot, quote=history is None
         )
     except Exception as exc:
-        await _finish_failed(matcher, exc, log_context, error_prefix)
+        await _finish_failed(chat_matcher, exc, "Chat Error", "发生错误")
     if not content_list:
-        await matcher.finish("请提供对话内容，或回复包含内容的消息。")
+        await chat_matcher.finish("请提供对话内容，或回复包含内容的消息。")
 
-    decision = decide_chat_search(content_list, force_search=force_search)
-    if force_search and not decision.search_text:
-        await matcher.finish("未检测到可用于搜索的文本内容。")
-    if decision.mode != "none":
-        await matcher.send("正在联网搜索中...")
-
-    harness = await prepare_chat_messages(content_list, decision=decision)
-    if force_search and harness.search_error:
-        await matcher.finish(f"联网Chat失败: {harness.search_error}")
-
-    await matcher.send("正在思考中...")
+    await chat_matcher.send("正在思考中...")
+    history = history or []
+    messages = build_chat_messages(history, content_list)
     try:
-        result = await call_chat_completion(
-            harness.messages,
-            temperature=plugin_config.chat.temperature,
-            top_p=plugin_config.chat.top_p,
+        result = await run_tool_loop(
+            messages, search=chat_search, max_searches=MAX_SEARCHES
         )
     except Exception as exc:
-        await _finish_failed(matcher, exc, log_context, error_prefix)
+        await _finish_failed(chat_matcher, exc, "Chat Error", "发生错误")
     # LLM 调用成功（已产生消耗）后再更新 CD
     mark_cooldown(CHAT_ID, event)
 
@@ -199,73 +189,51 @@ async def _handle_chat_command(
         f" | Token消耗: {result.usage.total_tokens}"
         f" | 耗时: {result.elapsed:.2f}s"
     )
-    if force_search:
-        stat_text += (
-            f" | 联网: Tavily {harness.search_mode} | Query数: {len(harness.queries)}"
-        )
-    elif harness.search_mode != "none":
-        search_state = f"自动{harness.search_mode}"
-        if harness.search_error:
-            search_state += "失败"
-        stat_text += f" | 联网: {search_state} | Query数: {len(harness.queries)}"
+    if result.searches:
+        stat_text += f" | 搜索 {result.searches} 次"
+    if history:
+        stat_text += f" | 第 {len(history) // 2 + 1} 轮"
 
     reply_msg = await _render_chat_reply(result.content, stat_text)
-    await matcher.finish(reply_msg, at_sender=True)
+    receipt = await chat_matcher.send(reply_msg, at_sender=True)
+    save_thread(
+        session,
+        receipt["message_id"],
+        history
+        + [
+            {"role": "user", "content": content_list},
+            {"role": "assistant", "content": result.content},
+        ],
+    )
 
 
-async def _handle_draw_command(
-    matcher: type[Matcher],
-    event: MessageEvent,
-    args: Message,
-    *,
-    use_web: bool,
-) -> None:
+async def _parse_draw_input(
+    matcher: type[Matcher], event: MessageEvent, args: Message, error_prefix: str
+) -> list:
     cd_remain = cooldown_remaining(IMAGEN_ID, event)
     if cd_remain > 0:
         await matcher.finish(f"生图功能冷却中，请等待 {cd_remain} 秒", at_sender=True)
-
-    error_prefix = "联网生图失败" if use_web else "生图失败"
-    log_context = "Draw Web Error" if use_web else "Draw Error"
-
     try:
         content_list = await parse_message_content(
-            event,
-            args,
-            image_purpose="generation",
+            event, args, image_purpose="generation"
         )
     except Exception as exc:
-        await _finish_failed(matcher, exc, log_context, error_prefix)
+        await _finish_failed(matcher, exc, "Draw Error", error_prefix)
     if not content_list:
         await matcher.finish("请提供文字描述，或回复一张图片。")
+    return content_list
 
-    context_text = None
-    if use_web:
-        raw_text = extract_pure_text(content_list).strip()
-        if not raw_text:
-            await matcher.finish("未检测到可用于搜索的文本内容。")
 
-        await matcher.send("正在联网搜索视觉设定中...")
-        queries, search_payloads = await web_image_search_with_rewrite(raw_text)
-
-        await matcher.send("正在提炼视觉设定...")
-        visual_brief = await build_visual_brief_from_search(
-            raw_text,
-            queries,
-            search_payloads,
-        )
-        context_text = compile_image_prompt_from_visual_brief(
-            raw_text,
-            visual_brief,
-        )
-
-    await matcher.send("正在绘制中，请稍候...")
-
+async def _draw_and_send(
+    matcher: type[Matcher],
+    event: MessageEvent,
+    request: Awaitable[str],
+    error_prefix: str,
+) -> str:
+    """等生图完成并发出图片，返回统计文本"""
     try:
         started_at = time.perf_counter()
-        image_url = await call_image_generation(
-            content_list,
-            extra_context=context_text,
-        )
+        image_url = await request
         generation_elapsed = time.perf_counter() - started_at
         # 生图调用成功（已产生消耗）后再更新 CD
         mark_cooldown(IMAGEN_ID, event)
@@ -274,61 +242,46 @@ async def _handle_draw_command(
         await matcher.send(image_segment(image_url))
         send_elapsed = time.perf_counter() - started_at
     except Exception as exc:
-        await _finish_failed(matcher, exc, log_context, error_prefix)
+        await _finish_failed(matcher, exc, "Draw Error", error_prefix)
 
-    stat_text = (
+    return (
         f"使用模型：{plugin_config.image.model}\n"
         f"生成耗费{generation_elapsed:.2f}s，发送耗费{send_elapsed:.2f}s"
-    )
-    if use_web:
-        stat_text += "\n联网：Tavily，已提炼视觉设定"
-    await matcher.finish(stat_text)
-
-
-@chat_matcher.handle()
-async def handle_chat(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    await _handle_chat_command(
-        chat_matcher,
-        bot,
-        event,
-        args,
-        force_search=False,
-    )
-
-
-@chat_web_matcher.handle()
-async def handle_chat_web(
-    bot: Bot,
-    event: MessageEvent,
-    args: Message = CommandArg(),
-):
-    await _handle_chat_command(
-        chat_web_matcher,
-        bot,
-        event,
-        args,
-        force_search=True,
     )
 
 
 @draw_matcher.handle()
 async def handle_draw(event: MessageEvent, args: Message = CommandArg()):
-    await _handle_draw_command(
-        draw_matcher,
-        event,
-        args,
-        use_web=False,
+    content_list = await _parse_draw_input(draw_matcher, event, args, "生图失败")
+    await draw_matcher.send("正在绘制中，请稍候...")
+    stat_text = await _draw_and_send(
+        draw_matcher, event, draw(content_list), "生图失败"
     )
+    await draw_matcher.finish(stat_text)
 
 
 @draw_web_matcher.handle()
 async def handle_draw_web(event: MessageEvent, args: Message = CommandArg()):
-    await _handle_draw_command(
-        draw_web_matcher,
-        event,
-        args,
-        use_web=True,
+    error_prefix = "联网生图失败"
+    content_list = await _parse_draw_input(draw_web_matcher, event, args, error_prefix)
+    if not extract_pure_text(content_list).strip():
+        await draw_web_matcher.finish("未检测到可用于搜索的文本内容。")
+
+    await draw_web_matcher.send("正在搜索资料...")
+    try:
+        plan = await research(content_list)
+    except Exception as exc:
+        await _finish_failed(draw_web_matcher, exc, "Draw Web Error", error_prefix)
+
+    await draw_web_matcher.send("正在绘制...")
+    stat_text = await _draw_and_send(
+        draw_web_matcher, event, draw_from_plan(plan), error_prefix
     )
+    if plan.vision_failed:
+        stat_text += f"\n联网：搜索 {plan.searches} 次，视觉提炼失败，仅用文字资料"
+    else:
+        stat_text += f"\n联网：搜索 {plan.searches} 次，参考图 {plan.web_refs} 张"
+    await draw_web_matcher.finish(stat_text)
 
 
 @model_cmd.handle()
@@ -348,7 +301,7 @@ async def handle_change_model(args: Message = CommandArg()):
     messages = [{"role": "user", "content": "Hello! This is a connection test."}]
     try:
         # 直接用新模型发起测试请求，不修改全局配置，避免测试期间并发请求用到未验证的模型
-        result = await call_chat_completion(messages, model=new_model)
+        result = await chat_completion(chat_llm_config(new_model), messages)
     except Exception as e:
         logger.warning(f"切换模型 {new_model} 测试失败: {get_exc_desc(e)}")
         error_msg = str(e)

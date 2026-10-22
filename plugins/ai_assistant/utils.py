@@ -8,10 +8,24 @@ import io
 import re
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from PIL import Image, ImageOps
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent
+
 from plugins.ai_assistant.config import plugin_config
 
 
 ImagePurpose = Literal["chat", "generation"]
+
+# chat 识图：超过此边长等比缩放并转 JPEG，减少视觉输入的体积
+CHAT_IMAGE_MAX_SIZE = 1536
+# 图生图参考图：只在超过此边长时缩放，保留 PNG/WebP/JPEG 格式和透明通道
+REFERENCE_IMAGE_MAX_SIZE = 2048
+FORWARD_MAX_NODES = 50
+FORWARD_MAX_IMAGES = 8
+FORWARD_MAX_TEXT_CHARS = 6000
+
+_QUOTE_HEADER = "【引用的消息】"
+_FORWARD_HEADER = "【引用的合并转发聊天记录】"
+_QUESTION_HEADER = "【用户的问题】"
 
 _SUPPORTED_IMAGE_FORMATS = {
     "JPEG": ("image/jpeg", "JPEG"),
@@ -72,22 +86,17 @@ async def download_image_as_data_url(
     purpose: ImagePurpose = "chat",
 ) -> str:
     """Download and normalize an image for chat vision or Images API editing."""
-    if purpose == "chat":
-        max_size = plugin_config.chat.image_max_size
-        preserve_format = max_size <= 0
-    elif purpose == "generation":
-        max_size = plugin_config.image.reference_image_max_size
-        preserve_format = True
-    else:
-        raise ValueError(f"Unsupported image purpose: {purpose}")
-
     data = await download_bytes(url, proxy=plugin_config.proxy, timeout=20)
-    raw, mime_type = _prepare_image_data(
-        data,
-        max_size=max_size,
-        preserve_format=preserve_format,
+    if purpose == "chat":
+        return image_data_url(data, max_size=CHAT_IMAGE_MAX_SIZE, preserve_format=False)
+    return image_data_url(data, max_size=REFERENCE_IMAGE_MAX_SIZE, preserve_format=True)
+
+
+def image_data_url(raw: bytes, *, max_size: int, preserve_format: bool) -> str:
+    data, mime_type = _prepare_image_data(
+        raw, max_size=max_size, preserve_format=preserve_format
     )
-    encoded = base64.b64encode(raw).decode("ascii")
+    encoded = base64.b64encode(data).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
 
 
@@ -151,12 +160,11 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
     forward_data = await bot.get_forward_msg(id=forward_id)
     nodes = forward_data.get("messages", []) if isinstance(forward_data, dict) else []
 
-    max_nodes = plugin_config.chat.forward_max_nodes
-    max_images = plugin_config.chat.forward_max_images
-    max_text_chars = plugin_config.chat.forward_max_text_chars
-    include_images = plugin_config.chat.forward_include_images
+    max_nodes = FORWARD_MAX_NODES
+    max_images = FORWARD_MAX_IMAGES
+    max_text_chars = FORWARD_MAX_TEXT_CHARS
 
-    lines = ["【用户回复的合并转发聊天记录】"]
+    lines = [_FORWARD_HEADER]
     image_parts: List[dict] = []
     image_count = 0
 
@@ -176,7 +184,7 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
                 image_index = image_count
                 data = segment.get("data") or {}
                 image_url = data.get("url")
-                if include_images and image_url and len(image_parts) < max_images:
+                if image_url and len(image_parts) < max_images:
                     try:
                         b64_img = await download_image_as_data_url(image_url)
                         image_parts.append(
@@ -216,72 +224,57 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
     return [text_part] + image_parts
 
 
+async def _segments_to_content(
+    message: Message, image_purpose: ImagePurpose
+) -> tuple[str, list[dict]]:
+    texts: List[str] = []
+    images: List[dict] = []
+    for seg in message:
+        if seg.is_text():
+            text = seg.data.get("text", "").strip()
+            if text:
+                texts.append(text)
+        elif seg.type == "image" and seg.data.get("url"):
+            b64_img = await download_image_as_data_url(
+                seg.data["url"], purpose=image_purpose
+            )
+            images.append({"type": "image_url", "image_url": {"url": b64_img}})
+    return "\n".join(texts), images
+
+
 async def parse_message_content(
-    *params: Any,
-    include_forward: bool = False,
+    event: MessageEvent,
+    args: Message,
+    *,
+    bot: Optional[Bot] = None,
+    quote: bool = True,
     image_purpose: ImagePurpose = "chat",
 ) -> list:
     """
     解析消息内容，构建OpenAI格式的 messages content 列表。
-    支持：命令后的参数、回复的消息（含图片）、可选解析回复的合并转发。
+    quote=True 时带上被回复的消息；传了 bot 才展开被回复的合并转发。
+    有引用时给各段加标注，让模型分得清哪段是引用、哪段是提问。
     """
-    if len(params) == 2:
-        bot = None
-        event, args = params
-    elif len(params) == 3:
-        bot, event, args = params
-    else:
-        raise TypeError(
-            "parse_message_content expects (event, args) or (bot, event, args)"
-        )
-
     content_list = []
 
-    # 1. 处理回复的消息 (Reply)
-    if event.reply:
+    if quote and event.reply:
         reply_msg = event.reply.message
-        handled_forward = False
-        if include_forward and bot:
-            forward_id = find_forward_id(reply_msg)
-            if forward_id:
-                content_list.extend(
-                    await parse_forward_message_content(bot, forward_id)
-                )
-                handled_forward = True
+        forward_id = find_forward_id(reply_msg) if bot else None
+        if forward_id:
+            content_list.extend(await parse_forward_message_content(bot, forward_id))
+        else:
+            text, images = await _segments_to_content(reply_msg, image_purpose)
+            if text or images:
+                label = f"{_QUOTE_HEADER}\n{text}" if text else _QUOTE_HEADER
+                content_list.append({"type": "text", "text": label})
+                content_list.extend(images)
 
-        if not handled_forward:
-            for seg in reply_msg:
-                if seg.is_text():
-                    text = seg.data.get("text", "").strip()
-                    if text:
-                        content_list.append({"type": "text", "text": text})
-                elif seg.type == "image":
-                    url = seg.data.get("url")
-                    if url:
-                        b64_img = await download_image_as_data_url(
-                            url,
-                            purpose=image_purpose,
-                        )
-                        content_list.append(
-                            {"type": "image_url", "image_url": {"url": b64_img}}
-                        )
-
-    # 2. 处理当前消息的参数 (Args)
-    for seg in args:
-        if seg.is_text():
-            text = seg.data.get("text", "").strip()
-            if text:
-                content_list.append({"type": "text", "text": text})
-        elif seg.type == "image":
-            url = seg.data.get("url")
-            if url:
-                b64_img = await download_image_as_data_url(
-                    url,
-                    purpose=image_purpose,
-                )
-                content_list.append(
-                    {"type": "image_url", "image_url": {"url": b64_img}}
-                )
+    text, images = await _segments_to_content(args, image_purpose)
+    if text and content_list:
+        text = f"{_QUESTION_HEADER}\n{text}"
+    if text:
+        content_list.append({"type": "text", "text": text})
+    content_list.extend(images)
 
     return content_list
 
