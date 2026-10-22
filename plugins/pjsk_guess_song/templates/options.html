@@ -48,7 +48,7 @@
 <div class="grid">
     {% for option in options %}
     <div class="option card">
-        <div class="jacket">{% if option.jacket %}<img src="{{ option.jacket }}">{% endif %}</div>
+        <div class="jacket">{% if option.jacket %}<img src="{{ option.jacket }}" onerror="this.remove()">{% endif %}</div>
         <div class="caption">
             <div class="num">{{ loop.index }}</div>
             <div class="name">{{ option.title }}</div>

@@ -245,8 +245,7 @@ def video_segment(path: Path) -> MessageSegment:
     return MessageSegment.video(_container_path_for_host_file(path))
 
 
-def audio_segment(path) -> MessageSegment:
-    """把本地音频文件构造成 OneBot 的语音消息段"""
-    source_path = _validate_file(Path(path))
-    encoded = base64.b64encode(source_path.read_bytes()).decode("utf-8")
+def audio_segment(data: bytes) -> MessageSegment:
+    """把音频数据构造成 OneBot 的语音消息段"""
+    encoded = base64.b64encode(data).decode("utf-8")
     return MessageSegment.record(f"base64://{encoded}")

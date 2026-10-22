@@ -17,7 +17,7 @@
 
 .row {
     display: grid;
-    grid-template-columns: 110px 1fr 70px;
+    grid-template-columns: 150px 1fr 70px;
     align-items: center;
     gap: 18px;
     padding: 14px 0;
@@ -31,7 +31,7 @@
 
 .total .value { color: var(--teal-deep); }
 
-/* 每种音轨覆盖了多少首歌 */
+/* 各类歌曲占全部歌曲的比例 */
 .bar { height: 10px; border-radius: 5px; background: rgba(51, 204, 187, 0.14); overflow: hidden; }
 
 .bar span { display: block; height: 100%; border-radius: 5px; background: var(--teal); }
@@ -49,14 +49,14 @@
 </div>
 <div class="board card">
     <div class="row total">
-        <div class="label">{{ total[0] }}</div>
+        <div class="label">歌曲</div>
         <div class="note">所有可猜的歌曲</div>
-        <div class="value">{{ total[1] }}</div>
+        <div class="value">{{ total }}</div>
     </div>
-    {% for label, value in tracks %}
+    {% for label, value in rows %}
     <div class="row">
         <div class="label">{{ label }}</div>
-        <div class="bar"><span style="width: {{ (value / (total[1] or 1) * 100)|round(1) }}%"></span></div>
+        <div class="bar"><span style="width: {{ (value / (total or 1) * 100)|round(1) }}%"></span></div>
         <div class="value">{{ value }}</div>
     </div>
     {% endfor %}
