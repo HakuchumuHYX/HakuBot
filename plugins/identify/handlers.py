@@ -1,18 +1,21 @@
-from core.lifecycle import on_plugin_startup, on_plugin_shutdown
-from nonebot import get_driver, on_command, logger, require
-from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Bot
-from typing import Optional
+"""鉴定 / 鉴定你：从 resources 里抽一张图，每人每天固定"""
 
-require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler
+import random
+from datetime import date
+from pathlib import Path
+
+from nonebot import on_command
+from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent
 
 from core.access import switch_rule
+from utils.onebot.forward import send_forward_msg
 from utils.onebot.media import image_segment
-from utils.onebot.forward import ForwardItem, send_forward_msg
+from utils.onebot.messages import mentioned_users
 from utils.onebot.rules import command_boundary
-from plugins.identify.data_manager import daily_record_manager
 
-# 注册命令处理器 - 鉴定自己
+# 排序后同一个种子在不同进程里抽到同一张
+IMAGES = sorted((Path(__file__).parent / "resources").iterdir())
+
 identify = on_command(
     "鉴定",
     rule=command_boundary & switch_rule("identify"),
@@ -20,8 +23,6 @@ identify = on_command(
     priority=5,
     block=True,
 )
-
-# 注册命令处理器 - 鉴定别人
 identify_other = on_command(
     "鉴定你",
     rule=command_boundary & switch_rule("identify"),
@@ -31,180 +32,35 @@ identify_other = on_command(
 )
 
 
-async def create_identify_message(
-    bot: Bot,
-    group_id: int,
-    target_user_id: int,
-    image_path: str,
-    initiator_user_id: Optional[int] = None,
-) -> list:
-    """
-    创建鉴定合并转发消息
-
-    Args:
-        bot: 机器人实例
-        group_id: 群组ID
-        target_user_id: 被鉴定的用户ID
-        image_path: 图片路径
-        initiator_user_id: 发起鉴定的用户ID（如果是鉴定别人的情况）
-
-    Returns:
-        合并转发消息节点列表
-    """
-    try:
-        # 获取被鉴定用户信息
-        target_info = await bot.get_group_member_info(
-            group_id=group_id, user_id=target_user_id
-        )
-        target_name = target_info.get("card") or target_info.get("nickname", "用户")
-
-        # 获取机器人信息
-        bot_info = await bot.get_login_info()
-        bot_name = bot_info.get("nickname", "鉴定机器人")
-
-        # 根据是否是鉴定别人来生成不同的文案
-        if initiator_user_id is not None and initiator_user_id != target_user_id:
-            # 鉴定别人的情况
-            initiator_info = await bot.get_group_member_info(
-                group_id=group_id, user_id=initiator_user_id
-            )
-            initiator_name = initiator_info.get("card") or initiator_info.get(
-                "nickname", "用户"
-            )
-            text_content = f"呀吼！@{initiator_name} 对 @{target_name} 的鉴定结果：\n@{target_name} 是"
-        else:
-            # 鉴定自己的情况
-            text_content = f"呀吼！@{target_name}，经鉴定你是"
-
-        return [
-            ForwardItem(text_content, name=bot_name, uin=bot.self_id),
-            ForwardItem(image_segment(image_path), name=bot_name, uin=bot.self_id),
-        ]
-
-    except Exception as e:
-        logger.opt(exception=True).warning(f"创建鉴定消息失败: {e}")
-        # 失败时返回简单的文本消息格式
-        return [
-            ForwardItem(
-                "鉴定完成！今日鉴定结果已生成", name="鉴定结果", uin=bot.self_id
-            )
-        ]
+def _sender_name(event: GroupMessageEvent) -> str:
+    return event.sender.card or event.sender.nickname
 
 
-def get_at_target(event: GroupMessageEvent) -> Optional[int]:
-    """
-    从消息中提取被@的用户ID
-
-    Args:
-        event: 群消息事件
-
-    Returns:
-        被@的用户ID，如果没有@则返回None
-    """
-    for seg in event.message:
-        if seg.type == "at":
-            qq = seg.data.get("qq")
-            if qq and qq != "all":  # 排除@全体成员
-                return int(qq)
-    return None
+async def _send(bot: Bot, event: GroupMessageEvent, target_id: int, text: str):
+    # str 种子走 sha512，和 PYTHONHASHSEED 无关，重启后当天结果不变
+    seed = f"{date.today()}:{event.group_id}:{target_id}"
+    image = random.Random(seed).choice(IMAGES)
+    await send_forward_msg(bot, event, items=[text, image_segment(image)])
 
 
 @identify.handle()
-async def handle_identify(bot: Bot, event: GroupMessageEvent):
-    """处理鉴定命令（鉴定自己）"""
-    group_id = event.group_id
-    user_id = event.user_id
-
-    # 检查用户今天的鉴定结果
-    today_record = daily_record_manager.get_user_record(group_id, user_id)
-
-    if today_record:
-        # 如果今天已经鉴定过，直接返回之前的结果
-        image_path = today_record
-    else:
-        # 获取随机图片
-        image_path = daily_record_manager.get_random_image()
-
-        if not image_path:
-            await identify.finish("鉴定系统暂时不可用，请稍后再试喵~")
-
-        # 保存用户今天的鉴定结果
-        daily_record_manager.set_user_record(group_id, user_id, image_path)
-
-    # 创建合并转发消息
-    forward_nodes = await create_identify_message(bot, group_id, user_id, image_path)
-
-    # 发送合并转发消息
-    await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
-
-    logger.info(f"用户 {user_id} 在群 {group_id} 进行了鉴定")
+async def _(bot: Bot, event: GroupMessageEvent):
+    await _send(bot, event, event.user_id, f"呀吼！@{_sender_name(event)}，经鉴定你是")
 
 
 @identify_other.handle()
-async def handle_identify_other(bot: Bot, event: GroupMessageEvent):
-    """处理鉴定别人命令（鉴定你+@xxx）"""
-    group_id = event.group_id
-    initiator_id = event.user_id  # 发起鉴定的人
-
-    # 获取被@的用户
-    target_user_id = get_at_target(event)
-
-    if target_user_id is None:
+async def _(bot: Bot, event: GroupMessageEvent):
+    targets = mentioned_users(event.message)
+    if not targets:
         await identify_other.finish("请@一个要鉴定的人喵~\n用法：鉴定你 @某人")
-
-    # 不能鉴定机器人自己
-    if target_user_id == int(bot.self_id):
+    target_id = targets[0]
+    if target_id == int(bot.self_id):
         await identify_other.finish("我不能鉴定我自己喵~")
+    if target_id == event.user_id:
+        await _send(bot, event, target_id, f"呀吼！@{_sender_name(event)}，经鉴定你是")
+        return
 
-    # 检查被鉴定用户今天的鉴定结果
-    today_record = daily_record_manager.get_user_record(group_id, target_user_id)
-
-    if today_record:
-        # 如果今天已经被鉴定过，直接返回之前的结果
-        image_path = today_record
-    else:
-        # 获取随机图片
-        image_path = daily_record_manager.get_random_image()
-
-        if not image_path:
-            await identify_other.finish("鉴定系统暂时不可用，请稍后再试喵~")
-
-        # 保存被鉴定用户今天的鉴定结果
-        daily_record_manager.set_user_record(group_id, target_user_id, image_path)
-
-    # 创建合并转发消息（传入发起者ID以生成不同文案）
-    forward_nodes = await create_identify_message(
-        bot, group_id, target_user_id, image_path, initiator_user_id=initiator_id
-    )
-
-    # 发送合并转发消息
-    await send_forward_msg(bot, group_id=group_id, items=forward_nodes)
-
-    logger.info(f"用户 {initiator_id} 在群 {group_id} 鉴定了用户 {target_user_id}")
-
-
-@scheduler.scheduled_job("cron", hour=0, minute=5, id="identify_daily_cleanup")
-async def daily_cleanup():
-    """每日清理任务"""
-    try:
-        daily_record_manager.cleanup_old_records()
-        logger.debug("已执行每日鉴定记录清理")
-    except Exception as e:
-        logger.exception(f"每日清理任务出错: {e}")
-
-
-# 插件启动时初始化
-@on_plugin_startup(get_driver(), "identify")
-async def init_plugin():
-    """插件初始化"""
-    # 清理旧记录
-    daily_record_manager.cleanup_old_records()
-
-    logger.debug("鉴定插件初始化完成")
-
-
-# 机器人关闭时的处理
-@on_plugin_shutdown(get_driver(), "identify")
-async def shutdown_plugin():
-    """插件关闭"""
-    logger.debug("鉴定插件已关闭")
+    target = await bot.get_group_member_info(group_id=event.group_id, user_id=target_id)
+    target_name = target["card"] or target["nickname"]
+    text = f"呀吼！@{_sender_name(event)} 对 @{target_name} 的鉴定结果：\n@{target_name} 是"
+    await _send(bot, event, target_id, text)

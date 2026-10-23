@@ -1,23 +1,25 @@
-from __future__ import annotations
+"""把一次 matcher 运行汇总成 response_events 的一行，把一条日志转成 diagnostic_logs 的一行
+
+只记有发送、抛了异常或出现 ERROR 日志的运行；失败或带 WARNING 的附完整输入、输出和日志。
+列的含义和约束以 webconsole 的 internal/database/schema.sql 为准。
+"""
 
 import base64
+import gzip
+import hashlib
 import json
 import time
 import traceback
 import uuid
-from collections.abc import Awaitable, Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from nonebot.adapters import Bot, Event
-from nonebot.matcher import Matcher, current_matcher
-from nonebot.message import run_postprocessor, run_preprocessor
+from nonebot.matcher import Matcher
 
-from plugins.webconsole_bridge.status import BridgeRuntime
-
-RUN_CONTEXT_STATE_KEY = "_webconsole_bridge_run_context"
-RESPONSE_API_NAMES = frozenset(
+RESPONSE_APIS = frozenset(
     {
         "send_msg",
         "send_group_msg",
@@ -27,64 +29,163 @@ RESPONSE_API_NAMES = frozenset(
     }
 )
 SUMMARY_LIMIT = 2_000
-LOG_LEVEL_WEIGHT = {
-    "DEBUG": 10,
-    "INFO": 20,
-    "SUCCESS": 25,
-    "WARNING": 30,
-    "ERROR": 40,
-    "CRITICAL": 50,
-}
+WARNING_NO = logger.level("WARNING").no
+ERROR_NO = logger.level("ERROR").no
 
 
-def _string_or_none(value: Any) -> str | None:
-    return None if value is None else str(value)
+def now_ms() -> int:
+    return time.time_ns() // 1_000_000
 
 
-def _event_name(event: Event) -> str:
-    return str(event.get_event_name())
+@dataclass
+class Run:
+    run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    started_at_ms: int = field(default_factory=now_ms)
+    started_ns: int = field(default_factory=time.monotonic_ns)
+    api_calls: list[dict] = field(default_factory=list)
+    logs: list[dict] = field(default_factory=list)
 
 
-def _serialize_event(event: Event) -> str:
-    # 跑在 run_preprocessor 里，抛异常会取消 matcher；python 模式不做序列化，剩下的类型交给 default=str
-    return json.dumps(
-        event.model_dump(),
-        ensure_ascii=False,
-        separators=(",", ":"),
-        default=str,
+def _traceback(exception: BaseException) -> str:
+    return "".join(
+        traceback.format_exception(type(exception), exception, exception.__traceback__)
     )
 
 
-def _truncate_summary(value: str) -> str:
-    if len(value) <= SUMMARY_LIMIT:
-        return value
-    return value[:SUMMARY_LIMIT] + "…"
+def _json_default(value: Any) -> Any:
+    if isinstance(value, bytes):
+        return {"__type__": "bytes", "base64": base64.b64encode(value).decode("ascii")}
+    if isinstance(value, Path):
+        return str(value)
+    if callable(getattr(value, "model_dump", None)):
+        return value.model_dump(mode="json")
+    if hasattr(value, "type") and hasattr(value, "data"):
+        return {"type": str(value.type), "data": value.data}
+    return repr(value)
+
+
+def _dumps(value: Any) -> str:
+    return json.dumps(
+        value, ensure_ascii=False, separators=(",", ":"), default=_json_default
+    )
+
+
+def _truncate(value: str) -> str:
+    return value if len(value) <= SUMMARY_LIMIT else value[:SUMMARY_LIMIT] + "…"
 
 
 def _message_summary(value: Any) -> str:
+    """文本段取原文，其它段写成 [image] 这样"""
     if isinstance(value, str):
         return value
     if isinstance(value, bytes):
         return "[二进制]"
     if isinstance(value, (list, tuple)):
         return "".join(_message_summary(item) for item in value)
-    if hasattr(value, "type") and hasattr(value, "data"):
-        segment_type = str(value.type)
-        data = value.data
-        if segment_type == "text" and isinstance(data, dict):
-            return str(data.get("text", ""))
-        return f"[{segment_type}]"
-    if isinstance(value, dict):
-        if "type" in value and "data" in value:
-            segment_type = str(value["type"])
-            data = value["data"]
-            if segment_type == "text" and isinstance(data, dict):
-                return str(data.get("text", ""))
-            return f"[{segment_type}]"
-        if "message" in value:
-            return _message_summary(value["message"])
-        return serialize_api_value(value)
-    return str(value)
+    if isinstance(value, dict) and "type" in value and "data" in value:
+        segment_type, data = value["type"], value["data"]
+    elif hasattr(value, "type") and hasattr(value, "data"):
+        segment_type, data = value.type, value.data
+    elif isinstance(value, dict):
+        # 发送 API 的参数：普通消息取 message，合并转发没有 message，整体写出来
+        return (
+            _message_summary(value["message"]) if "message" in value else _dumps(value)
+        )
+    else:
+        return str(value)
+    if segment_type == "text" and isinstance(data, dict):
+        return str(data.get("text", ""))
+    return f"[{segment_type}]"
+
+
+def _gzip_with_sha(value: str | None) -> tuple[bytes | None, str | None]:
+    if value is None:
+        return None, None
+    raw = value.encode("utf-8")
+    return gzip.compress(raw, compresslevel=6, mtime=0), hashlib.sha256(raw).hexdigest()
+
+
+def _optional_str(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def api_call(api: str, data: dict, result: Any, exception: Exception | None) -> dict:
+    return {
+        "api": api,
+        "called_at_ms": now_ms(),
+        "params": data,
+        "result": result,
+        "success": exception is None,
+        "exception_type": type(exception).__name__ if exception else None,
+        "exception_message": str(exception) if exception else None,
+        "exception_traceback": _traceback(exception) if exception else None,
+    }
+
+
+def _plugin_from_logger(name: str | None) -> str | None:
+    # 插件模块都是 plugins.xxx；第三方插件是 nonebot_plugin_xxx
+    parts = (name or "").split(".")
+    if parts[0] == "plugins" and len(parts) > 1:
+        return parts[1]
+    if parts[0].startswith("nonebot_plugin_"):
+        return parts[0]
+    return None
+
+
+def log_entry(
+    record: dict, full_log: str, run: Run | None, matcher: Matcher | None
+) -> dict:
+    """run 不为空时日志挂到这次运行上，插件名取 matcher 的"""
+    if run is not None:
+        plugin_name = type(matcher).plugin_name
+    else:
+        plugin_name = _plugin_from_logger(record["name"])
+    return {
+        "created_at_ms": now_ms(),
+        "level": record["level"].name,
+        "logger_name": record["name"],
+        "module_name": record["module"],
+        "function_name": record["function"],
+        "line": record["line"],
+        "message": str(record["message"]),
+        "full_log": full_log,
+        "run_id": run.run_id if run else None,
+        "plugin_name": plugin_name,
+    }
+
+
+def diagnostic_row(entry: dict) -> dict:
+    full_log_gzip, raw_sha256 = _gzip_with_sha(entry["full_log"])
+    return {
+        "run_id": entry["run_id"],
+        "created_at_ms": entry["created_at_ms"],
+        "level": entry["level"],
+        "logger_name": entry["logger_name"],
+        "module_name": entry["module_name"],
+        "plugin_name": entry["plugin_name"],
+        "message_summary": entry["message"][:SUMMARY_LIMIT],
+        "full_log_gzip": full_log_gzip,
+        "raw_sha256": raw_sha256,
+    }
+
+
+def _level_no(entry: dict) -> int:
+    return logger.level(entry["level"]).no
+
+
+def _error_fields(
+    run: Run, exception: Exception | None
+) -> tuple[str | None, str | None]:
+    """异常优先，其次是第一次发送失败，最后是第一条 ERROR 日志"""
+    if exception is not None:
+        return type(exception).__name__, str(exception)
+    failed_call = next((call for call in run.api_calls if not call["success"]), None)
+    if failed_call is not None:
+        return failed_call["exception_type"], failed_call["exception_message"]
+    error_log = next((log for log in run.logs if _level_no(log) >= ERROR_NO), None)
+    if error_log is not None:
+        return "LogError", error_log["message"]
+    return None, None
 
 
 def _event_summary(event: Event) -> str:
@@ -93,433 +194,85 @@ def _event_summary(event: Event) -> str:
     except ValueError:
         # 通知、元事件没有消息
         message = ""
-    return _truncate_summary(_message_summary(message))
+    return _truncate(_message_summary(message))
 
 
-def _json_default(value: Any) -> Any:
-    if isinstance(value, bytes):
-        return {
-            "__type__": "bytes",
-            "base64": base64.b64encode(value).decode("ascii"),
-        }
-    if isinstance(value, Path):
-        return str(value)
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        return model_dump(mode="json")
-    if hasattr(value, "type") and hasattr(value, "data"):
-        return {
-            "type": str(value.type),
-            "data": value.data,
-        }
-    return repr(value)
+def response_row(
+    run: Run, matcher: Matcher, bot: Bot, event: Event, exception: Exception | None
+) -> dict | None:
+    """不需要记录时返回 None"""
+    max_log = max(run.logs, key=_level_no, default=None)
+    max_level_no = _level_no(max_log) if max_log else 0
+    if not run.api_calls and exception is None and max_level_no < ERROR_NO:
+        return None
 
-
-def serialize_api_value(value: Any) -> str:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        default=_json_default,
+    send_success_count = sum(call["success"] for call in run.api_calls)
+    failed = (
+        exception is not None
+        or send_success_count < len(run.api_calls)
+        or max_level_no >= ERROR_NO
     )
+    full_diagnostics = failed or max_level_no >= WARNING_NO
 
+    request_raw = response_raw = logs_raw = None
+    if full_diagnostics:
+        request_raw = json.dumps(
+            event.model_dump(), ensure_ascii=False, separators=(",", ":"), default=str
+        )
+        response_raw = _dumps(run.api_calls)
+        logs = list(run.logs)
+        if exception is not None:
+            logs.append(
+                {
+                    "level": "ERROR",
+                    "kind": "matcher_exception",
+                    "exception_type": type(exception).__name__,
+                    "exception_message": str(exception),
+                    "traceback": _traceback(exception),
+                }
+            )
+        logs_raw = _dumps(logs)
+    request_gzip, request_sha = _gzip_with_sha(request_raw)
+    response_gzip, response_sha = _gzip_with_sha(response_raw)
+    logs_gzip, logs_sha = _gzip_with_sha(logs_raw)
 
-def _matcher_source(
-    matcher: Matcher,
-) -> tuple[
-    str | None,
-    str | None,
-    str | None,
-    int | None,
-]:
     matcher_class = type(matcher)
-    source = matcher_class._source
-    return (
-        matcher_class.plugin_name,
-        matcher_class.plugin_id,
-        matcher_class.module_name,
-        source.lineno if source else None,
-    )
-
-
-@dataclass(slots=True)
-class APICallRecord:
-    api: str
-    called_at_ms: int
-    params_raw: str
-    result_raw: str
-    success: bool
-    exception_type: str | None = None
-    exception_message: str | None = None
-    exception_traceback: str | None = None
-
-
-@dataclass(slots=True)
-class DiagnosticLogEntry:
-    created_at_ms: int
-    level: str
-    logger_name: str | None
-    module_name: str | None
-    function_name: str | None
-    line: int | None
-    message: str
-    full_log: str
-    run_id: str | None = None
-    plugin_name: str | None = None
-
-
-@dataclass(slots=True)
-class RunContext:
-    run_id: str
-    started_at_ms: int
-    started_monotonic_ns: int
-    plugin_name: str | None
-    plugin_id: str | None
-    module_name: str | None
-    matcher_type: str
-    matcher_lineno: int | None
-    bot_id: str | None
-    event_name: str
-    group_id: str | None
-    user_id: str | None
-    source_message_id: str | None
-    request_summary: str
-    request_raw: str
-    finished_at_ms: int | None = None
-    duration_ms: int | None = None
-    matcher_exception: Exception | None = None
-    matcher_traceback: str | None = None
-    api_calls: list[Any] = field(default_factory=list)
-    diagnostic_logs: list[Any] = field(default_factory=list)
-
-    @property
-    def should_record(self) -> bool:
-        if self.api_calls or self.matcher_exception is not None:
-            return True
-        return any(
-            LOG_LEVEL_WEIGHT.get(str(getattr(item, "level", "")), 0)
-            >= LOG_LEVEL_WEIGHT["ERROR"]
-            for item in self.diagnostic_logs
-        )
-
-
-@dataclass(slots=True)
-class CompletedResponse:
-    context: RunContext
-    status: str
-    send_count: int
-    send_success_count: int
-    send_failure_count: int
-    response_summary: str
-    max_log_level: str | None
-    error_type: str | None
-    error_message: str | None
-    has_full_diagnostics: bool
-    request_raw: str | None
-    response_raw: str | None
-    logs_raw: str | None
-
-
-FinalizeCallback = Callable[[RunContext, CompletedResponse | None], Awaitable[None]]
-
-
-class CaptureManager:
-    def __init__(self) -> None:
-        self._finalize_callback: FinalizeCallback | None = None
-
-    def set_finalize_callback(
-        self,
-        callback: FinalizeCallback | None,
-    ) -> None:
-        self._finalize_callback = callback
-
-    def begin_run(
-        self,
-        matcher: Matcher,
-        bot: Bot,
-        event: Event,
-    ) -> RunContext:
-        plugin_name, plugin_id, module_name, lineno = _matcher_source(matcher)
-        now_ms = time.time_ns() // 1_000_000
-        context = RunContext(
-            run_id=uuid.uuid4().hex,
-            started_at_ms=now_ms,
-            started_monotonic_ns=time.monotonic_ns(),
-            plugin_name=plugin_name,
-            plugin_id=plugin_id,
-            module_name=module_name,
-            matcher_type=str(getattr(type(matcher), "type", "")),
-            matcher_lineno=lineno,
-            bot_id=_string_or_none(getattr(bot, "self_id", None)),
-            event_name=_event_name(event),
-            group_id=_string_or_none(getattr(event, "group_id", None)),
-            user_id=_string_or_none(getattr(event, "user_id", None)),
-            source_message_id=_string_or_none(getattr(event, "message_id", None)),
-            request_summary=_event_summary(event),
-            request_raw=_serialize_event(event),
-        )
-        matcher.state[RUN_CONTEXT_STATE_KEY] = context
-        return context
-
-    def current_run(self, matcher: Matcher) -> RunContext | None:
-        context = matcher.state.get(RUN_CONTEXT_STATE_KEY)
-        return context if isinstance(context, RunContext) else None
-
-    def record_api_call(
-        self,
-        matcher: Matcher,
-        *,
-        api: str,
-        data: dict[str, Any],
-        result: Any,
-        exception: Exception | None,
-    ) -> APICallRecord | None:
-        if api not in RESPONSE_API_NAMES:
-            return None
-        context = self.current_run(matcher)
-        if context is None:
-            return None
-
-        exception_traceback = None
-        if exception is not None:
-            exception_traceback = "".join(
-                traceback.format_exception(
-                    type(exception),
-                    exception,
-                    exception.__traceback__,
-                )
-            )
-        record = APICallRecord(
-            api=api,
-            called_at_ms=time.time_ns() // 1_000_000,
-            params_raw=serialize_api_value(data),
-            result_raw=serialize_api_value(result),
-            success=exception is None,
-            exception_type=(
-                type(exception).__name__ if exception is not None else None
-            ),
-            exception_message=str(exception) if exception is not None else None,
-            exception_traceback=exception_traceback,
-        )
-        context.api_calls.append(record)
-        return record
-
-    def record_diagnostic(
-        self,
-        entry: DiagnosticLogEntry,
-        matcher: Matcher | None,
-    ) -> RunContext | None:
-        if matcher is None:
-            return None
-        context = self.current_run(matcher)
-        if context is None:
-            return None
-        entry.run_id = context.run_id
-        entry.plugin_name = context.plugin_name
-        context.diagnostic_logs.append(entry)
-        return context
-
-    def finish_run(
-        self,
-        matcher: Matcher,
-        exception: Exception | None,
-    ) -> RunContext | None:
-        context = matcher.state.pop(RUN_CONTEXT_STATE_KEY, None)
-        if not isinstance(context, RunContext):
-            return None
-        context.finished_at_ms = time.time_ns() // 1_000_000
-        elapsed_ns = max(0, time.monotonic_ns() - context.started_monotonic_ns)
-        context.duration_ms = elapsed_ns // 1_000_000
-        context.matcher_exception = exception
-        if exception is not None:
-            context.matcher_traceback = "".join(
-                traceback.format_exception(
-                    type(exception),
-                    exception,
-                    exception.__traceback__,
-                )
-            )
-        return context
-
-    def complete_response(
-        self,
-        context: RunContext,
-    ) -> CompletedResponse | None:
-        if not context.should_record:
-            return None
-
-        send_count = len(context.api_calls)
-        send_success_count = sum(1 for call in context.api_calls if call.success)
-        send_failure_count = send_count - send_success_count
-
-        max_log_level = None
-        max_log_weight = 0
-        for item in context.diagnostic_logs:
-            level = str(getattr(item, "level", ""))
-            weight = LOG_LEVEL_WEIGHT.get(level, 0)
-            if weight > max_log_weight:
-                max_log_level = level
-                max_log_weight = weight
-
-        failed = (
-            context.matcher_exception is not None
-            or send_failure_count > 0
-            or max_log_weight >= LOG_LEVEL_WEIGHT["ERROR"]
-        )
-        status = "failure" if failed else "success"
-        has_full_diagnostics = failed or max_log_weight >= LOG_LEVEL_WEIGHT["WARNING"]
-
-        error_type = None
-        error_message = None
-        if context.matcher_exception is not None:
-            error_type = type(context.matcher_exception).__name__
-            error_message = str(context.matcher_exception)
-        else:
-            failed_call = next(
-                (call for call in context.api_calls if not call.success),
-                None,
-            )
-            if failed_call is not None:
-                error_type = failed_call.exception_type
-                error_message = failed_call.exception_message
-            elif max_log_weight >= LOG_LEVEL_WEIGHT["ERROR"]:
-                error_log = next(
-                    (
-                        item
-                        for item in context.diagnostic_logs
-                        if LOG_LEVEL_WEIGHT.get(
-                            str(getattr(item, "level", "")),
-                            0,
-                        )
-                        >= LOG_LEVEL_WEIGHT["ERROR"]
-                    ),
-                    None,
-                )
-                if error_log is not None:
-                    error_type = "LogError"
-                    error_message = str(getattr(error_log, "message", ""))
-
-        response_summary = _truncate_summary(
-            "\n".join(
-                _message_summary(json.loads(call.params_raw))
-                for call in context.api_calls
-            )
-        )
-
-        request_raw = None
-        response_raw = None
-        logs_raw = None
-        if has_full_diagnostics:
-            request_raw = context.request_raw
-            response_raw = json.dumps(
-                [
-                    {
-                        **asdict(call),
-                        "params": json.loads(call.params_raw),
-                        "result": json.loads(call.result_raw),
-                    }
-                    for call in context.api_calls
-                ],
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-            log_payload = [
-                asdict(item) if hasattr(item, "__dataclass_fields__") else item
-                for item in context.diagnostic_logs
-            ]
-            if context.matcher_exception is not None:
-                log_payload.append(
-                    {
-                        "level": "ERROR",
-                        "kind": "matcher_exception",
-                        "exception_type": type(context.matcher_exception).__name__,
-                        "exception_message": str(context.matcher_exception),
-                        "traceback": context.matcher_traceback,
-                    }
-                )
-            logs_raw = json.dumps(
-                log_payload,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                default=_json_default,
-            )
-
-        return CompletedResponse(
-            context=context,
-            status=status,
-            send_count=send_count,
-            send_success_count=send_success_count,
-            send_failure_count=send_failure_count,
-            response_summary=response_summary,
-            max_log_level=max_log_level,
-            error_type=error_type,
-            error_message=error_message,
-            has_full_diagnostics=has_full_diagnostics,
-            request_raw=request_raw,
-            response_raw=response_raw,
-            logs_raw=logs_raw,
-        )
-
-    async def finalize_run(
-        self,
-        matcher: Matcher,
-        exception: Exception | None,
-    ) -> CompletedResponse | None:
-        context = self.finish_run(matcher, exception)
-        if context is None:
-            return None
-        response = self.complete_response(context)
-        if self._finalize_callback is not None and (
-            response is not None or context.diagnostic_logs
-        ):
-            await self._finalize_callback(context, response)
-        return response
-
-
-capture_manager = CaptureManager()
-_hooks_registered = False
-
-
-def register_capture_hooks(runtime: BridgeRuntime) -> None:
-    global _hooks_registered
-    if _hooks_registered:
-        return
-    _hooks_registered = True
-
-    @run_preprocessor
-    async def _webconsole_run_preprocessor(
-        matcher: Matcher,
-        bot: Bot,
-        event: Event,
-    ) -> None:
-        if not runtime.available:
-            return
-        capture_manager.begin_run(matcher, bot, event)
-
-    @run_postprocessor
-    async def _webconsole_run_postprocessor(
-        matcher: Matcher,
-        exception: Exception | None,
-    ) -> None:
-        await capture_manager.finalize_run(matcher, exception)
-
-    @Bot.on_called_api
-    async def _webconsole_called_api(
-        bot: Bot,
-        exception: Exception | None,
-        api: str,
-        data: dict[str, Any],
-        result: Any,
-    ) -> None:
-        if not runtime.available or api not in RESPONSE_API_NAMES:
-            return
-        matcher = current_matcher.get(None)
-        if matcher is None:
-            return
-        capture_manager.record_api_call(
-            matcher,
-            api=api,
-            data=data,
-            result=result,
-            exception=exception,
-        )
+    error_type, error_message = _error_fields(run, exception)
+    finished_at_ms = now_ms()
+    return {
+        "run_id": run.run_id,
+        "started_at_ms": run.started_at_ms,
+        "finished_at_ms": finished_at_ms,
+        "duration_ms": (time.monotonic_ns() - run.started_ns) // 1_000_000,
+        "status": "failure" if failed else "success",
+        "plugin_name": matcher_class.plugin_name,
+        "plugin_id": matcher_class.plugin_id,
+        "module_name": matcher_class.module_name,
+        "matcher_type": matcher_class.type,
+        "matcher_lineno": matcher_class._source.lineno
+        if matcher_class._source
+        else None,
+        "bot_id": str(bot.self_id),
+        "event_name": event.get_event_name(),
+        "group_id": _optional_str(getattr(event, "group_id", None)),
+        "user_id": _optional_str(getattr(event, "user_id", None)),
+        "source_message_id": _optional_str(getattr(event, "message_id", None)),
+        "request_summary": _event_summary(event),
+        "response_summary": _truncate(
+            "\n".join(_message_summary(call["params"]) for call in run.api_calls)
+        ),
+        "send_count": len(run.api_calls),
+        "send_success_count": send_success_count,
+        "send_failure_count": len(run.api_calls) - send_success_count,
+        "max_log_level": max_log["level"] if max_log else None,
+        "error_type": error_type,
+        "error_message": error_message,
+        "has_full_diagnostics": int(full_diagnostics),
+        "request_raw_gzip": request_gzip,
+        "response_raw_gzip": response_gzip,
+        "logs_raw_gzip": logs_gzip,
+        "request_raw_sha256": request_sha,
+        "response_raw_sha256": response_sha,
+        "logs_raw_sha256": logs_sha,
+        "created_at_ms": finished_at_ms,
+    }
