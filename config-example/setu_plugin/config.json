@@ -2,7 +2,5 @@
     "timeout": 20.0,
     "proxy": null,
     "r18": 0,
-    "reverse_proxy_domain": null,
-    "concurrency": 2,
     "refetch_404_times": 3
 }
