@@ -3,9 +3,17 @@
 函数都是同步的，调用方放进 asyncio.to_thread。
 动图帧数不同直接算不重复（动图和它的静态截图也不算）；帧数相同时复核首、中、尾三帧，
 表情库里有不少开头相同、后半段才分开的动图。
+
+签名存在图片文件自己的 xattr 里（`getfattr -n user.hakubot.dhash 文件` 查看，需装 attr 包），
+重启不用重算，改名（stickers 重新编号）也不丢；原子写换掉的文件是新 inode，属性自然没了。
+- 改了签名算法（DHASH_SIZE、帧数规则等）要换属性名，旧属性留着无害；
+- cp 不带 --preserve=xattr、rsync 不带 -X、tar 默认都会丢属性，搬走后重算一次，不会算错。
 """
 
+import errno
 import io
+import os
+import struct
 import warnings
 from pathlib import Path
 
@@ -29,8 +37,10 @@ COMPARE_SIZE = (100, 100)
 # 签名是 (dHash, 帧数)
 Signature = tuple[int, int]
 
-# 路径 -> (mtime_ns, size, 签名)；文件被替换或重命名复用路径时按 mtime/size 重算
-_signature_cache: dict[Path, tuple[int, int, Signature]] = {}
+SIGNATURE_XATTR = "user.hakubot.dhash"
+# mtime_ns、size、dHash、帧数：打成 28 字节，放得进 ext4 inode 的空余区，不额外占块。
+# 带上 mtime/size 是因为原地改写文件时 inode 不变，属性会跟着留下
+_XATTR_FORMAT = struct.Struct("<qqQI")
 
 
 def _signature(image: Image.Image) -> Signature:
@@ -48,19 +58,23 @@ def _signature(image: Image.Image) -> Signature:
 
 def _file_signature(path: Path) -> Signature:
     stat = path.stat()
-    cached = _signature_cache.get(path)
-    if cached and cached[:2] == (stat.st_mtime_ns, stat.st_size):
-        return cached[2]
+    try:
+        mtime, size, dhash, frames = _XATTR_FORMAT.unpack(
+            os.getxattr(path, SIGNATURE_XATTR)
+        )
+        if (mtime, size) == (stat.st_mtime_ns, stat.st_size):
+            return dhash, frames
+    except OSError as e:
+        if e.errno != errno.ENODATA:
+            raise
     with Image.open(path) as image:
-        value = _signature(image)
-    _signature_cache[path] = (stat.st_mtime_ns, stat.st_size, value)
-    return value
-
-
-def warm_cache(paths: list[Path]) -> None:
-    """提前把签名算进缓存，免得第一次查重时现算（大图库冷算要十几秒）"""
-    for path in paths:
-        _file_signature(path)
+        dhash, frames = _signature(image)
+    os.setxattr(
+        path,
+        SIGNATURE_XATTR,
+        _XATTR_FORMAT.pack(stat.st_mtime_ns, stat.st_size, dhash, frames),
+    )
+    return dhash, frames
 
 
 def _close(a: Signature, b: Signature) -> bool:

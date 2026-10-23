@@ -1,262 +1,301 @@
-# __init__.py
+"""群友命令：随机发图、投稿、查看stickers、看所有、查看编号"""
+
 import asyncio
 import re
-from nonebot import on_message, on_command, logger
-from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Message, Bot
-from nonebot.permission import SUPERUSER
+from nonebot import logger, on_command, on_message
+from nonebot.adapters.onebot.v11 import (
+    GROUP,
+    Bot,
+    GroupMessageEvent,
+    Message,
+)
+from nonebot.params import CommandArg, CommandWhitespace
+from nonebot.typing import T_State
 
-from utils.logging import get_exc_desc
-from utils.onebot.media import image_segment
-from utils.onebot.rules import command_boundary
 from core.access import switch_rule
 from core.cooldown import cooldown_remaining, mark_cooldown
+from core.settings import ConfigModel, load_config
+from plugins.stickers import render, store
+from utils.images.dedupe import find_duplicate
+from utils.images.formats import MIME_TYPES
+from utils.logging import get_exc_desc
+from utils.network.images import DownloadedImage, fetch_image
+from utils.onebot.media import image_segment
+from utils.onebot.messages import find_forward_id, normalize_message_segments
+from utils.onebot.rules import command_boundary
 
-from plugins.stickers.send import (
-    load_sticker_list,
-    get_random_sticker,
-    get_random_stickers,
-)
-from plugins.stickers.contribution import (
-    extract_contribution_info,
-    save_contribution_images,
-)
-from plugins.stickers.statistics import (
-    handle_statistics_command,
-    get_sticker_statistics,
-)
-from plugins.stickers.render import (
-    render_stickers_preview,
-    preview_duplicates_before_cleanup,
-)
-from plugins.stickers import manage  # noqa: F401  导入即注册超管命令
-from plugins.stickers.config import SITE_URL
-from plugins.stickers.check import (
-    find_all_duplicates,
-    safe_remove_duplicates,
-    batch_rename_stickers,
+
+class LocalConfig(ConfigModel):
+    # 表情包下载站的网址，「查看stickers」发预览图时附在后面；没配就不附
+    site_url: str
+
+
+SITE_URL = load_config("stickers", LocalConfig).site_url
+
+# 随机发图、查看编号一次最多几张
+MAX_COUNT = 5
+DOWNLOAD_CONCURRENCY = 5
+
+RANDOM_PATTERN = re.compile(r"^随机\s*(\S+?)\s*(?:(?:乘以|[x×*乘])\s*(\d+))?$", re.I)
+CONTRIBUTE_PATTERN = re.compile(r"^(.+?)投稿(\s+force)?$", re.I)
+
+
+# --- 随机 ---
+
+
+async def _random_rule(event: GroupMessageEvent, state: T_State) -> bool:
+    match = RANDOM_PATTERN.match(event.get_plaintext().strip())
+    if not match:
+        return False
+    name, count = match.groups()
+    if name.lower() in store.ALL_KEYWORDS:
+        folder = None
+    else:
+        folder = store.resolve(name)
+        if folder is None:
+            return False
+    state["random"] = (folder, max(1, min(int(count or 1), MAX_COUNT)))
+    return True
+
+
+random_matcher = on_message(
+    rule=_random_rule & switch_rule("stickers"), priority=10, block=False
 )
 
-from plugins.stickers import overview  # noqa: F401  导入即注册查看命令
 
-load_sticker_list()
+@random_matcher.handle()
+async def handle_random(event: GroupMessageEvent, state: T_State):
+    # 冷却中静默
+    if cooldown_remaining("stickers", event) > 0:
+        return
+    files = store.random_images(*state["random"])
+    if not files:
+        return
+    mark_cooldown("stickers", event)
+    await random_matcher.finish(Message(image_segment(path) for path in files))
 
-sticker_matcher = on_message(rule=switch_rule("stickers"), priority=10, block=False)
-clean_duplicates_matcher = on_command(
-    "清除重复", rule=command_boundary, permission=SUPERUSER, priority=5, block=True
+
+# --- 投稿 ---
+
+
+async def _contribute_rule(event: GroupMessageEvent, state: T_State) -> bool:
+    # 文件夹对不上就不算投稿：「怎么删投稿」这类日常说法不该触发
+    match = CONTRIBUTE_PATTERN.match(event.get_plaintext().strip())
+    if not match:
+        return False
+    name = match[1].strip()
+    folder = store.resolve(name)
+    if folder is None:
+        return False
+    state["contribute"] = (name, folder, bool(match[2]))
+    return True
+
+
+contribute_matcher = on_message(
+    rule=_contribute_rule & switch_rule("stickers"), priority=10, block=False
 )
-clean_confirm_matcher = on_command(
-    "确认清理",
+
+
+async def _image_urls(bot: Bot, event: GroupMessageEvent) -> list[str]:
+    """被回复的合并转发 > 被回复的消息 > 本条消息，取第一个有图的来源"""
+    segments = []
+    if event.reply:
+        forward_id = find_forward_id(event.reply.message)
+        if forward_id:
+            try:
+                forward = await bot.get_forward_msg(id=forward_id)
+            except Exception as e:
+                logger.warning(f"获取合并转发消息失败: {get_exc_desc(e)}")
+                await contribute_matcher.finish(
+                    "投稿失败！解析合并转发内容失败，请稍后再试。"
+                )
+            for node in forward.get("messages", []):
+                segments += normalize_message_segments(node.get("message", ""))
+        else:
+            segments = normalize_message_segments(event.reply.message)
+    urls = [s["data"].get("url") for s in segments if s["type"] == "image"]
+    if not any(urls):
+        urls = [s.data.get("url") for s in event.message if s.type == "image"]
+    return list(dict.fromkeys(url for url in urls if url))
+
+
+async def _download(urls: list[str]) -> list[DownloadedImage]:
+    semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
+
+    async def download(url: str):
+        async with semaphore:
+            try:
+                return await fetch_image(
+                    url, timeout=30, allowed_formats=tuple(MIME_TYPES)
+                )
+            except Exception as e:
+                logger.warning(f"下载投稿图片失败: {url}: {get_exc_desc(e)}")
+                return None
+
+    results = await asyncio.gather(*(download(url) for url in urls))
+    return [image for image in results if image]
+
+
+@contribute_matcher.handle()
+async def handle_contribute(bot: Bot, event: GroupMessageEvent, state: T_State):
+    name, folder, force = state["contribute"]
+    urls = await _image_urls(bot, event)
+    if not urls:
+        await contribute_matcher.finish(
+            "投稿失败！未检测到图片，请直接发送图片、回复图片或回复合并转发消息"
+        )
+    downloaded = await _download(urls)
+    if not downloaded:
+        await contribute_matcher.finish("投稿失败！无法下载任何图片")
+
+    existing = store.images(folder)
+    duplicates = []
+    for image in downloaded:
+        duplicate = (
+            None
+            if force
+            else await asyncio.to_thread(find_duplicate, image.data, existing)
+        )
+        if duplicate:
+            duplicates.append((duplicate, image))
+        else:
+            store.add_image(folder, image.data, image.extension)
+    saved = len(downloaded) - len(duplicates)
+    logger.info(
+        f"群 {event.group_id} 向 {folder} 投稿：保存 {saved} 张，重复 {len(duplicates)} 张"
+    )
+
+    if saved:
+        display = folder if name == folder else f"{folder}(通过别名'{name}')"
+        text = f"投稿完成！成功保存 {saved} 张图片。"
+        if duplicates:
+            text += f"\n检测到 {len(duplicates)} 张重复图片。"
+        text += f"\n现在 {display} 中共有 {len(store.images(folder))} 张表情~"
+    else:
+        text = f"投稿失败！{len(duplicates)} 张图片全部为重复图片。"
+    message = Message(text)
+    if duplicates:
+        report = await render.contribution_duplicates(name, duplicates)
+        if report:
+            message += image_segment(report)
+    await contribute_matcher.finish(message)
+
+
+# --- 查看stickers ---
+
+overview_matcher = on_command(
+    "查看stickers",
     rule=command_boundary & switch_rule("stickers"),
     permission=GROUP,
     priority=5,
     block=True,
 )
-clean_cancel_matcher = on_command(
-    "取消",
-    rule=command_boundary & switch_rule("stickers"),
+
+
+@overview_matcher.handle()
+async def handle_overview():
+    async def send_preview():
+        image = await render.folders_preview()
+        await overview_matcher.send(image_segment(image) if image else "预览图生成失败")
+
+    async def send_link():
+        if SITE_URL:
+            await overview_matcher.send(f"下载链接：{SITE_URL}")
+
+    # 预览图渲染和上传都慢，链接不用等它
+    await asyncio.gather(send_preview(), send_link())
+
+
+# --- 看所有 / 查看编号 ---
+
+
+# 帮助里的写法是「看所有miku」「查看947」，参数可以连写，所以改为检查参数本身：
+# 看所有 连写时必须是已有文件夹，查看 第一个参数必须是编号。
+# 否则「看所有人」「查看收藏」「no way」这类日常说法也会触发
+async def _view_all_rule(
+    arg: Message = CommandArg(), whitespace: str | None = CommandWhitespace()
+) -> bool:
+    if await command_boundary(arg, whitespace):
+        return True
+    return store.resolve(arg.extract_plain_text().strip()) is not None
+
+
+async def _view_single_rule(arg: Message = CommandArg()) -> bool:
+    tokens = arg.extract_plain_text().split()
+    return bool(tokens) and tokens[0].isdigit()
+
+
+view_all_matcher = on_command(
+    "看所有",
+    aliases={"查看所有", "view all"},
+    rule=_view_all_rule & switch_rule("stickers"),
+    permission=GROUP,
+    priority=5,
+    block=True,
+)
+view_single_matcher = on_command(
+    "sticker",
+    aliases={"看表情", "No.", "NO", "查看", "no", "no."},
+    rule=_view_single_rule & switch_rule("stickers"),
     permission=GROUP,
     priority=5,
     block=True,
 )
 
-cleanup_state = {}
 
-RANDOM_ALL_ALIASES = {"stickers", "sticker", "表情", "表情包"}
+@view_all_matcher.handle()
+async def handle_view_all(args: Message = CommandArg()):
+    name = args.extract_plain_text().strip()
+    if not name:
+        await view_all_matcher.finish("请指定要查看的文件夹名称，例如：看所有猫猫")
+    folder = store.resolve(name)
+    if folder is None:
+        await view_all_matcher.finish(f"未找到文件夹 '{name}'")
+    files = store.images(folder)
+    if not files:
+        await view_all_matcher.finish(f"文件夹 '{folder}' 中没有图片")
 
-
-def parse_multi_random_command(message_text: str) -> tuple[str, int] | None:
-    """
-    解析多图随机命令（支持多种分隔符）
-
-    返回: (文件夹名, 图片数量) 或 None
-    """
-    # 匹配格式：随机文件夹名[分隔符]数量
-    # 支持的分隔符：x, ×, *, 乘, 乘以
-    pattern = r"^随机(\S+?)[\s]*([x×*乘]|乘以)[\s]*(\d+)$"
-    match = re.match(pattern, message_text.strip(), re.IGNORECASE)
-    if match:
-        folder_name = match.group(1).strip()
-
-        if folder_name.lower() in RANDOM_ALL_ALIASES:
-            folder_name = "stickers"  # 标准化为 "stickers" 关键字
-
-        # 限制数量在1-5之间
-        count = max(1, min(int(match.group(3)), 5))
-        return folder_name, count
-    return None
-
-
-@clean_duplicates_matcher.handle()
-async def handle_clean_duplicates(event: GroupMessageEvent):
-    """清除重复：先发预览，等『确认清理』再动文件"""
-    all_duplicates = await find_all_duplicates()
-
-    if not all_duplicates:
-        # 即使没有重复，也执行批量重命名
-        rename_count, rename_msg = await batch_rename_stickers()
-        if rename_count > 0:
-            await clean_duplicates_matcher.finish(
-                f"未检测到重复图片\n📝 自动重命名完成：{rename_msg}"
-            )
-        await clean_duplicates_matcher.finish("未检测到重复图片")
-
-    preview_bytes = await preview_duplicates_before_cleanup(all_duplicates)
-    if preview_bytes:
-        await clean_duplicates_matcher.send(
-            image_segment(preview_bytes)
-            + "\n请回复『确认清理』来执行清理操作，或者回复『取消』取消操作"
+    size = render.OVERVIEW_PAGE_SIZE
+    pages = [files[i : i + size] for i in range(0, len(files), size)]
+    if len(pages) > 1:
+        await view_all_matcher.send(
+            f"文件夹 '{folder}' 共 {len(files)} 张图片，将分为 {len(pages)} 张概览图发送，请稍候..."
         )
     else:
-        total_pairs = sum(len(duplicates) for duplicates in all_duplicates.values())
-        await clean_duplicates_matcher.send(
-            f"检测到 {total_pairs} 组重复图片。请回复『确认清理』来执行清理操作，或者回复『取消』取消操作"
+        await view_all_matcher.send(
+            f"正在生成 '{folder}' 的概览，共 {len(files)} 张图片，请稍候..."
         )
 
-    cleanup_state[event.group_id] = {
-        "user_id": event.user_id,
-        "duplicates": all_duplicates,
-        "timestamp": asyncio.get_event_loop().time(),
-    }
-
-    await clean_duplicates_matcher.finish("已发送预览，请确认是否继续")
-
-
-@clean_confirm_matcher.handle()
-async def handle_clean_confirm(event: GroupMessageEvent):
-    """处理确认清理命令"""
-    group_id = event.group_id
-    user_id = event.user_id
-
-    if group_id not in cleanup_state:
-        await clean_confirm_matcher.finish("没有待处理的清理任务")
-
-    state = cleanup_state[group_id]
-    if state["user_id"] != user_id:
-        await clean_confirm_matcher.finish("这不是您的清理任务")
-
-    if asyncio.get_event_loop().time() - state["timestamp"] > 300:
-        del cleanup_state[group_id]
-        await clean_confirm_matcher.finish("清理任务已超时，请重新发起")
-
-    # 执行清理
-    removed_count, removed_files = await safe_remove_duplicates(state["duplicates"])
-
-    # 清理完成后自动执行批量重命名
-    rename_count, rename_msg = await batch_rename_stickers()
-
-    # 清理状态（在发送消息前）
-    del cleanup_state[group_id]
-
-    total_pairs = sum(len(duplicates) for duplicates in state["duplicates"].values())
-    result_msg = (
-        f"清理完成：{total_pairs} 组重复，已把 {removed_count} 张图片移到备份文件夹"
-    )
-    if rename_count > 0:
-        result_msg += f"\n📝 自动重命名完成：{rename_msg}"
-    await clean_confirm_matcher.finish(result_msg)
+    for number, page in enumerate(pages, 1):
+        try:
+            image = await asyncio.to_thread(
+                render.gallery_overview, page, folder, number, len(pages)
+            )
+        except Exception:
+            logger.exception(f"生成 {folder} 第 {number} 页概览图失败")
+            await view_all_matcher.finish(f"第 {number} 页概览图生成失败")
+        message = Message(image_segment(image))
+        if len(pages) > 1:
+            message += f"\nPart {number}/{len(pages)} ({len(page)} items)"
+        await view_all_matcher.send(message)
 
 
-@clean_cancel_matcher.handle()
-async def handle_clean_cancel(event: GroupMessageEvent):
-    """处理取消清理命令"""
-    group_id = event.group_id
-    user_id = event.user_id
+@view_single_matcher.handle()
+async def handle_view_single(args: Message = CommandArg()):
+    tokens = args.extract_plain_text().split()
+    if len(tokens) > MAX_COUNT:
+        await view_single_matcher.finish(f"一次最多只能查看 {MAX_COUNT} 张图片哦。")
 
-    if group_id not in cleanup_state:
-        await clean_cancel_matcher.finish("没有待处理的清理任务")
-
-    state = cleanup_state[group_id]
-    if state["user_id"] != user_id:
-        await clean_cancel_matcher.finish("这不是您的清理任务")
-
-    del cleanup_state[group_id]
-    await clean_cancel_matcher.finish("已取消清理操作")
-
-
-async def _send_stickers_preview():
-    try:
-        pic_bytes = await render_stickers_preview()
-        if pic_bytes:
-            await sticker_matcher.send(image_segment(pic_bytes))
+    message, missing = Message(), []
+    for token in tokens:
+        if not token.isdigit():
+            continue
+        path = store.find_by_id(int(token))
+        if path:
+            message += image_segment(path)
         else:
-            await sticker_matcher.send(get_sticker_statistics())
-    except Exception as e:
-        # 如果图片生成或发送失败，使用文本统计
-        logger.warning(f"发送贴图预览图片失败，改发文本: {get_exc_desc(e)}")
-        await sticker_matcher.send(get_sticker_statistics())
-
-
-async def _send_site_url():
-    if SITE_URL:
-        await sticker_matcher.send(f"下载链接：{SITE_URL}")
-
-
-@sticker_matcher.handle()
-async def handle_sticker(bot: Bot, event: GroupMessageEvent):
-    # 只处理群聊消息
-    if not isinstance(event, GroupMessageEvent):
-        return
-
-    # 获取纯文本消息
-    message_text = event.get_plaintext().strip()
-    if not message_text:
-        return
-
-    # 检查是否是查看统计命令
-    if handle_statistics_command(message_text):
-        # 预览图渲染和上传都慢，链接不用等它
-        await asyncio.gather(_send_stickers_preview(), _send_site_url())
-        return  # 使用 return 而不是 finish
-
-    # 检查是否是投稿格式
-    folder_name, is_contribution, is_force = extract_contribution_info(message_text)
-    if is_contribution:
-        # 处理投稿
-        success, reply_msg, saved_count = await save_contribution_images(
-            bot, folder_name, event, is_force
-        )
-
-        if success or saved_count == 0:  # 成功或完全失败时回复
-            await sticker_matcher.finish(reply_msg)
-        return
-
-    # 检查是否是单图随机命令
-    if message_text.startswith("随机"):
-        remaining_cd = cooldown_remaining("stickers", event)
-        if remaining_cd > 0:
-            # 冷却中，静默处理，不回复
-            return
-
-        # 先检查是否为多图随机命令
-        multi_random_result = parse_multi_random_command(message_text)
-        if multi_random_result:
-            folder_name, count = multi_random_result
-            sticker_files = get_random_stickers(folder_name, count)
-            if sticker_files:
-                # 发送多张图片
-                # 创建包含多张图片的消息
-                message_segments = []
-                for sticker_file in sticker_files:
-                    message_segments.append(image_segment(sticker_file))
-
-                mark_cooldown("stickers", event)  # 成功则更新CD
-
-                await sticker_matcher.finish(Message(message_segments))
-            return
-
-        # 如果不是多图随机命令，处理单图随机命令
-        # 提取文件夹名（去掉"随机"前缀）
-        folder_name = message_text[2:].strip()
-
-        # 检查是否为“随机所有”的别名
-        if folder_name.lower() in RANDOM_ALL_ALIASES:
-            folder_name = "stickers"  # 标准化为 "stickers" 关键字
-
-        if folder_name:
-            # 使用支持别名的函数获取贴图
-            sticker_file = get_random_sticker(folder_name)
-            if sticker_file:
-                # 发送图片
-                mark_cooldown("stickers", event)  # 成功则更新CD
-
-                await sticker_matcher.finish(image_segment(sticker_file))
+            missing.append(token)
+    if missing:
+        note = f"找不到编号 {' '.join(missing)}"
+        message += f"\n⚠️ {note}" if message else note
+    await view_single_matcher.finish(message)

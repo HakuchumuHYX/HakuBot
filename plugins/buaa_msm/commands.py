@@ -310,7 +310,7 @@ cancel_cmd = on_command(
 
 @cancel_cmd.handle()
 async def handle_cancel(event: PrivateMessageEvent):
-    # 不在等待状态时不回复：「取消」也是 stickers 插件的命令
+    # 不在等待状态时不回复：「取消」是常用词
     if _waiting.pop(str(event.user_id), None) is not None:
         await cancel_cmd.finish("已取消文件上传。")
 
