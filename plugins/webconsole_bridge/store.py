@@ -15,56 +15,47 @@ from loguru import logger
 INSERT_RESPONSE = """
     INSERT OR IGNORE INTO response_events (
         run_id, started_at_ms, finished_at_ms, duration_ms,
-        status, plugin_name, plugin_id, module_name, matcher_type,
-        matcher_lineno, bot_id, event_name, group_id, user_id,
-        source_message_id, request_summary, response_summary,
+        status, plugin_name, module_name, matcher_type, matcher_lineno,
+        event_name, group_id, user_id, source_message_id,
+        request_summary, response_summary,
         send_count, send_success_count, send_failure_count,
-        max_log_level, error_type, error_message,
-        has_full_diagnostics, request_raw_gzip, response_raw_gzip,
-        logs_raw_gzip, request_raw_sha256, response_raw_sha256,
-        logs_raw_sha256, created_at_ms
+        max_log_level, error_type, error_message, has_full_diagnostics,
+        request_raw_gzip, response_raw_gzip, logs_raw_gzip
     ) VALUES (
         :run_id, :started_at_ms, :finished_at_ms, :duration_ms,
-        :status, :plugin_name, :plugin_id, :module_name, :matcher_type,
-        :matcher_lineno, :bot_id, :event_name, :group_id, :user_id,
-        :source_message_id, :request_summary, :response_summary,
+        :status, :plugin_name, :module_name, :matcher_type, :matcher_lineno,
+        :event_name, :group_id, :user_id, :source_message_id,
+        :request_summary, :response_summary,
         :send_count, :send_success_count, :send_failure_count,
-        :max_log_level, :error_type, :error_message,
-        :has_full_diagnostics, :request_raw_gzip, :response_raw_gzip,
-        :logs_raw_gzip, :request_raw_sha256, :response_raw_sha256,
-        :logs_raw_sha256, :created_at_ms
+        :max_log_level, :error_type, :error_message, :has_full_diagnostics,
+        :request_raw_gzip, :response_raw_gzip, :logs_raw_gzip
     )
 """
 
 INSERT_DIAGNOSTIC = """
     INSERT INTO diagnostic_logs (
-        run_id, created_at_ms, level, logger_name, module_name,
-        plugin_name, message_summary, full_log_gzip, raw_sha256
+        created_at_ms, level, logger_name, plugin_name,
+        message_summary, full_log_gzip
     ) VALUES (
-        :run_id, :created_at_ms, :level, :logger_name, :module_name,
-        :plugin_name, :message_summary, :full_log_gzip, :raw_sha256
+        :created_at_ms, :level, :logger_name, :plugin_name,
+        :message_summary, :full_log_gzip
     )
 """
 
 UPSERT_STATUS = """
     INSERT INTO bot_status (
-        bot_id, adapter, connected, connection_started_at_ms,
-        last_heartbeat_at_ms, heartbeat_online, heartbeat_good,
-        collector_heartbeat_at_ms, updated_at_ms
+        bot_id, connected, connection_started_at_ms,
+        last_heartbeat_at_ms, heartbeat_online, heartbeat_good
     ) VALUES (
-        :bot_id, :adapter, :connected, :connection_started_at_ms,
-        :last_heartbeat_at_ms, :heartbeat_online, :heartbeat_good,
-        :collector_heartbeat_at_ms, :updated_at_ms
+        :bot_id, :connected, :connection_started_at_ms,
+        :last_heartbeat_at_ms, :heartbeat_online, :heartbeat_good
     )
     ON CONFLICT(bot_id) DO UPDATE SET
-        adapter = excluded.adapter,
         connected = excluded.connected,
         connection_started_at_ms = excluded.connection_started_at_ms,
         last_heartbeat_at_ms = excluded.last_heartbeat_at_ms,
         heartbeat_online = excluded.heartbeat_online,
-        heartbeat_good = excluded.heartbeat_good,
-        collector_heartbeat_at_ms = excluded.collector_heartbeat_at_ms,
-        updated_at_ms = excluded.updated_at_ms
+        heartbeat_good = excluded.heartbeat_good
 """
 
 _STOP = object()

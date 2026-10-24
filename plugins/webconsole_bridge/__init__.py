@@ -3,7 +3,6 @@
 记录口径（什么算失败、什么留完整诊断）见 capture.py。
 """
 
-import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -15,14 +14,12 @@ from nonebot.matcher import Matcher, current_matcher
 from nonebot.message import event_postprocessor, run_postprocessor, run_preprocessor
 from pydantic import field_validator
 
-from core.lifecycle import on_plugin_shutdown, on_plugin_startup, runtime
+from core.lifecycle import on_plugin_shutdown
 from core.settings import ConfigModel, load_config
 from plugins.webconsole_bridge import capture, store
 
 PLUGIN_ID = "webconsole_bridge"
 RUN_KEY = "_webconsole_bridge_run"
-# webconsole 判在线要求 45 秒内刷新过，以此确认 bridge（也就是 HakuBot 进程）还活着
-COLLECTOR_INTERVAL = 15
 
 
 class Config(ConfigModel):
@@ -68,7 +65,7 @@ async def _finish_run(
     matcher: Matcher, exception: Exception | None, bot: Bot, event: Event
 ):
     run = matcher.state.pop(RUN_KEY)
-    row = capture.response_row(run, matcher, bot, event, exception)
+    row = capture.response_row(run, matcher, event, exception)
     if row is not None:
         store.put(store.INSERT_RESPONSE, row)
 
@@ -99,21 +96,20 @@ logger.add(
 
 
 # ---- Bot 状态 ----
+# webconsole 判在线看的是 NapCat 心跳（30 秒一次）是否 90 秒内到过；
+# 心跳经 HakuBot 转写，所以 HakuBot 挂了也会过期
 
 _status: dict[str, dict] = {}
 
 
 def _write_status(bot_id: str) -> None:
-    status = _status[bot_id]
-    status["collector_heartbeat_at_ms"] = status["updated_at_ms"] = capture.now_ms()
-    store.put(store.UPSERT_STATUS, dict(status))
+    store.put(store.UPSERT_STATUS, dict(_status[bot_id]))
 
 
 @driver.on_bot_connect
 async def _bot_connect(bot: Bot):
     _status[bot.self_id] = {
         "bot_id": bot.self_id,
-        "adapter": bot.adapter.get_name(),
         "connected": 1,
         "connection_started_at_ms": capture.now_ms(),
         "last_heartbeat_at_ms": None,
@@ -137,18 +133,6 @@ async def _heartbeat(bot: Bot, event: HeartbeatMetaEvent):
         heartbeat_good=int(event.status.good),
     )
     _write_status(bot.self_id)
-
-
-async def _refresh_collector_heartbeat():
-    while True:
-        await asyncio.sleep(COLLECTOR_INTERVAL)
-        for bot_id in _status:
-            _write_status(bot_id)
-
-
-@on_plugin_startup(driver, PLUGIN_ID)
-async def _start():
-    runtime.spawn(_refresh_collector_heartbeat(), name="webconsole-collector-heartbeat")
 
 
 @on_plugin_shutdown(driver, PLUGIN_ID)

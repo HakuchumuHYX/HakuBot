@@ -6,7 +6,6 @@
 
 import base64
 import gzip
-import hashlib
 import json
 import time
 import traceback
@@ -16,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-from nonebot.adapters import Bot, Event
+from nonebot.adapters import Event
 from nonebot.matcher import Matcher
 
 RESPONSE_APIS = frozenset(
@@ -87,10 +86,8 @@ def _message_summary(value: Any) -> str:
     elif hasattr(value, "type") and hasattr(value, "data"):
         segment_type, data = value.type, value.data
     elif isinstance(value, dict):
-        # 发送 API 的参数：普通消息取 message，合并转发没有 message，整体写出来
-        return (
-            _message_summary(value["message"]) if "message" in value else _dumps(value)
-        )
+        # 发送 API 的参数：普通消息取 message，合并转发只有 messages，写成 [forward]
+        return _message_summary(value["message"]) if "message" in value else "[forward]"
     else:
         return str(value)
     if segment_type == "text" and isinstance(data, dict):
@@ -98,11 +95,10 @@ def _message_summary(value: Any) -> str:
     return f"[{segment_type}]"
 
 
-def _gzip_with_sha(value: str | None) -> tuple[bytes | None, str | None]:
+def _gzip(value: str | None) -> bytes | None:
     if value is None:
-        return None, None
-    raw = value.encode("utf-8")
-    return gzip.compress(raw, compresslevel=6, mtime=0), hashlib.sha256(raw).hexdigest()
+        return None
+    return gzip.compress(value.encode("utf-8"), compresslevel=6, mtime=0)
 
 
 def _optional_str(value: Any) -> str | None:
@@ -122,14 +118,12 @@ def api_call(api: str, data: dict, result: Any, exception: Exception | None) -> 
     }
 
 
-def _plugin_from_logger(name: str | None) -> str | None:
-    # 插件模块都是 plugins.xxx；第三方插件是 nonebot_plugin_xxx
+def _plugin_from_logger(name: str | None) -> str:
+    """插件模块都是 plugins.xxx；其它取顶层名（nonebot_plugin_xxx、nonebot、apscheduler……）"""
     parts = (name or "").split(".")
     if parts[0] == "plugins" and len(parts) > 1:
         return parts[1]
-    if parts[0].startswith("nonebot_plugin_"):
-        return parts[0]
-    return None
+    return parts[0]
 
 
 def log_entry(
@@ -155,17 +149,13 @@ def log_entry(
 
 
 def diagnostic_row(entry: dict) -> dict:
-    full_log_gzip, raw_sha256 = _gzip_with_sha(entry["full_log"])
     return {
-        "run_id": entry["run_id"],
         "created_at_ms": entry["created_at_ms"],
         "level": entry["level"],
         "logger_name": entry["logger_name"],
-        "module_name": entry["module_name"],
         "plugin_name": entry["plugin_name"],
         "message_summary": entry["message"][:SUMMARY_LIMIT],
-        "full_log_gzip": full_log_gzip,
-        "raw_sha256": raw_sha256,
+        "full_log_gzip": _gzip(entry["full_log"]),
     }
 
 
@@ -198,7 +188,7 @@ def _event_summary(event: Event) -> str:
 
 
 def response_row(
-    run: Run, matcher: Matcher, bot: Bot, event: Event, exception: Exception | None
+    run: Run, matcher: Matcher, event: Event, exception: Exception | None
 ) -> dict | None:
     """不需要记录时返回 None"""
     max_log = max(run.logs, key=_level_no, default=None)
@@ -232,27 +222,21 @@ def response_row(
                 }
             )
         logs_raw = _dumps(logs)
-    request_gzip, request_sha = _gzip_with_sha(request_raw)
-    response_gzip, response_sha = _gzip_with_sha(response_raw)
-    logs_gzip, logs_sha = _gzip_with_sha(logs_raw)
 
     matcher_class = type(matcher)
     error_type, error_message = _error_fields(run, exception)
-    finished_at_ms = now_ms()
     return {
         "run_id": run.run_id,
         "started_at_ms": run.started_at_ms,
-        "finished_at_ms": finished_at_ms,
+        "finished_at_ms": now_ms(),
         "duration_ms": (time.monotonic_ns() - run.started_ns) // 1_000_000,
         "status": "failure" if failed else "success",
         "plugin_name": matcher_class.plugin_name,
-        "plugin_id": matcher_class.plugin_id,
         "module_name": matcher_class.module_name,
         "matcher_type": matcher_class.type,
         "matcher_lineno": matcher_class._source.lineno
         if matcher_class._source
         else None,
-        "bot_id": str(bot.self_id),
         "event_name": event.get_event_name(),
         "group_id": _optional_str(getattr(event, "group_id", None)),
         "user_id": _optional_str(getattr(event, "user_id", None)),
@@ -268,11 +252,7 @@ def response_row(
         "error_type": error_type,
         "error_message": error_message,
         "has_full_diagnostics": int(full_diagnostics),
-        "request_raw_gzip": request_gzip,
-        "response_raw_gzip": response_gzip,
-        "logs_raw_gzip": logs_gzip,
-        "request_raw_sha256": request_sha,
-        "response_raw_sha256": response_sha,
-        "logs_raw_sha256": logs_sha,
-        "created_at_ms": finished_at_ms,
+        "request_raw_gzip": _gzip(request_raw),
+        "response_raw_gzip": _gzip(response_raw),
+        "logs_raw_gzip": _gzip(logs_raw),
     }
