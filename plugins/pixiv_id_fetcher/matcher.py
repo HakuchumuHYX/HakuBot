@@ -1,46 +1,39 @@
-from __future__ import annotations
-from utils.paths import PluginPaths
-from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
+"""pixiv <pid>：单页直接发，多页和 R18 用合并转发，动图转成 GIF；图片被拒时改发链接"""
 
 import asyncio
-import time
-from pathlib import Path
-from typing import List, NoReturn, Optional
+import re
+from typing import NoReturn
 
-from nonebot import get_driver, on_command, logger
-from nonebot.adapters.onebot.v11 import (
-    Bot,
-    Message,
-    MessageEvent,
-    MessageSegment,
-)
+import aiohttp
+from nonebot import logger, on_command
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed, NetworkError
 from nonebot.params import CommandArg
 
+from core.access import switch_rule
+from core.cooldown import cooldown_remaining, mark_cooldown
+from plugins.pixiv_id_fetcher.client import (
+    Illust,
+    PixivError,
+    download_image,
+    fetch_illust,
+    fetch_ugoira_gif,
+)
+from plugins.pixiv_id_fetcher.config import config
+from utils.network.http import DownloadTooLarge, HttpError
+from utils.onebot.forward import ForwardSendError, send_forward_msg
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
-from utils.onebot.forward import ForwardSendError, ForwardStatus, send_forward_msg
-from plugins.pixiv_id_fetcher.client import PixivClient, PixivClientError
-from plugins.pixiv_id_fetcher.config import config
-from plugins.pixiv_id_fetcher.formatter import (
-    PixivPolicy,
-    build_forward_contents,
-    build_info_text,
-    build_link_fallback_contents,
-    detect_image_ext,
-    describe_client_error,
-    parse_pid,
-    policy_allows,
-    select_pages,
-    should_use_forward,
-)
-from plugins.pixiv_id_fetcher.models import PixivIllust, PixivPage
-
-from core.cooldown import cooldown_remaining, mark_cooldown
-from core.access import switch_rule
-
 
 PLUGIN_ID = "pixiv_id_fetcher"
+_PID_PATTERN = re.compile(
+    r"(?:(?:https?://)?(?:www\.)?pixiv\.net/(?:en/)?artworks/)?(\d+)"
+)
+_HTTP_ERROR_TEXTS = {
+    404: "作品不存在、已删除或当前账号无权限查看",
+    403: "当前账号无权限查看该作品，或代理/防盗链请求被 Pixiv 拒绝",
+    429: "Pixiv 请求过于频繁，请稍后再试",
+}
 
 pixiv_cmd = on_command(
     "pixiv",
@@ -50,290 +43,65 @@ pixiv_cmd = on_command(
     block=True,
 )
 
-_client: Optional[PixivClient] = None
-_semaphore: Optional[asyncio.Semaphore] = None
 
-
-def _get_client() -> PixivClient:
-    global _client
-    if _client is None:
-        _client = PixivClient(
-            refresh_token=config.refresh_token,
-            client_id=config.client_id,
-            client_secret=config.client_secret,
-            proxy=config.proxy,
-            timeout=config.timeout,
-            reverse_proxy_domain=config.reverse_proxy_domain,
-        )
-    return _client
-
-
-def _get_semaphore() -> asyncio.Semaphore:
-    global _semaphore
-    if _semaphore is None:
-        concurrency = config.concurrency
-        _semaphore = asyncio.Semaphore(max(1, concurrency))
-    return _semaphore
-
-
-PIXIV_CACHE_TTL_DAYS = 7
-PIXIV_CACHE_CLEAN_INTERVAL_SECONDS = 24 * 60 * 60  # daily
-_pixiv_cache_clean_task: Optional[asyncio.Task] = None
-
-
-async def _cleanup_pixiv_cache_once() -> None:
-    """Remove cache files older than PIXIV_CACHE_TTL_DAYS in pixiv_id_fetcher cache dir."""
-    cache_dir = (
-        PluginPaths("pixiv_id_fetcher").cache / "_cache_dir_placeholder"
-    ).parent
-    cache_dir.mkdir(parents=True, exist_ok=True)
-
-    expire_before = time.time() - PIXIV_CACHE_TTL_DAYS * 24 * 60 * 60
-    removed = 0
-
-    # 仅清理本插件生成的文件，避免误删未来可能写入 cache 的其他文件
-    for p in cache_dir.glob("pixiv_*"):
-        try:
-            if not p.is_file():
-                continue
-            if p.stat().st_mtime >= expire_before:
-                continue
-            p.unlink(missing_ok=True)  # py3.9+
-            removed += 1
-        except Exception as e:
-            logger.exception(f"[pixiv_id_fetcher] cache cleanup failed: {e} file={p}")
-
-    if removed:
-        logger.info(f"[pixiv_id_fetcher] cache cleanup removed {removed} files")
-
-
-@on_plugin_startup(get_driver(), "pixiv_id_fetcher")
-async def _start_pixiv_cache_cleaner():
-    global _pixiv_cache_clean_task
-
-    # 启动时先清一次，防止积压
-    try:
-        await _cleanup_pixiv_cache_once()
-    except Exception as e:
-        logger.exception(f"[pixiv_id_fetcher] startup cache cleanup failed: {e}")
-
-    async def _loop():
-        while True:
-            await asyncio.sleep(PIXIV_CACHE_CLEAN_INTERVAL_SECONDS)
-            try:
-                await _cleanup_pixiv_cache_once()
-            except Exception as e:
-                logger.exception(
-                    f"[pixiv_id_fetcher] scheduled cache cleanup failed: {e}"
-                )
-
-    _pixiv_cache_clean_task = runtime.spawn(_loop(), name="pixiv_id_fetcher")
-
-
-@on_plugin_shutdown(get_driver(), "pixiv_id_fetcher")
-async def _stop_pixiv_cache_cleaner():
-    global _pixiv_cache_clean_task
-    if _pixiv_cache_clean_task:
-        _pixiv_cache_clean_task.cancel()
-        _pixiv_cache_clean_task = None
-
-
-def _cache_path(illust: PixivIllust, page: PixivPage) -> Path:
-    return (
-        PluginPaths("pixiv_id_fetcher").cache
-        / f"pixiv_{illust.pid}_p{page.index}.{page.ext}"
-    )
-
-
-def _cache_path_with_ext(illust: PixivIllust, page: PixivPage, ext: str) -> Path:
-    return (
-        PluginPaths("pixiv_id_fetcher").cache
-        / f"pixiv_{illust.pid}_p{page.index}.{ext}"
-    )
-
-
-def _ugoira_cache_path(illust: PixivIllust) -> Path:
-    return PluginPaths("pixiv_id_fetcher").cache / f"pixiv_{illust.pid}_ugoira.gif"
-
-
-async def _download_page(
-    illust: PixivIllust,
-    page: PixivPage,
-    *,
-    normalize_for_forward: bool = False,
-) -> MessageSegment:
-    if normalize_for_forward:
-        forward_path = _cache_path_with_ext(illust, page, "jpg")
-        if forward_path.exists() and forward_path.stat().st_size > 0:
-            return image_segment(forward_path)
-
-    path = _cache_path(illust, page)
-    if path.exists() and path.stat().st_size > 0:
-        if not normalize_for_forward:
-            return image_segment(path)
-        data = path.read_bytes()
-        ext = detect_image_ext(data, path.suffix.lstrip(".") or page.ext)
-        data, ext = await asyncio.to_thread(
-            _get_client().normalize_static_image_for_forward, data, ext
-        )
-        path = _cache_path_with_ext(illust, page, ext)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
-        return image_segment(path)
-
-    data = await _get_client().download_image(
-        page.url,
-        max_bytes=config.max_bytes,
-    )
-    ext = detect_image_ext(data, page.ext)
-    if normalize_for_forward:
-        data, ext = await asyncio.to_thread(
-            _get_client().normalize_static_image_for_forward, data, ext
-        )
-    path = _cache_path_with_ext(illust, page, ext)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
-    return image_segment(path)
-
-
-async def _download_ugoira(illust: PixivIllust) -> MessageSegment:
-    path = _ugoira_cache_path(illust)
-    if path.exists() and path.stat().st_size > 0:
-        return image_segment(path)
-
-    client = _get_client()
-    metadata = await client.fetch_ugoira_metadata(illust.pid)
-    zip_data = await client.download_bytes(
-        metadata.zip_url,
-        max_bytes=config.ugoira_zip_max_bytes,
-    )
-    gif_data = await asyncio.to_thread(
-        client.render_ugoira_gif,
-        zip_data,
-        metadata,
-        max_frames=config.ugoira_max_frames,
-        max_bytes=config.max_bytes,
-    )
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(gif_data)
-    return image_segment(path)
-
-
-def _build_image_message(illust: PixivIllust, image: MessageSegment) -> Message:
-    return MessageSegment.text(build_info_text(illust) + "\n") + image
-
-
-async def _send_direct(
-    bot: Bot,
-    event: MessageEvent,
-    illust: PixivIllust,
-    page: Optional[PixivPage],
-) -> bool:
-    if illust.is_ugoira:
-        image = await _download_ugoira(illust)
-    else:
-        if page is None:
-            raise PixivClientError("没有找到可发送的图片")
-        image = await _download_page(illust, page)
-    try:
-        await bot.send(event, _build_image_message(illust, image))
-        return True
-    except (ActionFailed, NetworkError, asyncio.TimeoutError) as e:
-        logger.warning(
-            f"[pixiv_id_fetcher] direct image send failed pid={illust.pid}: "
-            f"{type(e).__name__}: {e}"
-        )
-        return False
-
-
-async def _send_forward(
-    bot: Bot,
-    event: MessageEvent,
-    illust: PixivIllust,
-    pages: List[PixivPage],
-    *,
-    truncated: bool,
-) -> bool:
-    images: List[MessageSegment] = []
-    if illust.is_ugoira:
-        image = await _download_ugoira(illust)
-        images.append(image)
-    else:
-        for page in pages:
-            image = await _download_page(illust, page, normalize_for_forward=True)
-            images.append(image)
-
-    messages = build_forward_contents(illust, images)
-    if truncated:
-        messages.append(
-            Message(f"多页作品，仅发送前 {len(pages)} / {illust.page_count} 页")
-        )
-
-    return await _send_forward_contents(bot, event, messages, pid=illust.pid)
-
-
-async def _send_forward_contents(
-    bot: Bot,
-    event: MessageEvent,
-    messages: List[object],
-    *,
-    pid: int,
-) -> bool:
-    try:
-        status = await send_forward_msg(
-            bot,
-            event,
-            items=messages,
-            timeout=60.0,
-            fallback_on_action_failed=False,
-        )
-    except ForwardSendError as e:
-        logger.warning(f"[pixiv_id_fetcher] image forward rejected pid={pid}: {e}")
-        return False
-    return status is ForwardStatus.SENT
-
-
-async def _send_link_fallback(
-    bot: Bot,
-    event: MessageEvent,
-    contents: List[str],
-    *,
-    pid: int,
-) -> None:
-    try:
-        status = await send_forward_msg(
-            bot,
-            event,
-            items=contents,
-            timeout=60.0,
-            fallback_on_action_failed=False,
-        )
-        if status is ForwardStatus.SENT:
-            logger.info(f"[pixiv_id_fetcher] link fallback sent pid={pid}")
-            return
-        logger.warning(
-            f"[pixiv_id_fetcher] link forward result unknown pid={pid}; "
-            "falling back to one plain-text message"
-        )
-    except ForwardSendError as e:
-        logger.warning(
-            f"[pixiv_id_fetcher] link forward rejected pid={pid}; "
-            f"falling back to plain text: {e}"
-        )
-
-    await bot.send(event, Message("\n\n".join(contents)))
+def _info(illust: Illust) -> str:
+    return f"{illust.title}\n{illust.author}\npid: {illust.pid}"
 
 
 async def _finish_failed(pid: int, e: Exception) -> NoReturn:
     """在 except 块里调用：按异常类型记日志，并回复用户"""
-    if isinstance(e, PixivClientError):
-        logger.warning(
-            f"[pixiv_id_fetcher] request failed pid={pid} kind={e.kind}: {e}"
-        )
-        await pixiv_cmd.finish(describe_client_error(e.kind))
-    logger.exception(f"[pixiv_id_fetcher] unexpected error pid={pid}: {e}")
-    await pixiv_cmd.finish("获取 Pixiv 图片失败，请稍后再试")
+    if isinstance(e, HttpError):
+        reply = _HTTP_ERROR_TEXTS.get(e.status_code, "获取 Pixiv 图片失败，请稍后再试")
+    elif isinstance(e, (aiohttp.ClientError, asyncio.TimeoutError)):
+        reply = "连接 Pixiv 失败，请检查网络或代理"
+    elif isinstance(e, DownloadTooLarge):
+        reply = "图片或动图文件过大，已停止发送"
+    elif isinstance(e, PixivError):
+        reply = str(e)
+    else:
+        logger.exception(f"[pixiv_id_fetcher] 未预期的错误 pid={pid}")
+        await pixiv_cmd.finish("获取 Pixiv 图片失败，请稍后再试")
+    logger.warning(f"[pixiv_id_fetcher] 请求失败 pid={pid}: {type(e).__name__}: {e}")
+    await pixiv_cmd.finish(reply)
+
+
+async def _send_images(
+    bot: Bot, event: MessageEvent, illust: Illust, images: list[MessageSegment]
+) -> bool:
+    """被拒返回 False；转发超时结果未知时按已发出算，不补发"""
+    try:
+        if len(illust.urls) > 1 or illust.x_restrict:
+            items = [_info(illust), *images]
+            if len(images) < len(illust.urls):
+                items.append(
+                    f"多页作品，仅发送前 {len(images)} / {len(illust.urls)} 页"
+                )
+            await send_forward_msg(
+                bot, event, items=items, fallback_on_action_failed=False
+            )
+        else:
+            await bot.send(event, MessageSegment.text(_info(illust) + "\n") + images[0])
+    except (ActionFailed, NetworkError, ForwardSendError) as e:
+        logger.warning(f"[pixiv_id_fetcher] 图片发送被拒 pid={illust.pid}: {e}")
+        return False
+    return True
+
+
+async def _send_links(
+    bot: Bot, event: MessageEvent, illust: Illust, urls: list[str]
+) -> None:
+    lines = [f"图片发送失败，以下为图片链接\n{_info(illust)}"]
+    if illust.is_ugoira:
+        lines.append(f"作品链接：https://www.pixiv.net/artworks/{illust.pid}")
+    else:
+        lines += [f"第 {i} 页：{url}" for i, url in enumerate(urls, 1)]
+        if len(urls) < len(illust.urls):
+            lines.append(f"仅列出前 {len(urls)} / {len(illust.urls)} 页")
+    try:
+        await send_forward_msg(bot, event, items=lines, fallback_on_action_failed=False)
+    except ForwardSendError as e:
+        logger.warning(f"[pixiv_id_fetcher] 链接转发也被拒 pid={illust.pid}: {e}")
+        await pixiv_cmd.finish("图片和链接都发送失败")
 
 
 @pixiv_cmd.handle()
@@ -342,68 +110,32 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     if remaining > 0:
         await pixiv_cmd.finish(f"功能冷却中，请等待 {remaining} 秒", at_sender=True)
 
-    pid = parse_pid(args.extract_plain_text())
-    if pid is None:
+    match = _PID_PATTERN.fullmatch(args.extract_plain_text().strip())
+    if not match:
         await pixiv_cmd.finish("格式：pixiv <pid>，也支持 Pixiv 作品链接")
+    pid = int(match.group(1))
 
     await pixiv_cmd.send("在找了在找了...")
 
-    policy = PixivPolicy(
-        allow_r18=config.allow_r18,
-        allow_r18g=config.allow_r18g,
-    )
+    try:
+        illust = await fetch_illust(pid)
+    except Exception as e:
+        await _finish_failed(pid, e)
 
-    async with _get_semaphore():
-        try:
-            illust = await _get_client().fetch_illust(
-                pid,
-                send_original=config.send_original,
-            )
-        except Exception as e:
-            await _finish_failed(pid, e)
+    if illust.x_restrict == 2 and not config.allow_r18g:
+        await pixiv_cmd.finish("该作品为 R18G，当前配置未允许发送")
+    if illust.x_restrict == 1 and not config.allow_r18:
+        await pixiv_cmd.finish("该作品为 R18，当前配置未允许发送")
 
-        if not policy_allows(illust, policy):
-            if illust.is_r18g:
-                await pixiv_cmd.finish("该作品为 R18G，当前配置未允许发送")
-            await pixiv_cmd.finish("该作品为 R18，当前配置未允许发送")
+    urls = illust.urls[: config.max_pages]
+    try:
+        if illust.is_ugoira:
+            images = [image_segment(await fetch_ugoira_gif(pid))]
+        else:
+            images = [image_segment(await download_image(url)) for url in urls]
+    except Exception as e:
+        await _finish_failed(pid, e)
 
-        if not illust.is_ugoira and not illust.pages:
-            await pixiv_cmd.finish("没有找到可发送的图片")
-
-        pages, truncated = select_pages(illust, config.max_pages)
-
-        # 发送前要下载图片，同样可能失败
-        try:
-            if should_use_forward(illust):
-                image_sent = await _send_forward(
-                    bot,
-                    event,
-                    illust,
-                    pages,
-                    truncated=truncated,
-                )
-            else:
-                image_sent = await _send_direct(
-                    bot,
-                    event,
-                    illust,
-                    pages[0] if pages else None,
-                )
-
-            if not image_sent:
-                await _send_link_fallback(
-                    bot,
-                    event,
-                    build_link_fallback_contents(
-                        illust,
-                        pages,
-                        truncated=truncated,
-                    ),
-                    pid=illust.pid,
-                )
-        except Exception as e:
-            await _finish_failed(pid, e)
-
-        mark_cooldown(PLUGIN_ID, event)
-
-    await pixiv_cmd.finish()
+    if not await _send_images(bot, event, illust, images):
+        await _send_links(bot, event, illust, urls)
+    mark_cooldown(PLUGIN_ID, event)

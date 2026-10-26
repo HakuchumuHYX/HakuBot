@@ -11,6 +11,5 @@
     "max_bytes": 20971520,
     "ugoira_zip_max_bytes": 31457280,
     "ugoira_max_frames": 150,
-    "concurrency": 2,
     "reverse_proxy_domain": null
 }

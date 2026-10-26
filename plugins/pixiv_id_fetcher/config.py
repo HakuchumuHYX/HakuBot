@@ -17,7 +17,6 @@ class Config(ConfigModel):
     max_bytes: int
     ugoira_zip_max_bytes: int
     ugoira_max_frames: int
-    concurrency: int
     reverse_proxy_domain: Optional[str]
 
 
