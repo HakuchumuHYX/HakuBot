@@ -24,6 +24,13 @@ def load_config(plugin_id, model, filename="config.json"):
         raise ValueError(f"{plugin_id} 的配置校验不通过: {e}") from e
 
 
+def reload_plugin_config(plugin_id, config):
+    """重新读取配置并原地替换字段，其他模块持有的是同一个对象；新配置无效时抛出，旧配置不动。"""
+    new = load_config(plugin_id, type(config))
+    for name in type(config).model_fields:
+        setattr(config, name, getattr(new, name))
+
+
 def update_fields(path, changes):
     result = load_json(path)
     if not result.success:

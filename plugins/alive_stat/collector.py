@@ -8,7 +8,6 @@ import platform
 import re
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Optional
 
 import psutil
 from nonebot import logger
@@ -45,7 +44,7 @@ class ProcessInfo:
 class NetworkResult:
     host: str
     reachable: bool
-    latency_ms: Optional[float]  # None 表示不可达
+    latency_ms: float | None  # None 表示不可达
 
 
 @dataclass

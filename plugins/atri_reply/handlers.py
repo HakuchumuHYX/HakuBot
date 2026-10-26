@@ -4,7 +4,7 @@ from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.rule import Rule
 from core.access import switch_rule
-from core.settings import ConfigModel, load_config
+from core.settings import ConfigModel, load_config, reload_plugin_config
 from utils.logging import get_exc_desc
 
 
@@ -54,9 +54,8 @@ reload_config = on_command(
 @reload_config.handle()
 async def handle_reload_config():
     """重载配置文件；新配置无效时保留旧配置"""
-    global plugin_config
     try:
-        plugin_config = load_config("atri_reply", Config)
+        reload_plugin_config("atri_reply", plugin_config)
     except Exception as e:
         logger.exception("重载 atri_reply 配置失败")
         await reload_config.finish(f"配置无效，继续使用旧配置：{get_exc_desc(e)}")

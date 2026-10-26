@@ -3,7 +3,7 @@
 from base64 import b64decode, b64encode
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Sequence
 from uuid import UUID, uuid4
 
 from nonebot import logger

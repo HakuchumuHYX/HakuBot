@@ -1,5 +1,3 @@
-from typing import Optional
-
 from core.settings import ConfigModel, load_config
 
 
@@ -8,7 +6,7 @@ class Config(ConfigModel):
     # Pixiv 官方 Android 客户端的公开标识，各第三方客户端通用，不是个人凭据
     client_id: str
     client_secret: str
-    proxy: Optional[str]
+    proxy: str | None
     timeout: float
     allow_r18: bool
     allow_r18g: bool
@@ -17,7 +15,7 @@ class Config(ConfigModel):
     max_bytes: int
     ugoira_zip_max_bytes: int
     ugoira_max_frames: int
-    reverse_proxy_domain: Optional[str]
+    reverse_proxy_domain: str | None
 
 
 config = load_config("pixiv_id_fetcher", Config)

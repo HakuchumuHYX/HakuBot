@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic import Field
 
 from core.settings import ConfigModel, load_config
@@ -14,10 +12,10 @@ class LLMConfig(ConfigModel):
     base_url: str
     model: str
     timeout: float
-    proxy: Optional[str]
-    max_tokens: Optional[int]
+    proxy: str | None
+    max_tokens: int | None
     thinking_enabled: bool
-    reasoning_effort: Optional[str]
+    reasoning_effort: str | None
     extra_body: dict
 
 

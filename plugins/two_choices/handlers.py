@@ -1,13 +1,12 @@
 import random
 import re
-from typing import Optional, Tuple
 
 from nonebot import on_message, logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.rule import Rule
 
 from core.access import switch_rule
-from core.settings import ConfigModel, load_config
+from core.settings import ConfigModel, load_config, reload_plugin_config
 from utils.logging import get_exc_desc
 
 
@@ -19,7 +18,7 @@ class Config(ConfigModel):
 plugin_config = load_config("two_choices", Config)
 
 
-def _strip_1d_prefix(text: str) -> Optional[str]:
+def _strip_1d_prefix(text: str) -> str | None:
     """
     若文本以 1d/1D 开头，则去掉前缀并返回剩余内容；否则返回 None。
     """
@@ -30,7 +29,7 @@ def _strip_1d_prefix(text: str) -> Optional[str]:
     return body if body else ""
 
 
-def _extract_by_separator(body: str) -> Optional[Tuple[str, str]]:
+def _extract_by_separator(body: str) -> tuple[str, str] | None:
     """
     分隔符切分：仅用于解析，不用于触发。
     """
@@ -71,7 +70,7 @@ def _extract_by_separator(body: str) -> Optional[Tuple[str, str]]:
     return left, right
 
 
-def _extract_a_not_a(body: str) -> Optional[Tuple[str, str]]:
+def _extract_a_not_a(body: str) -> tuple[str, str] | None:
     """
     A不A 型：例如
     - 吃不吃午饭 -> 吃午饭 / 不吃午饭
@@ -105,7 +104,7 @@ def _extract_a_not_a(body: str) -> Optional[Tuple[str, str]]:
     return choice1, choice2
 
 
-def _extract_yes_no_patterns(body: str) -> Optional[Tuple[str, str]]:
+def _extract_yes_no_patterns(body: str) -> tuple[str, str] | None:
     """
     一些常见口语化是/否二择：
     - 要不要X -> 要X / 不要X
@@ -131,7 +130,7 @@ def _extract_yes_no_patterns(body: str) -> Optional[Tuple[str, str]]:
     return None
 
 
-def extract_choices(text: str) -> Optional[Tuple[str, str]]:
+def extract_choices(text: str) -> tuple[str, str] | None:
     """
     从文本中提取两个选择项（仅支持以 1d 开头的格式）。
 
@@ -212,9 +211,8 @@ reload_config = on_command(
 @reload_config.handle()
 async def handle_reload_config():
     """重载配置文件"""
-    global plugin_config
     try:
-        plugin_config = load_config("two_choices", Config)
+        reload_plugin_config("two_choices", plugin_config)
     except Exception as e:
         logger.exception("重载 two_choices 配置失败")
         await reload_config.finish(f"配置无效，继续使用旧配置：{get_exc_desc(e)}")

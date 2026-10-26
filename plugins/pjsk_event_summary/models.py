@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
 
 
 class Character(BaseModel):
@@ -14,7 +13,7 @@ class EventMeta(BaseModel):
     event_id: int
     unit: str
     unit_color: str
-    chars: List[Character]
+    chars: list[Character]
     color: str
     on_color: str
     type: str
@@ -35,10 +34,10 @@ class Chapter(BaseModel):
 class EventDetail(EventMeta):
     title_jp: str
     title_cn: str
-    outline_jp: Optional[str] = ""
-    outline_cn: Optional[str] = ""
-    summary_cn: Optional[str] = ""
-    chapters: List[Chapter] = Field(default_factory=list)
+    outline_jp: str | None = ""
+    outline_cn: str | None = ""
+    summary_cn: str | None = ""
+    chapters: list[Chapter] = Field(default_factory=list)
 
 
 class EventSimple(EventMeta):

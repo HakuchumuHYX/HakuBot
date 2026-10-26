@@ -2,7 +2,7 @@ from nonebot import on_command, logger
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 
-from plugins.daily_message import config_manager
+from plugins.daily_message.config_manager import plugin_config
 
 # 配置管理命令
 list_schedules = on_command(
@@ -16,7 +16,7 @@ reload_schedules = on_command(
 @list_schedules.handle()
 async def list_schedules_handler(matcher: Matcher):
     """查看当前定时任务配置"""
-    schedules = config_manager.plugin_config.schedules
+    schedules = plugin_config.schedules
 
     if not schedules:
         await matcher.send("当前没有配置定时任务")

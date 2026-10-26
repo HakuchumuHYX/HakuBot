@@ -7,7 +7,6 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.plugin import on_command
 from nonebot.params import CommandArg
-from typing import List
 import time
 from core.access import switch_rule
 from utils.onebot.rules import command_boundary
@@ -19,7 +18,7 @@ jrrp = on_command(
     priority=5,
     block=True,
 )
-message: List[dict] = [
+message: list[dict] = [
     {
         "expr": "jrrp == 100",
         "start": "！！！！！你今天的人品值是：",

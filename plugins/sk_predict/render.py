@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from utils.rendering.engine import render_template
 
@@ -15,13 +15,13 @@ EVENT_TYPES = {
 }
 
 
-def format_number(value: Optional[int]) -> str:
+def format_number(value: int | None) -> str:
     if value is None:
         return "--"
     return f"{int(value):,}"
 
 
-def format_delta(current: Optional[int], prediction: Optional[int]) -> str:
+def format_delta(current: int | None, prediction: int | None) -> str:
     if current is None or prediction is None:
         return "--"
     delta = int(prediction) - int(current)
@@ -29,7 +29,7 @@ def format_delta(current: Optional[int], prediction: Optional[int]) -> str:
     return f"{sign}{abs(delta):,}"
 
 
-def progress(current: Optional[int], prediction: Optional[int]) -> Optional[float]:
+def progress(current: int | None, prediction: int | None) -> float | None:
     if not current or not prediction:
         return None
     return min(100.0, current / prediction * 100)

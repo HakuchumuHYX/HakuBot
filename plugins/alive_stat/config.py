@@ -1,7 +1,5 @@
 """alive_stat 配置：config/alive_stat/config.json。"""
 
-from typing import Optional
-
 from core.settings import ConfigModel, load_config
 
 
@@ -16,7 +14,7 @@ class DockerEntry(ConfigModel):
 
 
 class AliveConfig(ConfigModel):
-    autochat_data_file: Optional[str]
+    autochat_data_file: str | None
     monitored_processes: list[ProcessEntry]
     docker_processes: list[DockerEntry]
     ping_hosts: list[str]

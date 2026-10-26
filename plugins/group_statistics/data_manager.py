@@ -1,6 +1,5 @@
 import json
 import os
-from typing import Dict
 from nonebot import logger
 
 from plugins.group_statistics.config import STATS_FILE
@@ -10,8 +9,8 @@ from utils.json_io import atomic_write_json
 
 class GroupStatisticsData:
     def __init__(self):
-        self.group_stats: Dict[int, Dict[str, int]] = {}  # {group_id: {user_id: count}}
-        self.user_info: Dict[int, Dict[str, str]] = {}  # {group_id: {user_id: card}}
+        self.group_stats: dict[int, dict[str, int]] = {}  # {group_id: {user_id: count}}
+        self.user_info: dict[int, dict[str, str]] = {}  # {group_id: {user_id: card}}
         self._dirty = False  # 是否有未落盘的改动
         self.load_data()
 

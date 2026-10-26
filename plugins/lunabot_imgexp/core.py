@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any
 from urllib.parse import quote, urlencode
 
 import aiohttp
@@ -28,18 +28,18 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 class ImageSearchResultItem:
     title: str
     url: str
-    source: Optional[str] = None
+    source: str | None = None
     # 图标与缩略图是 data URI，直接嵌进结果模板
-    source_icon: Optional[str] = None
-    similarity: Optional[float] = None
-    thumbnail: Optional[str] = None
+    source_icon: str | None = None
+    similarity: float | None = None
+    thumbnail: str | None = None
 
 
 @dataclass
 class ImageSearchResult:
     source: str
-    results: Optional[list[ImageSearchResultItem]] = None
-    error: Optional[str] = None
+    results: list[ImageSearchResultItem] | None = None
+    error: str | None = None
 
 
 # 缩略图下载并发限制：避免一次性开太多连接导致排队/卡死
@@ -48,7 +48,7 @@ _THUMB_SEM = asyncio.Semaphore(8)
 _THUMB_TIMEOUT_SEC = 30
 
 
-async def download_batch_thumbnails(urls: list[str]) -> list[Optional[str]]:
+async def download_batch_thumbnails(urls: list[str]) -> list[str | None]:
     plugin_proxy = config.proxy
 
     async def download_nothrow(url: str):
@@ -85,7 +85,7 @@ async def _with_timeout(coro, source: str, timeout_sec: int = 120) -> ImageSearc
         return ImageSearchResult(source=source, results=[], error=f"搜索失败: {e}")
 
 
-def _saucenao_link(item: Any) -> Tuple[str, Optional[str]]:
+def _saucenao_link(item: Any) -> tuple[str, str | None]:
     """booru 类结果的 ext_urls 只是 booru 帖子页，人工填写的 source 才是原始出处，优先用它。"""
     source = str(item.origin["data"].get("source") or "")
     if not source.startswith("http"):
@@ -323,7 +323,7 @@ async def search_googlelens(
         )
 
 
-async def search_image(img_url: str) -> Tuple[bytes, List[ImageSearchResult]]:
+async def search_image(img_url: str) -> tuple[bytes, list[ImageSearchResult]]:
     results = await asyncio.gather(
         _with_timeout(search_saucenao(img_url), "SauceNAO"),
         # Cloudflare 偶尔要长时间验证，单独限时，别拖慢整体出结果

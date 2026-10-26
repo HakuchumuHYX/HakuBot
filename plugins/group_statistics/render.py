@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Tuple, Optional
 
 from plugins.group_statistics.utils import get_additional_text
 from utils.rendering.engine import render_template
@@ -16,7 +15,7 @@ def _fmt_date(d: date) -> str:
 
 
 async def render_today_stat_image(
-    total: int, top_users: List[Tuple[str, str, int]], stat_date: Optional[date] = None
+    total: int, top_users: list[tuple[str, str, int]], stat_date: date | None = None
 ) -> bytes:
     """渲染“今日统计”图片（不含每日额外文案）
 
@@ -38,7 +37,7 @@ async def render_today_stat_image(
 
 
 async def render_daily_stat_image(
-    total: int, top_users: List[Tuple[str, str, int]], stat_date: date
+    total: int, top_users: list[tuple[str, str, int]], stat_date: date
 ) -> bytes:
     """渲染“每日统计”图片（包含阈值额外文案）
 

@@ -14,7 +14,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from nonebot import logger
 
@@ -80,7 +80,7 @@ def atomic_write_bytes(path, data: bytes):
 
 
 def atomic_write_json(
-    path: Union[str, Path],
+    path: str | Path,
     data: Any,
     *,
     indent: int = 2,

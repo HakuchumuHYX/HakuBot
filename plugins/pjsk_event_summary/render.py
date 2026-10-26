@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import List
 
 from nonebot import logger
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -33,7 +32,7 @@ async def _render(name: str, width: int, **ctx) -> bytes:
 
 
 async def render_event_list_pic(
-    events: List[EventSimple], watermark: str = "", global_watermark: str = ""
+    events: list[EventSimple], watermark: str = "", global_watermark: str = ""
 ) -> bytes:
     return await _render(
         "list.html",

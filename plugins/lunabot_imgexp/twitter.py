@@ -3,7 +3,6 @@ import asyncio
 import argparse
 from dataclasses import dataclass
 from io import BytesIO
-from typing import List, Tuple
 
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
@@ -58,9 +57,9 @@ VIDEO_MAX_BYTES = 100 * 1024 * 1024
 @dataclass
 class Tweet:
     content: str
-    photo_urls: List[str]
+    photo_urls: list[str]
     # (媒体 id, mp4 直链)
-    videos: List[Tuple[str, str]]
+    videos: list[tuple[str, str]]
 
 
 def pick_video_url(media: dict) -> str:

@@ -1,6 +1,5 @@
 from pathlib import Path
 from utils.rendering.engine import render_template
-from typing import Dict
 import re
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -25,7 +24,7 @@ def number_to_chinese(n: int) -> str:
         return chars[tens] + "十" + chars[unit]
 
 
-def parse_sign_text(text: str) -> Dict:
+def parse_sign_text(text: str) -> dict:
     """解析签文文本结构"""
     if not text:
         return {"is_empty": True}

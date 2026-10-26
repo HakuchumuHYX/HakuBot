@@ -1,5 +1,4 @@
 import time
-from typing import Optional
 
 from nonebot.adapters import Event
 
@@ -27,7 +26,7 @@ def get_cooldown(feature_id: str, group_id: str) -> int:
     return cd_config.get(group_id, {}).get(feature_id, 0)
 
 
-def _cooldown_key(feature_id: str, event: Event) -> Optional[tuple[str, str, str]]:
+def _cooldown_key(feature_id: str, event: Event) -> tuple[str, str, str] | None:
     """私聊和超管不受 CD 限制，返回 None"""
     group_id = getattr(event, "group_id", None)
     user_id = event.get_user_id()

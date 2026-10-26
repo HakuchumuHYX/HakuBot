@@ -1,7 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Union
 from nonebot import logger
 
 from core.settings import ConfigModel, load_config
@@ -131,7 +130,7 @@ class _Master:
         return f"{ASSET_BASE}/event_story/{asset}/episode_image/{asset}_{chapter_no:02d}.webp"
 
 
-async def fetch_event_list(limit: int = 20) -> List[EventSimple]:
+async def fetch_event_list(limit: int = 20) -> list[EventSimple]:
     """
     获取活动列表，按活动 ID 倒序取最新 limit 期
     """
@@ -157,7 +156,7 @@ async def fetch_event_list(limit: int = 20) -> List[EventSimple]:
     return events
 
 
-async def fetch_event_detail(event_id: str) -> Union[EventDetail, str]:
+async def fetch_event_detail(event_id: str) -> EventDetail | str:
     """
     获取活动详情
     返回 EventDetail 对象，如果出错或找不到则返回错误信息字符串

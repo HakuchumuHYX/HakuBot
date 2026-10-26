@@ -1,15 +1,14 @@
 from core.settings import ConfigModel, load_config
 from utils.paths import PluginPaths
-from typing import Optional
 
 from pydantic import Field
 
 
 class ChatConfig(ConfigModel):
     model: str
-    max_tokens: Optional[int]
+    max_tokens: int | None
     # 采样温度，控制回复的随机性/创造性（0.0~2.0）
-    temperature: Optional[float]
+    temperature: float | None
     # 上游私有参数原样透传，例如 {"thinking": {"type": "enabled"}}
     extra_body: dict
     system_prompt: str
@@ -24,8 +23,8 @@ class ChatConfig(ConfigModel):
 
 class ImageConfig(ConfigModel):
     model: str
-    size: Optional[str]
-    quality: Optional[str]  # standard, hd, medium
+    size: str | None
+    quality: str | None  # standard, hd, medium
     # Images API 没有 system 角色；该文本会作为中性默认指令放在用户需求之前
     prompt_prefix: str
     # 底线规则：追加在 prompt 最末尾，优先于用户需求和联网参考；留空则不追加
@@ -38,7 +37,7 @@ class PluginConfig(ConfigModel):
     # Chat 与生图共用的 OpenAI-compatible 连接配置
     api_key: str
     base_url: str
-    proxy: Optional[str]
+    proxy: str | None
     timeout: float
     # Tavily: https://tavily.com/
     tavily_api_key: str

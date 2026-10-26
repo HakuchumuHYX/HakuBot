@@ -5,7 +5,7 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from nonebot import logger

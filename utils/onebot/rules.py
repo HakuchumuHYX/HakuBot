@@ -1,11 +1,9 @@
-from typing import Optional
-
 from nonebot.adapters import Message
 from nonebot.params import CommandArg, CommandWhitespace
 
 
 async def command_boundary(
-    arg: Message = CommandArg(), whitespace: Optional[str] = CommandWhitespace()
+    arg: Message = CommandArg(), whitespace: str | None = CommandWhitespace()
 ) -> bool:
     """命令后面必须是空白、非文字段（@、图片等）或消息结束。
 

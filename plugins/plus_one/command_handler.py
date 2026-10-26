@@ -4,7 +4,8 @@ from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 
-from plugins.plus_one.config import config, reload_from_file, save_config
+from core.settings import reload_plugin_config
+from plugins.plus_one.config import config, save_config
 from utils.logging import get_exc_desc
 
 # 配置管理命令
@@ -22,7 +23,7 @@ remove_blocked_word = on_command(
 async def reload_config_handler(matcher: Matcher):
     """重新加载配置"""
     try:
-        reload_from_file()
+        reload_plugin_config("plus_one", config)
     except Exception as e:
         logger.exception("重载 plus_one 配置失败")
         await matcher.finish(f"配置无效，继续使用旧配置：{get_exc_desc(e)}")

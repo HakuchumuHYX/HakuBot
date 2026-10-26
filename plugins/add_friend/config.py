@@ -1,6 +1,5 @@
 from core.settings import ConfigModel, load_config, update_fields
 from utils.paths import PluginPaths
-from typing import List, Set
 from nonebot import logger
 
 CONFIG_FILE = PluginPaths("add_friend").config / "config.json"
@@ -15,11 +14,11 @@ class Config(ConfigModel):
 plugin_config = load_config("add_friend", Config)
 
 # 自动同意好友请求的群聊列表；增删命令会原地修改这个集合
-AUTO_APPROVE_GROUPS: Set[str] = set(plugin_config.auto_approve_groups)
+AUTO_APPROVE_GROUPS: set[str] = set(plugin_config.auto_approve_groups)
 MANUAL_REVIEW: bool = plugin_config.manual_review
 
 
-def save_auto_approve_groups(groups: Set[str]) -> bool:
+def save_auto_approve_groups(groups: set[str]) -> bool:
     """写回白名单群组（只改这一个字段），成功后同步内存里的集合"""
     try:
         update_fields(CONFIG_FILE, {"auto_approve_groups": sorted(groups)})
@@ -33,7 +32,7 @@ def save_auto_approve_groups(groups: Set[str]) -> bool:
 
 
 # 群号提取正则表达式模式
-GROUP_PATTERNS: List[str] = [
+GROUP_PATTERNS: list[str] = [
     r"群(\d+)",
     r"来自群.?(\d+)",
     r"群.?(\d+)",

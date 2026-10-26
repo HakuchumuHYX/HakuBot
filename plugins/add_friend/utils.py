@@ -1,9 +1,8 @@
 import re
-from typing import Optional, Set
 from plugins.add_friend.config import GROUP_PATTERNS
 
 
-def extract_group_candidates(comment: str) -> Set[str]:
+def extract_group_candidates(comment: str) -> set[str]:
     """
     从验证信息中提取所有可能的群号候选
 
@@ -16,7 +15,7 @@ def extract_group_candidates(comment: str) -> Set[str]:
     Returns:
         所有候选群号组成的集合，未找到则返回空集合
     """
-    candidates: Set[str] = set()
+    candidates: set[str] = set()
     if not comment:
         return candidates
 
@@ -32,7 +31,7 @@ def extract_group_candidates(comment: str) -> Set[str]:
     return candidates
 
 
-async def extract_group_from_comment(comment: str) -> Optional[str]:
+async def extract_group_from_comment(comment: str) -> str | None:
     """
     从验证信息中提取群号（基于候选集合，返回其中任意一个）
 
@@ -49,7 +48,7 @@ async def extract_group_from_comment(comment: str) -> Optional[str]:
 
 
 def create_request_data(
-    user_id: int, comment: str, group: Optional[str], flag: str
+    user_id: int, comment: str, group: str | None, flag: str
 ) -> dict:
     """创建好友请求数据字典"""
     return {"user_id": user_id, "comment": comment, "group": group, "flag": flag}

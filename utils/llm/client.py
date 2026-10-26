@@ -1,7 +1,7 @@
 import time
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from nonebot import logger
@@ -31,11 +31,11 @@ class LLMClientConfig:
     model: str
     provider: str = "openai_compatible"
     timeout: float = 60.0
-    proxy: Optional[str] = None
+    proxy: str | None = None
     max_retries: int = 2
-    max_tokens: Optional[int] = 65536
+    max_tokens: int | None = 65536
     thinking_enabled: bool = False
-    reasoning_effort: Optional[str] = None
+    reasoning_effort: str | None = None
     extra_body: dict[str, Any] = field(default_factory=dict)
 
 
@@ -48,7 +48,7 @@ class ChatResult:
     # 有工具调用时 content 可能为空；每项是 SDK 对象 model_dump() 的结果
     tool_calls: list[dict] = field(default_factory=list)
     # "length" 表示正文被 max_tokens 截断
-    finish_reason: Optional[str] = None
+    finish_reason: str | None = None
 
 
 @dataclass
@@ -150,16 +150,16 @@ def _build_chat_completion_kwargs(
     config: LLMClientConfig,
     messages: list,
     *,
-    model: Optional[str] = None,
-    max_tokens: Optional[int] = None,
-    temperature: Optional[float] = None,
-    top_p: Optional[float] = None,
-    reasoning_effort: Optional[str] = None,
-    thinking_enabled: Optional[bool] = None,
-    extra_body: Optional[dict[str, Any]] = None,
-    response_format: Optional[dict[str, Any]] = None,
-    tools: Optional[list[dict[str, Any]]] = None,
-    tool_choice: Optional[Any] = None,
+    model: str | None = None,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    reasoning_effort: str | None = None,
+    thinking_enabled: bool | None = None,
+    extra_body: dict[str, Any] | None = None,
+    response_format: dict[str, Any] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: Any | None = None,
 ) -> dict[str, Any]:
     used_model = model or config.model
     used_max_tokens = max_tokens if max_tokens is not None else config.max_tokens
@@ -208,16 +208,16 @@ async def chat_completion(
     config: LLMClientConfig,
     messages: list,
     *,
-    model: Optional[str] = None,
-    max_tokens: Optional[int] = None,
-    temperature: Optional[float] = None,
-    top_p: Optional[float] = None,
-    reasoning_effort: Optional[str] = None,
-    thinking_enabled: Optional[bool] = None,
-    extra_body: Optional[dict[str, Any]] = None,
-    response_format: Optional[dict[str, Any]] = None,
-    tools: Optional[list[dict[str, Any]]] = None,
-    tool_choice: Optional[Any] = None,
+    model: str | None = None,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    reasoning_effort: str | None = None,
+    thinking_enabled: bool | None = None,
+    extra_body: dict[str, Any] | None = None,
+    response_format: dict[str, Any] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: Any | None = None,
 ) -> ChatResult:
     kwargs = _build_chat_completion_kwargs(
         config,
@@ -256,9 +256,9 @@ async def image_generation(
     config: LLMClientConfig,
     *,
     prompt: str,
-    model: Optional[str] = None,
-    size: Optional[str] = None,
-    quality: Optional[str] = None,
+    model: str | None = None,
+    size: str | None = None,
+    quality: str | None = None,
 ) -> ImageResult:
     used_model = model or config.model
     kwargs: dict[str, Any] = {
@@ -300,9 +300,9 @@ async def image_edit(
     *,
     prompt: str,
     images: list[tuple[str, bytes, str]],
-    model: Optional[str] = None,
-    size: Optional[str] = None,
-    quality: Optional[str] = None,
+    model: str | None = None,
+    size: str | None = None,
+    quality: str | None = None,
 ) -> ImageResult:
     used_model = model or config.model
     files = [(filename, content, mime_type) for filename, content, mime_type in images]

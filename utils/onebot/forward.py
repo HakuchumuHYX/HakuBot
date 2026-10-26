@@ -1,7 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 from enum import Enum
-from typing import Union, Optional, Sequence, List
+from collections.abc import Sequence
 from nonebot.adapters.onebot.v11 import Bot, Event, Message, MessageSegment
 from nonebot.exception import NetworkError, ActionFailed
 from nonebot import logger
@@ -10,9 +10,9 @@ from utils.logging import get_exc_desc
 
 @dataclass(frozen=True)
 class ForwardItem:
-    content: Union[str, Message, MessageSegment]
-    name: Optional[str] = None
-    uin: Optional[Union[str, int]] = None
+    content: str | Message | MessageSegment
+    name: str | None = None
+    uin: str | int | None = None
 
 
 class ForwardStatus(str, Enum):
@@ -28,7 +28,7 @@ class ForwardSendError(RuntimeError):
         self.failed = failed
 
 
-def _as_message(content: Union[str, Message, MessageSegment]) -> Message:
+def _as_message(content: str | Message | MessageSegment) -> Message:
     if isinstance(content, Message):
         return content
     if isinstance(content, MessageSegment):
@@ -38,11 +38,11 @@ def _as_message(content: Union[str, Message, MessageSegment]) -> Message:
 
 async def send_forward_msg(
     bot: Bot,
-    event: Optional[Event] = None,
+    event: Event | None = None,
     *,
-    items: Sequence[Union[ForwardItem, str, Message, MessageSegment]],
-    group_id: Optional[int] = None,
-    user_id: Optional[int] = None,
+    items: Sequence[ForwardItem | str | Message | MessageSegment],
+    group_id: int | None = None,
+    user_id: int | None = None,
     timeout: float = 60.0,
     fallback_on_action_failed: bool = True,
     fallback_interval: float = 1.0,
@@ -127,7 +127,7 @@ async def send_forward_msg(
             f"合并转发被 OneBot 拒绝，开始逐条补发 nodes={len(nodes)}: {get_exc_desc(e)}"
         )
         sent = 0
-        failures: List[str] = []
+        failures: list[str] = []
         for index, item in enumerate(normalized_items):
             try:
                 message = _as_message(item.content)

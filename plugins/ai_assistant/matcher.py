@@ -1,5 +1,6 @@
 import time
-from typing import Awaitable, NoReturn
+from typing import NoReturn
+from collections.abc import Awaitable
 
 from openai import APIStatusError, BadRequestError
 from nonebot import on_command, logger

@@ -6,7 +6,7 @@ from utils.onebot.messages import find_forward_id, normalize_message_segments
 import base64
 import io
 import re
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Literal
 from PIL import Image, ImageOps
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent
 
@@ -106,7 +106,7 @@ def _get_value(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
-def _format_forward_sender(node: Dict[str, Any]) -> str:
+def _format_forward_sender(node: dict[str, Any]) -> str:
     sender = node.get("sender") or {}
     user_id = (
         _get_value(sender, "user_id")
@@ -132,9 +132,7 @@ def _format_forward_sender(node: Dict[str, Any]) -> str:
     return "未知用户"
 
 
-def _text_from_segment(
-    segment: Dict[str, Any], image_index: Optional[int] = None
-) -> str:
+def _text_from_segment(segment: dict[str, Any], image_index: int | None = None) -> str:
     seg_type = segment.get("type")
     data = segment.get("data") or {}
 
@@ -155,7 +153,7 @@ def _text_from_segment(
     return ""
 
 
-async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]:
+async def parse_forward_message_content(bot: Any, forward_id: str) -> list[dict]:
     """拉取并格式化合并转发内容，返回 OpenAI 多模态 content 列表。"""
     forward_data = await bot.get_forward_msg(id=forward_id)
     nodes = forward_data.get("messages", []) if isinstance(forward_data, dict) else []
@@ -165,7 +163,7 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
     max_text_chars = FORWARD_MAX_TEXT_CHARS
 
     lines = [_FORWARD_HEADER]
-    image_parts: List[dict] = []
+    image_parts: list[dict] = []
     image_count = 0
 
     for index, raw_node in enumerate(nodes[:max_nodes], start=1):
@@ -175,7 +173,7 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
         sender = _format_forward_sender(raw_node)
         segments = normalize_message_segments(raw_node.get("message", ""))
 
-        pieces: List[str] = []
+        pieces: list[str] = []
         for segment in segments:
             seg_type = segment.get("type")
             image_index = None
@@ -227,8 +225,8 @@ async def parse_forward_message_content(bot: Any, forward_id: str) -> List[dict]
 async def _segments_to_content(
     message: Message, image_purpose: ImagePurpose
 ) -> tuple[str, list[dict]]:
-    texts: List[str] = []
-    images: List[dict] = []
+    texts: list[str] = []
+    images: list[dict] = []
     for seg in message:
         if seg.is_text():
             text = seg.data.get("text", "").strip()
@@ -246,7 +244,7 @@ async def parse_message_content(
     event: MessageEvent,
     args: Message,
     *,
-    bot: Optional[Bot] = None,
+    bot: Bot | None = None,
     quote: bool = True,
     image_purpose: ImagePurpose = "chat",
 ) -> list:
@@ -314,7 +312,7 @@ def remove_markdown(text: str) -> str:
     return text.strip()
 
 
-def parse_data_url(data_url: str) -> Tuple[str, str]:
+def parse_data_url(data_url: str) -> tuple[str, str]:
     """
     Parse `data:<mime>;base64,<data>` to (mime, base64_data)
     """

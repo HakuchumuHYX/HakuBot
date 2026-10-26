@@ -1,5 +1,3 @@
-from typing import List, Tuple
-
 from plugins.group_statistics.data_manager import data_manager
 from plugins.group_statistics.config import (
     TOP_N_USERS,
@@ -11,7 +9,7 @@ from nonebot import logger
 
 def get_top_users(
     group_id: int, top_n: int = TOP_N_USERS
-) -> List[Tuple[str, str, int]]:
+) -> list[tuple[str, str, int]]:
     """获取指定群组的发言排名前N的用户"""
     if group_id not in data_manager.group_stats:
         return []

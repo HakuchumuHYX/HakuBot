@@ -6,8 +6,9 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 from core.access import is_enabled
+from core.settings import reload_plugin_config
 from utils.logging import get_exc_desc
-from plugins.daily_message import config_manager
+from plugins.daily_message.config_manager import plugin_config
 
 # 获取所有机器人实例
 bots = get_driver().bots
@@ -64,7 +65,7 @@ async def send_message_to_enabled_groups(message: str):
 
 def setup_scheduled_jobs():
     """按当前配置设置定时任务"""
-    schedules = config_manager.plugin_config.schedules
+    schedules = plugin_config.schedules
 
     # 清除所有现有的定时任务（避免重复）
     for job in scheduler.get_jobs():
@@ -87,7 +88,7 @@ def setup_scheduled_jobs():
 # 重新加载配置的函数
 def reload_schedule_config():
     """重新加载定时任务配置；新配置无效时抛出，原有任务不动"""
-    config_manager.plugin_config = config_manager.read_config()
+    reload_plugin_config("daily_message", plugin_config)
     setup_scheduled_jobs()
     logger.info("已重新加载定时任务配置")
 

@@ -9,15 +9,7 @@ class Config(ConfigModel):
     blocked_words: set[str]
 
 
-# 其他模块都持有这个对象，重载时原地替换字段，不换对象
 config = load_config("plus_one", Config)
-
-
-def reload_from_file() -> None:
-    """重新读取配置；新配置无效时抛出，内存里的配置不动"""
-    new = load_config("plus_one", Config)
-    for name in Config.model_fields:
-        setattr(config, name, getattr(new, name))
 
 
 def save_config() -> bool:

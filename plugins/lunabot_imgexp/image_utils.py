@@ -4,7 +4,6 @@ from collections import defaultdict
 from itertools import chain
 import math
 from random import randrange
-from typing import List, Tuple, Union
 
 from PIL import Image, ImageSequence
 
@@ -135,13 +134,13 @@ class TransparentAnimatedGifConverter(object):
 
 
 def _create_animated_gif(
-    images: List[Image.Image],
-    durations: Union[int, List[int]],
+    images: list[Image.Image],
+    durations: int | list[int],
     alpha_threshold: int = 0,
-) -> Tuple[Image.Image, dict]:
+) -> tuple[Image.Image, dict]:
     """If the image is a GIF, create an its thumbnail here."""
     save_kwargs = dict()
-    new_images: List[Image.Image] = []
+    new_images: list[Image.Image] = []
 
     for frame in images:
         thumbnail = frame.copy()  # type: Image
@@ -167,8 +166,8 @@ def _create_animated_gif(
 
 
 def _save_transparent_gif(
-    images: List[Image.Image],
-    durations: Union[int, List[int]],
+    images: list[Image.Image],
+    durations: int | list[int],
     save_file,
     alpha_threshold: int = 0,
 ):
@@ -178,7 +177,7 @@ def _save_transparent_gif(
 
     Parameters:
         images: a list of PIL Image objects that compose the GIF frames
-        durations: an int or List[int] that describes the animation durations for the frames of this GIF
+        durations: an int or list[int] that describes the animation durations for the frames of this GIF
         save_file: A filename (string), pathlib.Path object or file object. (This parameter corresponds
                    and is passed to the PIL.Image.save() method.)
     Returns:
@@ -191,7 +190,7 @@ def _save_transparent_gif(
 # ============================ 工具函数 ============================ #
 
 
-def is_animated(image: Union[str, Image.Image]) -> bool:
+def is_animated(image: str | Image.Image) -> bool:
     """
     检查图片是否为动图
     """
@@ -202,7 +201,7 @@ def is_animated(image: Union[str, Image.Image]) -> bool:
     return False
 
 
-def gif_to_frames(img: Image.Image) -> List[Image.Image]:
+def gif_to_frames(img: Image.Image) -> list[Image.Image]:
     """
     从GIF图像中提取所有帧
     """
@@ -210,7 +209,7 @@ def gif_to_frames(img: Image.Image) -> List[Image.Image]:
 
 
 def save_transparent_gif(
-    image_or_frames: Union[Image.Image, List[Image.Image]],
+    image_or_frames: Image.Image | list[Image.Image],
     duration: int,
     save_file,
     alpha_threshold: float = 0.5,
@@ -237,7 +236,7 @@ def save_transparent_static_gif(img: Image, save_file, alpha_threshold: float = 
     )
 
 
-def concat_images(images: List[Image.Image], mode) -> Image.Image:
+def concat_images(images: list[Image.Image], mode) -> Image.Image:
     """
     拼接图片，mode: 'v' 垂直拼接 'h' 水平拼接 'g' 网格拼接
     """
