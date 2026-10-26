@@ -1,8 +1,6 @@
-from functools import partial
-
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageEvent
-from nonebot.params import CommandArg
+from nonebot.params import Command, CommandArg, CommandWhitespace
 from nonebot.rule import to_me
 
 from core.access import switch_rule
@@ -22,19 +20,7 @@ from plugins.image_processor.video_to_gif import convert_video_to_gif
 
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".webm", ".mkv", ".flv", ".wmv")
 
-
-def _command(name: str, feature: str):
-    return on_command(
-        name,
-        rule=to_me() & command_boundary & switch_rule(f"image_processor:{feature}"),
-        priority=5,
-        block=True,
-    )
-
-
-gif_speed_handler = _command("imgx", "speed")
-video_to_gif_handler = _command("imggif", "video_to_gif")
-
+# 同一功能的几种叫法：命令名 → (处理参数, 文案)，键同时用作 on_command 的别名
 SYMMETRY_COMMANDS = {
     "img对称": ("left", "左对称"),
     "img左对称": ("left", "左对称"),
@@ -52,6 +38,16 @@ ROTATE_COMMANDS = {
     "img顺时针": ("clockwise", "顺时针旋转"),
     "img逆时针": ("counter_clockwise", "逆时针旋转"),
 }
+
+
+# imgx、img旋转 的倍数可以连写（imgx5、img旋转2），连写时要求参数以数字开头，
+# 否则「imgxxx」「img旋转木马」这类也会触发
+async def _speed_arg_rule(
+    arg: Message = CommandArg(), whitespace: str | None = CommandWhitespace()
+) -> bool:
+    if await command_boundary(arg, whitespace):
+        return True
+    return arg.extract_plain_text()[:1].isdigit()
 
 
 async def _check_cooldown(matcher, event: MessageEvent, feature: str, label: str):
@@ -90,33 +86,86 @@ async def _run_job(matcher, event: MessageEvent, feature: str, label: str, job):
 async def _handle_image(
     matcher, event: MessageEvent, feature: str, label: str, process
 ):
+    """回复一张图、无参数的命令"""
     await _check_cooldown(matcher, event, feature, label)
     url = await _reply_image_url(matcher, event, label)
     await _run_job(matcher, event, feature, label, lambda: process(url))
 
 
-def _register_image_command(command: str, feature: str, label: str, process):
-    """回复一张图、无参数的命令"""
-    matcher = _command(command, feature)
+reverse_handler = on_command(
+    "img倒放",
+    rule=to_me() & command_boundary & switch_rule("image_processor:reverse"),
+    priority=5,
+    block=True,
+)
 
-    @matcher.handle()
-    async def _(event: MessageEvent):
-        await _handle_image(matcher, event, feature, label, process)
+
+@reverse_handler.handle()
+async def handle_reverse(event: MessageEvent):
+    await _handle_image(reverse_handler, event, "reverse", "GIF倒放", reverse_gif)
 
 
-_register_image_command("img倒放", "reverse", "GIF倒放", reverse_gif)
-_register_image_command("imgcut", "cutout", "抠图", remove_background)
-for command, (symmetry_type, label) in SYMMETRY_COMMANDS.items():
-    _register_image_command(
-        command,
+cutout_handler = on_command(
+    "imgcut",
+    rule=to_me() & command_boundary & switch_rule("image_processor:cutout"),
+    priority=5,
+    block=True,
+)
+
+
+@cutout_handler.handle()
+async def handle_cutout(event: MessageEvent):
+    await _handle_image(cutout_handler, event, "cutout", "抠图", remove_background)
+
+
+symmetry_handler = on_command(
+    "img对称",
+    aliases=set(SYMMETRY_COMMANDS),
+    rule=to_me() & command_boundary & switch_rule("image_processor:symmetry"),
+    priority=5,
+    block=True,
+)
+
+
+@symmetry_handler.handle()
+async def handle_symmetry(event: MessageEvent, cmd: tuple[str, ...] = Command()):
+    symmetry_type, label = SYMMETRY_COMMANDS[cmd[0]]
+    await _handle_image(
+        symmetry_handler,
+        event,
         "symmetry",
         label,
-        partial(process_image_symmetry, symmetry_type=symmetry_type),
+        lambda url: process_image_symmetry(url, symmetry_type),
     )
-for command, (direction, label) in MIRROR_COMMANDS.items():
-    _register_image_command(
-        command, "mirror", label, partial(process_image_mirror, direction=direction)
+
+
+mirror_handler = on_command(
+    "img镜像",
+    aliases=set(MIRROR_COMMANDS),
+    rule=to_me() & command_boundary & switch_rule("image_processor:mirror"),
+    priority=5,
+    block=True,
+)
+
+
+@mirror_handler.handle()
+async def handle_mirror(event: MessageEvent, cmd: tuple[str, ...] = Command()):
+    direction, label = MIRROR_COMMANDS[cmd[0]]
+    await _handle_image(
+        mirror_handler,
+        event,
+        "mirror",
+        label,
+        lambda url: process_image_mirror(url, direction),
     )
+
+
+gif_speed_handler = on_command(
+    "imgx",
+    rule=to_me() & _speed_arg_rule & switch_rule("image_processor:speed"),
+    priority=5,
+    block=True,
+)
 
 
 @gif_speed_handler.handle()
@@ -146,39 +195,54 @@ async def handle_gif_speed(event: MessageEvent, cmd_arg: Message = CommandArg())
     )
 
 
-def _register_rotate(command: str, direction: str, action_name: str):
-    matcher = _command(command, "rotate")
-
-    @matcher.handle()
-    async def _(event: MessageEvent, cmd_arg: Message = CommandArg()):
-        await _check_cooldown(matcher, event, "rotate", "旋转")
-
-        args = cmd_arg.extract_plain_text().strip()
-        speed = 1.0
-        if args:
-            try:
-                speed = float(args)
-            except ValueError:
-                await matcher.finish("请输入有效的数字作为倍速，例如：img旋转 2")
-        if speed > 5:
-            speed = 5.0
-            await matcher.send("转速太快啦！最高只能5倍速哦，已自动调整。")
-        elif speed < 0.1:
-            speed = 0.1
-            await matcher.send("转速太慢啦！最低0.1倍速，已自动调整。")
-
-        url = await _reply_image_url(matcher, event, action_name)
-        await _run_job(
-            matcher,
-            event,
-            "rotate",
-            f"{action_name}（{speed:g} 倍速）",
-            lambda: process_image_rotate(url, direction, speed),
-        )
+rotate_handler = on_command(
+    "img旋转",
+    aliases=set(ROTATE_COMMANDS),
+    rule=to_me() & _speed_arg_rule & switch_rule("image_processor:rotate"),
+    priority=5,
+    block=True,
+)
 
 
-for command, (direction, action_name) in ROTATE_COMMANDS.items():
-    _register_rotate(command, direction, action_name)
+@rotate_handler.handle()
+async def handle_rotate(
+    event: MessageEvent,
+    cmd: tuple[str, ...] = Command(),
+    cmd_arg: Message = CommandArg(),
+):
+    await _check_cooldown(rotate_handler, event, "rotate", "旋转")
+    direction, action_name = ROTATE_COMMANDS[cmd[0]]
+
+    args = cmd_arg.extract_plain_text().strip()
+    speed = 1.0
+    if args:
+        try:
+            speed = float(args)
+        except ValueError:
+            await rotate_handler.finish("请输入有效的数字作为倍速，例如：img旋转 2")
+    if speed > 5:
+        speed = 5.0
+        await rotate_handler.send("转速太快啦！最高只能5倍速哦，已自动调整。")
+    elif speed < 0.1:
+        speed = 0.1
+        await rotate_handler.send("转速太慢啦！最低0.1倍速，已自动调整。")
+
+    url = await _reply_image_url(rotate_handler, event, action_name)
+    await _run_job(
+        rotate_handler,
+        event,
+        "rotate",
+        f"{action_name}（{speed:g} 倍速）",
+        lambda: process_image_rotate(url, direction, speed),
+    )
+
+
+video_to_gif_handler = on_command(
+    "imggif",
+    rule=to_me() & command_boundary & switch_rule("image_processor:video_to_gif"),
+    priority=5,
+    block=True,
+)
 
 
 @video_to_gif_handler.handle()
