@@ -5,7 +5,7 @@
 """
 
 from datetime import datetime
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -66,7 +66,7 @@ async def render_html(
         )
 
 
-@lru_cache(maxsize=None)
+@cache
 def _plugin_env(template_dir: Path) -> jinja2.Environment:
     return jinja2.Environment(
         loader=jinja2.FileSystemLoader(template_dir),
