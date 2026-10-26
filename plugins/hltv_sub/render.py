@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 from datetime import datetime
 from dataclasses import asdict
-from typing import Optional
 import pytz
 from nonebot import logger
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -132,28 +131,18 @@ async def render_results(results_by_event: dict[str, list[ResultInfo]]) -> bytes
     )
 
 
-async def render_stats(stats: Optional[MatchStats]) -> bytes:
+async def render_stats(stats: MatchStats) -> bytes:
     """渲染比赛数据图片"""
-
-    stats_dict = None
-    if stats:
-        stats_dict = asdict(stats)
-        played_maps = [
-            m for m in stats.maps if m.score_team1 != "-" and m.score_team2 != "-"
-        ]
-        has_single_map_details = (
-            len(played_maps) == 1 and played_maps[0].map_name in stats.map_stats_details
-        )
-        stats_dict["show_total_overview"] = not has_single_map_details
-        stats_dict["veto_steps"] = _veto_steps(stats)
-
-    return await _render(
-        "stats.html",
-        {
-            "stats": stats_dict,
-        },
-        width=1040,
+    played_maps = [m for m in stats.maps if m.score_team1 != "-" and m.score_team2 != "-"]
+    has_single_map_details = (
+        len(played_maps) == 1 and played_maps[0].map_name in stats.map_stats_details
     )
+    stats_dict = {
+        **asdict(stats),
+        "show_total_overview": not has_single_map_details,
+        "veto_steps": _veto_steps(stats),
+    }
+    return await _render("stats.html", {"stats": stats_dict}, width=1040)
 
 
 async def render_reminder(match: MatchInfo, event_title: str) -> bytes:

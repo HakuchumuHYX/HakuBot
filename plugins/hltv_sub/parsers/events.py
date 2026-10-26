@@ -5,7 +5,6 @@ HLTV events 页面解析
 from __future__ import annotations
 
 import json
-import re
 from datetime import date, datetime
 
 from bs4 import BeautifulSoup
@@ -13,198 +12,80 @@ from nonebot import logger
 
 from plugins.hltv_sub.models import EventInfo, EventMvp, MvpStat
 from plugins.hltv_sub.parsers.common import (
-    absolute_url, extract_id_from_url, flag_of, format_date, pick_logo,
+    absolute_url, extract_id_from_url, flag_of, format_date, pick_logo, text_of,
 )
 
 
 def is_ongoing(start_date: str, end_date: str, tz) -> bool:
     """按页面给出的完整日期判断，不从展示字符串猜年份。"""
-    try:
-        today = datetime.now(tz).date()
-        return date.fromisoformat(start_date) <= today <= date.fromisoformat(end_date)
-    except ValueError:
-        return False
+    today = datetime.now(tz).date()
+    return date.fromisoformat(start_date) <= today <= date.fromisoformat(end_date)
 
 
 def parse_big_events(html: str, tz) -> list[EventInfo]:
-    """解析 /events 页面：ongoing + big-events"""
-    events: list[EventInfo] = []
+    """解析 /events 页面：正在进行的赛事 + 前两组 big-events。"""
     soup = BeautifulSoup(html, "lxml")
+    ongoing_section = soup.find("div", class_="ongoing-events-holder")
+    ongoing = ongoing_section.find_all("a", class_="ongoing-event") if ongoing_section else []
+    upcoming = [
+        elem
+        for section in soup.find_all("div", class_="big-events")[:2]
+        for elem in section.find_all("a", class_="big-event")
+    ]
+    if not ongoing and not upcoming:
+        raise ValueError("HLTV 赛事页没有赛事卡片，页面结构可能已变")
 
-    try:
-        # 正在进行的赛事
-        ongoing_section = soup.find("div", class_="ongoing-events-holder")
-        if ongoing_section:
-            for event_elem in ongoing_section.find_all("a", class_="ongoing-event"):
-                try:
-                    href = event_elem.get("href", "") or ""
-                    event_id = extract_id_from_url(href)
-
-                    # 获取赛事名称 - 排除 LAN/Online 标签
-                    title = ""
-                    name_container = event_elem.find("div", class_="event-name-small")
-                    if name_container:
-                        text_elem = name_container.find("div", class_="text-ellipsis")
-                        if text_elem:
-                            title = text_elem.get_text(strip=True)
-                        else:
-                            first_div = name_container.find("div")
-                            if first_div and "lan-marker" not in first_div.get(
-                                "class", []
-                            ):
-                                title = first_div.get_text(strip=True)
-
-                    if not title:
-                        name_elem = event_elem.find("span", class_="event-name")
-                        title = name_elem.get_text(strip=True) if name_elem else ""
-
-                    date_elems = event_elem.find_all("span", {"data-time-format": True})
-                    start_date = ""
-                    end_date = ""
-                    if len(date_elems) >= 2:
-                        start_date = format_date(
-                            date_elems[0].get("data-unix", "") or "", tz
-                        )
-                        end_date = format_date(
-                            date_elems[1].get("data-unix", "") or "", tz
-                        )
-
-                    if event_id and title:
-                        events.append(
-                            EventInfo(
-                                id=event_id,
-                                title=title,
-                                start_date=start_date,
-                                end_date=end_date,
-                                logo=pick_logo(
-                                    event_elem.find_all("img", class_="logo", limit=2)
-                                ),
-                                is_ongoing=True,
-                            )
-                        )
-                except Exception as e:
-                    logger.warning(f"[HLTV] 解析正在进行赛事失败: {e}")
-                    continue
-
-        # 即将举行的大型赛事
-        big_events_sections = soup.find_all("div", class_="big-events")[:2]
-        for big_events_section in big_events_sections:
-            for event_elem in big_events_section.find_all("a", class_="big-event"):
-                try:
-                    href = event_elem.get("href", "") or ""
-                    event_id = extract_id_from_url(href)
-
-                    name_elem = event_elem.find("div", class_="big-event-name")
-                    title = name_elem.get_text(strip=True) if name_elem else ""
-
-                    date_elems = event_elem.find_all("span", {"data-time-format": True})
-                    start_date = ""
-                    end_date = ""
-                    if len(date_elems) >= 2:
-                        start_date = format_date(
-                            date_elems[0].get("data-unix", "") or "", tz
-                        )
-                        end_date = format_date(
-                            date_elems[1].get("data-unix", "") or "", tz
-                        )
-
-                    location_elem = event_elem.find("span", class_="big-event-location")
-                    if event_id and title:
-                        events.append(
-                            EventInfo(
-                                id=event_id,
-                                title=title,
-                                start_date=start_date,
-                                end_date=end_date,
-                                location=(
-                                    location_elem.get_text(strip=True)
-                                    if location_elem else ""
-                                ),
-                                country=flag_of(event_elem.find("img", class_="flag"))[0],
-                                is_ongoing=False,
-                            )
-                        )
-                except Exception as e:
-                    logger.warning(f"[HLTV] 解析即将举行赛事失败: {e}")
-                    continue
-
-        # 通用回退
-        if not events:
-            event_holders = soup.find_all("a", href=re.compile(r"/events/\d+/"))
-            seen_ids = set()
-            for elem in event_holders[:30]:
-                href = elem.get("href", "") or ""
-                event_id = extract_id_from_url(href)
-                if event_id and event_id not in seen_ids:
-                    seen_ids.add(event_id)
-
-                    name_elem = elem.find(class_=re.compile(r"event.*name", re.I))
-                    if not name_elem:
-                        name_elem = elem.find("div")
-                    title = (
-                        name_elem.get_text(strip=True)
-                        if name_elem
-                        else f"Event {event_id}"
-                    )
-
-                    events.append(
-                        EventInfo(
-                            id=event_id,
-                            title=title,
-                            start_date="",
-                            end_date="",
-                            is_ongoing=False,
-                        )
-                    )
-
-        logger.debug(f"[HLTV] 获取到 {len(events)} 个赛事")
-    except Exception as e:
-        logger.error(f"[HLTV] 解析赛事列表失败: {e}")
-
+    events: list[EventInfo] = []
+    for elem in ongoing:
+        if event := _parse_event_card(elem, ".event-name-small .text-ellipsis", tz):
+            event.logo = pick_logo(elem.find_all("img", class_="logo", limit=2))
+            event.is_ongoing = True
+            events.append(event)
+    for elem in upcoming:
+        if event := _parse_event_card(elem, "div.big-event-name", tz):
+            event.location = text_of(elem.find("span", class_="big-event-location"))
+            event.country = flag_of(elem.find("img", class_="flag"))[0]
+            events.append(event)
+    if not events:
+        raise ValueError("HLTV 赛事页没有可解析的赛事，页面结构可能已变")
+    logger.debug(f"[HLTV] 获取到 {len(events)} 个赛事")
     return events
 
 
-def parse_event_info(
-    html: str, event_id: str, event_title: str, tz
-) -> EventInfo | None:
+def _parse_event_card(elem, title_selector: str, tz) -> EventInfo | None:
+    """两种卡片共有的 ID、标题、起止日期；缺了就跳过这张卡片。"""
+    event_id = extract_id_from_url(elem.get("href", ""))
+    title = text_of(elem.select_one(title_selector))
+    dates = [
+        format_date(span.get("data-unix", ""), tz)
+        for span in elem.find_all("span", {"data-time-format": True})[:2]
+    ]
+    if not event_id or not title or len(dates) < 2 or not all(dates):
+        logger.warning(f"[HLTV] 跳过不完整的赛事卡片: id={event_id!r} title={title!r}")
+        return None
+    return EventInfo(id=event_id, title=title, start_date=dates[0], end_date=dates[1])
+
+
+def parse_event_info(html: str, event_id: str, tz) -> EventInfo:
     """解析 /events/{id}/{slug} 页面"""
     soup = BeautifulSoup(html, "lxml")
-    try:
-        title_elem = soup.find("h1", class_="event-hub-title")
-        title = title_elem.get_text(strip=True) if title_elem else event_title
-
-        date_elem = soup.find("td", class_="eventdate")
-        start_date = ""
-        end_date = ""
-        if date_elem:
-            spans = date_elem.find_all("span", {"data-unix": True})
-            if len(spans) >= 2:
-                start_date = format_date(spans[0].get("data-unix", "") or "", tz)
-                end_date = format_date(spans[1].get("data-unix", "") or "", tz)
-
-        prize_elem = soup.find("td", class_="prizepool")
-        prize = prize_elem.get_text(strip=True) if prize_elem else ""
-
-        teams_elem = soup.find("td", class_="teamsNumber")
-        teams = teams_elem.get_text(strip=True) if teams_elem else ""
-
-        location_elem = soup.find("td", class_="location")
-        location = location_elem.get_text(strip=True) if location_elem else ""
-
-        return EventInfo(
-            id=event_id,
-            title=title,
-            start_date=start_date,
-            end_date=end_date,
-            prize=prize,
-            teams=teams,
-            location=location,
-            is_ongoing=is_ongoing(start_date, end_date, tz),
-            mvp=parse_event_mvp(soup),
-        )
-    except Exception as e:
-        logger.error(f"[HLTV] 解析赛事信息失败: {e}")
-        return None
+    title = text_of(soup.find("h1", class_="event-hub-title"))
+    date_elem = soup.find("td", class_="eventdate")
+    spans = date_elem.find_all("span", {"data-unix": True}) if date_elem else []
+    dates = [format_date(span["data-unix"], tz) for span in spans[:2]]
+    if not title or len(dates) < 2 or not all(dates):
+        raise ValueError(f"HLTV 赛事 {event_id} 详情页缺少标题或日期，页面结构可能已变")
+    return EventInfo(
+        id=event_id,
+        title=title,
+        start_date=dates[0],
+        end_date=dates[1],
+        prize=text_of(soup.find("td", class_="prizepool")),
+        teams=text_of(soup.find("td", class_="teamsNumber")),
+        location=text_of(soup.find("td", class_="location")),
+        is_ongoing=is_ongoing(dates[0], dates[1], tz),
+        mvp=parse_event_mvp(soup),
+    )
 
 
 def parse_event_mvp(soup: BeautifulSoup) -> EventMvp | None:

@@ -11,6 +11,11 @@ import pytz
 from nonebot import logger
 
 
+def text_of(elem) -> str:
+    """可选元素缺失时取空串。"""
+    return elem.get_text(strip=True) if elem else ""
+
+
 def extract_id_from_url(url: str) -> str:
     """从 URL 中提取数字 ID（匹配 /12345/）"""
     match = re.search(r"/(\d+)/", url or "")

@@ -9,7 +9,6 @@ from nonebot import get_driver, logger
 from core.lifecycle import runtime, on_plugin_startup, on_plugin_shutdown
 
 from plugins.hltv_sub.client import HLTVFetchError, hltv_client
-from plugins.hltv_sub.handler import hltv_handler
 from plugins.hltv_sub.data_manager import data_manager
 from plugins.hltv_sub.scheduler import hltv_scheduler
 
@@ -37,7 +36,6 @@ async def _delayed_init():
                 logger.info(f"[HLTV] 会话准备暂未完成，后续检查恢复：{e}")
             else:
                 await hltv_scheduler.auto_subscribe_big_events()
-            await hltv_handler.init_existing_results()
         await hltv_scheduler.daily_maintenance()
     except Exception:
         logger.exception("[HLTV] 启动初始化未完成，后续周期检查继续处理")

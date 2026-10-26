@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from uuid import uuid4
-from typing import Optional
 
 import httpx
 import pytz
@@ -95,16 +94,14 @@ class HLTVClient:
 
     async def get_event_info(
         self, event_id: str, event_title: str = "", *, max_age: int = 3600,
-    ) -> Optional[EventInfo]:
+    ) -> EventInfo:
         """获取赛事详细信息"""
         title_slug = event_title.lower().replace(" ", "-") if event_title else "event"
         url = f"{self.BASE_URL}/events/{event_id}/{title_slug}"
 
         page = await self._fetch(url, cache_key=f"event:{event_id}", ttl=max_age)
 
-        return parse_event_info(
-            page.text, event_id=event_id, event_title=event_title, tz=self._tz
-        )
+        return parse_event_info(page.text, event_id=event_id, tz=self._tz)
 
     async def get_event_results(
         self, event_id: str, max_results: int = 20,
@@ -125,7 +122,7 @@ class HLTVClient:
 
     async def get_match_stats(
         self, match_id: str, team1: str = "", team2: str = "", event_title: str = ""
-    ) -> Optional[MatchStats]:
+    ) -> MatchStats:
         """获取比赛详细数据"""
         # slug 只用于 URL 友好，不影响 match_id 定位。
         t1_slug = team1.lower().replace(" ", "-") if team1 else "team1"
@@ -146,10 +143,6 @@ class HLTVClient:
             event_title=event_title,
         )
 
-        if not parsed:
-            logger.warning(f"[HLTV][STATS] parse_failed match_id={match_id} url={url}")
-            return None
-
         logger.debug(
             f"[HLTV][STATS] parse_ok match_id={match_id} maps={len(parsed.maps)} players={len(parsed.players)}"
         )
@@ -157,7 +150,7 @@ class HLTVClient:
 
     async def get_latest_result_with_stats(
         self, event_id: str, event_title: str = ""
-    ) -> Optional[MatchStats]:
+    ) -> MatchStats | None:
         """获取最近一场比赛的详细数据"""
         results = await self.get_event_results(event_id, max_results=1)
         if not results:

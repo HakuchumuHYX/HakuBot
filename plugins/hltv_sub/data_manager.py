@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal
 
-from utils.json_io import atomic_write_json
+from utils.json_io import atomic_write_json, load_json
 from utils.paths import PluginPaths
 
 
@@ -28,66 +27,42 @@ class GroupData:
     enabled: bool = False
 
 
+NotifiedKind = Literal["starts", "results", "map_results"]
+NOTIFIED_KINDS: tuple[NotifiedKind, ...] = ("starts", "results", "map_results")
+
+
 class DataManager:
     def __init__(self):
         self._data_file = PluginPaths("hltv_sub").data / "subscriptions.json"
-        self._data = (
-            json.loads(self._data_file.read_text(encoding="utf-8"))
-            if self._data_file.exists() else {}
-        )
+        state = load_json(self._data_file, missing_ok=True, default={})
+        if not state.success:
+            raise ValueError("HLTV 订阅数据无法读取") from state.error
         self._groups = {
-            item["group_id"]: GroupData(item["group_id"], item["enabled"])
-            for item in self._data.get("groups", [])
+            item["group_id"]: GroupData(**item) for item in state.data.get("groups", [])
         }
         self._global_subscriptions = [
-            EventSubscription(
-                item["event_id"], item["event_title"],
-                item["start_date"], item["end_date"],
-                item.get("mvp_status", ""), item.get("mvp_watch_since", ""),
-            )
-            for item in self._data.get("global_subscriptions", [])
+            EventSubscription(**item)
+            for item in state.data.get("global_subscriptions", [])
         ]
-        state = self._data.get("scheduler_state", {})
-        self._notified_starts = state.get("notified_starts", {})
-        self._notified_results = state.get("notified_results", {})
-        self._notified_map_results = state.get("notified_map_results", {})
+        # 开赛提醒、整场结果、单图结果三类推送去重：{id: 推送时间}
+        scheduler_state = state.data.get("scheduler_state", {})
+        self._notified = {
+            kind: scheduler_state.get(f"notified_{kind}", {}) for kind in NOTIFIED_KINDS
+        }
 
-    def _save(
-        self, *, groups=None, subscriptions=None, notified_starts=None,
-        notified_results=None, notified_map_results=None,
-    ) -> None:
+    def _save(self, *, groups=None, subscriptions=None, notified=None) -> None:
         groups = self._groups if groups is None else groups
         subscriptions = self._global_subscriptions if subscriptions is None else subscriptions
-        starts = self._notified_starts if notified_starts is None else notified_starts
-        results = self._notified_results if notified_results is None else notified_results
-        maps = self._notified_map_results if notified_map_results is None else notified_map_results
-        old_groups = {g["group_id"]: g for g in self._data.get("groups", [])}
-        old_subs = {s["event_id"]: s for s in self._data.get("global_subscriptions", [])}
-        data = {
-            **self._data,
-            "groups": [
-                {**old_groups.get(g.group_id, {}), **asdict(g)}
-                for g in groups.values()
-            ],
-            "global_subscriptions": [
-                {**old_subs.get(s.event_id, {}), **asdict(s)}
-                for s in subscriptions
-            ],
-            "scheduler_state": {
-                **self._data.get("scheduler_state", {}),
-                "notified_starts": starts,
-                "notified_results": results,
-                "notified_map_results": maps,
-            },
-        }
+        notified = self._notified if notified is None else notified
         # 只有写入成功才发布内存状态；失败交给调用方报告。
-        atomic_write_json(self._data_file, data)
-        self._data = data
+        atomic_write_json(self._data_file, {
+            "groups": [asdict(g) for g in groups.values()],
+            "global_subscriptions": [asdict(s) for s in subscriptions],
+            "scheduler_state": {f"notified_{k}": v for k, v in notified.items()},
+        })
         self._groups = groups
         self._global_subscriptions = subscriptions
-        self._notified_starts = starts
-        self._notified_results = results
-        self._notified_map_results = maps
+        self._notified = notified
 
     def is_enabled(self, group_id: int) -> bool:
         group = self._groups.get(group_id)
@@ -126,80 +101,53 @@ class DataManager:
             return []
         return [g.group_id for g in self._groups.values() if g.enabled]
 
-    def get_subscription(self, event_id: str) -> Optional[EventSubscription]:
+    def get_subscription(self, event_id: str) -> EventSubscription | None:
         return next((s for s in self._global_subscriptions if s.event_id == event_id), None)
 
     def update_subscription_meta(
         self, event_id: str, *, event_title: str,
         start_date: str, end_date: str,
-    ) -> bool:
+    ) -> None:
         current = self.get_subscription(event_id)
-        if current is None:
-            return False
-        updated = replace(
-            current, event_title=event_title,
-            start_date=start_date, end_date=end_date,
-        )
-        if updated == current:
-            return False
-        self._save(subscriptions=[
-            updated if s.event_id == event_id else s
-            for s in self._global_subscriptions
-        ])
-        return True
+        if current is not None:
+            self._replace_subscription(replace(
+                current, event_title=event_title,
+                start_date=start_date, end_date=end_date,
+            ))
 
     def set_mvp_status(self, event_id: str, status: str) -> None:
         current = self.get_subscription(event_id)
         if current is None:
             return
         since = datetime.now().isoformat() if status == "watching" else current.mvp_watch_since
-        updated = replace(current, mvp_status=status, mvp_watch_since=since)
+        self._replace_subscription(replace(current, mvp_status=status, mvp_watch_since=since))
+
+    def _replace_subscription(self, updated: EventSubscription) -> None:
+        if updated == self.get_subscription(updated.event_id):
+            return
         self._save(subscriptions=[
-            updated if s.event_id == event_id else s
+            updated if s.event_id == updated.event_id else s
             for s in self._global_subscriptions
         ])
 
-    def add_notified_start(self, match_id: str) -> None:
-        self._save(notified_starts={
-            **self._notified_starts, match_id: datetime.now().isoformat(),
+    def is_notified(self, kind: NotifiedKind, item_id: str) -> bool:
+        return item_id in self._notified[kind]
+
+    def mark_notified(self, kind: NotifiedKind, item_id: str) -> None:
+        self._save(notified={
+            **self._notified,
+            kind: {**self._notified[kind], item_id: datetime.now().isoformat()},
         })
 
-    def add_notified_result(self, match_id: str) -> None:
-        self._save(notified_results={
-            **self._notified_results, match_id: datetime.now().isoformat(),
-        })
-
-    def add_notified_map_result(self, notification_id: str) -> None:
-        self._save(notified_map_results={
-            **self._notified_map_results, notification_id: datetime.now().isoformat(),
-        })
-
-    def is_start_notified(self, match_id: str) -> bool:
-        return match_id in self._notified_starts
-
-    def is_result_notified(self, match_id: str) -> bool:
-        return match_id in self._notified_results
-
-    def is_map_result_notified(self, notification_id: str) -> bool:
-        return notification_id in self._notified_map_results
-
-    def cleanup_notified_state(self, ttl_days: int = 30) -> int:
+    def cleanup_notified_state(self, ttl_days: int) -> int:
         cutoff = datetime.now() - timedelta(days=max(1, ttl_days))
-        kept = [
-            {key: ts for key, ts in records.items() if datetime.fromisoformat(ts) >= cutoff}
-            for records in (
-                self._notified_starts, self._notified_results, self._notified_map_results,
-            )
-        ]
-        removed = (
-            len(self._notified_starts) + len(self._notified_results)
-            + len(self._notified_map_results) - sum(map(len, kept))
-        )
+        kept = {
+            kind: {key: ts for key, ts in records.items() if datetime.fromisoformat(ts) >= cutoff}
+            for kind, records in self._notified.items()
+        }
+        removed = sum(map(len, self._notified.values())) - sum(map(len, kept.values()))
         if removed:
-            self._save(
-                notified_starts=kept[0], notified_results=kept[1],
-                notified_map_results=kept[2],
-            )
+            self._save(notified=kept)
         return removed
 
 

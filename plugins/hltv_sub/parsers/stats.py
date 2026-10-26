@@ -5,150 +5,74 @@ HLTV match stats 页面解析（/matches/{id}/...）
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional
 
 from bs4 import BeautifulSoup, Tag
-from nonebot import logger
 
 from plugins.hltv_sub.models import (
     HalfScore, MapStats, MatchStats, PlayerStats, VrsChange,
 )
 from plugins.hltv_sub.parsers.common import (
     absolute_url, extract_id_from_url, flag_of, format_date,
-    is_grand_final_text, pick_logo,
+    is_grand_final_text, pick_logo, text_of,
 )
 
 
-def _parse_player_table(table: Tag, team_idx: int) -> List[PlayerStats]:
-    """解析选手数据表格，动态查找列（复刻原逻辑）"""
+def _parse_player_table(table: Tag, team: str) -> list[PlayerStats]:
+    """按表头找列：有的比赛有 eADR、没有 Swing。K-D、ADR、Rating 缺了就是页面变了。"""
+    headers = [
+        cell.get_text(strip=True).upper()
+        for cell in table.find("tr", class_="header-row").find_all(["th", "td"])
+    ]
+
+    def column(name: str, exclude: str = "") -> int:
+        return next(
+            (i for i, h in enumerate(headers) if name in h and not (exclude and exclude in h)),
+            -1,
+        )
+
+    idx_kd, idx_adr, idx_rating = column("K-D"), column("ADR", "EADR"), column("RATING")
+    idx_swing, idx_kast = column("SWING"), column("KAST", "EKAST")
+    if -1 in (idx_kd, idx_adr, idx_rating):
+        raise ValueError(f"HLTV 选手表缺少 K-D / ADR / Rating 列: {headers}")
+
     players: list[PlayerStats] = []
-
-    try:
-        # 1. 解析表头，确定列索引
-        headers: list[str] = []
-        header_row = table.find("tr", class_="header-row")
-        if not header_row and table.find("thead"):
-            header_row = table.find("thead").find("tr")  # type: ignore[union-attr]
-        if not header_row:
-            header_row = table.find("tr")
-
-        if not header_row:
-            return []
-
-        cols = header_row.find_all(["th", "td"])
-        headers = [c.get_text(strip=True).upper() for c in cols]
-
-        idx_kd = -1
-        idx_adr = -1
-        idx_rating = -1
-        idx_swing = -1
-        idx_kast = -1
-
-        for i, h in enumerate(headers):
-            if "K-D" in h:
-                idx_kd = i
-            elif "ADR" in h and "EADR" not in h:  # 避免匹配到 eADR
-                idx_adr = i
-            elif "RATING" in h:
-                idx_rating = i
-            elif "SWING" in h:
-                idx_swing = i
-            elif "KAST" in h and "EKAST" not in h:
-                idx_kast = i
-
-        # 回退默认索引
-        if idx_kd == -1 and len(headers) > 1:
-            idx_kd = 1
-        if idx_adr == -1 and len(headers) > 4:
-            idx_adr = 4
-        if idx_rating == -1:
-            idx_rating = len(headers) - 1
-
-        # 2. 解析数据行
-        rows = table.find_all("tr")
-        data_rows = [
-            r
-            for r in rows
-            if not r.find("th") and "header-row" not in (r.get("class") or [])
-        ]
-
-        for row in data_rows[:5]:  # 每队最多5人
-            cells = row.find_all("td")
-            if not cells:
-                continue
-
-            player_link = row.find("a", href=re.compile(r"/player/\d+/"))
-            player_id = (
-                extract_id_from_url(player_link.get("href", "")) if player_link else ""
+    rows = [
+        r for r in table.find_all("tr")
+        if not r.find("th") and "header-row" not in (r.get("class") or [])
+    ]
+    for row in rows[:5]:  # 每队最多5人
+        cells = row.find_all("td")
+        kills, deaths = cells[idx_kd].get_text(strip=True).split("-")
+        player_link = row.find("a", href=re.compile(r"/player/\d+/"))
+        country, country_name = flag_of(row.find("img", class_="flag"))
+        players.append(
+            PlayerStats(
+                id=extract_id_from_url(player_link["href"]) if player_link else "",
+                nickname=row.find("span", class_="player-nick").get_text(strip=True),
+                team=team,
+                kills=kills.strip(),
+                deaths=deaths.strip(),
+                adr=cells[idx_adr].get_text(strip=True),
+                rating=cells[idx_rating].get_text(strip=True),
+                swing=cells[idx_swing].get_text(strip=True) if idx_swing >= 0 else "-",
+                kast=cells[idx_kast].get_text(strip=True) if idx_kast >= 0 else "-",
+                country=country,
+                country_name=country_name,
             )
-
-            nickname = ""
-            nick_elem = row.find("span", class_="player-nick")
-            if nick_elem:
-                nickname = nick_elem.get_text(strip=True)
-
-            if not nickname:
-                mobile_name = row.find("div", class_="smartphone-only")
-                if mobile_name:
-                    nickname = mobile_name.get_text(strip=True)
-
-            if not nickname and player_link:
-                nickname = player_link.get_text(strip=True)
-
-            if not nickname and len(cells) > 0:
-                nickname = cells[0].get_text(strip=True)
-
-            kd = "0-0"
-            if idx_kd != -1 and idx_kd < len(cells):
-                kd = cells[idx_kd].get_text(strip=True)
-
-            adr = "0"
-            if idx_adr != -1 and idx_adr < len(cells):
-                adr = cells[idx_adr].get_text(strip=True)
-
-            rating = "0"
-            if idx_rating != -1 and idx_rating < len(cells):
-                rating = cells[idx_rating].get_text(strip=True)
-
-            swing = "-"
-            if idx_swing != -1 and idx_swing < len(cells):
-                swing = cells[idx_swing].get_text(strip=True)
-
-            kast = "-"
-            if idx_kast != -1 and idx_kast < len(cells):
-                kast = cells[idx_kast].get_text(strip=True)
-
-            kd_parts = kd.replace("/", "-").split("-")
-            kills = kd_parts[0].strip() if len(kd_parts) > 0 else "0"
-            deaths = kd_parts[1].strip() if len(kd_parts) > 1 else "0"
-
-            if not kills.replace("-", "").isdigit():
-                kills = "0"
-            if not deaths.replace("-", "").isdigit():
-                deaths = "0"
-
-            country, country_name = flag_of(row.find("img", class_="flag"))
-
-            players.append(
-                PlayerStats(
-                    id=player_id,
-                    nickname=nickname,
-                    team="team1" if team_idx == 0 else "team2",
-                    kills=kills,
-                    deaths=deaths,
-                    adr=adr,
-                    rating=rating,
-                    swing=swing,
-                    kast=kast,
-                    country=country,
-                    country_name=country_name,
-                )
-            )
-
-    except Exception as e:
-        logger.debug(f"[HLTV] 解析表格失败: {e}")
-
+        )
     return players
+
+
+def _parse_team_tables(container: Tag | None, table_class) -> list[PlayerStats]:
+    """前两张表依次是 team1、team2。"""
+    if container is None:
+        return []
+    tables = container.find_all("table", class_=table_class)[:2]
+    return [
+        player
+        for table, team in zip(tables, ("team1", "team2"))
+        for player in _parse_player_table(table, team)
+    ]
 
 
 def _parse_halves(map_holder: Tag) -> list[HalfScore]:
@@ -223,221 +147,122 @@ def parse_match_stats(
     team1: str = "",
     team2: str = "",
     event_title: str = "",
-) -> Optional[MatchStats]:
-    """解析 match 页面，抽取比分/地图/选手数据等（复刻原逻辑）"""
+) -> MatchStats:
+    """解析 match 页面。赛前、进行中、赛后结构不同，只有队名是必需的，其余缺了就空着。"""
     soup = BeautifulSoup(html, "lxml")
 
-    try:
-        # 获取队伍名
-        team_names = soup.find_all("div", class_="teamName")
-        if len(team_names) >= 2:
-            team1 = team1 or team_names[0].get_text(strip=True)
-            team2 = team2 or team_names[1].get_text(strip=True)
+    team_names = soup.find_all("div", class_="teamName")
+    if len(team_names) < 2:
+        raise ValueError(f"HLTV 比赛 {match_id} 页面缺少队名，页面结构可能已变")
+    team1 = team1 or team_names[0].get_text(strip=True)
+    team2 = team2 or team_names[1].get_text(strip=True)
 
-        # 获取比分
-        score1 = "0"
-        score2 = "0"
-        team_boxes = soup.find_all("div", class_="team")
-        for i, box in enumerate(team_boxes[:2]):
-            score_elem = box.find(class_=re.compile(r"score|won|lost"))
-            if score_elem:
-                score_text = score_elem.get_text(strip=True)
-                if score_text.isdigit():
-                    if i == 0:
-                        score1 = score_text
-                    else:
-                        score2 = score_text
-
-        if score1 == "0" and score2 == "0":
-            score_elems = soup.find_all(class_=re.compile(r"score$|won$|lost$"))
-            for elem in score_elems:
-                text = elem.get_text(strip=True)
-                if text.isdigit():
-                    if score1 == "0":
-                        score1 = text
-                    elif score2 == "0":
-                        score2 = text
-                        break
-
-        team1_logo, team1_country, team1_country_name = _parse_team_box(soup, 1)
-        team2_logo, team2_country, team2_country_name = _parse_team_box(soup, 2)
-        team1_vrs, team2_vrs = _parse_vrs(soup)
-
-        # 获取状态
-        status = "完成"
-        countdown = soup.find("div", class_="countdown")
-        if countdown:
-            status = countdown.get_text(strip=True)
-
-        date_elem = soup.select_one(".timeAndEvent .date[data-unix]")
-        match_date = format_date(date_elem.get("data-unix", ""), tz) if date_elem else ""
-        if not event_title:
-            event_elem = soup.select_one(".timeAndEvent .event a")
-            event_title = event_elem.get_text(strip=True) if event_elem else ""
-
-        # 第一个 veto-box 是赛制说明（"Best of 3 (LAN)" + "* Semi-final"），其后才是 BP。
-        vetos: list[str] = []
-        format_line = ""
-        stage = ""
-        is_grand_final = False
-        for box in soup.find_all("div", class_="veto-box"):
-            lines = [
-                line.strip() for line in box.get_text("\n").split("\n") if line.strip()
-            ]
-            if box.find(class_="preformatted-text"):
-                for line in lines:
-                    if line.startswith("*"):
-                        stage = stage or line.lstrip("* ").strip()
-                        # 决赛前后可能还有优势图等备注行，逐条认。
-                        is_grand_final = is_grand_final or is_grand_final_text(line)
-                    else:
-                        format_line = format_line or line
-                continue
-            vetos.extend(line for line in lines if not line.startswith("*"))
-
-        # 解析地图列表和 stats id
-        maps: list[MapStats] = []
-        map_holders = soup.find_all("div", class_="mapholder")
-
-        for map_holder in map_holders:
-            try:
-                map_name_elem = map_holder.find("div", class_="mapname")
-                map_name = map_name_elem.get_text(strip=True) if map_name_elem else ""
-
-                if not map_name or map_name == "TBA":
-                    continue
-
-                stats_id = ""
-                stats_link = map_holder.find("a", href=re.compile(r"mapstatsid/(\d+)"))
-                if stats_link:
-                    m = re.search(r"mapstatsid/(\d+)", stats_link.get("href", "") or "")
-                    if m:
-                        stats_id = m.group(1)
-
-                if not stats_id:
-                    html_str = str(map_holder)
-                    m = re.search(r"mapstatsid/(\d+)", html_str)
-                    if m:
-                        stats_id = m.group(1)
-
-                map_score1 = "-"
-                map_score2 = "-"
-
-                results_left = map_holder.find(["div", "span"], class_="results-left")
-                results_right = map_holder.find(["div", "span"], class_="results-right")
-
-                if results_left:
-                    score_elem = results_left.find("div", class_="results-team-score")
-                    if score_elem:
-                        map_score1 = score_elem.get_text(strip=True)
-
-                if results_right:
-                    score_elem = results_right.find("div", class_="results-team-score")
-                    if score_elem:
-                        map_score2 = score_elem.get_text(strip=True)
-
-                if map_score1 == "-" and map_score2 == "-":
-                    score_elems = map_holder.find_all(class_="results-team-score")
-                    if len(score_elems) >= 2:
-                        map_score1 = score_elems[0].get_text(strip=True)
-                        map_score2 = score_elems[1].get_text(strip=True)
-
-                map_score1 = re.sub(r"[^\d-]", "", map_score1) or "-"
-                map_score2 = re.sub(r"[^\d-]", "", map_score2) or "-"
-
-                # 选图方那一侧带 pick class；两侧都没有就是 decider。
-                pick_by = ""
-                if results_left and "pick" in (results_left.get("class") or []):
-                    pick_by = "team1"
-                elif results_right and "pick" in (results_right.get("class") or []):
-                    pick_by = "team2"
-
-                minimap = map_holder.find("img", class_="minimap")
-
-                maps.append(
-                    MapStats(
-                        map_name=map_name,
-                        pick_by=pick_by,
-                        score_team1=map_score1,
-                        score_team2=map_score2,
-                        stats_id=stats_id,
-                        halves=_parse_halves(map_holder),
-                        image=absolute_url(minimap.get("src", "")) if minimap else "",
-                    )
-                )
-            except Exception as e:
-                logger.debug(f"[HLTV] 解析地图失败: {e}")
-                continue
-
-        # 解析总选手数据 (id="all-content")
-        total_players: list[PlayerStats] = []
-        all_content = soup.find("div", id="all-content")
-        if all_content:
-            stats_tables = all_content.find_all("table", class_="totalstats")
-            for idx, table in enumerate(stats_tables[:2]):
-                team_players = _parse_player_table(table, idx)
-                total_players.extend(team_players)
-        else:
-            stats_tables = soup.find_all("table", class_="totalstats")
-            if not stats_tables:
-                all_tables = soup.find_all(
-                    "table", class_=re.compile(r"stats|totalstats")
-                )
-                stats_tables = [
-                    t for t in all_tables if "hidden" not in (t.get("class") or [])
-                ]
-
-            for idx, table in enumerate(stats_tables[:2]):
-                team_players = _parse_player_table(table, idx)
-                total_players.extend(team_players)
-
-        # 解析单图选手数据
-        map_stats_details: Dict[str, List[PlayerStats]] = {}
-        for map_info in maps:
-            if not map_info.stats_id:
-                continue
-
-            content_id = f"{map_info.stats_id}-content"
-            content_div = soup.find("div", id=content_id)
-
-            if content_div:
-                map_players: list[PlayerStats] = []
-                tables = content_div.find_all(
-                    "table", class_=re.compile(r"stats-table|totalstats")
-                )
-                for idx, table in enumerate(tables[:2]):
-                    team_players = _parse_player_table(table, idx)
-                    map_players.extend(team_players)
-
-                if map_players:
-                    map_stats_details[map_info.map_name] = map_players
-
-        return MatchStats(
-            match_id=match_id,
-            team1=team1,
-            team2=team2,
-            score1=score1,
-            score2=score2,
-            status=status,
-            maps=maps,
-            players=total_players,
-            map_stats_details=map_stats_details,
-            vetos=vetos,
-            event=event_title,
-            team1_logo=team1_logo,
-            team2_logo=team2_logo,
-            team1_country=team1_country,
-            team1_country_name=team1_country_name,
-            team2_country=team2_country,
-            team2_country_name=team2_country_name,
-            format_line=format_line,
-            stage=stage,
-            is_grand_final=is_grand_final,
-            date=match_date,
-            team1_vrs=team1_vrs,
-            team2_vrs=team2_vrs,
+    # 系列赛比分：赛前和第一张图打完前没有，记 0
+    score1, score2 = (
+        score if score.isdigit() else "0"
+        for score in (
+            text_of(box.find(class_=re.compile(r"score|won|lost")))
+            for box in soup.find_all("div", class_="team")[:2]
         )
+    )
 
-    except Exception as e:
-        logger.error(f"[HLTV] 解析比赛数据失败: {e}")
+    team1_logo, team1_country, team1_country_name = _parse_team_box(soup, 1)
+    team2_logo, team2_country, team2_country_name = _parse_team_box(soup, 2)
+    team1_vrs, team2_vrs = _parse_vrs(soup)
+
+    status = text_of(soup.find("div", class_="countdown")) or "完成"
+    date_elem = soup.select_one(".timeAndEvent .date[data-unix]")
+    match_date = format_date(date_elem["data-unix"], tz) if date_elem else ""
+    event_title = event_title or text_of(soup.select_one(".timeAndEvent .event a"))
+
+    # 第一个 veto-box 是赛制说明（"Best of 3 (LAN)" + "* Semi-final"），其后才是 BP。
+    vetos: list[str] = []
+    format_line = ""
+    stage = ""
+    is_grand_final = False
+    for box in soup.find_all("div", class_="veto-box"):
+        lines = [
+            line.strip() for line in box.get_text("\n").split("\n") if line.strip()
+        ]
+        if box.find(class_="preformatted-text"):
+            for line in lines:
+                if line.startswith("*"):
+                    stage = stage or line.lstrip("* ").strip()
+                    # 决赛前后可能还有优势图等备注行，逐条认。
+                    is_grand_final = is_grand_final or is_grand_final_text(line)
+                else:
+                    format_line = format_line or line
+            continue
+        vetos.extend(line for line in lines if not line.startswith("*"))
+
+    maps = [
+        map_info for map_info in map(_parse_map, soup.find_all("div", class_="mapholder"))
+        if map_info is not None
+    ]
+    # 单图数据在 {mapstatsid}-content 里，没打完的图没有
+    map_stats_details = {}
+    for map_info in maps:
+        if map_info.stats_id and (players := _parse_team_tables(
+            soup.find("div", id=f"{map_info.stats_id}-content"),
+            re.compile(r"stats-table|totalstats"),
+        )):
+            map_stats_details[map_info.map_name] = players
+
+    return MatchStats(
+        match_id=match_id,
+        team1=team1,
+        team2=team2,
+        score1=score1,
+        score2=score2,
+        status=status,
+        maps=maps,
+        players=_parse_team_tables(soup.find("div", id="all-content"), "totalstats"),
+        map_stats_details=map_stats_details,
+        vetos=vetos,
+        event=event_title,
+        team1_logo=team1_logo,
+        team2_logo=team2_logo,
+        team1_country=team1_country,
+        team1_country_name=team1_country_name,
+        team2_country=team2_country,
+        team2_country_name=team2_country_name,
+        format_line=format_line,
+        stage=stage,
+        is_grand_final=is_grand_final,
+        date=match_date,
+        team1_vrs=team1_vrs,
+        team2_vrs=team2_vrs,
+    )
+
+
+def _parse_map(map_holder: Tag) -> MapStats | None:
+    """未定的图（TBA）返回 None；没打的图比分是 "-"。"""
+    map_name = text_of(map_holder.find("div", class_="mapname"))
+    if not map_name or map_name == "TBA":
         return None
+    stats_link = map_holder.find("a", href=re.compile(r"mapstatsid/\d+"))
+    left = map_holder.find(["div", "span"], class_="results-left")
+    right = map_holder.find(["div", "span"], class_="results-right")
+
+    def score(side: Tag | None) -> str:
+        text = text_of(side.find("div", class_="results-team-score")) if side else ""
+        return re.sub(r"[^\d-]", "", text) or "-"
+
+    # 选图方那一侧带 pick class；两侧都没有就是 decider。
+    pick_by = ""
+    if left and "pick" in (left.get("class") or []):
+        pick_by = "team1"
+    elif right and "pick" in (right.get("class") or []):
+        pick_by = "team2"
+    minimap = map_holder.find("img", class_="minimap")
+    return MapStats(
+        map_name=map_name,
+        pick_by=pick_by,
+        score_team1=score(left),
+        score_team2=score(right),
+        stats_id=(
+            re.search(r"mapstatsid/(\d+)", stats_link["href"]).group(1) if stats_link else ""
+        ),
+        halves=_parse_halves(map_holder),
+        image=absolute_url(minimap.get("src", "")) if minimap else "",
+    )

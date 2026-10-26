@@ -16,7 +16,6 @@ from nonebot_plugin_apscheduler import scheduler
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.data_manager import data_manager
 from plugins.hltv_sub.handler import UPCOMING_WINDOW_HOURS, get_event_state, hltv_handler
-from plugins.hltv_sub.models import EventCheckResult
 
 DEFAULT_INTERVAL_MINUTES = 3
 ADAPTIVE_INTERVAL_TABLE = [(60, 3), (6 * 60, 30), (24 * 60, 180)]
@@ -92,13 +91,12 @@ class HLTVScheduler:
         for event_id in sorted(self._events):
             schedule = self._events.get(event_id)
             if schedule is not None and schedule.next_check_at <= datetime.now(self._tz):
-                await self.run_check_for_event(event_id)
+                await self._check_event(event_id)
 
-    async def run_check_for_event(self, event_id: str) -> EventCheckResult:
-        result = EventCheckResult(event_id)
+    async def _check_event(self, event_id: str) -> None:
         sub = data_manager.get_subscription(event_id)
-        if sub is None or not data_manager.has_enabled_groups():
-            return result
+        if sub is None:
+            return
         now = datetime.now(self._tz)
         schedule = self._events.setdefault(event_id, _Schedule(now))
         state = get_event_state(sub, now, self._end_grace_days)
@@ -107,18 +105,18 @@ class HLTVScheduler:
                 date.fromisoformat(sub.start_date), time.min,
             ))
             schedule.next_check_at = start_at - timedelta(hours=UPCOMING_WINDOW_HOURS)
-            return result
+            return
         if state not in ("ONGOING", "UPCOMING"):
             schedule.next_check_at = now + timedelta(days=1)
             if state == "UNKNOWN":
                 logger.warning(f"[HLTV] 赛事 {event_id} 日期无效，等待维护补全")
-            return result
+            return
 
-        result = await hltv_handler.run_check_for_event(event_id)
+        result = await hltv_handler.run_check_for_event(sub)
         sub = data_manager.get_subscription(event_id)
         if sub is None:
             self.sync_events()
-            return result
+            return
 
         now = datetime.now(self._tz)
         if result.live_seen_at is not None:
@@ -128,7 +126,8 @@ class HLTVScheduler:
             and now - schedule.last_live_seen_at <= timedelta(minutes=POST_LIVE_GRACE_MINUTES)
         )
         watching_mvp = sub.mvp_status == "watching"
-        if result.has_error or result.has_live_match or in_grace or watching_mvp:
+        # 本轮看到直播时 last_live_seen_at 刚更新，也落在宽限期里
+        if result.has_error or in_grace or watching_mvp:
             minutes = DEFAULT_INTERVAL_MINUTES
         elif result.next_minutes_hint is None:
             minutes = 360
@@ -147,28 +146,14 @@ class HLTVScheduler:
                 schedule.next_check_at, datetime.fromtimestamp(result.retry_at, self._tz),
             )
         logger.debug(f"[HLTV] 赛事 {event_id} 下次检查：{schedule.next_check_at.isoformat()}")
-        return result
-
-    async def run_check(self) -> dict:
-        """手动触发忽略 next_check_at，但仍经过业务锁、节流和冷却。"""
-        self.sync_events()
-        summary = {
-            "start_candidates": 0, "map_candidates": 0,
-            "result_candidates": 0, "errors": [],
-        }
-        for event_id in sorted(data_manager.get_all_subscribed_event_ids()):
-            result = await self.run_check_for_event(event_id)
-            summary["start_candidates"] += result.start_candidates
-            summary["map_candidates"] += result.map_candidates
-            summary["result_candidates"] += result.result_candidates
-            summary["errors"].extend(result.errors)
-        return summary
 
     async def daily_maintenance(self) -> None:
-        try:
-            await hltv_handler.daily_maintenance()
-        finally:
-            self.sync_events(wake=True)
+        # 和周期检查共用轮次锁：维护要等这一轮跑完，维护期间的检查拍直接跳过
+        async with self._round_lock:
+            try:
+                await hltv_handler.daily_maintenance()
+            finally:
+                self.sync_events(wake=True)
 
     async def auto_subscribe_big_events(self) -> list[str]:
         try:

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List
 
 
 @dataclass
@@ -159,7 +158,7 @@ class MatchStats:
     status: str
     maps: list[MapStats]
     players: list[PlayerStats]  # 总数据
-    map_stats_details: Dict[str, List[PlayerStats]] = field(
+    map_stats_details: dict[str, list[PlayerStats]] = field(
         default_factory=dict
     )  # 单图详细数据 {map_name: players}
     vetos: list[str] = field(default_factory=list)
@@ -181,8 +180,6 @@ class MatchStats:
 @dataclass
 class EventMatchesMeta:
     final_url: str = ""
-    page_title: str = ""
-    match_wrapper_count: int = 0
     is_unavailable: bool = False
     unavailable_reason: str = ""
 
@@ -195,29 +192,10 @@ class EventMatchesPage:
 
 
 @dataclass
-class UpcomingMatch:
-    """即将开始的比赛信息"""
-
-    match_id: str
-    team1: str
-    team2: str
-    event_id: str
-    event_title: str
-    start_time: datetime
-    maps: str = ""
-    is_grand_final: bool = False
-    is_third_place: bool = False
-
-
-@dataclass
 class EventCheckResult:
-    event_id: str
-    start_candidates: int = 0
-    map_candidates: int = 0
-    result_candidates: int = 0
-    errors: list[str] = field(default_factory=list)
-    next_minutes_hint: int | None = None
-    has_live_match: bool = False
-    live_seen_at: datetime | None = None
+    """一轮检查里调度要用的信息。"""
+
+    next_minutes_hint: int | None = None  # 距最近一场开赛的分钟数，0 表示已到点
+    live_seen_at: datetime | None = None  # 本轮看到直播的时刻
     has_error: bool = False
-    retry_at: float = 0
+    retry_at: float = 0  # 冷却结束的时间戳
