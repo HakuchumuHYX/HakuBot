@@ -1,376 +1,211 @@
-from __future__ import annotations
+"""轮询橘鸦 RSS：出了新一期就渲染长图、写导语，推给开启早报的群"""
 
-import time
-from typing import Any
+import asyncio
+import json
 
-import aiohttp
-from nonebot import logger, require
-from nonebot.adapters.onebot.v11 import Bot
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
+from nonebot import get_driver, logger, require
+from nonebot.adapters.onebot.v11 import Bot, MessageSegment
 
 require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler as apscheduler
+from nonebot_plugin_apscheduler import scheduler
 
+from core.access import is_enabled
+from plugins.juya_daily_fetcher.config import PLUGIN_ID, STATE_FILE, plugin_config
+from plugins.juya_daily_fetcher.parser import FeedItem, parse_feed, parse_issue
+from plugins.juya_daily_fetcher.render import render_issue
+from plugins.juya_daily_fetcher.summary import summarize
+from utils.json_io import atomic_write_json
+from utils.logging import get_exc_desc
 from utils.network.http import (
-    DEFAULT_TIMEOUT,
     INSECURE_SSL,
     HttpError,
     get_client_session,
     get_effective_proxy,
 )
-from utils.logging import get_exc_desc
-from plugins.juya_daily_fetcher.config import (
-    ARTICLE_DIR,
-    DEFAULT_USER_AGENT,
-    plugin_config,
-)
-from plugins.juya_daily_fetcher.deliver import (
-    deliver_pending,
-    enabled_targets,
-    get_group_bot_map,
-    send_debug,
-)
-from plugins.juya_daily_fetcher.parser import (
-    build_raw_document,
-    current_seen,
-    event_id_for,
-    now_iso,
-    parse_date,
-    parse_feed,
-)
-from plugins.juya_daily_fetcher.render import render_document
-from plugins.juya_daily_fetcher.store import (
-    abandon_pending,
-    load_state,
-    mark_pending_alerted,
-    mark_pending_failure,
-    pending_expired,
-    pending_images_missing,
-    pending_keep_names,
-    save_json,
-    save_state,
-)
-from plugins.juya_daily_fetcher.summary import summarize_directory
+from utils.onebot.forward import ForwardItem, send_forward_msg
+from utils.onebot.media import image_segment
 
-POLL_JOB_ID = "juya_daily_fetcher_poll"
-CLEANUP_JOB_ID = "juya_daily_fetcher_cleanup"
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+)
+FORWARD_NAME = "JUYA AI DAILY"
+SEND_INTERVAL_SECONDS = 1.5
 
+# 渲染持续失败时只在第一次记 traceback，避免每 15 分钟刷一遍
 _render_failing = False
 
 
-def _should_retry_feed(exc: BaseException) -> bool:
-    if isinstance(exc, HttpError):
-        return exc.status_code >= 500
-    return isinstance(exc, (aiohttp.ClientError, TimeoutError, OSError))
+def _load_state() -> dict:
+    """etag / last_modified：RSS 条件请求；seen：RSS 里已处理过的 guid"""
+    if not STATE_FILE.exists():
+        return {}
+    return json.loads(STATE_FILE.read_text(encoding="utf-8"))
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_fixed(1),
-    retry=retry_if_exception(_should_retry_feed),
-    reraise=True,
-)
-async def fetch_feed(
-    feed_url: str, state: dict[str, Any]
-) -> tuple[str, bytes | None, dict[str, str]]:
+async def _fetch_feed(state: dict) -> tuple[bytes, dict] | None:
+    """RSS 未变（304）返回 None，否则返回（内容，新的缓存头）"""
     headers = {
         "Accept": "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.1",
-        "User-Agent": DEFAULT_USER_AGENT,
+        "User-Agent": USER_AGENT,
     }
     if state.get("etag"):
-        headers["If-None-Match"] = str(state["etag"])
+        headers["If-None-Match"] = state["etag"]
     if state.get("last_modified"):
-        headers["If-Modified-Since"] = str(state["last_modified"])
+        headers["If-Modified-Since"] = state["last_modified"]
     async with get_client_session().get(
-        feed_url,
+        plugin_config.feed_url,
         headers=headers,
         proxy=get_effective_proxy(),
-        verify_ssl=not INSECURE_SSL,
-        timeout=DEFAULT_TIMEOUT,
+        ssl=False if INSECURE_SSL else None,
     ) as response:
         if response.status == 304:
-            return "not_modified", None, {}
+            return None
         if response.status >= 400:
             raise HttpError(response.status, response.reason or "")
-        return (
-            "updated",
-            await response.read(),
-            {
-                "etag": response.headers.get("ETag", ""),
-                "last_modified": response.headers.get("Last-Modified", ""),
-            },
-        )
+        cache_headers = {
+            "etag": response.headers.get("ETag", ""),
+            "last_modified": response.headers.get("Last-Modified", ""),
+        }
+        return await response.read(), cache_headers
 
 
-async def _alert_pending_stuck(pending: dict[str, Any]) -> None:
-    text = (
-        "【橘鸦 AI 早报】投递持续失败，将继续重试且不会把这期标成已读。\n"
-        f"失败次数：{pending.get('fail_count') or 0}\n"
-        f"最近错误：{pending.get('last_error') or '无'}"
-    )
-    bots_by_group = await get_group_bot_map()
-    bot: Bot | None = next(iter(bots_by_group.values()), None)
-    if bot is None:
-        from nonebot import get_bot
-
+async def _enabled_groups() -> dict[int, Bot]:
+    """开启早报的群 → 负责发送的 Bot；同一个群只由第一个认领它的 Bot 发，避免多开重复"""
+    groups: dict[int, Bot] = {}
+    for bot in get_driver().bots.values():
+        if not isinstance(bot, Bot):
+            continue
         try:
-            maybe_bot = get_bot()
-        except (ValueError, KeyError):
-            logger.warning("早报投递失败告警暂时无法发送（无可用 Bot 连接）")
-            return
-        bot = maybe_bot if isinstance(maybe_bot, Bot) else None
-    if bot is None:
-        logger.warning("早报投递失败告警暂时无法发送（无 OneBot v11 连接）")
-        return
-
-    user_ids: list[str] = []
-    if plugin_config.debug_user_id:
-        user_ids.append(plugin_config.debug_user_id)
-    else:
-        user_ids.extend(
-            str(item) for item in (getattr(bot.config, "superusers", None) or [])
-        )
-    if not user_ids:
-        logger.warning(
-            "早报投递持续失败，但未配置 debug_user_id / superusers，无法告警"
-        )
-        return
-
-    for user_id in user_ids:
-        try:
-            await bot.send_private_msg(user_id=int(user_id), message=text)
+            group_list = await bot.get_group_list()
         except Exception as exc:
             logger.warning(
-                f"向 {user_id} 发送早报投递失败告警失败: {get_exc_desc(exc)}"
+                f"获取机器人 {bot.self_id} 的群列表失败: {get_exc_desc(exc)}"
             )
+            continue
+        for group in group_list:
+            group_id = group["group_id"]
+            if group_id not in groups and is_enabled(PLUGIN_ID, str(group_id)):
+                groups[group_id] = bot
+    return groups
 
 
-async def _prepare_and_queue(
-    state: dict[str, Any], items: list[dict[str, Any]], updates: list[dict[str, Any]]
+async def _prepare(item: FeedItem) -> tuple[str, str, list[MessageSegment]]:
+    """返回（日期，导语，长图消息段）；消息段只生成一次，各群共用"""
+    issue = parse_issue(item)
+    pages = await render_issue(issue)
+    summary = await summarize(issue)
+    return issue.date, summary, [image_segment(page) for page in pages]
+
+
+async def _send(
+    bot: Bot, summary: str, images: list[MessageSegment], **target: int
 ) -> None:
-    updates.sort(key=lambda item: parse_date(str(item["pub_date"])))
-    event_id = event_id_for(updates)
-    document = build_raw_document(plugin_config.feed_url, updates)
-    json_path = ARTICLE_DIR / f"{event_id}.json"
-    image_paths = await render_document(document, event_id)
-    summary = await summarize_directory(document["directory"], document["date"])
-    document["summary"] = summary
-    save_json(json_path, document)
-    logger.info(f"已解析并渲染早报，共 {len(image_paths)} 页")
-    state["pending"] = {
-        "kind": "rss_fanout",
-        "event_id": event_id,
-        "json_path": str(json_path),
-        "summary": summary,
-        "image_paths": [str(path) for path in image_paths],
-        "source_url": str(document.get("source_url") or ""),
-        # 投递时按当时开着早报的群逐个记录
-        "targets": {},
-        "seen_after": current_seen(items),
-        "created_at": now_iso(),
-        "fail_count": 0,
-    }
-    save_state(state)
+    """target 是 group_id=… 或 user_id=…"""
+    if summary:
+        api = "send_group_msg" if "group_id" in target else "send_private_msg"
+        await bot.call_api(api, message=summary, **target)
+        await asyncio.sleep(SEND_INTERVAL_SECONDS)
+    # 转发超时视为已发出（不补发），被拒时逐张补发
+    await send_forward_msg(
+        bot,
+        items=[ForwardItem(content=image, name=FORWARD_NAME) for image in images],
+        timeout=120.0,
+        fallback_interval=SEND_INTERVAL_SECONDS,
+        **target,
+    )
 
 
-async def _deliver_or_record_failure(state: dict[str, Any]) -> str:
-    bots_by_group = await get_group_bot_map()
-    if not bots_by_group:
-        logger.debug("当前没有可用的 Bot 连接，跳过本轮早报投递")
-        return "no_bot"
-    try:
-        await deliver_pending(state, bots_by_group=bots_by_group)
-    except Exception as exc:
-        mark_pending_failure(state, get_exc_desc(exc))
-        logger.opt(exception=True).warning(
-            f"早报投递失败，下轮重试: {get_exc_desc(exc)}"
-        )
-        return "deliver_failed"
-    return "delivered_pending" if state.get("pending") else "delivered"
-
-
-async def run_once(*, force_latest: bool = False) -> str:
+async def poll() -> None:
     global _render_failing
-    state = load_state()
-    pending = state.get("pending")
-    if isinstance(pending, dict):
-        if pending_images_missing(pending):
-            logger.warning(
-                "pending 图片已缺失，丢弃 pending 但不推进已读，下一轮将重新渲染"
-            )
-            abandon_pending(state)
-            state = load_state()
-        else:
-            if pending_expired(pending) and not pending.get("alerted_at"):
-                logger.error(
-                    "早报 pending 已超过失败阈值，将告警并继续重试 "
-                    f"fail_count={pending.get('fail_count')} last_error={pending.get('last_error')}"
-                )
-                await _alert_pending_stuck(pending)
-                mark_pending_alerted(state)
-            return await _deliver_or_record_failure(state)
+    groups = await _enabled_groups()
+    if not groups:
+        logger.debug("没有群开启早报（或 Bot 未连接），跳过本轮")
+        return
 
-    if not force_latest and not enabled_targets(await get_group_bot_map()):
-        logger.debug("没有群开启早报，跳过本轮轮询")
-        return "no_targets"
-
+    state = _load_state()
     try:
-        fetch_status, feed_bytes, headers = await fetch_feed(
-            plugin_config.feed_url,
-            {} if force_latest else state,
-        )
+        fetched = await _fetch_feed(state)
     except Exception as exc:
-        logger.warning(f"拉取早报 RSS 失败: {get_exc_desc(exc)}")
-        return "fetch_failed"
+        logger.warning(f"拉取早报 RSS 失败，等下一轮: {get_exc_desc(exc)}")
+        return
+    if fetched is None:
+        logger.debug("早报 RSS 未更新（304）")
+        return
 
-    if fetch_status == "not_modified":
-        logger.debug("RSS 未更新（HTTP 304）")
-        return "not_modified"
-    if feed_bytes is None:
-        logger.warning("RSS 返回空内容")
-        return "fetch_failed"
+    xml, cache_headers = fetched
+    items = parse_feed(xml)
+    seen = state.get("seen")
+    new_state = {**cache_headers, "seen": [item.guid for item in items]}
+    if seen is None:
+        atomic_write_json(STATE_FILE, new_state)
+        logger.info(f"已建立基线（{len(items)} 条），本轮不推送历史早报")
+        return
+    # 只认 guid、不比正文：站点会整批重新生成旧期（调换视频链接顺序、换 BV 号），
+    # 按正文变化推送会让群里反复收到旧早报
+    new_items = [item for item in items if item.guid not in seen]
+    if not new_items:
+        atomic_write_json(STATE_FILE, new_state)
+        return
 
+    # 停机跨天时会一次出现多期，只推最新一期，旧的一并标为已读
+    latest = max(new_items, key=lambda item: item.published)
     try:
-        items = parse_feed(feed_bytes)
+        date, summary, images = await _prepare(latest)
     except Exception as exc:
-        logger.exception(f"解析早报 RSS 失败: {get_exc_desc(exc)}")
-        return "parse_failed"
-
-    if not force_latest:
-        state.update(
-            {
-                "feed_url": plugin_config.feed_url,
-                "etag": headers.get("etag", state.get("etag", "")),
-                "last_modified": headers.get(
-                    "last_modified", state.get("last_modified", "")
-                ),
-                "last_checked_at": now_iso(),
-            }
-        )
-
-    if force_latest:
-        updates = [dict(items[0], change_kind="manual")]
-    else:
-        if not state.get("initialized"):
-            state.update(
-                {
-                    "initialized": True,
-                    "seen": current_seen(items),
-                    "initialized_at": now_iso(),
-                }
-            )
-            save_state(state)
-            logger.info(f"已建立基线（{len(items)} 条），本轮不推送历史早报")
-            return "initialized"
-        seen = state.get("seen") if isinstance(state.get("seen"), dict) else {}
-        # 只推新期数：站点会整批重新生成旧期（如调换视频链接顺序、换 BV 号），
-        # 已推过的期数正文变化不再推送，下面无更新分支会静默刷新 fingerprint
-        updates = [
-            dict(item, change_kind="new")
-            for item in items
-            if not isinstance(seen.get(item["guid"]), dict)
-        ]
-        if not updates:
-            state["seen"] = current_seen(items)
-            save_state(state)
-            logger.debug(f"早报无更新（共检查 {len(items)} 条）")
-            return "no_updates"
-
-    try:
-        await _prepare_and_queue(state, items, updates)
-    except Exception as exc:
-        # 渲染失败不推进已读，每轮都会重试；只在第一次失败时记 traceback
+        # 不写 state：下一轮拿不到 304，会重新解析渲染
         if _render_failing:
-            logger.debug(f"渲染早报仍失败: {get_exc_desc(exc)}")
+            logger.debug(f"早报解析/渲染仍失败: {get_exc_desc(exc)}")
         else:
-            logger.exception(f"渲染早报失败，之后每轮重试: {get_exc_desc(exc)}")
+            logger.exception(f"早报解析/渲染失败，之后每轮重试: {get_exc_desc(exc)}")
             _render_failing = True
-        return "render_failed"
+        return
     if _render_failing:
-        logger.info("早报渲染已恢复")
+        logger.info("早报解析/渲染已恢复")
         _render_failing = False
 
-    result = await _deliver_or_record_failure(state)
-    if result == "delivered":
-        logger.info(f"已向 {len(state['last_delivery_targets'])} 个群投递早报")
-    return result
+    # 先记已读再发：发送途中重启会漏掉没发完的群，但不会重复推送
+    atomic_write_json(STATE_FILE, new_state)
+    if len(new_items) > 1:
+        logger.info(f"本轮有 {len(new_items)} 期新早报，只推送最新的 {date}")
+    sent = 0
+    for index, (group_id, bot) in enumerate(groups.items()):
+        if index:
+            await asyncio.sleep(SEND_INTERVAL_SECONDS)
+        try:
+            await _send(bot, summary, images, group_id=group_id)
+        except Exception as exc:
+            logger.warning(f"群 {group_id} 早报发送失败: {get_exc_desc(exc)}")
+            continue
+        sent += 1
+    logger.info(f"早报 {date} 已推送 {sent}/{len(groups)} 个群（{len(images)} 页）")
 
 
-async def run_debug(bot: Bot) -> str:
-    fetch_status, feed_bytes, _headers = await fetch_feed(plugin_config.feed_url, {})
-    if feed_bytes is None:
-        raise RuntimeError("RSS 返回空内容")
-    items = parse_feed(feed_bytes)
-    item = dict(items[0], change_kind="debug")
-    document = build_raw_document(plugin_config.feed_url, [item])
-    event_id = f"debug-{event_id_for([item])}"
-    image_paths = await render_document(document, event_id)
-    summary = await summarize_directory(document["directory"], document["date"])
-    document["summary"] = summary
-    save_json(ARTICLE_DIR / f"{event_id}.json", document)
-    await send_debug(bot, plugin_config.debug_user_id, summary, image_paths)
-    return f"已向 {plugin_config.debug_user_id} 发送 {len(image_paths)} 页测试早报"
+async def send_debug(bot: Bot) -> str:
+    """把 RSS 最新一期发到 debug 私聊，不读写 state"""
+    xml, _ = await _fetch_feed({})
+    items = parse_feed(xml)
+    latest = max(items, key=lambda item: item.published)
+    date, summary, images = await _prepare(latest)
+    await _send(bot, summary, images, user_id=int(plugin_config.debug_user_id))
+    return f"已发送 {date} 的测试早报（{len(images)} 页）"
 
 
-async def poll_juya_daily() -> None:
+async def _poll_job() -> None:
     try:
-        result = await run_once()
-        logger.debug(f"橘鸦早报轮询结束: {result}")
+        await poll()
     except Exception as exc:
         logger.exception(f"橘鸦早报轮询失败: {get_exc_desc(exc)}")
 
 
-async def cleanup_articles() -> None:
-    retention_days = plugin_config.article_retention_days
-    cutoff = time.time() - retention_days * 86400
-    pending = load_state().get("pending")
-    keep = pending_keep_names(pending if isinstance(pending, dict) else None)
-    if not ARTICLE_DIR.exists():
-        return
-    removed = 0
-    for path in ARTICLE_DIR.iterdir():
-        if not path.is_file() or path.suffix.lower() not in {".png", ".json"}:
-            continue
-        if path.name in keep:
-            continue
-        try:
-            if path.stat().st_mtime > cutoff:
-                continue
-            path.unlink()
-            removed += 1
-        except OSError as exc:
-            logger.warning(f"清理早报产物失败 {path}: {exc}")
-    if removed:
-        logger.info(f"已清理 {removed} 个过期早报产物")
-
-
-def _register_jobs() -> None:
-    interval = plugin_config.poll_interval_minutes
-    try:
-        apscheduler.add_job(
-            poll_juya_daily,
-            trigger="interval",
-            minutes=interval,
-            jitter=30,
-            id=POLL_JOB_ID,
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-        )
-        apscheduler.add_job(
-            cleanup_articles,
-            trigger="cron",
-            hour=4,
-            minute=20,
-            id=CLEANUP_JOB_ID,
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-        )
-    except (ValueError, TypeError, LookupError) as exc:
-        logger.error(f"注册橘鸦早报定时任务失败: {get_exc_desc(exc)}")
-        return
-    logger.info(f"橘鸦早报轮询任务已注册：间隔 {interval} 分钟")
-
-
-_register_jobs()
+scheduler.add_job(
+    _poll_job,
+    trigger="interval",
+    minutes=plugin_config.poll_interval_minutes,
+    jitter=30,
+    id="juya_daily_fetcher_poll",
+    replace_existing=True,
+    max_instances=1,
+    coalesce=True,
+)
+logger.info(f"橘鸦早报轮询任务已注册：间隔 {plugin_config.poll_interval_minutes} 分钟")

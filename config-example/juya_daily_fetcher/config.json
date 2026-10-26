@@ -2,9 +2,6 @@
     "feed_url": "https://daily.juya.uk/rss.xml",
     "debug_user_id": "",
     "poll_interval_minutes": 15,
-    "pending_max_age_minutes": 60,
-    "pending_max_failures": 3,
-    "article_retention_days": 7,
     "llm": {
         "api_key": "",
         "base_url": "",

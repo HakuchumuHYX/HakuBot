@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=1200">
-  <title>{{ title }}</title>
+  <title>{{ issue.title }}</title>
   <style>{{ font_css | safe }}</style>
   <link rel="stylesheet" href="./article-styles.css">
 </head>
@@ -11,13 +11,69 @@
   <main class="sheet">
     <header class="masthead">
       <div class="brand-mark">JUYA / AI DAILY</div>
-      <div class="issue-meta">{{ date }}</div>
+      <div class="issue-meta">{{ issue.date }}</div>
     </header>
 
-    {{ header | safe }}
+    {% if page == 1 %}
+    <section class="article-header">
+      <div class="article-kicker">橘鸦 AI 早报</div>
+      <h1>{{ issue.title }}</h1>
+      <div class="article-meta"><span>发布时间：{{ issue.pub_date }}</span></div>
+      <div class="article-rule"><span></span></div>
+    </section>
+    {% else %}
+    <section class="continuation-header">
+      <div class="article-kicker">橘鸦 AI 早报</div>
+      <div class="continuation-title">{{ issue.title }}</div>
+      <div class="continuation-meta">CONTINUED · PAGE {{ page }} / {{ total_pages }}</div>
+    </section>
+    {% endif %}
 
     <section class="page-content">
-      {{ content | safe }}
+      {% if articles is none %}
+      <div class="directory-page">
+        <div class="directory-kicker">目录 / CONTENTS</div>
+        {% for category in issue.directory if category["items"] %}
+        <section class="directory-section">
+          <div class="directory-section-heading"><h2>{{ category.category }}</h2></div>
+          <div class="directory-list">
+            {% for item in category["items"] %}
+            <div class="directory-item">
+              <div class="directory-number">{{ "%02d" | format(item.number) }}</div>
+              <div class="directory-title">{{ item.title }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="article-page">
+        {% for article in articles %}
+        <article class="news-article">
+          <header class="news-article-header">
+            <div class="news-number">{{ "%02d" | format(article.number) }}</div>
+            <div class="news-category">{{ article.category }}</div>
+            <div class="news-title">{{ article.title }}</div>
+          </header>
+          <div class="news-body">
+            {% for block in article.blocks %}
+            {% if block.type == "quote" %}
+            <blockquote class="article-quote">{{ block.text }}</blockquote>
+            {% elif block.type == "image" %}
+            <figure class="article-image-wrap">
+              <img class="article-image" src="{{ block.src }}" alt="{{ block.alt }}">
+              {% if block.alt %}<figcaption class="image-alt">{{ block.alt }}</figcaption>{% endif %}
+            </figure>
+            {% else %}
+            <p class="article-paragraph">{{ block.text }}</p>
+            {% endif %}
+            {% endfor %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% endif %}
     </section>
 
     <footer class="footer">

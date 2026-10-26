@@ -1,23 +1,12 @@
-from __future__ import annotations
+from typing import Optional
+
+from pydantic import Field
+
 from core.settings import ConfigModel, load_config
 from utils.paths import PluginPaths
 
-from pathlib import Path
-from typing import Optional
-
-from pydantic import Field, field_validator
-
-PLUGIN_NAME = "juya_daily_fetcher"
-PLUGIN_DIR = Path(__file__).parent
-DATA_DIR = PluginPaths("juya_daily_fetcher").data
-STATE_FILE = DATA_DIR / "state.json"
-ARTICLE_DIR = DATA_DIR / "articles"
-TEMPLATE_DIR = PLUGIN_DIR / "templates"
-
-DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-)
+PLUGIN_ID = "juya_daily_fetcher"
+STATE_FILE = PluginPaths(PLUGIN_ID).data / "state.json"
 
 
 class LLMConfig(ConfigModel):
@@ -36,15 +25,7 @@ class Config(ConfigModel):
     feed_url: str
     debug_user_id: str
     poll_interval_minutes: int = Field(ge=1)
-    pending_max_age_minutes: int
-    pending_max_failures: int
-    article_retention_days: int = Field(ge=1)
     llm: LLMConfig
-
-    @field_validator("debug_user_id", "feed_url")
-    @classmethod
-    def _strip_text(cls, value: str) -> str:
-        return str(value or "").strip()
 
     def llm_ready(self) -> bool:
         return bool(
@@ -54,6 +35,4 @@ class Config(ConfigModel):
         )
 
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-ARTICLE_DIR.mkdir(parents=True, exist_ok=True)
-plugin_config = load_config("juya_daily_fetcher", Config)
+plugin_config = load_config(PLUGIN_ID, Config)
