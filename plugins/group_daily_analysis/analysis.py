@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TypeVar
@@ -142,7 +143,10 @@ def _json_tail(example: str) -> str:
     )
 
 
-def _parse_items(result: ChatResult, item_model: type[ItemT]) -> list[ItemT]:
+def _parse_items(
+    result: ChatResult, item_model: type[ItemT]
+) -> tuple[list[ItemT], dict]:
+    """返回 items 和整个顶层 object（话题那次还要取 headline）"""
     # json_repair 会把截断的 JSON 补成合法的，不先拦住就会悄悄少几条
     if result.finish_reason == "length":
         raise ValueError("输出被 max_tokens 截断")
@@ -154,7 +158,7 @@ def _parse_items(result: ChatResult, item_model: type[ItemT]) -> list[ItemT]:
     items = [item_model.model_validate(item) for item in data.get("items") or []]
     if not items:
         raise ValueError("返回空 items")
-    return items
+    return items, data
 
 
 async def _ask(
@@ -163,7 +167,7 @@ async def _ask(
     item_model: type[ItemT],
     temperature: float,
     usage: TokenUsage,
-) -> list[ItemT]:
+) -> tuple[list[ItemT], dict]:
     """输出无效或被截断时重试一次；网络错误由 client 重试"""
     llm = plugin_config.llm
     config = LLMClientConfig(
@@ -203,27 +207,35 @@ def _with_transcript(transcript_text: str, prompt: str) -> list[dict]:
     ]
 
 
-async def _topics(transcript_text: str, limit: int, usage: TokenUsage):
+async def _topics(
+    transcript_text: str, limit: int, usage: TokenUsage
+) -> tuple[list[SummaryTopic], str]:
+    """话题和本集标题（headline）一次问完"""
     prompt = _format_prompt(
         plugin_config.topic_analysis_prompt,
         max_topics=limit,
         messages_text=TRANSCRIPT_HINT,
     ) + _json_tail(
-        '{"items":[{"topic":"话题名称","contributors":["用户1"],"detail":"描述"}]}'
+        '{"headline":"本集标题","items":[{"topic":"话题名称","time":"09:12",'
+        '"contributors":["用户1"],"detail":"描述"}]}'
     )
-    items = await _ask(
+    items, data = await _ask(
         SECTION_NAMES["topics"],
         _with_transcript(transcript_text, prompt),
         SummaryTopic,
         0.3,
         usage,
     )
-    return items[:limit]
+    for topic in items:
+        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", topic.time):
+            topic.time = ""
+    headline = data.get("headline")
+    return items[:limit], headline.strip() if isinstance(headline, str) else ""
 
 
 async def _golden_quotes(
     transcript_text: str,
-    users: dict[str, UserFeature],
+    transcript: Transcript,
     limit: int,
     usage: TokenUsage,
 ):
@@ -234,7 +246,7 @@ async def _golden_quotes(
     ) + _json_tail(
         '{"items":[{"content":"金句原文","sender":"发言人","reason":"辣评"}]}'
     )
-    quotes = await _ask(
+    quotes, _ = await _ask(
         SECTION_NAMES["golden_quotes"],
         _with_transcript(transcript_text, prompt),
         GoldenQuote,
@@ -242,10 +254,20 @@ async def _golden_quotes(
         usage,
     )
 
-    # 提示词不要 QQ 号，按转写里的发言人名字补上，渲染时要拿头像
-    qq_by_name = {u.name: int(user_id) for user_id, u in users.items()}
+    # 提示词不要 QQ 号和时间，按发言人名字和原文在转写里查
+    qq_by_name = {u.name: int(user_id) for user_id, u in transcript.users.items()}
     for quote in quotes:
         quote.qq = qq_by_name.get(quote.sender)
+        # 转写每行是 "[HH:MM] 名字: 内容"
+        speaker = f"] {quote.sender}: "
+        quote.time = next(
+            (
+                line[1:6]
+                for line in transcript.lines
+                if speaker in line and quote.content in line.split(speaker, 1)[1]
+            ),
+            "",
+        )
     return quotes[:limit]
 
 
@@ -280,7 +302,7 @@ async def _user_titles(users: dict[str, UserFeature], limit: int, usage: TokenUs
             '{"items":[{"name":"用户名","qq":123456,"title":"称号","reason":"理由","personality":"人物画像"}]}'
         )
     )
-    titles = await _ask(
+    titles, _ = await _ask(
         SECTION_NAMES["user_titles"],
         [{"role": "user", "content": prompt}],
         UserTitle,
@@ -288,10 +310,12 @@ async def _user_titles(users: dict[str, UserFeature], limit: int, usage: TokenUs
         usage,
     )
 
-    # LLM 没给 QQ 号就按名字补，渲染时要拿头像
+    # LLM 没给 QQ 号就按名字补，渲染时要拿头像；发言条数按 QQ 号对回转写统计
     qq_by_name = {u.name: int(user_id) for user_id, u in top_users}
     for title in titles:
         title.qq = title.qq or qq_by_name.get(title.name)
+        feature = users.get(str(title.qq))
+        title.message_count = feature.message_count if feature else 0
     return titles[:limit]
 
 
@@ -320,7 +344,7 @@ async def analyze(group_id: int, rows) -> AnalysisResult:
     if is_enabled("group_daily_analysis:golden_quotes", str(group_id)):
         jobs["golden_quotes"] = _golden_quotes(
             transcript_text,
-            transcript.users,
+            transcript,
             min(10, plugin_config.max_golden_quotes + bonus),
             result.usage,
         )
@@ -342,6 +366,8 @@ async def analyze(group_id: int, rows) -> AnalysisResult:
                 f"群 {group_id} {SECTION_NAMES[key]}分析失败，日报省略这一块"
             )
             failed.append(key)
+        elif key == "topics":
+            result.topics, result.headline = outcome
         else:
             setattr(result, key, outcome)
     if jobs and len(failed) == len(jobs):

@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <style>
+        /* 一天的群聊排成一集剧本。三种笔迹各管一类内容：
+           印刷体（宋）= 群里发生的事；红笔（文楷）= Bot 的评语和标记；荧光笔 = 只划金句原话。
+           两种字体都是系统字体（fonts-noto-cjk、霞鹜文楷），不联网 */
+        :root {
+            --desk: #DADFE3;
+            --paper: #FFFFFF;
+            --ink: #262626;
+            --pencil: #7B7B7B;
+            --rule: #DCDCDC;
+            --band: #F1F1EF;
+            --red: #C9302C;
+            --marker: rgba(255, 221, 64, 0.75);
+            --print: "Noto Serif CJK SC", serif;
+            --pen: "LXGW WenKai", "Noto Serif CJK SC", serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--desk);
+            color: var(--ink);
+            font-family: var(--print);
+            font-size: 18px;
+            line-height: 1.85;
+            padding: 28px 24px 30px;
+            counter-reset: page;
+        }
+
+        .pen { font-family: var(--pen); color: var(--red); }
+
+        /* 红笔随手画的圈，四个角的弧度故意不一样 */
+        .ring {
+            border: 1.6px solid var(--red);
+            border-radius: 50% 44% 52% 46%;
+            font-family: var(--pen);
+            color: var(--red);
+            text-align: center;
+        }
+
+        /* ---------- 纸 ---------- */
+
+        .sheet {
+            position: relative;
+            background: var(--paper);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10), 0 8px 20px rgba(0, 0, 0, 0.07);
+            padding: 30px 48px 30px 80px;
+            counter-increment: page;
+        }
+
+        .sheet + .sheet { margin-top: 20px; }
+
+        /* 左边三个装订孔 */
+        .holes {
+            position: absolute;
+            left: 26px;
+            top: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 90px 0;
+        }
+
+        .holes i {
+            display: block;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--desk);
+            box-shadow: inset 0 1.5px 2px rgba(0, 0, 0, 0.25);
+        }
+
+        .running {
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+            font-size: 14px;
+            color: var(--pencil);
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--rule);
+            margin-bottom: 34px;
+        }
+
+        .running span:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .running span:last-child { flex: none; }
+
+        .part-title {
+            display: flex;
+            align-items: baseline;
+            gap: 14px;
+            font-size: 30px;
+            font-weight: 700;
+            letter-spacing: 0.25em;
+            margin-bottom: 30px;
+        }
+
+        .part-title small {
+            font-size: 15px;
+            font-weight: 400;
+            letter-spacing: 0;
+            color: var(--pencil);
+        }
+
+        .colophon {
+            margin-top: 56px;
+            padding-top: 14px;
+            border-top: 1px solid var(--rule);
+            color: var(--pencil);
+            font-size: 13px;
+            line-height: 1.8;
+            text-align: center;
+        }
+
+        .folio {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 14px;
+            color: var(--pencil);
+        }
+
+        .folio::before { content: counter(page); }
+
+        /* ---------- 封面 ---------- */
+
+        .cover { padding-top: 40px; }
+
+        .cover-date {
+            display: flex;
+            justify-content: space-between;
+            color: var(--pencil);
+            font-size: 15px;
+        }
+
+        .show-name {
+            margin-top: 54px;
+            text-align: center;
+            font-size: 20px;
+            letter-spacing: 0.2em;
+        }
+
+        .episode {
+            margin-top: 8px;
+            text-align: center;
+            font-size: 46px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        .credits {
+            width: fit-content;
+            margin: 44px auto 0;
+            display: grid;
+            grid-template-columns: auto auto;
+            column-gap: 28px;
+            row-gap: 2px;
+        }
+
+        .credits dt { color: var(--pencil); }
+
+        .day { margin-top: 48px; }
+
+        .marks, .bars, .hours {
+            display: grid;
+            grid-template-columns: repeat(24, 1fr);
+            gap: 3px;
+        }
+
+        /* 同一小时开场的几场叠起来 */
+        .marks { min-height: 32px; align-items: end; }
+
+        .marks div {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            padding-bottom: 4px;
+        }
+
+        .mark {
+            width: 25px;
+            height: 25px;
+            font-size: 15px;
+            line-height: 22px;
+        }
+
+        .bars {
+            align-items: end;
+            height: 130px;
+            border-bottom: 1.5px solid var(--ink);
+        }
+
+        .bar { background: var(--ink); }
+        .bar.zero { background: var(--rule); }
+
+        .hours {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--pencil);
+            text-align: center;
+            line-height: 1;
+        }
+
+        /* 最热闹那个小时的刻度圈出来；它旁边的刻度不显示，免得挤 */
+        .hours .ring {
+            justify-self: center;
+            margin-top: -5px;
+            padding: 4px 6px;
+            font-size: 14px;
+            transform: rotate(-4deg);
+        }
+
+        .peak-note {
+            margin-top: 12px;
+            text-align: right;
+            font-size: 18px;
+        }
+
+        /* 场次表 */
+        .lineup {
+            margin-top: 36px;
+            padding-top: 20px;
+            border-top: 1px solid var(--rule);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            column-gap: 28px;
+            row-gap: 6px;
+            font-size: 16px;
+        }
+
+        .lineup > div {
+            display: grid;
+            grid-template-columns: 30px 50px 1fr;
+            align-items: baseline;
+        }
+
+        .lineup .ring {
+            align-self: center;
+            width: 22px;
+            height: 22px;
+            border-width: 1.4px;
+            font-size: 13px;
+            line-height: 19px;
+        }
+
+        .lineup .t { color: var(--pencil); }
+
+        /* ---------- 人物 ---------- */
+
+        .cast {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            column-gap: 34px;
+            row-gap: 34px;
+        }
+
+        .person-top {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        /* 定妆照：白边、回形针，两栏一左一右歪 */
+        .photo {
+            position: relative;
+            flex: none;
+            width: 78px;
+            height: 78px;
+            padding: 5px;
+            background: #FFFFFF;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+            transform: rotate(-3deg);
+        }
+
+        .person:nth-child(even) .photo { transform: rotate(2.5deg); }
+
+        .photo img, .photo .no-avatar {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: var(--rule);
+        }
+
+        .clip {
+            position: absolute;
+            top: -12px;
+            left: 10px;
+            width: 14px;
+            height: 34px;
+        }
+
+        .person-name {
+            font-size: 19px;
+            font-weight: 700;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .role {
+            display: inline;
+            font-size: 23px;
+            line-height: 1.35;
+            background: linear-gradient(transparent 80%, rgba(201, 48, 44, 0.25) 80%, rgba(201, 48, 44, 0.25) 94%, transparent 94%);
+        }
+
+        /* 戏份：今天在转写里说了几条 */
+        .share {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+            font-size: 13px;
+            color: var(--pencil);
+            line-height: 1;
+        }
+
+        .share .track { flex: 1; height: 5px; background: var(--band); }
+        .share .fill { height: 100%; background: var(--ink); }
+
+        .why {
+            margin-top: 12px;
+            color: var(--pencil);
+            font-size: 16px;
+            line-height: 1.7;
+        }
+
+        .bio { margin-top: 4px; font-size: 17px; line-height: 1.8; }
+
+        /* ---------- 剧情 ---------- */
+
+        .scene {
+            display: grid;
+            grid-template-columns: 46px 1fr;
+            column-gap: 10px;
+        }
+
+        .scene + .scene { margin-top: 30px; }
+
+        .scene > .ring {
+            width: 36px;
+            height: 36px;
+            margin-top: 4px;
+            border-width: 1.8px;
+            font-size: 20px;
+            line-height: 32px;
+        }
+
+        .slug {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 12px;
+            background: var(--band);
+            padding: 4px 12px;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .slug .t { flex: none; font-weight: 400; font-size: 16px; color: var(--pencil); }
+
+        .cast-line { color: var(--pencil); font-size: 16px; margin: 8px 0 0 12px; }
+
+        /* △ 是剧本里写动作的记号，后面的行悬挂缩进 */
+        .action {
+            margin: 4px 0 0 12px;
+            padding-left: 1.3em;
+            text-indent: -1.3em;
+        }
+
+        /* ---------- 金句 ---------- */
+
+        .line + .line { margin-top: 38px; }
+
+        .speaker {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .speaker img {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .speaker .t { font-weight: 400; color: var(--pencil); font-size: 15px; }
+
+        .said {
+            margin-top: 8px;
+            font-size: 27px;
+            line-height: 1.75;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+
+        /* 一大段的原话缩小，免得满屏粗体 */
+        .said.long { font-size: 21px; line-height: 1.85; }
+
+        /* 荧光笔：每行单独一段，两头略斜 */
+        .said span {
+            background: linear-gradient(100deg, transparent 0.4em, var(--marker) 0.5em, var(--marker) calc(100% - 0.5em), transparent calc(100% - 0.4em));
+            background-size: 100% 62%;
+            background-position: 0 70%;
+            background-repeat: no-repeat;
+            -webkit-box-decoration-break: clone;
+            box-decoration-break: clone;
+            padding: 0 0.3em;
+            margin: 0 -0.3em;
+        }
+
+        .remark {
+            position: relative;
+            margin: 10px 0 0 34px;
+            font-size: 20px;
+            line-height: 1.6;
+        }
+
+        /* 一笔勾出来的引线 */
+        .remark::before {
+            content: "";
+            position: absolute;
+            left: -26px;
+            top: -4px;
+            width: 18px;
+            height: 18px;
+            border-left: 1.6px solid var(--red);
+            border-bottom: 1.6px solid var(--red);
+            border-bottom-left-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    {# 页脚（水印、出处、Token）落在最后一张纸上；三块都可能被关掉或失败 #}
+    {% set last = "quotes" if quotes else "topics" if topics else "titles" if titles else "cover" %}
+
+    {% macro sheet_head() %}
+    <div class="holes"><i></i><i></i><i></i></div>
+    <div class="running"><span>{% if group_name %}《{{ group_name }}》{% endif %}</span><span>{{ date_text }}</span></div>
+    {% endmacro %}
+
+    {% macro sheet_end(is_last) %}
+    {% if is_last %}
+    <div class="colophon">
+        {{ watermark_text }}<br>
+        改编自 astrbot_plugin_qq_group_daily_analysis（SXP-Simon），本集用掉 {{ total_tokens }} Token
+    </div>
+    {% endif %}
+    <div class="folio"></div>
+    {% endmacro %}
+
+    <section class="sheet cover">
+        <div class="holes"><i></i><i></i><i></i></div>
+        <div class="cover-date">
+            <span>{{ date_text }}</span>
+            <span>{{ weekday }}</span>
+        </div>
+
+        {% if group_name %}
+        <div class="show-name">《{{ group_name }}》</div>
+        {% endif %}
+        {% if headline %}
+        <h1 class="episode">{{ headline }}</h1>
+        {% endif %}
+
+        <dl class="credits">
+            <dt>编剧</dt><dd>全体群友，{{ participant_count }} 人</dd>
+            <dt>篇幅</dt><dd>{{ message_count }} 条消息，{{ total_characters }} 字</dd>
+            <dt>表情</dt><dd>{{ emoji_count }} 个</dd>
+        </dl>
+
+        <div class="day">
+            <div class="marks">
+                {% for h in hours %}
+                <div>{% for no in h.scenes %}<span class="mark ring">{{ no }}</span>{% endfor %}</div>
+                {% endfor %}
+            </div>
+            <div class="bars">
+                {% for h in hours %}
+                <div class="bar{% if not h.count %} zero{% endif %}" style="height: {{ h.height }}%"></div>
+                {% endfor %}
+            </div>
+            <div class="hours">
+                {% for h in hours %}
+                {% if h.hour == peak_hour %}
+                <span class="ring">{{ h.hour }}</span>
+                {% else %}
+                <span>{% if h.hour % 3 == 0 and (h.hour - peak_hour) | abs > 1 %}{{ h.hour }}{% endif %}</span>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <div class="peak-note pen">{{ peak_hour }} 点这一小时最热闹，{{ peak_count }} 条</div>
+        </div>
+
+        {% if topics %}
+        <div class="lineup">
+            {% for s in topics %}
+            <div><span class="ring">{{ loop.index }}</span><span class="t">{{ s.time }}</span><span>{{ s.topic }}</span></div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {{ sheet_end(last == "cover") }}
+    </section>
+
+    {% if titles %}
+    <section class="sheet">
+        {{ sheet_head() }}
+        <h2 class="part-title">人物<small>{{ titles | length }} 位</small></h2>
+        <div class="cast">
+            {% for t in titles %}
+            <div class="person">
+                <div class="person-top">
+                    <div class="photo">
+                        <svg class="clip" viewBox="0 0 14 34" fill="none" stroke="#8A8F94" stroke-width="1.6" stroke-linecap="round">
+                            <path d="M10 10v15a4 4 0 0 1-8 0V6a3 3 0 0 1 6 0v17a1.5 1.5 0 0 1-3 0V9" />
+                        </svg>
+                        {% if avatars.get(t.qq) %}
+                        <img src="{{ avatars.get(t.qq) }}">
+                        {% else %}
+                        <div class="no-avatar"></div>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <div class="person-name">{{ t.name }}</div>
+                        <div class="role pen">{{ t.title }}</div>
+                    </div>
+                </div>
+                {% if t.message_count %}
+                <div class="share">
+                    <span>戏份</span>
+                    <div class="track"><div class="fill" style="width: {{ t.message_count / most_lines * 100 }}%"></div></div>
+                    <span>{{ t.message_count }} 条</span>
+                </div>
+                {% endif %}
+                <div class="why">{{ t.reason }}</div>
+                {% if t.personality %}
+                <p class="bio">{{ t.personality }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {{ sheet_end(last == "titles") }}
+    </section>
+    {% endif %}
+
+    {% if topics %}
+    <section class="sheet">
+        {{ sheet_head() }}
+        <h2 class="part-title">剧情<small>{{ topics | length }} 场</small></h2>
+        {% for s in topics %}
+        <div class="scene">
+            <div class="ring">{{ loop.index }}</div>
+            <div>
+                <div class="slug">
+                    <span>{{ s.topic }}</span>
+                    {% if s.time %}<span class="t">{{ s.time }}</span>{% endif %}
+                </div>
+                {% if s.contributors %}
+                <div class="cast-line">人物：{{ s.contributors | join("、") }}</div>
+                {% endif %}
+                <p class="action">△ {{ s.detail }}</p>
+            </div>
+        </div>
+        {% endfor %}
+        {{ sheet_end(last == "topics") }}
+    </section>
+    {% endif %}
+
+    {% if quotes %}
+    <section class="sheet">
+        {{ sheet_head() }}
+        <h2 class="part-title">金句<small>{{ quotes | length }} 句</small></h2>
+        {% for q in quotes %}
+        <div class="line">
+            <div class="speaker">
+                {% if avatars.get(q.qq) %}<img src="{{ avatars.get(q.qq) }}">{% endif %}
+                <span>{{ q.sender }}</span>
+                {% if q.time %}<span class="t">{{ q.time }}</span>{% endif %}
+            </div>
+            <p class="said{% if q.content | length > 60 %} long{% endif %}"><span>{{ q.content }}</span></p>
+            <p class="remark pen">{{ q.reason }}</p>
+        </div>
+        {% endfor %}
+        {{ sheet_end(last == "quotes") }}
+    </section>
+    {% endif %}
+</body>
+</html>

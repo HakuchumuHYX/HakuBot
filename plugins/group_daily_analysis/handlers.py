@@ -4,7 +4,7 @@ import asyncio
 import time
 
 from nonebot import get_bot, logger, on_command, require
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.permission import SUPERUSER
 
 require("nonebot_plugin_apscheduler")
@@ -31,7 +31,15 @@ async def _recent_messages(group_id: int):
     return await asyncio.to_thread(fetch_messages, group_id, start, end)
 
 
-async def build_report(group_id: int) -> bytes | None:
+async def _group_name(bot: Bot, group_id: int) -> str | None:
+    try:
+        return (await bot.get_group_info(group_id=group_id))["group_name"]
+    except Exception as e:
+        logger.warning(f"群 {group_id} 群名获取失败，封面不显示群名: {get_exc_desc(e)}")
+        return None
+
+
+async def build_report(bot: Bot, group_id: int) -> bytes | None:
     """消息不够返回 None"""
     rows = await _recent_messages(group_id)
     if len(rows) < plugin_config.min_messages_threshold:
@@ -41,7 +49,7 @@ async def build_report(group_id: int) -> bytes | None:
         return None
 
     result = await analyze(group_id, rows)
-    image = await render_report(result)
+    image = await render_report(result, await _group_name(bot, group_id))
     logger.info(f"群 {group_id} 每日总结生成成功，图片大小: {len(image)} bytes")
     return image
 
@@ -57,10 +65,10 @@ analysis_cmd = on_command(
 
 
 @analysis_cmd.handle()
-async def handle_analysis(event: GroupMessageEvent):
+async def handle_analysis(bot: Bot, event: GroupMessageEvent):
     await analysis_cmd.send("正在生成每日总结，请稍候... (可能需要几十秒)")
     try:
-        image = await build_report(event.group_id)
+        image = await build_report(bot, event.group_id)
     except Exception as e:
         logger.exception(f"群 {event.group_id} 生成总结失败: {get_exc_desc(e)}")
         await analysis_cmd.finish("生成总结失败，请稍后重试。")
@@ -76,11 +84,13 @@ async def handle_analysis(event: GroupMessageEvent):
 MOCK_TOPICS = [
     SummaryTopic(
         topic="Bot 开发调试",
+        time="10:24",
         contributors=["开发者", "测试员"],
         detail="大家讨论了如何为 Group Daily Analysis 插件添加 Debug 模式，以方便测试渲染效果而不消耗 Token。",
     ),
     SummaryTopic(
         topic="中午吃什么",
+        time="11:50",
         contributors=["吃货A", "饿人B"],
         detail="围绕中午点外卖还是去食堂进行了激烈的讨论，最终决定去吃黄焖鸡米饭。",
     ),
@@ -91,6 +101,7 @@ MOCK_TITLES = [
         qq=10001,
         title="Debug 大师",
         reason="写了 100 行代码没有 Bug",
+        message_count=86,
         personality="群里的代码洁癖患者，不管聊什么话题都能绕回技术，发言简短但信息密度极高。遇到 Bug 的第一反应是打开 IDE，遇到聚餐的第一反应是问有没有包厢带电源。",
     ),
     UserTitle(
@@ -98,6 +109,7 @@ MOCK_TITLES = [
         qq=10002,
         title="干饭王",
         reason="三句话不离吃饭",
+        message_count=52,
         personality="群里的美食雷达，每天上午10点准时开始讨论午饭，下午3点开始纠结晚饭。发言风格热情奔放，对食物的描述有一种让人血糖飙升的感染力。",
     ),
 ]
@@ -106,9 +118,13 @@ MOCK_QUOTES = [
         content="程序和人有一个能跑就行。",
         sender="运维小哥",
         reason="道出了 IT 行业的真谛",
+        time="15:31",
     ),
     GoldenQuote(
-        content="Bug 也是一种 Feature。", sender="产品经理", reason="重新定义了软件工程"
+        content="Bug 也是一种 Feature。",
+        sender="产品经理",
+        reason="重新定义了软件工程",
+        time="17:08",
     ),
 ]
 
@@ -122,17 +138,19 @@ debug_analysis_cmd = on_command(
 
 
 @debug_analysis_cmd.handle()
-async def handle_debug_analysis(event: GroupMessageEvent):
+async def handle_debug_analysis(bot: Bot, event: GroupMessageEvent):
     await debug_analysis_cmd.send("🧪 正在用 Mock 内容渲染日报（不调用 LLM）...")
     try:
         stats, _ = read_messages(await _recent_messages(event.group_id))
         image = await render_report(
             AnalysisResult(
                 statistics=stats,
+                headline="能跑就行",
                 topics=MOCK_TOPICS,
                 user_titles=MOCK_TITLES,
                 golden_quotes=MOCK_QUOTES,
-            )
+            ),
+            await _group_name(bot, event.group_id),
         )
     except Exception as e:
         logger.exception(f"日报调试渲染失败: {get_exc_desc(e)}")
@@ -156,7 +174,7 @@ async def auto_run_daily_analysis():
         if not is_enabled("group_daily_analysis", str(group_id)):
             continue
         try:
-            image = await build_report(group_id)
+            image = await build_report(bot, group_id)
             if image:
                 await bot.send_group_msg(
                     group_id=group_id, message=image_segment(image)

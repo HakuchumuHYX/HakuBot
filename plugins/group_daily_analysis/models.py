@@ -10,6 +10,8 @@ class SummaryTopic(BaseModel):
     topic: str
     contributors: list[str] = []
     detail: str
+    # 话题第一条消息的 HH:MM，LLM 照抄转写
+    time: str = ""
 
 
 class UserTitle(BaseModel):
@@ -18,6 +20,8 @@ class UserTitle(BaseModel):
     title: str
     reason: str
     personality: str = ""
+    # 转写里的发言条数，不问 LLM
+    message_count: int = 0
 
 
 class GoldenQuote(BaseModel):
@@ -25,6 +29,8 @@ class GoldenQuote(BaseModel):
     sender: str
     reason: str
     qq: int | None = None
+    # 按原文在转写里查到的 HH:MM，不问 LLM
+    time: str = ""
 
 
 @dataclass
@@ -36,14 +42,14 @@ class Statistics:
     hourly: list[int] = field(default_factory=lambda: [0] * 24)
 
     @property
-    def most_active_period(self) -> str:
-        peak = self.hourly.index(max(self.hourly))
-        return f"{peak:02d}:00-{(peak + 1) % 24:02d}:00"
+    def peak_hour(self) -> int:
+        return self.hourly.index(max(self.hourly))
 
 
 @dataclass
 class AnalysisResult:
     statistics: Statistics
+    headline: str = ""
     topics: list[SummaryTopic] = field(default_factory=list)
     user_titles: list[UserTitle] = field(default_factory=list)
     golden_quotes: list[GoldenQuote] = field(default_factory=list)
