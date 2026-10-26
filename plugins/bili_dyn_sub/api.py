@@ -1,18 +1,11 @@
-"""bili_dyn_sub 取数层：feed/space 请求 + 参数构造 + 错误码分流（设计文档 §3.1/§3.2/§3.3/§3.5）。
+"""bili_dyn_sub 取数层：feed/space 请求、参数构造、错误码分流。
 
 端点与 -352 语义借鉴 nonebot-bison (MIT, Copyright (c) 2021 felinae98) 的
-platform/bilibili/platforms.py（get_sub_list / get_target_name），并做了两处关键修正：
-
-1. **参数集比 bison 全**：bison 只发 host_mid/timezone_offset/offset/features=itemOpusStyle
-   四个参数，纯靠浏览器 cookie 硬撑，这是其风控频发的原因之一。本模块补齐 platform /
-   web_location 与 dm_img 系列风控参数（社区结论：补上 dm_img 后即使不签 wbi 也能正常返回，
-   缺失则 -352）。
-2. **风控/网络/解析错误一律抛异常，绝不返回空 items**。bison 的故障模式①（重启 + 首拉 352
-   → 用空集建基线 → 风控恢复后重复推送）根因就是"把 352 的空结果当成正常 feed"。本模块从
-   结构上消灭这一类 bug：本层只有两种结局 —— 返回 code==0 的真实 data，或者抛出带类型的异常。
-   `code==0 且 items==[]` 是合法结果（该 UP 确实没动态），必须原样返回，不能当错误。
-
-调用方（scheduler）按异常类型分流，退避与日志纪律见 backoff.py。
+platform/bilibili/platforms.py。踩过的坑：
+- 未登录态必须带 dm_img 系列参数，缺了直接 -352；伪造近似空值即可，不签 wbi 也能返回。
+- 风控/网络/解析失败一律抛异常，绝不返回空 items：把 352 的空结果当成正常 feed
+  会用空集建基线，风控恢复后重复推送（bison 的老毛病）。
+  `code==0 且 items 为空` 是合法结果，原样返回。
 """
 
 from __future__ import annotations
@@ -21,12 +14,11 @@ import asyncio
 import base64
 import json
 import random
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 from nonebot import logger
 
-from utils import bilibili
 from utils.network.http import get_client_session, get_effective_proxy
 from utils.logging import get_exc_desc
 from utils.text import truncate
@@ -35,12 +27,10 @@ from plugins.bili_dyn_sub.credential import credential_manager
 
 # ============================ 常量 ============================ #
 
-# 空间动态列表（bison / bilichat-request / RSSHub / bilibili-api 一致采用此端点，不用 gRPC）
 FEED_SPACE_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 # UP 昵称：直播开放接口，无风控、无需 cookie
 LIVE_USER_INFO_URL = "https://api.live.bilibili.com/live_user/v1/Master/info"
 
-# 固定取数参数（§3.2）
 TIMEZONE_OFFSET = "-480"
 PLATFORM = "web"
 FEATURES = "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote"  # RSSHub 同款
@@ -64,27 +54,24 @@ _NET_ERRORS = (aiohttp.ClientError, asyncio.TimeoutError)
 _TRANSIENT_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
-# ============================ 异常类型（§3.5） ============================ #
+# ============================ 异常类型 ============================ #
 
 
 class BiliApiError(Exception):
-    """B 站取数失败的基类；直接抛出本类型表示「其他未分类错误码」。
-
-    scheduler 可用 `except BiliApiError` 兜住本模块的全部失败，再按子类分流。
-    """
+    """B 站取数失败的基类；直接抛出本类型表示其他错误码（含 -101）或响应结构异常"""
 
     def __init__(
         self,
         message: str = "",
         *,
         uid: str = "",
-        code: Optional[int] = None,
-        http_status: Optional[int] = None,
+        code: int | None = None,
+        http_status: int | None = None,
     ) -> None:
         self.message: str = message
         self.uid: str = str(uid)
-        self.code: Optional[int] = code
-        self.http_status: Optional[int] = http_status
+        self.code: int | None = code
+        self.http_status: int | None = http_status
         super().__init__(message)
 
     def __str__(self) -> str:
@@ -101,38 +88,26 @@ class BiliApiError(Exception):
 
 
 class BiliRiskControlError(BiliApiError):
-    """code == -352：账号/指纹层风控。前 1-2 次强制刷新 cookie 重试，仍失败进 per-UID 指数退避"""
+    """code == -352：cookie/指纹层风控，强制重造 cookie 重试一次，仍失败就退避"""
 
 
 class BiliIpBlockedError(BiliApiError):
-    """HTTP 412：IP 层风控（机房 IP 高发）。换 cookie 无效，唯一解是 proxy，退避远长于 352"""
+    """HTTP 412：IP 层风控，换 cookie 无效，只能配 proxy"""
 
 
 class BiliCaptchaError(BiliApiError):
-    """code == 0 但 data 含 v_voucher：需 geetest 人机验证。放弃本轮 + warn，不尝试自动过验证码"""
-
-
-class BiliAuthError(BiliApiError):
-    """code == -101：登录态失效（配置了 sessdata 时）。标记失效并提示重新配置，不原地重试"""
-
-
-class BiliSignError(BiliApiError):
-    """code == -403：wbi/签名问题（仅在 enable_wbi 时可能出现）。刷新 wbi key 后重试"""
+    """code == 0 但 data 含 v_voucher：要 geetest 人机验证，放弃本轮"""
 
 
 class BiliNetworkError(BiliApiError):
     """超时/连接失败/暂时性 5xx：网络问题而非风控，只做短退避"""
 
 
-# ============================ 参数构造（纯函数，可单测） ============================ #
+# ============================ 参数构造 ============================ #
 
 
 def build_dm_params() -> dict[str, str]:
-    """构造 dm_img 系列风控参数（§3.2）。
-
-    未登录态缺这四个参数会直接 -352；B 站只校验其存在与格式，不校验内容真实性，
-    因此伪造近似空值即可。dm_img_str 每次随机，其余为固定伪造值。
-    """
+    """dm_img 系列风控参数：B 站只校验存在与格式，dm_img_str 每次随机，其余固定"""
     dm_img_str = "".join(random.choice(_DM_IMG_STR_ALPHABET) for _ in range(2))
     return {
         "dm_img_list": DM_IMG_LIST,
@@ -142,11 +117,11 @@ def build_dm_params() -> dict[str, str]:
     }
 
 
-def build_feed_params(uid: str, *, offset: str = "") -> dict[str, str]:
-    """构造 feed/space 的完整查询参数（§3.2 表格，全部为字符串以便直接给 aiohttp）"""
+def build_feed_params(uid: str) -> dict[str, str]:
+    """feed/space 首页的完整查询参数"""
     params: dict[str, str] = {
-        "host_mid": str(uid).strip(),
-        "offset": offset,  # 首页为空串
+        "host_mid": uid,
+        "offset": "",
         "timezone_offset": TIMEZONE_OFFSET,
         "platform": PLATFORM,
         "features": FEATURES,
@@ -156,31 +131,11 @@ def build_feed_params(uid: str, *, offset: str = "") -> dict[str, str]:
     return params
 
 
-async def _sign_with_wbi(params: dict[str, str]) -> dict[str, str]:
-    """给参数补 wbi 签名（wts + w_rid）。
-
-    第一版 enable_wbi 默认关闭（bison/bilichat/RSSHub 都没签仍在跑），仅在大面积 352 时启用。
-    取 key 失败时退回未签名参数：签名缺失最多得到 -403，比整轮不取数更好。
-    """
-    try:
-        img_key, sub_key = await bilibili.get_wbi_keys()
-    except (*_NET_ERRORS, KeyError, TypeError, ValueError) as e:
-        logger.warning(f"获取 wbi key 失败，本次不签名: {get_exc_desc(e)}")
-        return params
-    return bilibili.enc_wbi(params, img_key, sub_key)
-
-
-def invalidate_wbi_keys() -> None:
-    """作废 wbi key 缓存，供 scheduler 收到 -403 后重试前调用（§3.5）"""
-    bilibili.invalidate_wbi_keys()
-    logger.info("已作废 wbi key 缓存，下次取数将重新获取")
-
-
 # ============================ feed/space 取数 ============================ #
 
 
 def _build_timeout() -> aiohttp.ClientTimeout:
-    """按配置构造超时（连接 5s / 总 10s；bison 的 4s 在跨境时会误判为网络故障）"""
+    """bison 的 4s 超时在跨境时会误判为网络故障，这里按配置给（默认连接 5s / 总 10s）"""
     return aiohttp.ClientTimeout(
         total=plugin_config.http_timeout_total,
         connect=plugin_config.http_timeout_connect,
@@ -188,24 +143,13 @@ def _build_timeout() -> aiohttp.ClientTimeout:
 
 
 async def fetch_space_feed(
-    uid: str,
-    *,
-    force_refresh_cookie: bool = False,
-    offset: str = "",
+    uid: str, *, force_refresh_cookie: bool = False
 ) -> dict[str, Any]:
-    """拉取指定 UP 的空间动态列表，返回响应的 data 部分（含 items/offset/has_more）。
+    """拉取 UP 空间动态首页，返回响应的 data 段；失败抛 BiliApiError 的子类。
 
-    - `force_refresh_cookie=True`：收到 -352 后重试本轮时使用，强制重造 cookie；
-    - `offset`：分页游标，第一版只取首页（空串），保留参数以便将来翻页；
-    - **只有 code==0 且结构合法才返回**，其余一切情况抛 BiliApiError 的子类，
-      调用方绝不会因为风控/网络/解析失败而看到"空 items"（§3.5）。
-      注意 `code==0 且 items==[]` 是合法结果（该 UP 确实没有动态），会正常返回。
+    force_refresh_cookie 用于 -352 后的重试：强制重造 cookie。
     """
-    uid = str(uid).strip()
-    params = build_feed_params(uid, offset=offset)
-    if plugin_config.enable_wbi:
-        params = await _sign_with_wbi(params)
-
+    params = build_feed_params(uid)
     headers = credential_manager.build_headers(uid)
     cookies = await credential_manager.get_cookies(force_refresh=force_refresh_cookie)
     if not cookies:
@@ -232,10 +176,7 @@ async def fetch_space_feed(
 
     _check_http_status(uid, status, body)
     raw = _load_json(uid, status, body)
-    data = _dispatch_feed_payload(uid, raw)
-    # 只有走到这里才算业务成功：清零「连续强制刷新」计数（-352 也是 HTTP 200，不能靠状态码判断）
-    credential_manager.mark_fetch_success()
-    return data
+    return _dispatch_feed_payload(uid, raw)
 
 
 def _check_http_status(uid: str, status: int, body: str) -> None:
@@ -275,18 +216,12 @@ def _load_json(uid: str, status: int, body: str) -> dict[str, Any]:
 
 
 def _dispatch_feed_payload(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
-    """按业务错误码分流（§3.5 表），成功时返回 data 段"""
+    """按业务错误码分流，成功时返回 data 段"""
     code = raw.get("code")
     message = str(raw.get("message") or raw.get("msg") or "")
 
     if code == -352:
         raise BiliRiskControlError(f"触发风控: {message}", uid=uid, code=-352)
-    if code == -101:
-        raise BiliAuthError(
-            f"登录态失效，请重新配置 sessdata: {message}", uid=uid, code=-101
-        )
-    if code == -403:
-        raise BiliSignError(f"签名/权限校验失败（wbi）: {message}", uid=uid, code=-403)
     if code != 0:
         raise BiliApiError(
             f"取数失败: {message}",
@@ -321,9 +256,8 @@ def _dispatch_feed_payload(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
 # ============================ UP 昵称 ============================ #
 
 
-async def fetch_user_name(uid: str) -> Optional[str]:
+async def fetch_user_name(uid: str) -> str | None:
     """取 UP 昵称（订阅命令回显用）。走直播开放接口，无风控、无需 cookie；失败返回 None"""
-    uid = str(uid).strip()
     try:
         async with get_client_session("bilibili").get(
             LIVE_USER_INFO_URL,

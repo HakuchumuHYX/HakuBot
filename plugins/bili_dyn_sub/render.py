@@ -1,27 +1,17 @@
-"""bili_dyn_sub 推送渲染：basic 主题文字模板 + 文转图 + 九宫格拼图 + 失败降级。
+"""bili_dyn_sub 推送渲染：文字模板 + 文转图 + 九宫格拼图，产出有序的消息段。
 
-对应设计文档 §5（推送视觉 1:1 复刻，用户硬约束）。
-
-本模块逐字符 / 逐分支复刻 nonebot-bison (MIT, Copyright (c) 2021 felinae98)：
-- `theme/themes/basic/build.py`：文字模板（标题空行、500 字截断、14 个 "-" 分隔线、
-  "转发自 {昵称}:"、"来源: B站 {昵称}"、"转发详情：" / "详情: " 两行链接、配图分组顺序）；
-- `utils/image.py`：`_check_image_square` / `is_pics_mergable` / `pic_merge` 的九宫格判据与拼接坐标；
-- `post/abstract_post.py`：`bison_use_pic=True` 时把整段文字转成图片卡片的流程
-  （bison 走 htmlrender 的 `render_text`，本仓 `utils/rendering/engine.py` 的模板与其完全一致，
-  故渲染产物在同一 viewport(500) / device_scale_factor(2) 下像素等价）。
-
-生效的 bison 配置（用户未改任何环境变量，即默认值）：
-`bison_use_pic=True`、`bison_use_pic_merge=1`、`compress=False`、basic 主题。
-
-职责边界：本模块只负责「产出有序的消息段」，**不负责发送节奏**
-（首条单发 / 余图合并转发 / 1.5s 间隔在 scheduler.py，见设计文档 §5.2 第 3-4 步）。
+逐字符复刻 nonebot-bison (MIT, Copyright (c) 2021 felinae98) 默认配置下的输出
+（basic 主题、bison_use_pic=True、bison_use_pic_merge=1）：
+- theme/themes/basic/build.py：文字模板与配图分组顺序；
+- utils/image.py：九宫格判据与拼接坐标；
+- 文字卡片走 utils/rendering/engine.py 的 render_text，模板与 bison 的 htmlrender 一致。
+发送节奏（首条单发、余图合并转发）在 scheduler.py。
 """
 
 from __future__ import annotations
 
 import asyncio
 from io import BytesIO
-from typing import Optional, Union
 
 import aiohttp
 from nonebot.adapters.onebot.v11 import MessageSegment
@@ -38,13 +28,9 @@ from plugins.bili_dyn_sub.parser import DELETED_SOURCE_TIPS, ParsedDynamic
 
 # ---------------------------------------------------------------- 常量
 
-#: 平台名，对应 bison `Bilibili.name`（"来源: B站 {UP主昵称}" 里的 "B站"）
-PLATFORM_NAME = "B站"
-#: 分隔线：14 个 "-"，与 basic 主题一字不差
-SEPARATOR = "--------------"
-#: 渲染产物最小字节数（设计文档 §5.3：空白图 / 半截图必须被拦下）
-MIN_IMAGE_BYTES = 4096
-#: 图片下载 / 解码可预期的异常（下载失败只跳过合并，不影响整体推送）
+PLATFORM_NAME = "B站"  # "来源: B站 {昵称}"
+SEPARATOR = "--------------"  # 14 个 "-"
+# 配图下载 / 解码失败只放弃合并，不影响推送
 _PIC_ERRORS = (
     HttpError,
     aiohttp.ClientError,
@@ -75,7 +61,7 @@ def _detail_url(parsed: ParsedDynamic) -> str:
 
 
 def build_text(parsed: ParsedDynamic) -> str:
-    """构造推送文本（复刻 bison basic 主题，设计文档 §5.1）"""
+    """构造推送文本（复刻 bison basic 主题）"""
     text = ""
 
     text += f"{parsed.title}\n\n" if parsed.title else ""
@@ -107,34 +93,6 @@ def build_text(parsed: ParsedDynamic) -> str:
         text += "\n".join(urls)
 
     return text
-
-
-# ---------------------------------------------------------------- 文字转图
-
-
-def _verify_image_bytes(data: bytes) -> None:
-    """在线程池里用 PIL 校验一次产物（同步、CPU 侧）；损坏会抛 OSError/ValueError"""
-    with Image.open(BytesIO(data)) as img:
-        img.verify()
-
-
-async def render_text_image(text: str) -> bytes:
-    """整段文字 → 白底文字卡片图（等价 bison `bison_use_pic=True` 的 `text_to_image`）。
-
-    设计文档 §5.3 的产物校验：非空 + >4096 字节 + PIL verify 一次；
-    任何一环不过就抛异常，由调用方降级为纯文本（宁可丑不可漏）。
-    """
-    if not text.strip():
-        raise ValueError("待渲染文本为空，拒绝生成空白图")
-
-    data = await render_text(text)
-    if not isinstance(data, (bytes, bytearray)):
-        raise ValueError(f"render_text 返回类型异常: {type(data).__name__}")
-    data = bytes(data)
-    if len(data) < MIN_IMAGE_BYTES:
-        raise ValueError(f"文字卡片产物过小（{len(data)} 字节），疑似空白图")
-    await asyncio.to_thread(_verify_image_bytes, data)
-    return data
 
 
 # ---------------------------------------------------------------- 九宫格拼图
@@ -181,21 +139,19 @@ def _compose_grid(
     return buffer.getvalue()
 
 
-async def merge_pics(pic_urls: list[str]) -> list[Union[bytes, str]]:
-    """配图合并（照抄 bison `pic_merge`，设计文档 §5.2 第 2 步）。
+async def merge_pics(pic_urls: list[str]) -> list[bytes | str]:
+    """配图合并（照抄 bison `pic_merge`）。
 
     ≥3 张、每张都是方图、同行等高同列等宽时拼成 3×N 大图（N=1/2/3），
     大图放在列表首位、其余原图 URL 原样跟随；任一条件不满足则原样返回 URL 列表。
     """
-    pics: list[str] = [url for url in pic_urls if isinstance(url, str) and url.strip()]
-    if len(pics) != len(pic_urls):
-        logger.debug(f"配图列表含 {len(pic_urls) - len(pics)} 个非法项，已忽略")
+    pics = pic_urls
     if len(pics) < 3 or not _is_mergable(pics):
         return list(pics)
 
     loaded: dict[int, PILImage] = {}
 
-    async def load(index: int) -> Optional[PILImage]:
+    async def load(index: int) -> PILImage | None:
         """下载并解码第 index 张图；失败返回 None（不阻塞整体推送，退回原图 URL）"""
         if index in loaded:
             return loaded[index]
@@ -272,7 +228,7 @@ async def merge_pics(pic_urls: list[str]) -> list[Union[bytes, str]]:
     logger.info(
         f"触发图片合并：{matrix[0]}×{matrix[1]}，合并 {matrix[0] * matrix[1]} 张"
     )
-    rest: list[Union[bytes, str]] = list(pics[matrix[0] * matrix[1] :])
+    rest: list[bytes | str] = list(pics[matrix[0] * matrix[1] :])
     rest.insert(0, merged)
     return rest
 
@@ -280,32 +236,19 @@ async def merge_pics(pic_urls: list[str]) -> list[Union[bytes, str]]:
 # ---------------------------------------------------------------- 消息段
 
 
-def _image_segment(pic: Union[bytes, str]) -> Optional[MessageSegment]:
-    """图片消息段：本地数据走共享文件，远程图片保留 URL。"""
-    if isinstance(pic, (bytes, bytearray)):
-        if not pic:
-            return None
-        return image_segment(bytes(pic))
-    if isinstance(pic, str) and pic.strip():
-        return image_segment(pic)
-    logger.debug(f"忽略非法配图项: {type(pic).__name__}")
-    return None
-
-
 async def build_messages(parsed: ParsedDynamic) -> list[MessageSegment]:
     """产出按 bison 拆包语义排好序的消息段：[文字卡片图, 图1, 图2, ...]。
 
     配图分组顺序照抄 basic 主题：先本动态配图、再转发源配图，**两组各自独立判断能否合并**。
-    文字图渲染失败时降级为纯文本段（设计文档 §5.3：宁可丑不可漏）。
-    发送节奏（首条单发 / 余图合并转发 / 1.5s 间隔）由 scheduler 负责。
+    文字卡片渲染失败时降级为纯文本段：宁可丑不可漏。
     """
     text = build_text(parsed)
     segments: list[MessageSegment] = []
 
     try:
-        card = await render_text_image(text)
+        card = await render_text(text)
     except Exception as e:
-        # 渲染链路（Playwright / 模板 / PIL 校验）任意环节失败都降级，不能因此漏推
+        # 渲染链路（浏览器 / 模板）任意环节失败都降级，不能因此漏推
         logger.opt(exception=True).warning(
             f"动态 {parsed.dyn_id} 文字卡片渲染失败，降级为纯文本: {get_exc_desc(e)}"
         )
@@ -321,8 +264,6 @@ async def build_messages(parsed: ParsedDynamic) -> list[MessageSegment]:
 
     for pics in pics_group:
         for pic in await merge_pics(pics):
-            segment = _image_segment(pic)
-            if segment is not None:
-                segments.append(segment)
+            segments.append(image_segment(pic))
 
     return segments

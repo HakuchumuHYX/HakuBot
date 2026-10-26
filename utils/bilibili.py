@@ -32,7 +32,7 @@ _TICKET_URL = (
     "https://api.bilibili.com/bapis/bilibili.api.ticket.v1.Ticket/GenWebTicket"
 )
 
-# key 一天一换，缓存 1 小时足够；bili_dyn_sub 收到 -403 时会主动作废
+# key 一天一换，缓存 1 小时足够
 _WBI_KEYS_TTL = 3600
 _wbi_keys = {"img_key": "", "sub_key": "", "ts": 0.0}
 
@@ -80,10 +80,6 @@ async def get_wbi_keys() -> tuple[str, str]:
     sub_key = data["sub_url"].rsplit("/", 1)[1].split(".")[0]
     _wbi_keys.update(img_key=img_key, sub_key=sub_key, ts=now)
     return img_key, sub_key
-
-
-def invalidate_wbi_keys() -> None:
-    _wbi_keys["ts"] = 0.0
 
 
 async def wbi_query(params: dict) -> str:
