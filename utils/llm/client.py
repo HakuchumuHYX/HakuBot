@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import httpx
+from nonebot import logger
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -12,6 +13,8 @@ from openai import (
     InternalServerError,
     RateLimitError,
 )
+
+from utils.logging import get_exc_desc
 
 
 @dataclass
@@ -96,7 +99,12 @@ async def _request(config, operation, **kwargs):
         except Exception as exc:
             if not is_retryable_llm_error(exc) or attempt >= config.max_retries:
                 raise
-            await asyncio.sleep(2**attempt)
+            delay = 2**attempt
+            logger.info(
+                f"LLM 请求失败 (model={kwargs.get('model')})，{delay}s 后重试 "
+                f"({attempt + 1}/{config.max_retries}): {get_exc_desc(exc)}"
+            )
+            await asyncio.sleep(delay)
 
 
 def _usage_from_response(resp: Any) -> TokenUsage:

@@ -8,10 +8,12 @@ from typing import TypeVar
 
 from json_repair import repair_json
 from nonebot import logger
+from openai import APIError
 from pydantic import BaseModel
 
 from core.access import is_enabled
 from utils.llm.client import ChatResult, LLMClientConfig, TokenUsage, chat_completion
+from utils.logging import get_exc_desc
 from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.models import (
     AnalysisResult,
@@ -156,6 +158,7 @@ def _parse_items(result: ChatResult, item_model: type[ItemT]) -> list[ItemT]:
 
 
 async def _ask(
+    section: str,
     messages: list[dict],
     item_model: type[ItemT],
     temperature: float,
@@ -189,7 +192,7 @@ async def _ask(
         except ValueError as e:
             if attempt:
                 raise
-            logger.warning(f"{item_model.__name__} 输出无效，重试一次: {e}")
+            logger.info(f"{section}输出无效，重试一次: {e}")
 
 
 def _with_transcript(transcript_text: str, prompt: str) -> list[dict]:
@@ -209,7 +212,11 @@ async def _topics(transcript_text: str, limit: int, usage: TokenUsage):
         '{"items":[{"topic":"话题名称","contributors":["用户1"],"detail":"描述"}]}'
     )
     items = await _ask(
-        _with_transcript(transcript_text, prompt), SummaryTopic, 0.3, usage
+        SECTION_NAMES["topics"],
+        _with_transcript(transcript_text, prompt),
+        SummaryTopic,
+        0.3,
+        usage,
     )
     return items[:limit]
 
@@ -228,7 +235,11 @@ async def _golden_quotes(
         '{"items":[{"content":"金句原文","sender":"发言人","reason":"辣评"}]}'
     )
     quotes = await _ask(
-        _with_transcript(transcript_text, prompt), GoldenQuote, 1.1, usage
+        SECTION_NAMES["golden_quotes"],
+        _with_transcript(transcript_text, prompt),
+        GoldenQuote,
+        1.1,
+        usage,
     )
 
     # 提示词不要 QQ 号，按转写里的发言人名字补上，渲染时要拿头像
@@ -269,7 +280,13 @@ async def _user_titles(users: dict[str, UserFeature], limit: int, usage: TokenUs
             '{"items":[{"name":"用户名","qq":123456,"title":"称号","reason":"理由","personality":"人物画像"}]}'
         )
     )
-    titles = await _ask([{"role": "user", "content": prompt}], UserTitle, 0.7, usage)
+    titles = await _ask(
+        SECTION_NAMES["user_titles"],
+        [{"role": "user", "content": prompt}],
+        UserTitle,
+        0.7,
+        usage,
+    )
 
     # LLM 没给 QQ 号就按名字补，渲染时要拿头像
     qq_by_name = {u.name: int(user_id) for user_id, u in top_users}
@@ -313,7 +330,14 @@ async def analyze(group_id: int, rows) -> AnalysisResult:
     for key, outcome in zip(jobs, outcomes):
         if isinstance(outcome, asyncio.CancelledError):
             raise outcome
-        if isinstance(outcome, Exception):
+        if isinstance(outcome, APIError):
+            # 上游故障（503、超时等），client 已重试过，调用栈没有排查价值
+            logger.warning(
+                f"群 {group_id} {SECTION_NAMES[key]}分析失败，日报省略这一块: "
+                f"{get_exc_desc(outcome)}"
+            )
+            failed.append(key)
+        elif isinstance(outcome, Exception):
             logger.opt(exception=outcome).warning(
                 f"群 {group_id} {SECTION_NAMES[key]}分析失败，日报省略这一块"
             )
@@ -322,4 +346,18 @@ async def analyze(group_id: int, rows) -> AnalysisResult:
             setattr(result, key, outcome)
     if jobs and len(failed) == len(jobs):
         raise RuntimeError(f"群 {group_id} 日报分析全部失败")
+
+    states = []
+    for key, name in SECTION_NAMES.items():
+        if key not in jobs:
+            states.append(f"{name}=关闭")
+        elif key in failed:
+            states.append(f"{name}=失败")
+        else:
+            states.append(f"{name}={len(getattr(result, key))}")
+    usage = result.usage
+    logger.info(
+        f"群 {group_id} 分析完成: 消息={stats.message_count}, {', '.join(states)}, "
+        f"Token={usage.total_tokens} (P:{usage.prompt_tokens}/C:{usage.completion_tokens})"
+    )
     return result

@@ -41,12 +41,6 @@ async def build_report(group_id: int) -> bytes | None:
         return None
 
     result = await analyze(group_id, rows)
-    usage = result.usage
-    logger.info(
-        f"群 {group_id} 分析完成: 消息={len(rows)}, 话题={len(result.topics)}, "
-        f"称号={len(result.user_titles)}, 金句={len(result.golden_quotes)}, "
-        f"Token={usage.total_tokens} (P:{usage.prompt_tokens}/C:{usage.completion_tokens})"
-    )
     image = await render_report(result)
     logger.info(f"群 {group_id} 每日总结生成成功，图片大小: {len(image)} bytes")
     return image
