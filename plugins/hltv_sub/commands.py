@@ -51,6 +51,7 @@ async def _fetch(matcher: type[Matcher], what: str, coro):
     try:
         return await coro
     except HLTVFetchError as e:
+        logger.warning(f"获取{what}失败: {e}")
         await matcher.finish(str(e))
     except Exception as e:
         logger.exception(f"获取{what}失败: {e}")
@@ -120,6 +121,7 @@ async def handle_event_subscribe(args: Message = CommandArg()):
         if event_info.is_ongoing:
             await hltv_handler.initialize_event_results_as_notified(event_id)
     except HLTVFetchError as e:
+        logger.warning(f"订阅赛事 {event_id} 失败: {e}")
         await event_subscribe.finish(f"订阅未完成：{e}")
     except ValueError as e:
         logger.warning(f"赛事 {event_id} 信息解析失败: {e}")

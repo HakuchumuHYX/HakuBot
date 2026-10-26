@@ -214,7 +214,8 @@ async def handle_leaderboard(matcher: Matcher, bot: Bot, event: GroupMessageEven
     try:
         info = await bot.get_group_info(group_id=event.group_id)
         group_name = info.get("group_name") or f"群 {event.group_id}"
-    except ActionFailed:
+    except ActionFailed as e:
+        logger.warning(f"获取群 {event.group_id} 信息失败，排行榜改用群号: {e}")
         group_name = f"群 {event.group_id}"
 
     try:

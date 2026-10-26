@@ -145,8 +145,6 @@ async def _(
         args_obj = parser.parse_args(raw_args)
     except ReplyException as e:
         await ximg.finish(str(e))
-    except Exception as e:
-        await ximg.finish(f"参数解析错误: {e}")
 
     url = args_obj.url
     if not url:

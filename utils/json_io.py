@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Union
 
+from nonebot import logger
+
 
 @dataclass(frozen=True)
 class JsonLoadResult:
@@ -50,7 +52,8 @@ def load_json(
             try:
                 backup = path.with_name(f"{path.name}.corrupt.{time.time_ns()}")
                 shutil.copy2(path, backup)
-            except OSError:
+            except OSError as backup_error:
+                logger.warning(f"损坏的 JSON 备份失败 {path}: {backup_error}")
                 backup = None
         return JsonLoadResult(False, copy.deepcopy(default), exc, backup)
 

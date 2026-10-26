@@ -4,6 +4,7 @@ import asyncio
 import random
 from collections import defaultdict
 
+from nonebot import logger
 from nonebot.adapters.onebot.v11 import GROUP, ActionFailed, Bot, GroupMessageEvent
 from nonebot.plugin.on import on_command, on_message
 from nonebot.typing import T_State
@@ -20,6 +21,7 @@ from plugins.groupmate_waifu.render import (
     render_member_pool,
     send_avatar,
 )
+from utils.logging import get_exc_desc
 from utils.onebot.messages import mentioned_users
 from utils.onebot.rules import command_boundary
 
@@ -97,8 +99,11 @@ async def _show_couple(
     partner = couple.partner_of(user_id)
     try:
         name = await _name(bot, group_id, partner)
-    except ActionFailed:
+    except ActionFailed as e:
         # CP 已经退群，拆掉后按没有 CP 继续娶
+        logger.info(
+            f"群 {group_id} 查不到 {user_id} 的 CP {partner}，按已退群拆掉: {get_exc_desc(e)}"
+        )
         record.couples.remove(couple)
         store.save()
         return
@@ -145,7 +150,10 @@ async def _marry(bot: Bot, event: GroupMessageEvent, target: int | None) -> None
         else:
             try:
                 name = await _name(bot, group_id, target)
-            except ActionFailed:
+            except ActionFailed as e:
+                logger.warning(
+                    f"群 {group_id} 查询成员 {target} 失败: {get_exc_desc(e)}"
+                )
                 name = "TA"
             await waifu.finish(f"你没能娶到 {name}！", at_sender=True)
     else:

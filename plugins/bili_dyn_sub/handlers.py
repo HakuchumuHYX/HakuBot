@@ -203,6 +203,7 @@ async def handle_test(bot: Bot, event: MessageEvent, args: Message = CommandArg(
     try:
         data = await api.fetch_space_feed(uid)
     except api.BiliApiError as e:
+        logger.warning(f"订阅测试 UID {uid} 取数失败: {e}")
         await bili_test.finish(f"❌ 取数失败：{e}\n{credential_manager.describe()}")
 
     parsed_list = parse_feed(data)
