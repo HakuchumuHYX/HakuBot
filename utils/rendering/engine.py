@@ -4,6 +4,8 @@
 本目录的 templates/ 只放通用的 Markdown 转图模板。
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from functools import cache
 from pathlib import Path
@@ -13,6 +15,7 @@ from zoneinfo import ZoneInfo
 import jinja2
 import markdown
 from nonebot import logger
+from playwright.async_api import Page
 
 from utils.paths import project_root
 from utils.rendering.browser import browser_pool
@@ -36,20 +39,11 @@ def read_tpl(name: str) -> str:
     return (TEMPLATES_PATH / name).read_text(encoding="utf-8")
 
 
-async def render_html(
-    html: str,
-    *,
-    base_dir: Path = project_root(),
-    width: int = 800,
-    scale: float = 2,
-    type: Literal["jpeg", "png"] = "png",
-    quality: int | None = None,
-    timeout: float = 30_000,
-) -> bytes:
-    """HTML 转图片；base_dir 决定模板里相对路径（CSS、图片）的解析位置。
-
-    timeout 同时限制页面加载（含远程图片）和截图。
-    """
+@asynccontextmanager
+async def _loaded_page(
+    html: str, *, base_dir: Path, width: int, scale: float, timeout: float
+) -> AsyncIterator[Page]:
+    """打开页面并等字体、图片就绪；timeout 同时限制页面加载（含远程图片）和截图。"""
     async with browser_pool.page(
         viewport={"width": width, "height": 10}, device_scale_factor=scale
     ) as page:
@@ -61,6 +55,23 @@ async def render_html(
         await page.evaluate(
             "Promise.all(Array.from(document.images).map(i => i.decode().catch(() => {})))"
         )
+        yield page
+
+
+async def render_html(
+    html: str,
+    *,
+    base_dir: Path = project_root(),
+    width: int = 800,
+    scale: float = 2,
+    type: Literal["jpeg", "png"] = "png",
+    quality: int | None = None,
+    timeout: float = 30_000,
+) -> bytes:
+    """HTML 转图片；base_dir 决定模板里相对路径（CSS、图片）的解析位置。"""
+    async with _loaded_page(
+        html, base_dir=base_dir, width=width, scale=scale, timeout=timeout
+    ) as page:
         return await page.screenshot(
             full_page=True, type=type, quality=quality, timeout=timeout
         )
@@ -92,18 +103,59 @@ async def render_template(
     模板额外可用 font_css（本地 MiSans，family 名为 Haku）和 dark（是否夜间）；
     调用方显式传入同名参数时以调用方为准。
     """
-    template = _plugin_env(template_dir.resolve()).get_template(name)
-    html = await template.render_async(
-        **{"font_css": font_css(), "dark": is_night(), **context}
-    )
     return await render_html(
-        html,
+        await _template_html(template_dir, name, context),
         base_dir=template_dir,
         width=width,
         scale=scale,
         type=type,
         quality=quality,
         timeout=timeout,
+    )
+
+
+async def render_template_pages(
+    template_dir: Path,
+    name: str,
+    /,
+    *,
+    width: int,
+    paginate: str,
+    scale: float = 2,
+    type: Literal["jpeg", "png"] = "jpeg",
+    quality: int | None = 85,
+    timeout: float = 30_000,
+    **context,
+) -> list[bytes]:
+    """渲染插件模板并按页截图，长文分多张图发。
+
+    分页由页面自己算：paginate 是一段 JS 表达式，返回 [{y, height}, ...]（CSS 像素），
+    只有页面知道哪里是标题、哪里能断开。整篇只加载一次，各页逐段截取。
+    """
+    async with _loaded_page(
+        await _template_html(template_dir, name, context),
+        base_dir=template_dir,
+        width=width,
+        scale=scale,
+        timeout=timeout,
+    ) as page:
+        regions = await page.evaluate(paginate)
+        return [
+            await page.screenshot(
+                clip={"x": 0, "y": r["y"], "width": width, "height": r["height"]},
+                full_page=True,
+                type=type,
+                quality=quality,
+                timeout=timeout,
+            )
+            for r in regions
+        ]
+
+
+async def _template_html(template_dir: Path, name: str, context: dict) -> str:
+    template = _plugin_env(template_dir.resolve()).get_template(name)
+    return await template.render_async(
+        **{"font_css": font_css(), "dark": is_night(), **context}
     )
 
 

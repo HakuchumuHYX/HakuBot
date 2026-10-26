@@ -256,10 +256,26 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
         content = _as_str(_dget(summary, "text", "")) or _rich_text(
             _dget(summary, "rich_text_nodes")
         )
+        title = _as_str(_dget(opus, "title", ""))
+        pics = _pic_urls(_dget(opus, "pics"), "url")
+        if _as_str(_dget(item, "type", "")) == "DYNAMIC_TYPE_ARTICLE":
+            # 专栏：pics 是头图，当封面；摘要是 B 站截的节选，图片位置留着 "[图片]" 占位
+            excerpt = "\n".join(
+                line
+                for line in _decode_escapes(content).splitlines()
+                if line.strip() != "[图片]"
+            )
+            return _MajorParsed(
+                title,
+                excerpt,
+                [],
+                _article_url(item) or _normalize_url(_dget(opus, "jump_url")),
+                cover=pics[0] if pics else "",
+            )
         return _MajorParsed(
-            _as_str(_dget(opus, "title", "")),
+            title,
             _decode_escapes(content) or desc_text,
-            _pic_urls(_dget(opus, "pics"), "url"),
+            pics,
             _normalize_url(_dget(opus, "jump_url")),
         )
 
@@ -269,8 +285,9 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
         return _MajorParsed(
             _as_str(_dget(article, "title", "")),
             _decode_escapes(_as_str(_dget(article, "desc", ""))),
-            covers,
+            [],
             _normalize_url(_dget(article, "jump_url")),
+            cover=covers[0] if covers else "",
         )
 
     if major_type == "MAJOR_TYPE_DRAW":  # 图文动态
@@ -344,6 +361,15 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
 def _cover(obj: Any) -> str:
     """单张封面（视频、直播、番剧等）；渲进卡片，不当配图单发"""
     return _as_str(_dget(obj, "cover", "")).strip()
+
+
+def _article_url(item: dict) -> str:
+    """专栏的 cv 链接：opus 链接也能打开，但 cv 号更直观。comment_type 12 表示专栏"""
+    basic = _dget(item, "basic", {})
+    rid = _as_str(_dget(basic, "rid_str", "")).strip()
+    if _as_int(_dget(basic, "comment_type", 0)) != 12 or not rid.isdecimal():
+        return ""
+    return f"https://www.bilibili.com/read/cv{rid}"
 
 
 def _pic_urls_from_str_list(raw: Any) -> list[str]:

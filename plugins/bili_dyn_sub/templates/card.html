@@ -79,6 +79,15 @@ main > .media:first-child { margin-top: 0; }
     background: rgba(0, 0, 0, .62);
 }
 .media .title { margin-top: 10px; font-size: 17px; }
+/* 专栏节选：标题下面，比正文小一号 */
+.excerpt {
+    margin-top: 6px;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--sub);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
 .stats { display: flex; gap: 14px; margin-top: 4px; font-size: 13.5px; color: var(--muted); }
 /* 封面加载失败或无图重渲染时隐藏封面，时长挪到统计行 */
 .stats .inline-duration { display: none; }
@@ -104,7 +113,7 @@ main > .media:first-child { margin-top: 0; }
 </head>
 <body>
 {% macro body(d) %}
-    {% set has_media = d.cover or d.video %}
+    {% set has_media = d.cover or d.video or d.excerpt %}
     {% if d.title and not has_media %}<div class="title">{{ d.title }}</div>{% endif %}
     {% if d.content %}<div class="text{{ ' deleted' if d.deleted }}">{{ d.content }}</div>{% endif %}
     {% if has_media %}
@@ -116,6 +125,8 @@ main > .media:first-child { margin-top: 0; }
         </div>
         {% endif %}
         {% if d.title %}<div class="title">{{ d.title }}</div>{% endif %}
+        {% if d.excerpt %}<div class="excerpt">{{ d.excerpt }}</div>{% endif %}
+        {% if d.words %}<div class="stats"><span>约 {{ d.words }}</span></div>{% endif %}
         {% if d.video %}
         <div class="stats">
             {% if d.video.duration %}<span class="inline-duration">{{ d.video.duration }}</span>{% endif %}

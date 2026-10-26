@@ -21,12 +21,12 @@ from nonebot_plugin_apscheduler import scheduler as apscheduler
 
 from core.lifecycle import on_plugin_shutdown, on_plugin_startup, runtime
 from utils.logging import get_exc_desc
-from utils.onebot.forward import send_forward_msg
+from utils.onebot.forward import ForwardSendError, send_forward_msg
 from plugins.bili_dyn_sub import api
 from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.credential import credential_manager
 from plugins.bili_dyn_sub.parser import ParsedDynamic, parse_feed, should_skip
-from plugins.bili_dyn_sub.render import build_messages
+from plugins.bili_dyn_sub.render import PushMessages, build_messages
 from plugins.bili_dyn_sub.store import store
 
 LOGIN_CHECK_INTERVAL_HOURS = 6
@@ -40,6 +40,9 @@ NETWORK_BACKOFF_SECONDS = 60.0
 
 # 基线已建立后连续这么多轮空 feed，提示疑似软风控（code=0 但 items 为空，不报错也不退避）
 EMPTY_FEED_WARN_THRESHOLD = 5
+
+# 一条合并转发最多放几个节点；超了拆成几条，节点均分
+FORWARD_MAX_NODES = 30
 
 
 # ---------------------------------------------------------------- 退避
@@ -261,25 +264,58 @@ async def _send_with_retry(
     return False
 
 
-async def dispatch_segments(
-    bot: Bot, target: SendTarget, card: Message, pics: list[MessageSegment]
+async def dispatch_segments(bot: Bot, target: SendTarget, msgs: PushMessages) -> None:
+    """照 bison 的拆包：卡片单发；配图 1 张单发，≥2 张合并转发。专栏全文页总是合并转发"""
+    await _send_with_retry(bot, target, msgs.card, desc="动态文字卡片")
+
+    if len(msgs.pics) == 1:
+        await _send_with_retry(bot, target, Message(msgs.pics[0]), desc="动态配图")
+    elif msgs.pics:
+        await _send_forward(bot, target, msgs.pics, desc="动态配图", fallback=True)
+
+    if msgs.pages:
+        # 被拒时不逐条补发：几十张长图会刷屏
+        await _send_forward(bot, target, msgs.pages, desc="专栏全文", fallback=False)
+
+
+def _forward_chunks(segments: list[MessageSegment]) -> list[list[MessageSegment]]:
+    """按 FORWARD_MAX_NODES 拆成几条，节点均分：16 → 8 + 8，不让最后一条只剩一两个"""
+    count = math.ceil(len(segments) / FORWARD_MAX_NODES)
+    size, extra = divmod(len(segments), count)
+    chunks: list[list[MessageSegment]] = []
+    start = 0
+    for k in range(count):
+        end = start + size + (1 if k < extra else 0)
+        chunks.append(segments[start:end])
+        start = end
+    return chunks
+
+
+async def _send_forward(
+    bot: Bot,
+    target: SendTarget,
+    segments: list[MessageSegment],
+    *,
+    desc: str,
+    fallback: bool,
 ) -> None:
-    """照 bison 的拆包：卡片单发；配图 1 张单发，≥2 张合并转发"""
-    await _send_with_retry(bot, target, card, desc="动态文字卡片")
-
-    if not pics:
-        return
-    if len(pics) == 1:
-        await _send_with_retry(bot, target, Message(pics[0]), desc="动态配图")
-        return
-
-    await send_forward_msg(
-        bot,
-        group_id=target.group_id,
-        user_id=target.user_id,
-        items=[Message(segment) for segment in pics],
-        fallback_interval=plugin_config.send_interval_seconds,
-    )
+    chunks = _forward_chunks(segments)
+    for k, chunk in enumerate(chunks, 1):
+        try:
+            await send_forward_msg(
+                bot,
+                group_id=target.group_id,
+                user_id=target.user_id,
+                items=[Message(segment) for segment in chunk],
+                fallback_on_action_failed=fallback,
+                fallback_interval=plugin_config.send_interval_seconds,
+            )
+        except ForwardSendError as e:
+            logger.error(
+                f"{target} 发送{desc}第 {k}/{len(chunks)} 条合并转发失败，后面的不再发: {get_exc_desc(e)}"
+            )
+            return
+        await asyncio.sleep(plugin_config.send_interval_seconds)
 
 
 # ---------------------------------------------------------------- 轮询
@@ -324,9 +360,9 @@ async def _poll_uid(bot: Bot, uid: str) -> None:
         # 推送前先写游标：渲染/发送失败最多丢这一条，不会每轮重推卡死；中途崩溃时后面的下轮照推
         store.advance(uid, parsed.dyn_id)
         await store.save()
-        card, pics = await build_messages(parsed)  # 同一动态跨群只渲染一次
+        msgs = await build_messages(parsed)  # 同一动态跨群只渲染一次
         for group_id in targets:
-            await dispatch_segments(bot, SendTarget(group_id=group_id), card, pics)
+            await dispatch_segments(bot, SendTarget(group_id=group_id), msgs)
 
     # 跳过类型、超窗口、超条数的也一并标记已读
     if store.advance(uid, fresh[-1].dyn_id):

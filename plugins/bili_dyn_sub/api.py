@@ -28,6 +28,8 @@ from plugins.bili_dyn_sub.credential import credential_manager
 # ============================ 常量 ============================ #
 
 FEED_SPACE_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
+# 专栏全文：feed 里只有 B 站截好的摘要
+OPUS_DETAIL_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/detail"
 # UP 昵称：直播开放接口，无风控、无需 cookie
 LIVE_USER_INFO_URL = "https://api.live.bilibili.com/live_user/v1/Master/info"
 
@@ -35,6 +37,11 @@ TIMEZONE_OFFSET = "-480"
 PLATFORM = "web"
 FEATURES = "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote"  # RSSHub 同款
 WEB_LOCATION = "333.1387"
+# 不声明 eva3Card* 时正文里的视频、专栏卡片只返回 ITEM_NULL 空壳（只有 "视频" 两个字）。
+# 只挑这几项：网页的整套 features 还会把引用改成新的 blockquote 嵌套结构
+OPUS_DETAIL_FEATURES = (
+    "eva3CardOpus,eva3CardVideo,eva3CardComment,eva3CardVote,eva3CardUser"
+)
 
 # dm_img 系列：未登录态风控必需，伪造近似空值即可
 DM_IMG_LIST = "[]"
@@ -251,6 +258,48 @@ def _dispatch_feed_payload(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
     count = len(items) if isinstance(items, list) else 0
     logger.debug(f"UID {uid} 取数成功: {count} 条动态 has_more={data.get('has_more')}")
     return data
+
+
+# ============================ 专栏全文 ============================ #
+
+
+async def fetch_opus_detail(dyn_id: str) -> dict[str, Any]:
+    """取专栏全文，返回 data.item；失败抛 BiliApiError 的子类。
+
+    专栏的动态 id 就是 opus id。不触发 cookie 重造，失败由调用方降级为只发卡片。
+    """
+    params = {
+        "id": dyn_id,
+        "timezone_offset": TIMEZONE_OFFSET,
+        "features": OPUS_DETAIL_FEATURES,
+    }
+    try:
+        async with get_client_session("bilibili").get(
+            OPUS_DETAIL_URL,
+            params=params,
+            headers=credential_manager.build_headers(),
+            cookies=await credential_manager.get_cookies(),
+            proxy=get_effective_proxy(plugin_config.proxy),
+            timeout=_build_timeout(),
+        ) as resp:
+            status = resp.status
+            body = await resp.text()
+    except _NET_ERRORS as e:
+        raise BiliNetworkError(f"请求专栏 {dyn_id} 全文失败: {get_exc_desc(e)}") from e
+
+    _check_http_status("", status, body)
+    raw = _load_json("", status, body)
+    code = raw.get("code")
+    if code == -352:
+        raise BiliRiskControlError(f"专栏 {dyn_id} 全文触发风控", code=-352)
+    data = raw.get("data")
+    item = data.get("item") if code == 0 and isinstance(data, dict) else None
+    if not isinstance(item, dict):
+        raise BiliApiError(
+            f"专栏 {dyn_id} 全文取数失败: {truncate(body, 200)}",
+            code=code if isinstance(code, int) else None,
+        )
+    return item
 
 
 # ============================ UP 昵称 ============================ #

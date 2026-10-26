@@ -1,6 +1,7 @@
-"""bili_dyn_sub 推送渲染：文字卡片 + 九宫格拼图，产出卡片消息和配图段。
+"""bili_dyn_sub 推送渲染：文字卡片、九宫格拼图、专栏全文页，产出各段消息。
 
 卡片版式自研（templates/card.html）：封面和文字渲在一起，配图在卡片之后另发。
+专栏另取全文，按原排版分页渲染（templates/article.html），整组走合并转发。
 纯文本模板与九宫格拼图照抄 nonebot-bison (MIT, Copyright (c) 2021 felinae98)
 默认配置（basic 主题、bison_use_pic_merge=1）：
 - theme/themes/basic/build.py：文字模板与配图分组顺序；
@@ -12,10 +13,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -26,10 +29,12 @@ from PIL import Image
 from PIL.Image import Image as PILImage
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from utils.rendering.engine import render_template
+from utils.rendering.engine import render_template, render_template_pages
 from utils.onebot.media import image_segment
 from utils.network.http import HttpError, download_bytes
 from utils.logging import get_exc_desc
+from plugins.bili_dyn_sub import api
+from plugins.bili_dyn_sub.article import Article, excerpt, parse_article
 from plugins.bili_dyn_sub.config import plugin_config
 from plugins.bili_dyn_sub.parser import DELETED_SOURCE_TIPS, ParsedDynamic
 
@@ -87,21 +92,18 @@ def build_text(parsed: ParsedDynamic) -> str:
     text += f"\n{SEPARATOR}\n"
 
     text += f"来源: {PLATFORM_NAME} {parsed.nickname or ''}\n"
-    text += "\n".join(_detail_lines(parsed))
-    return text
 
-
-def _detail_lines(parsed: ParsedDynamic) -> list[str]:
-    """详情链接行：纯文本末尾和卡片下方的文字共用"""
-    lines: list[str] = []
-    rp_url = _detail_url(parsed.repost) if parsed.repost else ""
-    if rp_url:
+    urls: list[str] = []
+    rp_url = _detail_url(rp) if rp else ""
+    if rp and rp_url:
         # 注意：bison 这里是中文冒号 + 无空格，与下面的英文冒号 + 空格不对称，属于原样复刻
-        lines.append(f"转发详情：{rp_url}")
+        urls.append(f"转发详情：{rp_url}")
     post_url = _detail_url(parsed)
     if post_url:
-        lines.append(f"详情: {post_url}")
-    return lines
+        urls.append(f"详情: {post_url}")
+    if urls:
+        text += "\n".join(urls)
+    return text
 
 
 # ---------------------------------------------------------------- 九宫格拼图
@@ -285,10 +287,25 @@ def _pub_time(ts: int) -> str:
     return f"{t.month}月{t.day}日 {t:%H:%M}"
 
 
-def _card_data(parsed: ParsedDynamic, *, with_images: bool) -> dict:
+def _words(n: int) -> str:
+    if n < 1000:
+        return f"{n} 字"
+    if n < 9950:  # 再往上一位小数就进位成 10.0 千
+        return f"{n / 1000:.1f} 千字"
+    return f"{n / 10000:.1f} 万字"
+
+
+def _card_data(
+    parsed: ParsedDynamic, *, with_images: bool, article: Article | None = None
+) -> dict:
     content = parsed.content
     if parsed.is_deleted_source and not content:
         content = DELETED_SOURCE_TIPS
+    # 专栏的正文是节选，放在标题下面；取到全文时用全文开头，否则用 feed 摘要
+    article_excerpt = ""
+    if parsed.category == 2:
+        article_excerpt = article.excerpt if article else excerpt([content])
+        content = ""
     # 接口只给视频、专栏等投稿类动态 pub_action
     action = parsed.pub_action or (
         "转发了动态" if parsed.category == 5 else "发布了动态"
@@ -301,20 +318,22 @@ def _card_data(parsed: ParsedDynamic, *, with_images: bool) -> dict:
         "time": _pub_time(parsed.pub_ts),
         "title": parsed.title,
         "content": _rich(_truncate(content)),
+        "excerpt": article_excerpt,
+        "words": _words(article.words) if article else "",
         "deleted": parsed.is_deleted_source,
         "cover": parsed.cover if with_images else "",
         "video": parsed.video,
     }
 
 
-async def _render_card(parsed: ParsedDynamic) -> bytes:
+async def _render_card(parsed: ParsedDynamic, article: Article | None) -> bytes:
     async def render(with_images: bool) -> bytes:
         return await render_template(
             TEMPLATE_DIR,
             "card.html",
             width=500,
             timeout=IMAGE_TIMEOUT,
-            card=_card_data(parsed, with_images=with_images),
+            card=_card_data(parsed, with_images=with_images, article=article),
             repost=(
                 _card_data(parsed.repost, with_images=with_images)
                 if parsed.repost
@@ -329,17 +348,63 @@ async def _render_card(parsed: ParsedDynamic) -> bytes:
         return await render(False)
 
 
+# ---------------------------------------------------------------- 专栏全文
+
+# 每页最高多少 CSS 像素（2 倍图约 1000×6400）：宽度固定，手机上点开是竖着滑的长图，页高只影响页数
+ARTICLE_PAGE_HEIGHT = 3200
+# 全文的图多、单张大，加载比卡片慢得多
+ARTICLE_TIMEOUT = 60_000
+
+
+async def _fetch_article(parsed: ParsedDynamic) -> Article | None:
+    """取专栏全文；失败返回 None，调用方只发卡片"""
+    try:
+        item = await api.fetch_opus_detail(parsed.dyn_id)
+    except api.BiliApiError as e:
+        logger.warning(f"专栏 {parsed.dyn_id} 取全文失败，只发卡片: {e}")
+        return None
+    article = parse_article(item)
+    if article is None:
+        logger.warning(f"专栏 {parsed.dyn_id} 详情里没有正文段落，只发卡片")
+    return article
+
+
+async def _render_article(parsed: ParsedDynamic, article: Article) -> list[bytes]:
+    return await render_template_pages(
+        TEMPLATE_DIR,
+        "article.html",
+        width=500,
+        paginate=f"paginate({ARTICLE_PAGE_HEIGHT}, {json.dumps(parsed.title)})",
+        timeout=ARTICLE_TIMEOUT,
+        title=parsed.title,
+        face=parsed.face,
+        name=parsed.nickname,
+        time=_pub_time(parsed.pub_ts),
+        words=_words(article.words),
+        blocks=article.blocks,
+    )
+
+
 # ---------------------------------------------------------------- 消息段
 
 
-async def build_messages(parsed: ParsedDynamic) -> tuple[Message, list[MessageSegment]]:
-    """产出 (卡片消息, 配图段)：卡片图下面跟详情链接文字，配图按 bison 的分组顺序排好。
+class PushMessages(NamedTuple):
+    card: Message
+    pics: list[MessageSegment]  # 配图：1 张单发，≥2 张合并转发
+    pages: list[MessageSegment]  # 专栏全文页：总是合并转发
+
+
+async def build_messages(parsed: ParsedDynamic) -> PushMessages:
+    """产出卡片消息（只有卡片图）、配图段（按 bison 的分组顺序）和专栏全文页。
 
     配图分组照抄 basic 主题：先本动态配图、再转发源配图，**两组各自独立判断能否合并**。
-    卡片渲染失败时降级为纯文本：宁可丑不可漏。
+    卡片渲染失败时降级为纯文本：宁可丑不可漏。专栏全文取不到或渲染失败就只发卡片。
     """
+    # 只给 UP 自己发的专栏取全文；转发的专栏只在卡片里显示源卡片
+    article = await _fetch_article(parsed) if parsed.category == 2 else None
+
     try:
-        card = await _render_card(parsed)
+        card = await _render_card(parsed, article)
     except Exception as e:
         # 渲染链路（浏览器 / 模板）任意环节失败都降级，不能因此漏推
         logger.opt(exception=True).warning(
@@ -348,7 +413,6 @@ async def build_messages(parsed: ParsedDynamic) -> tuple[Message, list[MessageSe
         card_message = Message(MessageSegment.text(build_text(parsed)))
     else:
         card_message = Message(image_segment(card))
-        card_message.append(MessageSegment.text("\n".join(_detail_lines(parsed))))
 
     pics_group: list[list[str]] = []
     if parsed.pics:
@@ -361,4 +425,13 @@ async def build_messages(parsed: ParsedDynamic) -> tuple[Message, list[MessageSe
         for pic in await merge_pics(group):
             pics.append(image_segment(pic))
 
-    return card_message, pics
+    pages: list[MessageSegment] = []
+    if article is not None:
+        try:
+            pages = [image_segment(p) for p in await _render_article(parsed, article)]
+        except Exception as e:
+            logger.opt(exception=True).warning(
+                f"专栏 {parsed.dyn_id} 全文渲染失败，只发卡片: {get_exc_desc(e)}"
+            )
+
+    return PushMessages(card_message, pics, pages)
