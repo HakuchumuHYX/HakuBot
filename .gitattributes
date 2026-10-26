@@ -1,0 +1,4 @@
+# 第三方文件，不计入 GitHub 语言统计
+plugins/ai_assistant/templates/katex/** linguist-vendored
+plugins/ai_assistant/templates/github-markdown-light.css linguist-vendored
+plugins/ai_assistant/templates/pygments-default.css linguist-vendored
