@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            background-color: #f2f2f2;
+            padding: 20px;
+        }
+
+        /* 模拟聊天气泡；字体栈和底部多出的 16px 沿用原先 Markdown 样式里的效果 */
+        .bubble {
+            box-sizing: border-box;
+            padding: 20px 20px 36px;
+            border-radius: 10px;
+            background-color: white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            color: #333;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+            font-size: 16px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <div class="bubble">{{ text }}</div>
+</body>
+</html>

@@ -1,11 +1,8 @@
-from core.lifecycle import on_plugin_startup
-from utils.paths import PluginPaths
 import time
 from typing import Awaitable, NoReturn
 
-import aiofiles
 from openai import APIStatusError, BadRequestError
-from nonebot import get_driver, on_command, logger
+from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
@@ -17,7 +14,6 @@ from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
-from utils.rendering.engine import render_markdown, read_tpl
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
 from utils.logging import get_exc_desc
@@ -33,6 +29,7 @@ from plugins.ai_assistant.chat import (
 )
 from plugins.ai_assistant.config import plugin_config
 from plugins.ai_assistant.imagen import draw, draw_from_plan, research
+from plugins.ai_assistant.render import render_reply
 from plugins.ai_assistant.utils import (
     extract_pure_text,
     parse_message_content,
@@ -44,41 +41,6 @@ from core.cooldown import cooldown_remaining, mark_cooldown
 
 CHAT_ID = "ai_assistant:chat"
 IMAGEN_ID = "ai_assistant:imagen"
-
-# 自定义 CSS 生成路径
-CUSTOM_CSS_DIR = PluginPaths("ai_assistant").data
-CUSTOM_CSS_PATH = CUSTOM_CSS_DIR / "custom_markdown.css"
-
-
-@on_plugin_startup(get_driver(), "ai_assistant")
-async def generate_custom_css():
-    """机器人启动时生成合并好的自定义 Markdown CSS"""
-    try:
-        # 获取基础样式
-        base_css = read_tpl("github-markdown-light.css")
-        highlight_css = read_tpl("pygments-default.css")
-
-        # 加上配置的背景颜色覆盖
-        bg_color = plugin_config.chat.bg_color
-        custom_css = f"""
-{base_css}
-{highlight_css}
-
-/* 自定义背景颜色 */
-html, body, .markdown-body {{
-    background-color: {bg_color} !important;
-}}
-"""
-        # 确保目录存在
-        CUSTOM_CSS_DIR.mkdir(parents=True, exist_ok=True)
-
-        async with aiofiles.open(CUSTOM_CSS_PATH, "w", encoding="utf-8") as f:
-            await f.write(custom_css)
-
-        logger.debug(f"已生成自定义 Markdown 背景颜色 CSS，背景色: {bg_color}")
-    except Exception:
-        logger.opt(exception=True).warning("生成自定义 CSS 失败，使用默认样式")
-
 
 # 注册命令
 chat_matcher = on_command(
@@ -119,8 +81,7 @@ async def _render_chat_reply(
         )
 
     try:
-        css_path = str(CUSTOM_CSS_PATH.absolute()) if CUSTOM_CSS_PATH.exists() else ""
-        img_bytes = await render_markdown(md=md_content, width=800, css_path=css_path)
+        img_bytes = await render_reply(md_content)
         return image_segment(img_bytes)
     except Exception:
         logger.opt(exception=True).warning("渲染 Markdown 失败，改发纯文本")

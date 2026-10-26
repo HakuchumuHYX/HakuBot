@@ -1,7 +1,6 @@
 """Chromium 渲染的公共入口。
 
-业务模板归各插件自己的 templates/ 目录所有，这里只负责“模板 → HTML → 截图”。
-本目录的 templates/ 只放通用的 Markdown 转图模板。
+模板归各插件自己的 templates/ 目录所有，这里只负责“模板 → HTML → 截图”。
 """
 
 from collections.abc import AsyncIterator
@@ -13,7 +12,6 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 import jinja2
-import markdown
 from nonebot import logger
 from playwright.async_api import Page
 
@@ -21,22 +19,11 @@ from utils.paths import project_root
 from utils.rendering.browser import browser_pool
 from utils.rendering.fonts import font_css
 
-TEMPLATES_PATH = Path(__file__).parent / "templates"
-
-# 通用转换器的模板输入本身就是 HTML（markdown 产物），不能转义。
-_builtin_env = jinja2.Environment(
-    loader=jinja2.FileSystemLoader(TEMPLATES_PATH), enable_async=True
-)
-
 
 def is_night(now: datetime | None = None) -> bool:
     """上海时间 18:00–06:00 为夜间，模板据此切换深色配色。"""
     hour = (now or datetime.now(ZoneInfo("Asia/Shanghai"))).hour
     return not 6 <= hour < 18
-
-
-def read_tpl(name: str) -> str:
-    return (TEMPLATES_PATH / name).read_text(encoding="utf-8")
 
 
 @asynccontextmanager
@@ -157,38 +144,3 @@ async def _template_html(template_dir: Path, name: str, context: dict) -> str:
     return await template.render_async(
         **{"font_css": font_css(), "dark": is_night(), **context}
     )
-
-
-async def render_markdown(md: str, *, css_path: str = "", width: int = 500) -> bytes:
-    """Markdown 转图片，默认 GitHub 样式；css_path 可整体替换样式表。"""
-    md = markdown.markdown(
-        md,
-        extensions=[
-            "pymdownx.tasklist",
-            "tables",
-            "fenced_code",
-            "codehilite",
-            "mdx_math",
-            "pymdownx.tilde",
-        ],
-        extension_configs={"mdx_math": {"enable_dollar_delimiter": True}},
-    )
-
-    extra = ""
-    if "math/tex" in md:
-        extra = (
-            f'<style type="text/css">{read_tpl("katex/katex.min.b64_fonts.css")}</style>'
-            f"<script defer>{read_tpl('katex/katex.min.js')}</script>"
-            f"<script defer>{read_tpl('katex/mhchem.min.js')}</script>"
-            f"<script defer>{read_tpl('katex/mathtex-script-type.min.js')}</script>"
-        )
-
-    if css_path:
-        css = Path(css_path).read_text(encoding="utf-8")
-    else:
-        css = read_tpl("github-markdown-light.css") + read_tpl("pygments-default.css")
-
-    html = await _builtin_env.get_template("markdown.html").render_async(
-        md=md, css=css, extra=extra
-    )
-    return await render_html(html, base_dir=TEMPLATES_PATH, width=width)

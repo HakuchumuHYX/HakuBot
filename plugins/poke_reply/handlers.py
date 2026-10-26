@@ -30,7 +30,7 @@ from utils.network.images import fetch_image
 from utils.onebot.forward import ForwardItem, send_forward_msg
 from utils.onebot.media import image_segment
 from utils.onebot.rules import command_boundary
-from utils.rendering.engine import render_markdown
+from utils.rendering.engine import render_template
 
 POKE_ID = "poke_reply:poke"
 CONTRIBUTE_ID = "poke_reply:contribute"
@@ -39,25 +39,7 @@ MAX_NODES_PER_FORWARD = 30
 MAX_TEXT_LENGTH_PER_FORWARD = 20000
 MAX_IMAGES_PER_FORWARD = 15
 
-# 模拟聊天气泡；markdown 允许内联 HTML，样式直接拼在正文后面
-BUBBLE_CSS = """
-<style>
-    body {
-        font-family: "Noto Sans CJK SC", sans-serif;
-        background-color: #f2f2f2;
-        padding: 20px;
-    }
-    .markdown-body {
-        background-color: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        font-size: 16px;
-        line-height: 1.6;
-        color: #333;
-    }
-</style>
-"""
+TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
 async def _really_at_me(event: GroupMessageEvent) -> bool:
@@ -87,9 +69,8 @@ async def _text_message(group_id: int, text: str) -> tuple[MessageSegment, bool]
     if threshold is None or len(text) <= threshold:
         return MessageSegment.text(text), False
     try:
-        # 行尾两个空格让 markdown 保留原文换行
-        image = await render_markdown(
-            text.replace("\n", "  \n") + BUBBLE_CSS, width=500
+        image = await render_template(
+            TEMPLATE_DIR, "long_text.html", width=500, text=text
         )
     except Exception as e:
         logger.opt(exception=True).warning(f"长文本转图片失败，改发文本: {e}")
