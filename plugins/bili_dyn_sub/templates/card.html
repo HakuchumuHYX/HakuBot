@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+
+:root {
+    --ink: #18191c;
+    --sub: #61666d;
+    --muted: #9499a0;
+    --line: #e3e5e7;
+    --inset: #f6f7f8;
+    --link: #008ac5;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Haku, 'Noto Color Emoji', sans-serif;
+    color: var(--ink);
+    background: #fff;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 顶部色条的颜色表示动态类型 */
+header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 22px 4px;
+    border-top: 6px solid var(--accent);
+}
+.face {
+    width: 50px;
+    height: 50px;
+    flex: none;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--inset);
+}
+.name { font-size: 19px; font-weight: 600; line-height: 1.3; }
+.act { margin-top: 3px; font-size: 13.5px; line-height: 1.3; color: var(--muted); }
+.act span + span { margin-left: 10px; }
+
+main { padding: 14px 22px 22px; }
+main > * + * { margin-top: 12px; }
+
+.title { font-size: 18px; font-weight: 600; line-height: 1.5; }
+.text {
+    font-size: 16px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.text + .title, .title + .text { margin-top: 8px; }
+.tag, .url { color: var(--link); }
+
+/* 封面：标题跟着封面走，放在封面下面 */
+.media { margin-top: 14px; }
+main > .media:first-child { margin-top: 0; }
+.cover {
+    position: relative;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--inset);
+}
+.cover img { display: block; width: 100%; max-height: 420px; object-fit: cover; }
+.cover.video { aspect-ratio: 16 / 10; }
+.cover.video img { height: 100%; max-height: none; }
+.duration {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #fff;
+    background: rgba(0, 0, 0, .62);
+}
+.media .title { margin-top: 10px; font-size: 17px; }
+.stats { display: flex; gap: 14px; margin-top: 4px; font-size: 13.5px; color: var(--muted); }
+/* 封面加载失败或无图重渲染时隐藏封面，时长挪到统计行 */
+.stats .inline-duration { display: none; }
+.no-cover .cover { display: none; }
+.no-cover .title { margin-top: 0; }
+.no-cover .stats .inline-duration { display: inline; }
+
+.repost {
+    margin-top: 16px;
+    padding: 14px 16px 16px;
+    border-left: 3px solid var(--rp-accent);
+    border-radius: 0 6px 6px 0;
+    background: var(--inset);
+}
+.repost > * + * { margin-top: 8px; }
+.rp-who { display: flex; align-items: center; gap: 8px; font-size: 14.5px; }
+.rp-who img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+.rp-who b { font-weight: 600; }
+.rp-who span { font-size: 13px; color: var(--muted); }
+.repost .text { font-size: 15.5px; color: #2f3134; }
+.repost .deleted { color: var(--muted); }
+</style>
+</head>
+<body>
+{% macro body(d) %}
+    {% set has_media = d.cover or d.video %}
+    {% if d.title and not has_media %}<div class="title">{{ d.title }}</div>{% endif %}
+    {% if d.content %}<div class="text{{ ' deleted' if d.deleted }}">{{ d.content }}</div>{% endif %}
+    {% if has_media %}
+    <div class="media{{ '' if d.cover else ' no-cover' }}">
+        {% if d.cover %}
+        <div class="cover{{ ' video' if d.video }}">
+            <img src="{{ d.cover }}" onerror="this.closest('.media').classList.add('no-cover')">
+            {% if d.video and d.video.duration %}<span class="duration">{{ d.video.duration }}</span>{% endif %}
+        </div>
+        {% endif %}
+        {% if d.title %}<div class="title">{{ d.title }}</div>{% endif %}
+        {% if d.video %}
+        <div class="stats">
+            {% if d.video.duration %}<span class="inline-duration">{{ d.video.duration }}</span>{% endif %}
+            {% if d.video.play %}<span>{{ d.video.play }}播放</span>{% endif %}
+            {% if d.video.danmaku %}<span>{{ d.video.danmaku }}弹幕</span>{% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+{% endmacro %}
+
+<header style="--accent: {{ card.accent }}">
+    {% if card.face %}<img class="face" src="{{ card.face }}" onerror="this.remove()">{% endif %}
+    <div>
+        <div class="name">{{ card.name }}</div>
+        <div class="act"><span>{{ card.action }}</span>{% if card.time %}<span>{{ card.time }}</span>{% endif %}</div>
+    </div>
+</header>
+<main>
+    {{ body(card) }}
+    {% if repost %}
+    <div class="repost" style="--rp-accent: {{ repost.accent }}">
+        {% if repost.name %}
+        <div class="rp-who">
+            {% if repost.face %}<img src="{{ repost.face }}" onerror="this.remove()">{% endif %}
+            <b>{{ repost.name }}</b>
+            {% if repost.time %}<span>{{ repost.time }}</span>{% endif %}
+        </div>
+        {% endif %}
+        {{ body(repost) }}
+    </div>
+    {% endif %}
+</main>
+</body>
+</html>

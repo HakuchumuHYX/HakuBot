@@ -77,6 +77,13 @@ _ESCAPE_RE = re.compile(r"\\[rnt]|\\u[0-9a-fA-F]{4}")
 
 
 @dataclass
+class VideoInfo:
+    duration: str  # "01:47:02"
+    play: str  # "1.9万"
+    danmaku: str
+
+
+@dataclass
 class ParsedDynamic:
     """解析后的动态（渲染层/调度层只读此结构）"""
 
@@ -89,7 +96,11 @@ class ParsedDynamic:
     nickname: str = ""
     title: str = ""
     content: str = ""
-    pics: list[str] = field(default_factory=list)
+    pics: list[str] = field(default_factory=list)  # 配图：卡片之后单发或合并转发
+    cover: str = ""  # 封面：和文字一起渲进卡片
+    video: VideoInfo | None = None
+    face: str = ""
+    pub_action: str = ""  # "投稿了视频"等，图文动态为空
     url: str = ""
     repost: ParsedDynamic | None = None
     is_deleted_source: bool = False
@@ -98,13 +109,15 @@ class ParsedDynamic:
 
 
 class _MajorParsed(NamedTuple):
-    """单个 major 抽取出的四元组 + 是否降级"""
+    """单个 major 抽取出的四元组 + 是否降级，以及封面类 major 的封面"""
 
     title: str
     content: str
     pics: list[str]
     url: str
     degraded: bool = False
+    cover: str = ""
+    video: VideoInfo | None = None
 
 
 # ---------------------------------------------------------------- 基础工具
@@ -218,6 +231,7 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
     major_type = _as_str(_dget(major, "type", ""))
     if major_type == "MAJOR_TYPE_ARCHIVE":  # 视频
         archive = _dget(major, "archive", {})
+        stat = _dget(archive, "stat", {})
         title, content = _process_video_text(
             desc_text,
             _decode_escapes(_as_str(_dget(archive, "desc", ""))),
@@ -226,8 +240,14 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
         return _MajorParsed(
             title,
             content,
-            _one_pic(archive, "cover"),
+            [],
             _normalize_url(_dget(archive, "jump_url")),
+            cover=_cover(archive),
+            video=VideoInfo(
+                duration=_as_str(_dget(archive, "duration_text", "")),
+                play=_as_str(_dget(stat, "play", "")),
+                danmaku=_as_str(_dget(stat, "danmaku", "")),
+            ),
         )
 
     if major_type == "MAJOR_TYPE_OPUS":  # 通用图文（itemOpusStyle 下的专栏/图文动态）
@@ -269,8 +289,9 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
         return _MajorParsed(
             _as_str(_dget(live, "title", "")),
             f"{first}\n{second}",
-            _one_pic(live, "cover"),
+            [],
             _normalize_url(_dget(live, "jump_url")),
+            cover=_cover(live),
         )
 
     if major_type in ("MAJOR_TYPE_PGC", "MAJOR_TYPE_PGC_UNION"):  # 番剧
@@ -278,8 +299,9 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
         return _MajorParsed(
             _as_str(_dget(pgc, "title", "")),
             "",
-            _one_pic(pgc, "cover"),
+            [],
             _normalize_url(_dget(pgc, "jump_url")),
+            cover=_cover(pgc),
         )
 
     if major_type == "MAJOR_TYPE_COMMON":  # 官方活动/会员购/漫画等通用卡
@@ -287,8 +309,9 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
         return _MajorParsed(
             _as_str(_dget(common, "title", "")),
             _decode_escapes(_as_str(_dget(common, "desc", ""))),
-            _one_pic(common, "cover"),
+            [],
             _normalize_url(_dget(common, "jump_url")),
+            cover=_cover(common),
         )
 
     if major_type == "MAJOR_TYPE_COURSES":  # 课程
@@ -300,8 +323,9 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
         return _MajorParsed(
             _as_str(_dget(courses, "title", "")),
             f"{sub_title}\n{desc}",
-            _one_pic(courses, "cover"),
+            [],
             _normalize_url(_dget(courses, "jump_url")),
+            cover=_cover(courses),
         )
 
     if major_type == "MAJOR_TYPE_NONE":  # 源动态已被删除
@@ -317,10 +341,9 @@ def _parse_major(item: dict, dyn_id: str) -> _MajorParsed:
     )
 
 
-def _one_pic(obj: Any, key: str) -> list[str]:
-    """取单张封面，空值不入列表（避免渲染层拿到空 url）"""
-    url = _as_str(_dget(obj, key, "")).strip()
-    return [url] if url else []
+def _cover(obj: Any) -> str:
+    """单张封面（视频、直播、番剧等）；渲进卡片，不当配图单发"""
+    return _as_str(_dget(obj, "cover", "")).strip()
 
 
 def _pic_urls_from_str_list(raw: Any) -> list[str]:
@@ -355,8 +378,9 @@ def _parse_live_rcmd(live_rcmd: Any, desc_text: str) -> _MajorParsed:
     return _MajorParsed(
         _as_str(_dget(info, "title", "")),
         f"{parent_area} {area}".strip(),
-        _one_pic(info, "cover"),
+        [],
         _normalize_url(_dget(info, "link"), drop_query=True),
+        cover=_cover(info),
     )
 
 
@@ -401,6 +425,10 @@ def _build_dynamic(item: dict, dyn_id: str, *, with_repost: bool) -> ParsedDynam
         title=major.title,
         content=major.content,
         pics=list(major.pics),
+        cover=major.cover,
+        video=major.video,
+        face=_as_str(_dget(author, "face", "")),
+        pub_action=_as_str(_dget(author, "pub_action", "")),
         url=f"https://t.bilibili.com/{dyn_id}" if dyn_id else "",
         repost=repost,
         is_deleted_source=is_deleted_source,
@@ -437,6 +465,7 @@ def _parse_repost(item: dict, dyn_id: str) -> tuple[ParsedDynamic | None, bool]:
                 dyn_type=orig_type or TYPE_NONE,
                 pub_ts=_as_int(_dget(author, "pub_ts", 0)),
                 nickname=_as_str(_dget(author, "name", "")),
+                face=_as_str(_dget(author, "face", "")),
                 content=_parse_major(orig, orig_id).content or DELETED_SOURCE_TIPS,
                 is_deleted_source=True,
             ),

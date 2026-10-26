@@ -1,7 +1,7 @@
 """Chromium 渲染的公共入口。
 
 业务模板归各插件自己的 templates/ 目录所有，这里只负责“模板 → HTML → 截图”。
-本目录的 templates/ 只放通用的 Markdown / 纯文本转图模板。
+本目录的 templates/ 只放通用的 Markdown 转图模板。
 """
 
 from datetime import datetime
@@ -20,7 +20,7 @@ from utils.rendering.fonts import font_css
 
 TEMPLATES_PATH = Path(__file__).parent / "templates"
 
-# 通用转换器的模板输入本身就是 HTML（markdown 产物、bison 文本卡片），不能转义。
+# 通用转换器的模板输入本身就是 HTML（markdown 产物），不能转义。
 _builtin_env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(TEMPLATES_PATH), enable_async=True
 )
@@ -138,13 +138,5 @@ async def render_markdown(md: str, *, css_path: str = "", width: int = 500) -> b
 
     html = await _builtin_env.get_template("markdown.html").render_async(
         md=md, css=css, extra=extra
-    )
-    return await render_html(html, base_dir=TEMPLATES_PATH, width=width)
-
-
-async def render_text(text: str, *, width: int = 500) -> bytes:
-    """多行纯文本转图片（bili_dyn_sub 依赖此模板与 bison 的像素一致）。"""
-    html = await _builtin_env.get_template("text.html").render_async(
-        text=text, css=read_tpl("text.css")
     )
     return await render_html(html, base_dir=TEMPLATES_PATH, width=width)

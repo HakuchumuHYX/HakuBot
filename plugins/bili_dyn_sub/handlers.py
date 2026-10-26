@@ -228,16 +228,16 @@ async def handle_test(bot: Bot, event: MessageEvent, args: Message = CommandArg(
     header.append("正在渲染，请稍候...")
     await bili_test.send("\n".join(header))
 
-    segments = await build_messages(latest)
+    card, pics = await build_messages(latest)
     target = (
         SendTarget(group_id=event.group_id)
         if isinstance(event, GroupMessageEvent)
         else SendTarget(user_id=event.user_id)
     )
-    await dispatch_segments(bot, target, segments)
+    await dispatch_segments(bot, target, card, pics)
 
-    tail = f"以上为 {len(segments)} 个消息段的实际推送效果"
-    if segments[0].type == "text":
+    tail = f"以上为卡片 + {len(pics)} 张配图的实际推送效果"
+    if card[0].type == "text":
         tail += "\n⚠️ 文字卡片渲染失败，已降级为纯文本（真实推送同此行为，请检查浏览器/字体）"
     await bili_test.finish(tail)
 

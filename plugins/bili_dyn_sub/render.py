@@ -1,25 +1,32 @@
-"""bili_dyn_sub 推送渲染：文字模板 + 文转图 + 九宫格拼图，产出有序的消息段。
+"""bili_dyn_sub 推送渲染：文字卡片 + 九宫格拼图，产出卡片消息和配图段。
 
-逐字符复刻 nonebot-bison (MIT, Copyright (c) 2021 felinae98) 默认配置下的输出
-（basic 主题、bison_use_pic=True、bison_use_pic_merge=1）：
+卡片版式自研（templates/card.html）：封面和文字渲在一起，配图在卡片之后另发。
+纯文本模板与九宫格拼图照抄 nonebot-bison (MIT, Copyright (c) 2021 felinae98)
+默认配置（basic 主题、bison_use_pic_merge=1）：
 - theme/themes/basic/build.py：文字模板与配图分组顺序；
-- utils/image.py：九宫格判据与拼接坐标；
-- 文字卡片走 utils/rendering/engine.py 的 render_text，模板与 bison 的 htmlrender 一致。
-发送节奏（首条单发、余图合并转发）在 scheduler.py。
+- utils/image.py：九宫格判据与拼接坐标。
+纯文本用于卡片渲染失败时的降级和「b站订阅测试 text」。
+发送节奏（卡片单发、余图合并转发）在 scheduler.py。
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
+from datetime import datetime
 from io import BytesIO
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import aiohttp
-from nonebot.adapters.onebot.v11 import MessageSegment
+from markupsafe import Markup, escape
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot import logger
 from PIL import Image
 from PIL.Image import Image as PILImage
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from utils.rendering.engine import render_text
+from utils.rendering.engine import render_template
 from utils.onebot.media import image_segment
 from utils.network.http import HttpError, download_bytes
 from utils.logging import get_exc_desc
@@ -80,19 +87,21 @@ def build_text(parsed: ParsedDynamic) -> str:
     text += f"\n{SEPARATOR}\n"
 
     text += f"来源: {PLATFORM_NAME} {parsed.nickname or ''}\n"
+    text += "\n".join(_detail_lines(parsed))
+    return text
 
-    urls: list[str] = []
-    rp_url = _detail_url(rp) if rp else ""
-    if rp and rp_url:
+
+def _detail_lines(parsed: ParsedDynamic) -> list[str]:
+    """详情链接行：纯文本末尾和卡片下方的文字共用"""
+    lines: list[str] = []
+    rp_url = _detail_url(parsed.repost) if parsed.repost else ""
+    if rp_url:
         # 注意：bison 这里是中文冒号 + 无空格，与下面的英文冒号 + 空格不对称，属于原样复刻
-        urls.append(f"转发详情：{rp_url}")
+        lines.append(f"转发详情：{rp_url}")
     post_url = _detail_url(parsed)
     if post_url:
-        urls.append(f"详情: {post_url}")
-    if urls:
-        text += "\n".join(urls)
-
-    return text
+        lines.append(f"详情: {post_url}")
+    return lines
 
 
 # ---------------------------------------------------------------- 九宫格拼图
@@ -233,28 +242,113 @@ async def merge_pics(pic_urls: list[str]) -> list[bytes | str]:
     return rest
 
 
+# ---------------------------------------------------------------- 文字卡片
+
+TEMPLATE_DIR = Path(__file__).parent / "templates"
+# 头像或封面卡住时页面 load 等不到；先限时带图渲染，超时再出无图版
+IMAGE_TIMEOUT = 15_000
+_TZ = ZoneInfo("Asia/Shanghai")
+
+# 顶部色条按分类着色（分类见 parser.CATEGORY_MAP）
+_ACCENTS = {
+    1: "#00aeec",  # 图文
+    4: "#00aeec",  # 纯文字
+    2: "#ff9212",  # 专栏
+    3: "#fb7299",  # 视频
+    5: "#9499a0",  # 转发
+}
+_UNKNOWN_ACCENT = "#c9ccd0"
+
+# 正文里的网址和 #话题# 着色；网址先匹配，免得把网址里的 # 当成话题
+_RICH_RE = re.compile(
+    r"(https?://[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+)|(#[^#\n]{1,40}#)"
+)
+
+
+def _rich(text: str) -> Markup:
+    parts: list[Markup] = []
+    last = 0
+    for match in _RICH_RE.finditer(text):
+        parts.append(escape(text[last : match.start()]))
+        css = "url" if match.group(1) else "tag"
+        parts.append(Markup('<span class="{}">{}</span>').format(css, match.group(0)))
+        last = match.end()
+    parts.append(escape(text[last:]))
+    return Markup("").join(parts)
+
+
+def _pub_time(ts: int) -> str:
+    """绝对时间：推送有延迟，"3 分钟前"到群里就不准了"""
+    if not ts:
+        return ""
+    t = datetime.fromtimestamp(ts, _TZ)
+    return f"{t.month}月{t.day}日 {t:%H:%M}"
+
+
+def _card_data(parsed: ParsedDynamic, *, with_images: bool) -> dict:
+    content = parsed.content
+    if parsed.is_deleted_source and not content:
+        content = DELETED_SOURCE_TIPS
+    # 接口只给视频、专栏等投稿类动态 pub_action
+    action = parsed.pub_action or (
+        "转发了动态" if parsed.category == 5 else "发布了动态"
+    )
+    return {
+        "accent": _ACCENTS.get(parsed.category, _UNKNOWN_ACCENT),
+        "face": parsed.face if with_images else "",
+        "name": parsed.nickname,
+        "action": action,
+        "time": _pub_time(parsed.pub_ts),
+        "title": parsed.title,
+        "content": _rich(_truncate(content)),
+        "deleted": parsed.is_deleted_source,
+        "cover": parsed.cover if with_images else "",
+        "video": parsed.video,
+    }
+
+
+async def _render_card(parsed: ParsedDynamic) -> bytes:
+    async def render(with_images: bool) -> bytes:
+        return await render_template(
+            TEMPLATE_DIR,
+            "card.html",
+            width=500,
+            timeout=IMAGE_TIMEOUT,
+            card=_card_data(parsed, with_images=with_images),
+            repost=(
+                _card_data(parsed.repost, with_images=with_images)
+                if parsed.repost
+                else None
+            ),
+        )
+
+    try:
+        return await render(True)
+    except PlaywrightTimeoutError:
+        logger.warning(f"动态 {parsed.dyn_id} 带头像/封面渲染超时，改出无图版")
+        return await render(False)
+
+
 # ---------------------------------------------------------------- 消息段
 
 
-async def build_messages(parsed: ParsedDynamic) -> list[MessageSegment]:
-    """产出按 bison 拆包语义排好序的消息段：[文字卡片图, 图1, 图2, ...]。
+async def build_messages(parsed: ParsedDynamic) -> tuple[Message, list[MessageSegment]]:
+    """产出 (卡片消息, 配图段)：卡片图下面跟详情链接文字，配图按 bison 的分组顺序排好。
 
-    配图分组顺序照抄 basic 主题：先本动态配图、再转发源配图，**两组各自独立判断能否合并**。
-    文字卡片渲染失败时降级为纯文本段：宁可丑不可漏。
+    配图分组照抄 basic 主题：先本动态配图、再转发源配图，**两组各自独立判断能否合并**。
+    卡片渲染失败时降级为纯文本：宁可丑不可漏。
     """
-    text = build_text(parsed)
-    segments: list[MessageSegment] = []
-
     try:
-        card = await render_text(text)
+        card = await _render_card(parsed)
     except Exception as e:
         # 渲染链路（浏览器 / 模板）任意环节失败都降级，不能因此漏推
         logger.opt(exception=True).warning(
             f"动态 {parsed.dyn_id} 文字卡片渲染失败，降级为纯文本: {get_exc_desc(e)}"
         )
-        segments.append(MessageSegment.text(text))
+        card_message = Message(MessageSegment.text(build_text(parsed)))
     else:
-        segments.append(image_segment(card))
+        card_message = Message(image_segment(card))
+        card_message.append(MessageSegment.text("\n".join(_detail_lines(parsed))))
 
     pics_group: list[list[str]] = []
     if parsed.pics:
@@ -262,8 +356,9 @@ async def build_messages(parsed: ParsedDynamic) -> list[MessageSegment]:
     if parsed.repost and parsed.repost.pics:
         pics_group.append(list(parsed.repost.pics))
 
-    for pics in pics_group:
-        for pic in await merge_pics(pics):
-            segments.append(image_segment(pic))
+    pics: list[MessageSegment] = []
+    for group in pics_group:
+        for pic in await merge_pics(group):
+            pics.append(image_segment(pic))
 
-    return segments
+    return card_message, pics

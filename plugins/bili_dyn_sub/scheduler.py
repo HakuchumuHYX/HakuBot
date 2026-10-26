@@ -262,23 +262,22 @@ async def _send_with_retry(
 
 
 async def dispatch_segments(
-    bot: Bot, target: SendTarget, segments: list[MessageSegment]
+    bot: Bot, target: SendTarget, card: Message, pics: list[MessageSegment]
 ) -> None:
-    """照 bison 的拆包：首段（文字卡片）单发；余下 1 段单发，≥2 段合并转发"""
-    await _send_with_retry(bot, target, Message(segments[0]), desc="动态文字卡片")
+    """照 bison 的拆包：卡片单发；配图 1 张单发，≥2 张合并转发"""
+    await _send_with_retry(bot, target, card, desc="动态文字卡片")
 
-    rest = segments[1:]
-    if not rest:
+    if not pics:
         return
-    if len(rest) == 1:
-        await _send_with_retry(bot, target, Message(rest[0]), desc="动态配图")
+    if len(pics) == 1:
+        await _send_with_retry(bot, target, Message(pics[0]), desc="动态配图")
         return
 
     await send_forward_msg(
         bot,
         group_id=target.group_id,
         user_id=target.user_id,
-        items=[Message(segment) for segment in rest],
+        items=[Message(segment) for segment in pics],
         fallback_interval=plugin_config.send_interval_seconds,
     )
 
@@ -325,9 +324,9 @@ async def _poll_uid(bot: Bot, uid: str) -> None:
         # 推送前先写游标：渲染/发送失败最多丢这一条，不会每轮重推卡死；中途崩溃时后面的下轮照推
         store.advance(uid, parsed.dyn_id)
         await store.save()
-        segments = await build_messages(parsed)  # 同一动态跨群只渲染一次
+        card, pics = await build_messages(parsed)  # 同一动态跨群只渲染一次
         for group_id in targets:
-            await dispatch_segments(bot, SendTarget(group_id=group_id), segments)
+            await dispatch_segments(bot, SendTarget(group_id=group_id), card, pics)
 
     # 跳过类型、超窗口、超条数的也一并标记已读
     if store.advance(uid, fresh[-1].dyn_id):
