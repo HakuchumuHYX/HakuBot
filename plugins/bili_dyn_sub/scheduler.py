@@ -421,7 +421,7 @@ async def check_login() -> None:
         "【B站动态订阅】登录态失效\n"
         "已自动退化为匿名取数（功能不中断，但风控概率上升）。\n"
         "请重新获取小号的 SESSDATA 并填入 "
-        "config/plugins/bili_dyn_sub/config.json 的 sessdata 字段后重启 bot。"
+        "config/bili_dyn_sub/config.json 的 sessdata 字段后重启 bot。"
     )
     for superuser in bot.config.superusers:
         try:

@@ -1,8 +1,6 @@
 # NoneBot 插件数据和缓存
 data/
-*.json
-# 默认配置（脱敏，列全部字段）入库；真实配置 config/plugins/ 不入库
-!config-example/**/config.json
+config/
 .env.prod
 cache/
 output.log
@@ -34,3 +32,4 @@ AGENTS.md
 .codex/
 docs/
 scripts/
+.ruff_cache/

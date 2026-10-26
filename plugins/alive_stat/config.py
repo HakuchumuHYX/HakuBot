@@ -1,4 +1,4 @@
-"""alive_stat 配置：config/plugins/alive_stat/config.json。"""
+"""alive_stat 配置：config/alive_stat/config.json。"""
 
 from typing import Optional
 

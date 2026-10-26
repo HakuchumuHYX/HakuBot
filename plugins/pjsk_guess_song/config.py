@@ -12,7 +12,7 @@ class DisabledPeriod(ConfigModel):
 
 
 class Settings(ConfigModel):
-    """config/plugins/pjsk_guess_song/config.json，结构与文件一一对应"""
+    """config/pjsk_guess_song/config.json，结构与文件一一对应"""
 
     answer_timeout: int
     daily_play_limit: int

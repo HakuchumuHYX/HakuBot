@@ -19,7 +19,7 @@ class ApiCryptoConfig(ConfigModel):
 
 
 class Settings(ConfigModel):
-    """config/plugins/buaa_msm/config.json，结构与文件一一对应"""
+    """config/buaa_msm/config.json，结构与文件一一对应"""
 
     # 网页版地址；配了就附在部分回复末尾
     link: str

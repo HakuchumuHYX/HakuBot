@@ -3,7 +3,7 @@
 - `plugins/`：插件入口、命令处理及各自的业务逻辑。
 - `core/`：应用装配、插件开关、冷却、配置读取和资源生命周期。
 - `utils/`：公共网络、文件、图片、OneBot 消息、渲染能力，以及多个插件共用的 B 站 Web 签名（`bilibili.py`）。
-- `config/plugins/<插件名>/config.json`：插件配置，不入库；`config-example/<插件名>/config.json` 是入库的默认配置，列出全部字段，地址、密钥这类用占位值。
+- `config/<插件名>/config.json`：插件配置，不入库；`config-example/<插件名>/config.json` 是入库的默认配置，列出全部字段，地址、密钥这类用占位值。
 - `data/core/`：插件开关（`plugin_status.json`）和 CD 设置（`cd_config.json`），归 `core.access`、`core.cooldown` 所有；plugin_manager 只是改它们的命令入口。
 - `data/shared/fonts/`：公共字体 `MiSans-{Regular,Medium,Semibold,Bold,Heavy}.ttf`，每个字重必须是真实文件，否则模板里的粗体不生效。
 - `data/shared/playwright/`：浏览器资源。

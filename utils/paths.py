@@ -21,7 +21,7 @@ class PluginPaths:
 
     @property
     def config(self):
-        return project_root() / "config/plugins" / self.plugin_id
+        return project_root() / "config" / self.plugin_id
 
     @property
     def data(self):

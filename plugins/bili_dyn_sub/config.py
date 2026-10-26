@@ -1,4 +1,4 @@
-"""bili_dyn_sub 插件配置，来自 config/plugins/bili_dyn_sub/config.json"""
+"""bili_dyn_sub 插件配置，来自 config/bili_dyn_sub/config.json"""
 
 from __future__ import annotations
 
