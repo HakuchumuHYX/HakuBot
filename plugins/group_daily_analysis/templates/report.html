@@ -225,26 +225,25 @@
             font-size: 18px;
         }
 
-        /* 场次表 */
+        /* 场次表：两栏，每栏是 场号 / 时间 / 标题；时间可能带"昨天"，宽度跟着内容走 */
         .lineup {
             margin-top: 36px;
             padding-top: 20px;
             border-top: 1px solid var(--rule);
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            column-gap: 28px;
+            grid-template-columns: 22px auto 1fr 22px auto 1fr;
+            align-items: baseline;
+            column-gap: 10px;
             row-gap: 6px;
             font-size: 16px;
         }
 
-        .lineup > div {
-            display: grid;
-            grid-template-columns: 30px 50px 1fr;
-            align-items: baseline;
-        }
+        .lineup > div { display: contents; }
+        .lineup .topic { padding-right: 18px; }
 
         .lineup .ring {
-            align-self: center;
+            align-self: start;
+            margin-top: 3px;
             width: 22px;
             height: 22px;
             border-width: 1.4px;
@@ -507,7 +506,7 @@
         {% if topics %}
         <div class="lineup">
             {% for s in topics %}
-            <div><span class="ring">{{ loop.index }}</span><span class="t">{{ s.time }}</span><span>{{ s.topic }}</span></div>
+            <div><span class="ring">{{ loop.index }}</span><span class="t">{% if s.at %}{{ when(s.at) }}{% endif %}</span><span class="topic">{{ s.topic }}</span></div>
             {% endfor %}
         </div>
         {% endif %}
@@ -565,7 +564,7 @@
             <div>
                 <div class="slug">
                     <span>{{ s.topic }}</span>
-                    {% if s.time %}<span class="t">{{ s.time }}</span>{% endif %}
+                    {% if s.at %}<span class="t">{{ when(s.at) }}</span>{% endif %}
                 </div>
                 {% if s.contributors %}
                 <div class="cast-line">人物：{{ s.contributors | join("、") }}</div>
@@ -587,7 +586,7 @@
             <div class="speaker">
                 {% if avatars.get(q.qq) %}<img src="{{ avatars.get(q.qq) }}">{% endif %}
                 <span>{{ q.sender }}</span>
-                {% if q.time %}<span class="t">{{ q.time }}</span>{% endif %}
+                {% if q.at %}<span class="t">{{ when(q.at) }}</span>{% endif %}
             </div>
             <p class="said{% if q.content | length > 60 %} long{% endif %}"><span>{{ q.content }}</span></p>
             <p class="remark pen">{{ q.reason }}</p>

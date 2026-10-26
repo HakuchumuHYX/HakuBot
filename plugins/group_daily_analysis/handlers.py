@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from datetime import datetime
 
 from nonebot import get_bot, logger, on_command, require
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
@@ -13,7 +14,7 @@ from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 from core.access import is_enabled, switch_rule  # noqa: E402
 from utils.logging import get_exc_desc  # noqa: E402
 from utils.onebot.media import image_segment  # noqa: E402
-from plugins.group_daily_analysis.analysis import analyze, read_messages  # noqa: E402
+from plugins.group_daily_analysis.analysis import analyze  # noqa: E402
 from plugins.group_daily_analysis.config import plugin_config  # noqa: E402
 from plugins.group_daily_analysis.models import (  # noqa: E402
     AnalysisResult,
@@ -23,6 +24,11 @@ from plugins.group_daily_analysis.models import (  # noqa: E402
 )
 from plugins.group_daily_analysis.recorder import fetch_messages  # noqa: E402
 from plugins.group_daily_analysis.render import render_report  # noqa: E402
+from plugins.group_daily_analysis.transcript import (  # noqa: E402
+    MESSAGE_TYPES,
+    load_faces,
+    read_messages,
+)
 
 
 async def _recent_messages(group_id: int):
@@ -42,12 +48,15 @@ async def _group_name(bot: Bot, group_id: int) -> str | None:
 async def build_report(bot: Bot, group_id: int) -> bytes | None:
     """消息不够返回 None"""
     rows = await _recent_messages(group_id)
-    if len(rows) < plugin_config.min_messages_threshold:
+    # 戳一戳、撤回、贴表情也存在库里，不算消息
+    count = sum(row["message_type"] in MESSAGE_TYPES for row in rows)
+    if count < plugin_config.min_messages_threshold:
         logger.info(
-            f"群 {group_id} 消息数量不足 ({len(rows)} < {plugin_config.min_messages_threshold})，跳过分析"
+            f"群 {group_id} 消息数量不足 ({count} < {plugin_config.min_messages_threshold})，跳过分析"
         )
         return None
 
+    await load_faces(bot)
     result = await analyze(group_id, rows)
     image = await render_report(result, await _group_name(bot, group_id))
     logger.info(f"群 {group_id} 每日总结生成成功，图片大小: {len(image)} bytes")
@@ -118,13 +127,11 @@ MOCK_QUOTES = [
         content="程序和人有一个能跑就行。",
         sender="运维小哥",
         reason="道出了 IT 行业的真谛",
-        time="15:31",
     ),
     GoldenQuote(
         content="Bug 也是一种 Feature。",
         sender="产品经理",
         reason="重新定义了软件工程",
-        time="17:08",
     ),
 ]
 
@@ -141,12 +148,21 @@ debug_analysis_cmd = on_command(
 async def handle_debug_analysis(bot: Bot, event: GroupMessageEvent):
     await debug_analysis_cmd.send("🧪 正在用 Mock 内容渲染日报（不调用 LLM）...")
     try:
-        stats, _ = read_messages(await _recent_messages(event.group_id))
+        rows = await _recent_messages(event.group_id)
+        stats, _ = await asyncio.to_thread(read_messages, event.group_id, rows)
+        # 正式流程里 at 是按转写行查出来的，这里直接拼今天的时间
+        now = datetime.now()
+        topics = []
+        for t in MOCK_TOPICS:
+            hour, minute = map(int, t.time.split(":"))
+            topics.append(
+                t.model_copy(update={"at": now.replace(hour=hour, minute=minute)})
+            )
         image = await render_report(
             AnalysisResult(
                 statistics=stats,
                 headline="能跑就行",
-                topics=MOCK_TOPICS,
+                topics=topics,
                 user_titles=MOCK_TITLES,
                 golden_quotes=MOCK_QUOTES,
             ),

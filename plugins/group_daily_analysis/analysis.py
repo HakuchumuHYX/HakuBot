@@ -1,9 +1,7 @@
-"""转写和统计、三块 LLM 分析（话题、称号、金句）"""
+"""三块 LLM 分析：话题、称号、金句"""
 
 import asyncio
 import json
-import re
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TypeVar
 
@@ -19,101 +17,41 @@ from plugins.group_daily_analysis.config import plugin_config
 from plugins.group_daily_analysis.models import (
     AnalysisResult,
     GoldenQuote,
-    Statistics,
     SummaryTopic,
     UserTitle,
+)
+from plugins.group_daily_analysis.transcript import (
+    Line,
+    Transcript,
+    UserFeature,
+    read_messages,
 )
 
 ItemT = TypeVar("ItemT", bound=BaseModel)
 
-EMOJI_TYPES = {"face", "mface", "bface", "sface"}
 SECTION_NAMES = {"topics": "话题", "user_titles": "用户称号", "golden_quotes": "金句"}
 
+# 转写里的方括号标记，transcript.segment_text 写出来的
+MARKER_NOTE = (
+    "聊天记录里方括号是非文字内容的标记：[图片]、[表情包]、[表情:名字]、[语音]、[视频]、[文件: 名字] 只是占位，看不到内容；"
+    "[卡片: …] 是分享链接或小程序的标题；[回复 某人: 原文] 是在回复某人的那句话；[戳一戳: …] 是戳一戳动作；"
+    "行尾的 [被贴表情: …] 是其他群友给这条消息贴的表情，贴得多说明大家有共鸣；"
+    "[已撤回]、[被管理员撤回] 开头的是发出后又被撤回的消息。"
+    "[合并转发 N 条: …] 是转发来的别人的聊天记录，不是群友当场说的话，不要当作金句，也不要据此判断群友的人设。"
+)
 SYSTEM_PROMPT = (
     "你是群聊日报分析助手。请严格基于用户提供的群聊记录分析，"
-    "不要编造群友、发言或不存在的结论。输出必须是 JSON。"
+    "不要编造群友、发言或不存在的结论。输出必须是 JSON。\n\n" + MARKER_NOTE
 )
 # 聊天记录单独放在前一条 user message，提示词里的 {messages_text} 换成这句
 TRANSCRIPT_HINT = "聊天记录已在本次 API 请求的前一条 user message 中提供，请基于该消息中的完整记录分析。"
 
 
-# --- 转写和统计 ---
-
-
-@dataclass
-class UserFeature:
-    name: str
-    message_count: int = 0
-    character_count: int = 0
-    emoji_count: int = 0
-    at_count: int = 0
-    night_message_count: int = 0
-    samples: list[str] = field(default_factory=list)
-
-
-@dataclass
-class Transcript:
-    lines: list[str] = field(default_factory=list)
-    users: dict[str, UserFeature] = field(default_factory=dict)
-
-
-def _is_emoji(seg: dict) -> bool:
-    return seg["type"] in EMOJI_TYPES or (
-        seg["type"] == "image" and "表情" in seg["data"].get("summary", "")
-    )
-
-
-def read_messages(rows) -> tuple[Statistics, Transcript]:
-    """统计算全部消息；转写只留有文字的、去掉 bot 和命令"""
-    stats = Statistics(message_count=len(rows))
-    transcript = Transcript()
-    participants = set()
-    bot_ids = set(plugin_config.bot_qq_ids)
-
-    for row in rows:
-        user_id = row["user_id"]
-        sent_at = datetime.fromtimestamp(row["timestamp"])
-        segments = json.loads(row["raw_message"])
-        participants.add(user_id)
-        stats.hourly[sent_at.hour] += 1
-        stats.emoji_count += sum(map(_is_emoji, segments))
-
-        parts = []
-        at_count = 0
-        for seg in segments:
-            if seg["type"] == "text":
-                parts.append(seg["data"]["text"])
-                stats.total_characters += len(seg["data"]["text"])
-            elif seg["type"] == "at":
-                parts.append(f"@{seg['data'].get('qq', '')}")
-                at_count += 1
-
-        content = "".join(parts).strip().replace('"', "'").replace("\n", " ")
-        if user_id in bot_ids or len(content) <= 1 or content.startswith("/"):
-            continue
-
-        name = row["sender_name"].strip() or "群友"
-        user = transcript.users.setdefault(user_id, UserFeature(name=name))
-        user.name = name
-        user.message_count += 1
-        user.character_count += len(content)
-        user.emoji_count += sum(map(_is_emoji, segments))
-        user.at_count += at_count
-        if sent_at.hour >= 23 or sent_at.hour < 6:
-            user.night_message_count += 1
-        if len(user.samples) < 5:
-            user.samples.append(content)
-        transcript.lines.append(f"[{sent_at:%H:%M}] {name}: {content}")
-
-    stats.participant_count = len(participants)
-    return stats, transcript
-
-
-def _truncate(lines: list[str]) -> list[str]:
+def _truncate(lines: list[Line]) -> list[Line]:
     """超过 max_input_length 就从最早的消息开始丢"""
     total = 0
     for i in range(len(lines) - 1, -1, -1):
-        total += len(lines[i]) + 1
+        total += len(str(lines[i])) + 1
         if total > plugin_config.max_input_length:
             logger.warning(
                 f"转写超过 {plugin_config.max_input_length} 字，丢掉最早的 {i + 1} 条消息"
@@ -207,8 +145,17 @@ def _with_transcript(transcript_text: str, prompt: str) -> list[dict]:
     ]
 
 
+def _topic_time(topic: SummaryTopic, lines: list[Line]) -> datetime | None:
+    """LLM 只给 HH:MM：找这一分钟里参与者说的第一句，没有就取这一分钟的第一句；这一分钟没人说话就当没有"""
+    same_minute = [line for line in lines if f"{line.at:%H:%M}" == topic.time]
+    for line in same_minute:
+        if line.name in topic.contributors:
+            return line.at
+    return same_minute[0].at if same_minute else None
+
+
 async def _topics(
-    transcript_text: str, limit: int, usage: TokenUsage
+    transcript_text: str, transcript: Transcript, limit: int, usage: TokenUsage
 ) -> tuple[list[SummaryTopic], str]:
     """话题和本集标题（headline）一次问完"""
     prompt = _format_prompt(
@@ -227,8 +174,7 @@ async def _topics(
         usage,
     )
     for topic in items:
-        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", topic.time):
-            topic.time = ""
+        topic.at = _topic_time(topic, transcript.lines)
     headline = data.get("headline")
     return items[:limit], headline.strip() if isinstance(headline, str) else ""
 
@@ -258,15 +204,13 @@ async def _golden_quotes(
     qq_by_name = {u.name: int(user_id) for user_id, u in transcript.users.items()}
     for quote in quotes:
         quote.qq = qq_by_name.get(quote.sender)
-        # 转写每行是 "[HH:MM] 名字: 内容"
-        speaker = f"] {quote.sender}: "
-        quote.time = next(
+        quote.at = next(
             (
-                line[1:6]
+                line.at
                 for line in transcript.lines
-                if speaker in line and quote.content in line.split(speaker, 1)[1]
+                if line.name == quote.sender and quote.content in line.text
             ),
-            "",
+            None,
         )
     return quotes[:limit]
 
@@ -321,7 +265,7 @@ async def _user_titles(users: dict[str, UserFeature], limit: int, usage: TokenUs
 
 async def analyze(group_id: int, rows) -> AnalysisResult:
     """三块各自失败就在日报里省略；开着的全失败才算整份失败"""
-    stats, transcript = read_messages(rows)
+    stats, transcript = await asyncio.to_thread(read_messages, group_id, rows)
     result = AnalysisResult(statistics=stats)
     if not transcript.lines:
         logger.warning(f"群 {group_id} 没有有效的文本消息用于分析")
@@ -329,11 +273,14 @@ async def analyze(group_id: int, rows) -> AnalysisResult:
 
     # 消息越多给的条数越多：每 500 条加 1
     bonus = len(transcript.lines) // 500
-    transcript_text = "\n".join(_truncate(transcript.lines))
+    transcript_text = "\n".join(map(str, _truncate(transcript.lines)))
     jobs = {}
     if is_enabled("group_daily_analysis:topics", str(group_id)):
         jobs["topics"] = _topics(
-            transcript_text, min(10, plugin_config.max_topics + bonus), result.usage
+            transcript_text,
+            transcript,
+            min(10, plugin_config.max_topics + bonus),
+            result.usage,
         )
     if is_enabled("group_daily_analysis:user_titles", str(group_id)):
         jobs["user_titles"] = _user_titles(

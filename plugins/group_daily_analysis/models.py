@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -10,8 +11,9 @@ class SummaryTopic(BaseModel):
     topic: str
     contributors: list[str] = []
     detail: str
-    # 话题第一条消息的 HH:MM，LLM 照抄转写
+    # 话题第一条消息的 HH:MM，LLM 照抄转写；at 是按它在转写里找到的那一行的完整时间
     time: str = ""
+    at: datetime | None = None
 
 
 class UserTitle(BaseModel):
@@ -29,8 +31,8 @@ class GoldenQuote(BaseModel):
     sender: str
     reason: str
     qq: int | None = None
-    # 按原文在转写里查到的 HH:MM，不问 LLM
-    time: str = ""
+    # 按原文在转写里查到的那一行的时间，不问 LLM
+    at: datetime | None = None
 
 
 @dataclass

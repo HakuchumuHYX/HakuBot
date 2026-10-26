@@ -27,6 +27,15 @@ async def _avatar(user_id: int) -> str | None:
     return f"data:{MIME_TYPES[detect_format(data)]};base64,{encoded}"
 
 
+def _when(at: datetime, now: datetime) -> str:
+    days = (now.date() - at.date()).days
+    if days == 0:
+        return f"{at:%H:%M}"
+    if days == 1:
+        return f"昨天 {at:%H:%M}"
+    return f"{at.month}月{at.day}日 {at:%H:%M}"
+
+
 async def render_report(result: AnalysisResult, group_name: str | None) -> bytes:
     stats = result.statistics
     qqs = list(
@@ -37,11 +46,11 @@ async def render_report(result: AnalysisResult, group_name: str | None) -> bytes
     now = datetime.now()
 
     # 场按开始时间排，场号就是先后顺序；没有时间的排最后
-    topics = sorted(result.topics, key=lambda t: (not t.time, t.time))
+    topics = sorted(result.topics, key=lambda t: (t.at is None, t.at or now))
     scenes_by_hour = {}
     for no, topic in enumerate(topics, 1):
-        if topic.time:
-            scenes_by_hour.setdefault(int(topic.time[:2]), []).append(no)
+        if topic.at:
+            scenes_by_hour.setdefault(topic.at.hour, []).append(no)
     peak = max(stats.hourly)
     most_lines = max((t.message_count for t in result.user_titles), default=0) or 1
 
@@ -72,8 +81,9 @@ async def render_report(result: AnalysisResult, group_name: str | None) -> bytes
         titles=result.user_titles,
         # 戏份条按人物表里发言最多的那个人算满
         most_lines=most_lines,
-        quotes=sorted(result.golden_quotes, key=lambda q: (not q.time, q.time)),
+        quotes=sorted(result.golden_quotes, key=lambda q: (q.at is None, q.at or now)),
         avatars=avatars,
+        when=lambda at: _when(at, now),
         total_tokens=result.usage.total_tokens,
         watermark_text=plugin_config.watermark_text,
     )
