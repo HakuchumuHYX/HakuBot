@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+
+:root {
+    --ink: #18191c;
+    --sub: #61666d;
+    --muted: #9499a0;
+    --line: #e3e5e7;
+    --inset: #f6f7f8;
+    --pink: #fb7299;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Haku, 'Noto Color Emoji', sans-serif;
+    color: var(--ink);
+    background: #fff;
+    font-variant-numeric: tabular-nums;
+}
+
+.body { padding: 16px 20px 20px; }
+.body > * + * { margin-top: 10px; }
+
+h1 {
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.clamp {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.text {
+    font-size: 15.5px;
+    line-height: 1.7;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+.desc { font-size: 15px; color: var(--sub); }
+
+/* 封面做成播放器屏幕：角标和底部进度轨都是信息（第几 P、时长、从哪开始看） */
+.screen {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--inset);
+}
+.screen img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 没有封面时收成一条，只留角标和进度轨 */
+.screen.bare { aspect-ratio: auto; height: 46px; }
+.badge {
+    position: absolute;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: #fff;
+    background: rgba(0, 0, 0, .62);
+}
+.badge.tl { top: 10px; left: 10px; }
+.badge.br { right: 10px; bottom: 14px; }
+.track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    background: rgba(255, 255, 255, .45);
+}
+.bare .track { background: var(--line); }
+.track i { display: block; height: 100%; background: var(--pink); }
+
+.part { font-size: 15px; line-height: 1.5; color: var(--sub); }
+
+.byline { display: flex; align-items: center; gap: 8px; font-size: 14.5px; line-height: 1.4; }
+.byline b { font-weight: 500; }
+.byline .end { margin-left: auto; font-size: 13.5px; color: var(--muted); }
+.face {
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--inset);
+}
+
+.stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--muted);
+}
+.stats span { display: inline-flex; align-items: center; gap: 4px; }
+.stats svg { width: 16px; height: 16px; flex: none; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips span {
+    padding: 1px 8px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--sub);
+}
+
+/* 番剧：竖版海报在左，评分是整张卡唯一的大号字 */
+.season { display: flex; gap: 16px; padding: 20px 20px 0; }
+.poster {
+    width: 120px;
+    aspect-ratio: 3 / 4;
+    flex: none;
+    border-radius: 6px;
+    object-fit: cover;
+    background: var(--inset);
+}
+.season-info { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.season-info h1 { font-size: 20px; }
+.score { display: flex; align-items: baseline; gap: 8px; }
+.score b { font-size: 34px; font-weight: 900; line-height: 1; color: var(--pink); }
+.score span { font-size: 13.5px; color: var(--muted); }
+.meta { font-size: 14px; line-height: 1.5; color: var(--sub); }
+
+/* 直播状态：只有直播中用粉色 */
+.live-state {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 9px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: #fff;
+    background: rgba(0, 0, 0, .62);
+}
+.live-state.on { background: var(--pink); }
+.live-state.on::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #fff;
+}
+.live-state em { font-style: normal; font-weight: 400; opacity: .9; }
+.screen.bare .live-state { top: 50%; transform: translateY(-50%); }
+
+.banner { aspect-ratio: 3 / 1; overflow: hidden; background: var(--inset); }
+.banner img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* 动态 */
+.author { display: flex; align-items: center; gap: 10px; }
+.author .face { width: 40px; height: 40px; }
+.author b { display: block; font-size: 16px; font-weight: 600; line-height: 1.35; }
+.author span { font-size: 13px; color: var(--muted); }
+.opus-title { font-size: 17px; font-weight: 600; line-height: 1.5; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.grid img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: var(--inset); }
+.grid.two { grid-template-columns: repeat(2, 1fr); }
+.grid.single { display: block; }
+.grid.single img { aspect-ratio: auto; max-height: 360px; }
+.more { position: relative; }
+.more::after {
+    content: attr(data-more);
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    font-size: 20px;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(0, 0, 0, .45);
+}
+.clip {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+}
+.clip-cover { position: relative; width: 136px; aspect-ratio: 16 / 9; flex: none; border-radius: 4px; overflow: hidden; background: var(--inset); }
+.clip-cover img { width: 100%; height: 100%; object-fit: cover; }
+.clip-cover .badge { right: 4px; bottom: 4px; padding: 0 5px; font-size: 12px; }
+.clip-title { font-size: 15px; font-weight: 500; line-height: 1.5; }
+.goods { font-size: 14.5px; line-height: 1.6; }
+.goods li { list-style: none; display: flex; gap: 10px; }
+.goods b { margin-left: auto; font-weight: 500; color: var(--pink); }
+.orig { padding: 12px 14px 14px; border-radius: 6px; background: var(--inset); }
+.orig > * + * { margin-top: 8px; }
+.orig .who { font-size: 14.5px; font-weight: 600; }
+.orig .text { font-size: 15px; color: #2f3134; }
+</style>
+</head>
+<body>
+{% macro icon(name) -%}
+<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+{%- if name == "view" %}<rect x="1.5" y="2.8" width="13" height="10.4" rx="2.6"/><path d="M6.6 6.2v3.6l3.1-1.8z" fill="currentColor"/>
+{%- elif name == "danmaku" %}<rect x="1.5" y="2.8" width="13" height="10.4" rx="2.6"/><path d="M4.6 6.4h4.2M4.6 9.6h6.8"/>
+{%- elif name == "like" %}<path d="M4.8 7.2v6.3H2.4V7.2zM4.8 7.2l2.5-4.6c1 0 1.7.8 1.5 1.8L8.4 6.6h3.9c.8 0 1.4.7 1.2 1.5l-1 4.4c-.2.6-.7 1-1.3 1H4.8"/>
+{%- elif name == "coin" %}<circle cx="8" cy="8" r="6.3"/><path d="M5.7 5.4 8 8l2.3-2.6M8 8v3.6M5.9 9.3h4.2"/>
+{%- elif name == "favorite" %}<path d="m8 1.9 1.8 3.8 4.1.5-3 2.9.8 4.1L8 11.2l-3.7 2 .8-4.1-3-2.9 4.1-.5z"/>
+{%- elif name == "reply" %}<path d="M2.4 4.6a2 2 0 0 1 2-2h7.2a2 2 0 0 1 2 2v4.9a2 2 0 0 1-2 2H7.3L4.4 13.7v-2.2a2 2 0 0 1-2-2z"/>
+{%- elif name == "read" %}<path d="M1.5 8s2.4-4.6 6.5-4.6S14.5 8 14.5 8 12.1 12.6 8 12.6 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>
+{%- elif name == "online" %}<circle cx="8" cy="5.4" r="2.6"/><path d="M2.9 13.6c.6-2.5 2.6-4 5.1-4s4.5 1.5 5.1 4"/>
+{%- endif %}</svg>
+{%- endmacro %}
+
+{% macro img(src, cls, size) -%}
+{% if with_images and src %}<img class="{{ cls }}" src="{{ src }}@{{ size }}.webp" onerror="this.remove()">{% endif %}
+{%- endmacro %}
+
+{# 封面：加载失败时整块收成一条 #}
+{% macro screen(src) -%}
+<div class="screen{{ '' if with_images and src else ' bare' }}">
+    {% if with_images and src %}<img src="{{ src }}@1000w_563h_1c.webp" onerror="this.parentNode.classList.add('bare'); this.remove()">{% endif %}
+    {{ caller() }}
+</div>
+{%- endmacro %}
+
+{% macro stats(items) -%}
+<div class="stats">
+    {% for name, value in items %}<span>{{ icon(name) }}{{ value }}</span>{% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro images(urls) -%}
+{% if with_images and urls %}
+<div class="grid{{ ' single' if urls | length == 1 else ' two' if urls | length in (2, 4) }}">
+    {% for url in urls[:9] %}
+    {% if loop.index == 9 and urls | length > 9 %}
+    <div class="more" data-more="+{{ urls | length - 8 }}">{{ img(url, '', '300w_300h_1c') }}</div>
+    {% else %}
+    {{ img(url, '', '1000w' if urls | length == 1 else '300w_300h_1c') }}
+    {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro dynamic_body(b, lines) -%}
+    {% if b.title %}<div class="opus-title">{{ b.title }}</div>{% endif %}
+    {% if b.text %}<div class="text clamp" style="-webkit-line-clamp: {{ lines }}">{{ b.text }}</div>{% endif %}
+    {{ images(b.images) }}
+    {% if b.archive %}
+    <div class="clip">
+        <div class="clip-cover">{{ img(b.archive.cover, '', '272w_153h_1c') }}<span class="badge">{{ b.archive.duration }}</span></div>
+        <div class="clip-title clamp" style="-webkit-line-clamp: 2">{{ b.archive.title }}</div>
+    </div>
+    {% endif %}
+    {% if b.goods %}
+    <ul class="goods">{% for name, price in b.goods %}<li><span>{{ name }}</span><b>{{ price }}</b></li>{% endfor %}</ul>
+    {% endif %}
+{%- endmacro %}
+
+{% if kind == "video" %}
+{% call screen(d.cover) %}
+    {% if d.page %}<span class="badge tl">P{{ d.page }} / {{ d.pages }}</span>{% endif %}
+    <span class="badge br">{% if d.start %}{{ d.start }} / {% endif %}{{ d.duration }}</span>
+    <div class="track"><i style="width: {{ d.progress }}%"></i></div>
+{% endcall %}
+<div class="body">
+    <h1 class="clamp" style="-webkit-line-clamp: 2">{{ d.title }}</h1>
+    {% if d.part %}<p class="part">{{ d.part }}</p>{% endif %}
+    <div class="byline">{{ img(d.face, 'face', '52w_52h_1c') }}<b>{{ d.up }}</b><span class="end">{{ d.date }}</span></div>
+    {{ stats([("view", d.stats.view), ("danmaku", d.stats.danmaku), ("like", d.stats.like),
+              ("coin", d.stats.coin), ("favorite", d.stats.favorite), ("reply", d.stats.reply)]) }}
+    {% if d.desc %}<p class="text desc clamp" style="-webkit-line-clamp: 3">{{ d.desc }}</p>{% endif %}
+</div>
+
+{% elif kind == "bangumi" %}
+<div class="season">
+    {{ img(d.cover, 'poster', '240w_320h_1c') }}
+    <div class="season-info">
+        <h1 class="clamp" style="-webkit-line-clamp: 2">{{ d.title }}</h1>
+        {% if d.score %}<div class="score"><b>{{ d.score }}</b><span>{{ d.raters }}人评</span></div>{% endif %}
+        {% if d.episode %}<div class="meta">{{ d.episode }}</div>{% endif %}
+        <div class="meta">{{ d.progress }}</div>
+        {% if d.styles %}<div class="chips">{% for s in d.styles %}<span>{{ s }}</span>{% endfor %}</div>{% endif %}
+        {{ stats([("view", d.views ~ "播放"), ("favorite", d.follows ~ "追番")]) }}
+    </div>
+</div>
+<div class="body">
+    {% if d.evaluate %}<p class="text desc clamp" style="-webkit-line-clamp: 4">{{ d.evaluate }}</p>{% endif %}
+</div>
+
+{% elif kind == "live" %}
+{% call screen(d.cover) %}
+    {% if d.status == 1 %}<span class="live-state on">直播中{% if d.since %}<em>{{ d.since }}</em>{% endif %}</span>
+    {% elif d.status == 2 %}<span class="live-state">轮播中</span>
+    {% else %}<span class="live-state">未开播</span>{% endif %}
+{% endcall %}
+<div class="body">
+    <h1 class="clamp" style="-webkit-line-clamp: 2">{{ d.title }}</h1>
+    <div class="byline">{{ img(d.face, 'face', '52w_52h_1c') }}<b>{{ d.anchor }}</b><span class="end">{{ d.area | join(" › ") }}</span></div>
+    {% if d.status == 1 %}{{ stats([("online", "人气 " ~ d.online)]) }}{% endif %}
+    {% if d.tags %}<div class="chips">{% for t in d.tags %}<span>{{ t }}</span>{% endfor %}</div>{% endif %}
+</div>
+
+{% elif kind == "article" %}
+{% if with_images and d.banner %}<div class="banner"><img src="{{ d.banner }}@1000w_333h_1c.webp" onerror="this.parentNode.remove()"></div>{% endif %}
+<div class="body">
+    <h1 class="clamp" style="-webkit-line-clamp: 3">{{ d.title }}</h1>
+    <div class="byline"><b>{{ d.author }}</b><span class="end">专栏</span></div>
+    {{ stats([("read", d.stats.view), ("like", d.stats.like), ("favorite", d.stats.favorite),
+              ("coin", d.stats.coin), ("reply", d.stats.reply)]) }}
+</div>
+
+{% elif kind == "dynamic" %}
+<div class="body">
+    <div class="author">
+        {{ img(d.face, 'face', '80w_80h_1c') }}
+        <div><b>{{ d.name }}</b>{% if d.time %}<span>{{ d.time }}</span>{% endif %}</div>
+    </div>
+    {{ dynamic_body(d, 10) }}
+    {% if d.orig %}
+    <div class="orig">
+        {% if d.orig.name %}<div class="who">@{{ d.orig.name }}</div>{% endif %}
+        {{ dynamic_body(d.orig, 6) }}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+</body>
+</html>
