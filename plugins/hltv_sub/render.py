@@ -145,11 +145,11 @@ async def render_stats(stats: MatchStats) -> bytes:
     return await _render("stats.html", {"stats": stats_dict}, width=1040)
 
 
-async def render_reminder(match: MatchInfo, event_title: str) -> bytes:
-    """渲染比赛已开始的提醒。"""
+async def render_reminder(match: MatchInfo, stats: MatchStats, event_title: str) -> bytes:
+    """渲染比赛已开始的提醒；队名、BO、星级取 matches 页卡片，其余取 match 页。"""
     return await _render(
         "reminder.html",
-        {"match": asdict(match), "event_title": event_title},
+        {"match": asdict(match), "stats": asdict(stats), "event_title": event_title},
         width=560,
     )
 

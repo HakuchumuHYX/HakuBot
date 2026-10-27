@@ -9,11 +9,11 @@ import re
 from bs4 import BeautifulSoup, Tag
 
 from plugins.hltv_sub.models import (
-    HalfScore, MapStats, MatchStats, PlayerStats, VrsChange,
+    HalfScore, MapStats, MatchStats, PlayerStats, VrsChange, VrsForecast,
 )
 from plugins.hltv_sub.parsers.common import (
     absolute_url, extract_id_from_url, flag_of, format_date,
-    is_grand_final_text, pick_logo, text_of,
+    is_grand_final_text, is_third_place_text, pick_logo, text_of,
 )
 
 
@@ -108,34 +108,57 @@ def _parse_team_box(soup: BeautifulSoup, index: int) -> tuple[str, str, str]:
     return pick_logo(box.find_all("img", class_="logo")), country, country_name
 
 
-def _parse_vrs(soup: BeautifulSoup) -> tuple[VrsChange | None, VrsChange | None]:
-    """赛后的 VRS result 块：左列 before，中列 result，两行依次是 team1、team2。
-
-    赛前/赛中同一个容器是 forecast（current / if wins / if loses），不解析。
-    """
+def _vrs_container(soup: BeautifulSoup, header: str) -> Tag | None:
+    """同一个容器赛后是 result（before / result），赛前赛中是 forecast（current / if wins / if loses），按中栏 header 区分。"""
     container = soup.select_one(".vrs-forecast-container")
-    header = container.select_one(".vrs-forecast-middle .vrs-forecast-header") if container else None
-    if header is None or header.get_text(strip=True).lower() != "result":
+    middle = container.select_one(".vrs-forecast-middle .vrs-forecast-header") if container else None
+    if middle is None or header not in middle.get_text(" ", strip=True).lower():
+        return None
+    return container
+
+
+def _vrs_column(container: Tag, selector: str) -> list[tuple[int, int] | None]:
+    """一栏两行依次是 team1、team2，每行 (积分, 排名)；未上榜的行只有 Unranked 或 –、没有排名元素，记 None。"""
+    rows: list[tuple[int, int] | None] = []
+    for wrapper in container.select(f"{selector} .vrs-forecast-numbers-wrapper"):
+        points = re.search(r"[+-]?\d+", text_of(wrapper.select_one(".vrs-forecast-points")))
+        rank = re.search(r"\d+", text_of(wrapper.select_one(".vrs-forecast-ranking")))
+        rows.append((int(points.group()), int(rank.group())) if points and rank else None)
+    return rows
+
+
+def _parse_vrs_result(soup: BeautifulSoup) -> tuple[VrsChange | None, VrsChange | None]:
+    container = _vrs_container(soup, "result")
+    if container is None:
         return None, None
-
-    def numbers(selector: str) -> list[tuple[int, int]]:
-        values = []
-        for wrapper in container.select(f"{selector} .vrs-forecast-numbers-wrapper"):
-            points = re.search(r"[+-]?\d+", wrapper.select_one(".vrs-forecast-points").get_text())
-            rank = re.search(r"\d+", wrapper.select_one(".vrs-forecast-ranking").get_text())
-            # 未上榜的队伍没有数字，这时整块都不显示
-            if not points or not rank:
-                return []
-            values.append((int(points.group()), int(rank.group())))
-        return values
-
-    before = numbers(".vrs-forecast-left-numbers")
-    after = numbers(".vrs-forecast-middle")
-    if len(before) != 2 or len(after) != 2:
+    before = _vrs_column(container, ".vrs-forecast-left-numbers")
+    after = _vrs_column(container, ".vrs-forecast-middle")
+    # 结算条按两队都有来排版，任一队未上榜整块不显示
+    if len(before) != 2 or len(after) != 2 or None in before + after:
         return None, None
     team1, team2 = (
         VrsChange(points_before=b[0], rank_before=b[1], points_delta=a[0], rank_after=a[1])
         for b, a in zip(before, after)
+    )
+    return team1, team2
+
+
+def _parse_vrs_forecast(soup: BeautifulSoup) -> tuple[VrsForecast | None, VrsForecast | None]:
+    container = _vrs_container(soup, "team wins")
+    if container is None:
+        return None, None
+    columns = [
+        _vrs_column(container, selector)
+        for selector in (".vrs-forecast-left-numbers", ".vrs-forecast-middle", ".vrs-forecast-right")
+    ]
+    if any(len(column) != 2 for column in columns):
+        return None, None
+    team1, team2 = (
+        VrsForecast(
+            points=current[0], rank=current[1],
+            win_delta=win[0], win_rank=win[1], lose_delta=lose[0], lose_rank=lose[1],
+        ) if current and win and lose else None
+        for current, win, lose in zip(*columns)
     )
     return team1, team2
 
@@ -168,7 +191,8 @@ def parse_match_stats(
 
     team1_logo, team1_country, team1_country_name = _parse_team_box(soup, 1)
     team2_logo, team2_country, team2_country_name = _parse_team_box(soup, 2)
-    team1_vrs, team2_vrs = _parse_vrs(soup)
+    team1_vrs, team2_vrs = _parse_vrs_result(soup)
+    team1_vrs_forecast, team2_vrs_forecast = _parse_vrs_forecast(soup)
 
     status = text_of(soup.find("div", class_="countdown")) or "完成"
     date_elem = soup.select_one(".timeAndEvent .date[data-unix]")
@@ -229,9 +253,12 @@ def parse_match_stats(
         format_line=format_line,
         stage=stage,
         is_grand_final=is_grand_final,
+        is_third_place=is_third_place_text(stage),
         date=match_date,
         team1_vrs=team1_vrs,
         team2_vrs=team2_vrs,
+        team1_vrs_forecast=team1_vrs_forecast,
+        team2_vrs_forecast=team2_vrs_forecast,
     )
 
 

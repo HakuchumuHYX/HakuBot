@@ -32,6 +32,17 @@ def is_grand_final_text(text: str) -> bool:
     return "grand final" in " ".join((text or "").lower().split())
 
 
+THIRD_PLACE_MARKERS = (
+    "3rd place decider", "third place decider", "3rd place match", "third place match",
+)
+
+
+def is_third_place_text(text: str) -> bool:
+    """matches 页的卡片说明和 match 页的赛段共用。"""
+    text = " ".join((text or "").lower().split())
+    return any(marker in text for marker in THIRD_PLACE_MARKERS)
+
+
 def pick_logo(imgs) -> str:
     """模板是深色底，有 night-only 变体时优先用它。"""
     imgs = list(imgs)

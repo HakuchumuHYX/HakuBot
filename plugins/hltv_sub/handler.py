@@ -430,15 +430,14 @@ class HLTVHandler:
     async def send_match_reminder(
         self, bot: Bot, sub: EventSubscription, match: MatchInfo
     ) -> None:
-        # matches 页的 PNG 队标只有 50px，换成 match 页的 2x 图；开赛后查单图结果会命中同一份缓存。
+        # 队标（matches 页的只有 50px）、赛段、决赛/季军赛、VRS forecast 都按 match 页的来；开赛后查单图结果会命中同一份缓存。
         stats = await hltv_client.get_match_stats(
             match.id, team1=match.team1, team2=match.team2, event_title=sub.event_title,
         )
-        match = replace(match, team1_logo=stats.team1_logo, team2_logo=stats.team2_logo)
 
         # 远程图片超时已在 render 里降级成无图版；走到这里的是渲染本身出错，不标记已推送，下轮重试
         try:
-            msg = image_segment(await render_reminder(match, sub.event_title))
+            msg = image_segment(await render_reminder(match, stats, sub.event_title))
         except Exception as e:
             logger.exception(f"[HLTV] 渲染比赛提醒 {match.id} 失败，下轮将重试: {e}")
             return

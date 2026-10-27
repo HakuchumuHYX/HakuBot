@@ -24,13 +24,23 @@
     font-weight: 700;
 }
 
-.event-line {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+.event-title {
     margin-top: 10px;
     font-size: 17px;
     color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 赛段是 HLTV 编辑手写的整句（如 PGL 的瑞士轮说明），单独一行、允许换行，不截断 */
+.stage {
+    margin-top: 4px;
+    font-family: var(--num);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--stage, var(--gold));
 }
 
 /* 决赛、季军赛改写抬头并给对阵面板描边，颜色由 --stage 决定 */
@@ -80,6 +90,64 @@
     text-overflow: ellipsis;
 }
 
+/* VRS forecast 单独占对阵面板第二行，一方未上榜时两侧高矮不同，顶部对齐，不牵动上面的队标队名 */
+.forecast,
+.forecast-none {
+    align-self: start;
+    justify-self: center;
+    margin-top: 14px;
+}
+
+.forecast {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    column-gap: 8px;
+    row-gap: 2px;
+    align-items: baseline;
+    font-family: var(--num);
+    font-size: 17px;
+}
+
+.forecast .current {
+    grid-column: 1 / -1;
+    margin-bottom: 2px;
+    text-align: center;
+    color: var(--muted);
+}
+
+.forecast .label {
+    font-family: Haku, sans-serif;
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.forecast .rank {
+    font-weight: 600;
+}
+
+.forecast .move {
+    margin-left: 4px;
+    font-size: 15px;
+}
+
+.forecast .delta {
+    text-align: right;
+    font-weight: 600;
+}
+
+.forecast-none {
+    font-size: 15px;
+    color: var(--muted);
+}
+
+.up {
+    color: var(--up);
+}
+
+.down {
+    color: var(--down);
+}
+
 .vs {
     text-align: center;
     font-size: 22px;
@@ -101,27 +169,51 @@
 }
 {% endblock %}
 
+{% macro forecast_row(label, rank, new_rank, delta) %}
+{% set move = rank - new_rank %}
+<span class="label">{{ label }}</span>
+<span><span class="rank">#{{ new_rank }}</span>{% if move %}<span class="move {{ 'up' if move > 0 else 'down' }}">{{ '▲' if move > 0 else '▼' }}{{ move|abs }}</span>{% endif %}</span>
+<span class="delta {{ 'up' if delta > 0 else 'down' if delta < 0 else '' }}">{{ '%+d'|format(delta) }}</span>
+{% endmacro %}
+
+{% macro team_side(name, logo) %}
+<div class="team">
+    {{ m.logo(logo, 72) }}
+    <div class="team-name num">{{ name }}</div>
+</div>
+{% endmacro %}
+
+{% macro forecast_side(forecast, column) %}
+{% if forecast %}
+<div class="forecast" style="grid-column: {{ column }};">
+    <span class="current">VRS #{{ forecast.rank }} · {{ forecast.points }} pt</span>
+    {{ forecast_row('胜', forecast.rank, forecast.win_rank, forecast.win_delta) }}
+    {{ forecast_row('负', forecast.rank, forecast.lose_rank, forecast.lose_delta) }}
+</div>
+{% else %}
+<div class="forecast-none" style="grid-column: {{ column }};">VRS 未上榜</div>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
-<div class="{% if match.is_grand_final %}grand-final{% elif match.is_third_place %}third-place{% endif %}">
+{% set s = stats %}
+<div class="{% if s.is_grand_final %}grand-final{% elif s.is_third_place %}third-place{% endif %}">
     <div class="live-head">
         <span class="live-tag num">LIVE</span>
-        <span class="live-title">{% if match.is_grand_final %}总决赛开始{% elif match.is_third_place %}季军赛开始{% else %}比赛开始{% endif %}</span>
+        <span class="live-title">{% if s.is_grand_final %}总决赛开始{% elif s.is_third_place %}季军赛开始{% else %}比赛开始{% endif %}</span>
     </div>
 
-    <div class="event-line">
-        <span>{{ event_title }}</span>
-    </div>
+    <div class="event-title">{{ event_title }}</div>
+    {% if s.stage %}<div class="stage">{{ s.stage }}</div>{% endif %}
 
     <div class="versus">
-        <div class="team">
-            {{ m.logo(match.team1_logo, 72) }}
-            <div class="team-name num">{{ match.team1 }}</div>
-        </div>
+        {{ team_side(match.team1, s.team1_logo) }}
         <div class="vs">vs</div>
-        <div class="team">
-            {{ m.logo(match.team2_logo, 72) }}
-            <div class="team-name num">{{ match.team2 }}</div>
-        </div>
+        {{ team_side(match.team2, s.team2_logo) }}
+        {% if s.team1_vrs_forecast or s.team2_vrs_forecast %}
+        {{ forecast_side(s.team1_vrs_forecast, 1) }}
+        {{ forecast_side(s.team2_vrs_forecast, 3) }}
+        {% endif %}
     </div>
 
     {% if match.maps %}

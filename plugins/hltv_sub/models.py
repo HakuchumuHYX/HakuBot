@@ -147,6 +147,18 @@ class VrsChange:
 
 
 @dataclass
+class VrsForecast:
+    """赛前/赛中的 VRS forecast：HLTV 按本场胜负估算。"""
+
+    points: int
+    rank: int
+    win_delta: int
+    win_rank: int
+    lose_delta: int
+    lose_rank: int
+
+
+@dataclass
 class MatchStats:
     """比赛详细数据"""
 
@@ -172,9 +184,12 @@ class MatchStats:
     format_line: str = ""  # 如 "Best of 3 (LAN)"
     stage: str = ""  # 如 "Semi-final"
     is_grand_final: bool = False
+    is_third_place: bool = False
     date: str = ""  # YYYY-MM-DD
     team1_vrs: VrsChange | None = None  # 仅比赛结束后有
     team2_vrs: VrsChange | None = None
+    team1_vrs_forecast: VrsForecast | None = None  # 赛前/赛中有；未上榜的队为 None
+    team2_vrs_forecast: VrsForecast | None = None
 
 
 @dataclass

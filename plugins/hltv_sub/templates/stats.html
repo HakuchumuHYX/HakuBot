@@ -180,8 +180,10 @@
 /* 中栏接着比分块的倒梯形继续收窄 */
 .vrs-label {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    line-height: 1;
     background: var(--bg);
     clip-path: polygon(12% 0, 88% 0, 82% 100%, 18% 100%);
 }
@@ -191,6 +193,41 @@
     font-weight: 700;
     letter-spacing: 3px;
     color: var(--muted);
+}
+
+/* 赛前/赛中是 forecast：第一行当前排名积分，第二行胜/负两种结果 */
+.vrs-label .sub {
+    margin-top: 4px;
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.vrs-now {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.vrs-cases {
+    display: flex;
+    gap: 16px;
+    font-size: 17px;
+}
+
+.vrs-case .key {
+    margin-right: 5px;
+    font-family: Haku, sans-serif;
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.vrs-case .vrs-move {
+    margin-left: 3px;
+    font-size: 15px;
+}
+
+.vrs-case .delta {
+    margin-left: 6px;
+    font-weight: 600;
 }
 
 .bug-meta {
@@ -519,6 +556,28 @@
 </div>
 {% endmacro %}
 
+{% macro forecast_case(key, rank, new_rank, delta) %}
+{% set move = rank - new_rank %}
+<span class="vrs-case">
+    <span class="key">{{ key }}</span>#{{ new_rank }}{% if move %}<span class="vrs-move {{ 'up' if move > 0 else 'down' }}">{{ '▲' if move > 0 else '▼' }}{{ move|abs }}</span>{% endif %}
+    <span class="delta {{ 'up' if delta > 0 else 'down' if delta < 0 else '' }}">{{ '%+d'|format(delta) }}</span>
+</span>
+{% endmacro %}
+
+{% macro forecast_side(f, cls) %}
+<div class="vrs-team {{ cls }}">
+    {% if f %}
+    <div class="vrs-points num"><span class="vrs-now">#{{ f.rank }}</span><span>{{ f.points }} pt</span></div>
+    <div class="vrs-cases num">
+        {{ forecast_case('胜', f.rank, f.win_rank, f.win_delta) }}
+        {{ forecast_case('负', f.rank, f.lose_rank, f.lose_delta) }}
+    </div>
+    {% else %}
+    <div class="vrs-points">未上榜</div>
+    {% endif %}
+</div>
+{% endmacro %}
+
 {% block content %}
 {% if stats %}
 {% set s = stats %}
@@ -526,13 +585,15 @@
 {% set score2 = s.score2|int %}
 {% set finished = s.status|lower == 'match over' %}
 {% set status_text = {'match over': '已结束', 'live': '进行中'}.get(s.status|lower, s.status) %}
+{# 刚打完、HLTV 还没切到 result 时页面仍是 forecast，结束了就不再显示“如果赢/输” #}
+{% set show_forecast = not finished and (s.team1_vrs_forecast or s.team2_vrs_forecast) %}
 
 <div class="kicker">
     <div class="kicker-event">{{ s.event or '比赛数据' }}</div>
     {% if s.stage %}<div class="kicker-stage">{{ s.stage }}</div>{% endif %}
 </div>
 
-<div class="bug {% if s.team1_vrs %}has-vrs{% endif %}">
+<div class="bug {% if s.team1_vrs or show_forecast %}has-vrs{% endif %}">
     <div class="bug-team t1 {% if finished and score1 < score2 %}lost{% endif %}">
         {{ m.logo(s.team1_logo, 76) }}
         <div class="bug-info">
@@ -565,6 +626,15 @@
         <span class="num">VRS</span>
     </div>
     {{ vrs_side(s.team2_vrs, 't2') }}
+</div>
+{% elif show_forecast %}
+<div class="vrs">
+    {{ forecast_side(s.team1_vrs_forecast, 't1') }}
+    <div class="vrs-label">
+        <span class="num">VRS</span>
+        <span class="sub">预测</span>
+    </div>
+    {{ forecast_side(s.team2_vrs_forecast, 't2') }}
 </div>
 {% endif %}
 

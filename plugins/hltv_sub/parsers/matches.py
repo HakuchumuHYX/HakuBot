@@ -11,11 +11,7 @@ from plugins.hltv_sub.models import (
     EventMatchesMeta, EventMatchesPage, MatchInfo, MatchTimeHint,
 )
 from plugins.hltv_sub.parsers.common import (
-    is_grand_final_text, parse_start_time, pick_logo, text_of,
-)
-
-THIRD_PLACE_MARKERS = (
-    "3rd place decider", "third place decider", "3rd place match", "third place match",
+    is_grand_final_text, is_third_place_text, parse_start_time, pick_logo, text_of,
 )
 
 
@@ -62,9 +58,7 @@ def _parse_matches(
 
         stars = wrapper.get("data-stars", "")
         no_info = wrapper.select_one("a.match-no-info")
-        no_info_text = (
-            " ".join(no_info.get_text(" ", strip=True).lower().split()) if no_info else ""
-        )
+        no_info_text = no_info.get_text(" ", strip=True) if no_info else ""
         matches.append(
             MatchInfo(
                 id=match_id,
@@ -79,7 +73,7 @@ def _parse_matches(
                 rating=int(stars) if stars.isdigit() else 0,
                 is_live=is_live,
                 is_grand_final=_is_grand_final_match(wrapper),
-                is_third_place=any(marker in no_info_text for marker in THIRD_PLACE_MARKERS),
+                is_third_place=is_third_place_text(no_info_text),
             )
         )
 
