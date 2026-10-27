@@ -43,10 +43,6 @@ class Statistics:
     emoji_count: int = 0
     hourly: list[int] = field(default_factory=lambda: [0] * 24)
 
-    @property
-    def peak_hour(self) -> int:
-        return self.hourly.index(max(self.hourly))
-
 
 @dataclass
 class AnalysisResult:

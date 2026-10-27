@@ -4,17 +4,26 @@
     <meta charset="utf-8">
     <style>
         /* 一天的群聊排成一集剧本。三种笔迹各管一类内容：
-           印刷体（宋）= 群里发生的事；红笔（文楷）= Bot 的评语和标记；荧光笔 = 只划金句原话。
+           印刷体（宋）= 群里发生的事；红笔（文楷）= Bot 的评语；荧光笔 = 只划金句原话。
            两种字体都是系统字体（fonts-noto-cjk、霞鹜文楷），不联网 */
         :root {
-            --desk: #DADFE3;
+            --desk: #CBD2D9;
             --paper: #FFFFFF;
             --ink: #262626;
-            --pencil: #7B7B7B;
-            --rule: #DCDCDC;
-            --band: #F1F1EF;
+            --pencil: #6F6F6F;
+            --rule: rgba(0, 0, 0, 0.13);
+            --band: rgba(0, 0, 0, 0.05);
             --red: #C9302C;
-            --marker: rgba(255, 221, 64, 0.75);
+            --marker: rgba(255, 221, 64, 0.85);
+            /* 修订页：剧组改稿按蓝、粉、黄……的顺序换纸色，一叠剧本翻开就是彩色的 */
+            --sheet-cast: #E2ECF8;
+            --sheet-scenes: #FBF1C9;
+            --sheet-quotes: #FAE1E8;
+            /* 剧本场景行里的 晨 / 日 / 昏 / 夜 */
+            --dawn: #8DB7DD;
+            --day: #EFAA2C;
+            --dusk: #C66A9C;
+            --night: #2E3A72;
             --print: "Noto Serif CJK SC", serif;
             --pen: "LXGW WenKai", "Noto Serif CJK SC", serif;
         }
@@ -33,15 +42,6 @@
 
         .pen { font-family: var(--pen); color: var(--red); }
 
-        /* 红笔随手画的圈，四个角的弧度故意不一样 */
-        .ring {
-            border: 1.6px solid var(--red);
-            border-radius: 50% 44% 52% 46%;
-            font-family: var(--pen);
-            color: var(--red);
-            text-align: center;
-        }
-
         /* ---------- 纸 ---------- */
 
         .sheet {
@@ -53,6 +53,57 @@
         }
 
         .sheet + .sheet { margin-top: 20px; }
+        .sheet.cast-sheet { background: var(--sheet-cast); }
+        .sheet.scenes-sheet { background: var(--sheet-scenes); }
+        .sheet.quotes-sheet { background: var(--sheet-quotes); }
+
+        /* 场记板：场号 */
+        .slate {
+            display: inline-flex;
+            flex-direction: column;
+            width: 30px;
+            flex: none;
+        }
+
+        .slate i {
+            display: block;
+            height: 7px;
+            margin-bottom: 1px;
+            border: 1.5px solid var(--ink);
+            background: repeating-linear-gradient(-50deg, var(--ink) 0 3px, #FFFFFF 3px 7px);
+            transform: rotate(-9deg);
+            transform-origin: 0 100%;
+        }
+
+        .slate b {
+            display: block;
+            background: var(--ink);
+            color: #FFFFFF;
+            font-size: 15px;
+            line-height: 21px;
+            text-align: center;
+        }
+
+        .slate.big { width: 42px; }
+        .slate.big i { height: 9px; }
+        .slate.big b { font-size: 21px; line-height: 30px; }
+
+        /* 晨日昏夜：场景行里的时段，和封面柱子同色 */
+        .phase {
+            display: inline-block;
+            flex: none;
+            width: 1.6em;
+            border-radius: 3px;
+            font-size: 14px;
+            line-height: 1.6em;
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .phase.dawn { background: var(--dawn); color: #13324F; }
+        .phase.day { background: var(--day); color: #4A2E00; }
+        .phase.dusk { background: var(--dusk); color: #FFFFFF; }
+        .phase.night { background: var(--night); color: #FFFFFF; }
 
         /* 左边三个装订孔 */
         .holes {
@@ -167,90 +218,93 @@
 
         .credits dt { color: var(--pencil); }
 
-        .day { margin-top: 48px; }
+        .clock { margin-top: 52px; }
 
-        .marks, .bars, .hours {
+        .marks, .bars, .hours, .phases {
             display: grid;
             grid-template-columns: repeat(24, 1fr);
-            gap: 3px;
+            column-gap: 4px;
         }
 
         /* 同一小时开场的几场叠起来 */
-        .marks { min-height: 32px; align-items: end; }
+        .marks { min-height: 36px; align-items: end; }
 
         .marks div {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 3px;
-            padding-bottom: 4px;
+            gap: 4px;
+            padding-bottom: 8px;
         }
 
-        .mark {
-            width: 25px;
-            height: 25px;
-            font-size: 15px;
-            line-height: 22px;
-        }
+        .marks .slate { width: 24px; }
+        .marks .slate i { height: 6px; }
+        .marks .slate b { font-size: 13px; line-height: 18px; }
 
         .bars {
             align-items: end;
-            height: 130px;
-            border-bottom: 1.5px solid var(--ink);
+            height: 150px;
+            padding-top: 20px;
         }
 
-        .bar { background: var(--ink); }
+        .bar { position: relative; border-radius: 2px 2px 0 0; }
+        .bar.dawn { background: var(--dawn); }
+        .bar.day { background: var(--day); }
+        .bar.dusk { background: var(--dusk); }
+        .bar.night { background: var(--night); }
         .bar.zero { background: var(--rule); }
 
+        /* 没有纵轴，每根柱子顶上写条数 */
+        .bar .n {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding-bottom: 2px;
+            font-size: 12px;
+            line-height: 1.2;
+            color: var(--ink);
+        }
+
+        /* 横轴本身就是一条时段色带 */
+        .phases {
+            height: 5px;
+            margin-top: 3px;
+            column-gap: 0;
+        }
+
+        .phases span:nth-child(1) { grid-column: 1 / 6; background: var(--night); }
+        .phases span:nth-child(2) { grid-column: 6 / 9; background: var(--dawn); }
+        .phases span:nth-child(3) { grid-column: 9 / 18; background: var(--day); }
+        .phases span:nth-child(4) { grid-column: 18 / 20; background: var(--dusk); }
+        .phases span:nth-child(5) { grid-column: 20 / 25; background: var(--night); }
+
         .hours {
-            margin-top: 6px;
+            margin-top: 7px;
             font-size: 12px;
             color: var(--pencil);
             text-align: center;
             line-height: 1;
         }
 
-        /* 最热闹那个小时的刻度圈出来；它旁边的刻度不显示，免得挤 */
-        .hours .ring {
-            justify-self: center;
-            margin-top: -5px;
-            padding: 4px 6px;
-            font-size: 14px;
-            transform: rotate(-4deg);
-        }
-
-        .peak-note {
-            margin-top: 12px;
-            text-align: right;
-            font-size: 18px;
-        }
-
-        /* 场次表：两栏，每栏是 场号 / 时间 / 标题；时间可能带"昨天"，宽度跟着内容走 */
+        /* 场次表：两栏，每栏是 场号 / 时段 / 时间 / 标题；时间可能带"昨天"，宽度跟着内容走 */
         .lineup {
-            margin-top: 36px;
-            padding-top: 20px;
+            margin-top: 40px;
+            padding-top: 24px;
             border-top: 1px solid var(--rule);
             display: grid;
-            grid-template-columns: 22px auto 1fr 22px auto 1fr;
-            align-items: baseline;
+            grid-template-columns: auto auto auto 1fr auto auto auto 1fr;
+            align-items: center;
             column-gap: 10px;
-            row-gap: 6px;
+            row-gap: 12px;
             font-size: 16px;
+            line-height: 1.5;
         }
 
         .lineup > div { display: contents; }
         .lineup .topic { padding-right: 18px; }
-
-        .lineup .ring {
-            align-self: start;
-            margin-top: 3px;
-            width: 22px;
-            height: 22px;
-            border-width: 1.4px;
-            font-size: 13px;
-            line-height: 19px;
-        }
-
+        .lineup .slate { width: 26px; }
+        .lineup .slate b { font-size: 14px; line-height: 19px; }
         .lineup .t { color: var(--pencil); }
 
         /* ---------- 人物 ---------- */
@@ -345,19 +399,12 @@
 
         .scene + .scene { margin-top: 30px; }
 
-        .scene > .ring {
-            width: 36px;
-            height: 36px;
-            margin-top: 4px;
-            border-width: 1.8px;
-            font-size: 20px;
-            line-height: 32px;
-        }
+        .scene > .slate { margin-top: -2px; }
 
         .slug {
             display: flex;
             justify-content: space-between;
-            align-items: baseline;
+            align-items: center;
             gap: 12px;
             background: var(--band);
             padding: 4px 12px;
@@ -365,7 +412,8 @@
             font-weight: 700;
         }
 
-        .slug .t { flex: none; font-weight: 400; font-size: 16px; color: var(--pencil); }
+        .slug .when { flex: none; display: flex; align-items: center; gap: 8px; }
+        .slug .t { font-weight: 400; font-size: 16px; color: var(--pencil); }
 
         .cast-line { color: var(--pencil); font-size: 16px; margin: 8px 0 0 12px; }
 
@@ -445,6 +493,10 @@
     {# 页脚（水印、出处、Token）落在最后一张纸上；三块都可能被关掉或失败 #}
     {% set last = "quotes" if quotes else "topics" if topics else "titles" if titles else "cover" %}
 
+    {% macro phase_tag(at) %}{% set p = phase(at.hour) %}<span class="phase {{ p }}">{{ {"night": "夜", "dawn": "晨", "day": "日", "dusk": "昏"}[p] }}</span>{% endmacro %}
+
+    {% macro slate(no, cls="") %}<span class="slate {{ cls }}"><i></i><b>{{ no }}</b></span>{% endmacro %}
+
     {% macro sheet_head() %}
     <div class="holes"><i></i><i></i><i></i></div>
     <div class="running"><span>{% if group_name %}《{{ group_name }}》{% endif %}</span><span>{{ date_text }}</span></div>
@@ -480,33 +532,29 @@
             <dt>表情</dt><dd>{{ emoji_count }} 个</dd>
         </dl>
 
-        <div class="day">
+        <div class="clock">
             <div class="marks">
                 {% for h in hours %}
-                <div>{% for no in h.scenes %}<span class="mark ring">{{ no }}</span>{% endfor %}</div>
+                <div>{% for no in h.scenes %}{{ slate(no) }}{% endfor %}</div>
                 {% endfor %}
             </div>
             <div class="bars">
                 {% for h in hours %}
-                <div class="bar{% if not h.count %} zero{% endif %}" style="height: {{ h.height }}%"></div>
+                <div class="bar {{ h.phase if h.count else 'zero' }}" style="height: {{ h.height }}%">{% if h.count %}<span class="n">{{ h.count }}</span>{% endif %}</div>
                 {% endfor %}
             </div>
+            <div class="phases"><span></span><span></span><span></span><span></span><span></span></div>
             <div class="hours">
                 {% for h in hours %}
-                {% if h.hour == peak_hour %}
-                <span class="ring">{{ h.hour }}</span>
-                {% else %}
-                <span>{% if h.hour % 3 == 0 and (h.hour - peak_hour) | abs > 1 %}{{ h.hour }}{% endif %}</span>
-                {% endif %}
+                <span>{% if h.hour % 3 == 0 %}{{ h.hour }}{% endif %}</span>
                 {% endfor %}
             </div>
-            <div class="peak-note pen">{{ peak_hour }} 点这一小时最热闹，{{ peak_count }} 条</div>
         </div>
 
         {% if topics %}
         <div class="lineup">
             {% for s in topics %}
-            <div><span class="ring">{{ loop.index }}</span><span class="t">{% if s.at %}{{ when(s.at) }}{% endif %}</span><span class="topic">{{ s.topic }}</span></div>
+            <div>{{ slate(loop.index) }}<span>{% if s.at %}{{ phase_tag(s.at) }}{% endif %}</span><span class="t">{% if s.at %}{{ when(s.at) }}{% endif %}</span><span class="topic">{{ s.topic }}</span></div>
             {% endfor %}
         </div>
         {% endif %}
@@ -514,7 +562,7 @@
     </section>
 
     {% if titles %}
-    <section class="sheet">
+    <section class="sheet cast-sheet">
         {{ sheet_head() }}
         <h2 class="part-title">人物<small>{{ titles | length }} 位</small></h2>
         <div class="cast">
@@ -555,16 +603,16 @@
     {% endif %}
 
     {% if topics %}
-    <section class="sheet">
+    <section class="sheet scenes-sheet">
         {{ sheet_head() }}
         <h2 class="part-title">剧情<small>{{ topics | length }} 场</small></h2>
         {% for s in topics %}
         <div class="scene">
-            <div class="ring">{{ loop.index }}</div>
+            {{ slate(loop.index, "big") }}
             <div>
                 <div class="slug">
                     <span>{{ s.topic }}</span>
-                    {% if s.at %}<span class="t">{{ when(s.at) }}</span>{% endif %}
+                    {% if s.at %}<span class="when">{{ phase_tag(s.at) }}<span class="t">{{ when(s.at) }}</span></span>{% endif %}
                 </div>
                 {% if s.contributors %}
                 <div class="cast-line">人物：{{ s.contributors | join("、") }}</div>
@@ -578,7 +626,7 @@
     {% endif %}
 
     {% if quotes %}
-    <section class="sheet">
+    <section class="sheet quotes-sheet">
         {{ sheet_head() }}
         <h2 class="part-title">金句<small>{{ quotes | length }} 句</small></h2>
         {% for q in quotes %}

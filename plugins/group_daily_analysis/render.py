@@ -36,6 +36,17 @@ def _when(at: datetime, now: datetime) -> str:
     return f"{at.month}月{at.day}日 {at:%H:%M}"
 
 
+def _phase(hour: int) -> str:
+    """剧本场景行里的时段（晨、日、昏、夜），封面柱子也按它上色"""
+    if hour < 5 or hour >= 19:
+        return "night"
+    if hour < 8:
+        return "dawn"
+    if hour < 17:
+        return "day"
+    return "dusk"
+
+
 async def render_report(result: AnalysisResult, group_name: str | None) -> bytes:
     stats = result.statistics
     qqs = list(
@@ -71,12 +82,11 @@ async def render_report(result: AnalysisResult, group_name: str | None) -> bytes
                 "hour": hour,
                 "count": count,
                 "height": max(2, count / peak * 100),
+                "phase": _phase(hour),
                 "scenes": scenes_by_hour.get(hour, []),
             }
             for hour, count in enumerate(stats.hourly)
         ],
-        peak_hour=stats.peak_hour,
-        peak_count=peak,
         topics=topics,
         titles=result.user_titles,
         # 戏份条按人物表里发言最多的那个人算满
@@ -84,6 +94,7 @@ async def render_report(result: AnalysisResult, group_name: str | None) -> bytes
         quotes=sorted(result.golden_quotes, key=lambda q: (q.at is None, q.at or now)),
         avatars=avatars,
         when=lambda at: _when(at, now),
+        phase=_phase,
         total_tokens=result.usage.total_tokens,
         watermark_text=plugin_config.watermark_text,
     )
