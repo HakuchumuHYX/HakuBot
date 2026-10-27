@@ -219,5 +219,7 @@
     {% if match.maps %}
     <div class="format num">BO{{ match.maps }}{% if match.rating %}<span class="stars">{{ '★' * match.rating }}</span>{% endif %}</div>
     {% endif %}
+
+    {% if s.vrs_invites %}{{ m.invites(s) }}{% endif %}
 </div>
 {% endblock %}

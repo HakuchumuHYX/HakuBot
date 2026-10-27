@@ -159,6 +159,25 @@ class VrsForecast:
 
 
 @dataclass
+class InviteChance:
+    """一队拿到某个邀请的模拟概率，均为页面原文；本场胜负都不影响时，win 和 lose 都是 Either way 后面的值。"""
+
+    now: str
+    win: str
+    lose: str
+
+
+@dataclass
+class VrsInvite:
+    """match 页 VRS invite stakes 的一项。"""
+
+    event: str
+    logo: str
+    team1: InviteChance
+    team2: InviteChance
+
+
+@dataclass
 class MatchStats:
     """比赛详细数据"""
 
@@ -190,6 +209,7 @@ class MatchStats:
     team2_vrs: VrsChange | None = None
     team1_vrs_forecast: VrsForecast | None = None  # 赛前/赛中有；未上榜的队为 None
     team2_vrs_forecast: VrsForecast | None = None
+    vrs_invites: list[VrsInvite] = field(default_factory=list)  # 赛前/赛中、且有邀请悬念时才有
 
 
 @dataclass

@@ -244,6 +244,10 @@
     font-weight: 600;
 }
 
+.invites {
+    --invite-event: 340px;
+}
+
 /* 地图条：HLTV 地图横幅做底，半场比分按 CT/T 着色 */
 .maps {
     display: flex;
@@ -643,6 +647,9 @@
     {% if s.date %}<span class="num">{{ s.date }}</span>{% endif %}
     <span class="{% if not finished %}live{% endif %}">{{ status_text }}</span>
 </div>
+
+{# 与 forecast 同理：比赛结束后不再显示“赢/输之后” #}
+{% if not finished and s.vrs_invites %}{{ m.invites(s) }}{% endif %}
 
 {% if s.maps %}
 <div class="maps">

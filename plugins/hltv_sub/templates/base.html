@@ -132,6 +132,87 @@
             color: var(--text);
         }
 
+        /* VRS 邀请（macros.invites）：两队数据各在自己一侧，赛事名居中；宽图可加宽中栏 */
+        .invites {
+            --invite-event: 200px;
+            margin-top: 16px;
+            padding: 6px 12px;
+            background: var(--panel);
+            border-radius: 6px;
+        }
+
+        .invite-row {
+            display: grid;
+            grid-template-columns: 1fr var(--invite-event) 1fr;
+            align-items: center;
+            height: 36px;
+            border-top: 1px solid var(--line);
+        }
+
+        .invite-row.head {
+            height: 40px;
+            border-top: none;
+        }
+
+        .invite-cells {
+            display: grid;
+            grid-template-columns: repeat(3, 48px);
+            justify-content: center;
+            align-items: baseline;
+            font-size: 19px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .invite-row.head .invite-cells {
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--muted);
+        }
+
+        .invite-cells .either {
+            grid-column: span 2;
+            font-family: Haku, sans-serif;
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--muted);
+        }
+
+        .invite-cells .either .num {
+            font-size: 19px;
+            font-weight: 600;
+        }
+
+        .invite-title {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 14px;
+            line-height: 1.25;
+            color: var(--muted);
+        }
+
+        .invite-title span {
+            font-size: 12px;
+        }
+
+        .invite-event {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-width: 0;
+            padding: 0 8px;
+            font-size: 17px;
+            font-weight: 600;
+        }
+
+        .invite-event span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .footer {
             margin-top: 22px;
             padding-top: 12px;

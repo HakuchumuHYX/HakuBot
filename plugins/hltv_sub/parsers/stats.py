@@ -7,9 +7,11 @@ from __future__ import annotations
 import re
 
 from bs4 import BeautifulSoup, Tag
+from nonebot import logger
 
 from plugins.hltv_sub.models import (
-    HalfScore, MapStats, MatchStats, PlayerStats, VrsChange, VrsForecast,
+    HalfScore, InviteChance, MapStats, MatchStats, PlayerStats,
+    VrsChange, VrsForecast, VrsInvite,
 )
 from plugins.hltv_sub.parsers.common import (
     absolute_url, extract_id_from_url, flag_of, format_date,
@@ -163,6 +165,47 @@ def _parse_vrs_forecast(soup: BeautifulSoup) -> tuple[VrsForecast | None, VrsFor
     return team1, team2
 
 
+INVITE_CHANCE = re.compile(r"[<>]?\d+(?:\.\d+)?%")
+
+
+def _invite_chance(row: Tag) -> InviteChance | None:
+    """三格依次是 now / win / lose；本场胜负不影响时只有 now 和 “Either way 9.1%” 两格。"""
+    cells = row.select(".vrs-invite-stakes-chance")
+    values = [INVITE_CHANCE.search(cell.get_text(" ", strip=True)) for cell in cells]
+    if None in values:
+        return None
+    values = [value.group() for value in values]
+    if len(cells) == 3:
+        return InviteChance(*values)
+    if len(cells) == 2 and "either-way" in cells[1].get("class", []):
+        return InviteChance(now=values[0], win=values[1], lose=values[1])
+    return None
+
+
+def _parse_vrs_invites(soup: BeautifulSoup) -> list[VrsInvite]:
+    """赛前、赛中且有邀请悬念时才有，含折叠在 “N more invites” 里的；每项两行依次是 team1、team2。
+
+    结构对不上的项跳过：这一块是附带信息，不该连累提醒和单图推送。
+    """
+    invites: list[VrsInvite] = []
+    for block in soup.select(".vrs-invite-stakes-invite"):
+        title = block.select_one(".vrs-invite-stakes-title")
+        chances = [
+            _invite_chance(row)
+            for row in block.select(".vrs-invite-stakes-row:not(.vrs-invite-stakes-labels)")
+        ]
+        if title is None or len(chances) != 2 or None in chances:
+            logger.warning(f"[HLTV] 跳过结构不明的 VRS 邀请: {text_of(title)!r}")
+            continue
+        invites.append(VrsInvite(
+            event=text_of(title),
+            logo=pick_logo(title.find_all("img")),
+            team1=chances[0],
+            team2=chances[1],
+        ))
+    return invites
+
+
 def parse_match_stats(
     html: str,
     match_id: str,
@@ -259,6 +302,7 @@ def parse_match_stats(
         team2_vrs=team2_vrs,
         team1_vrs_forecast=team1_vrs_forecast,
         team2_vrs_forecast=team2_vrs_forecast,
+        vrs_invites=_parse_vrs_invites(soup),
     )
 
 
