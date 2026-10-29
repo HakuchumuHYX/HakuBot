@@ -146,7 +146,7 @@ async def handle_send_command(bot: Bot, event: Event, arg: Message = CommandArg(
     if success_count > 0:
         result_msg = f"消息已发送给 {success_count} 位超级用户"
         logger.info(f"消息发送成功: {result_msg}")
-        await send_to_superuser.finish(f"消息已发送，请静待回复~")
+        await send_to_superuser.finish("消息已发送，请静待回复~")
     else:
         error_msg = "所有消息发送尝试均失败"
         logger.error(error_msg)

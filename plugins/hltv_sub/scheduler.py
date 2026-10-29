@@ -15,7 +15,11 @@ from nonebot_plugin_apscheduler import scheduler
 
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.data_manager import data_manager
-from plugins.hltv_sub.handler import UPCOMING_WINDOW_HOURS, get_event_state, hltv_handler
+from plugins.hltv_sub.handler import (
+    UPCOMING_WINDOW_HOURS,
+    get_event_state,
+    hltv_handler,
+)
 
 DEFAULT_INTERVAL_MINUTES = 3
 ADAPTIVE_INTERVAL_TABLE = [(60, 3), (6 * 60, 30), (24 * 60, 180)]
@@ -40,21 +44,33 @@ class HLTVScheduler:
         self.sync_events()
         self._had_receivers = data_manager.has_enabled_groups()
         scheduler.add_job(
-            self.check_due_events, "interval", minutes=1,
-            id="hltv_check_due", replace_existing=True,
+            self.check_due_events,
+            "interval",
+            minutes=1,
+            id="hltv_check_due",
+            replace_existing=True,
             # 第二拍要能进来，由 check_due_events 自己判断跳过，否则 apscheduler 每次记 WARNING
-            max_instances=2, coalesce=True,
+            max_instances=2,
+            coalesce=True,
         )
         scheduler.add_job(
-            self.daily_maintenance, "cron", hour=4, minute=30,
-            id="hltv_daily_maintenance", replace_existing=True,
-            max_instances=1, coalesce=True,
+            self.daily_maintenance,
+            "cron",
+            hour=4,
+            minute=30,
+            id="hltv_daily_maintenance",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
         scheduler.add_job(
-            self.auto_subscribe_big_events, "interval",
+            self.auto_subscribe_big_events,
+            "interval",
             days=plugin_config.auto_sub_interval_days,
-            id="hltv_auto_subscribe", replace_existing=True,
-            max_instances=1, coalesce=True,
+            id="hltv_auto_subscribe",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
         logger.info("[HLTV] 周期检查、每日维护和自动订阅任务已启动")
 
@@ -90,7 +106,9 @@ class HLTVScheduler:
         self.sync_events()
         for event_id in sorted(self._events):
             schedule = self._events.get(event_id)
-            if schedule is not None and schedule.next_check_at <= datetime.now(self._tz):
+            if schedule is not None and schedule.next_check_at <= datetime.now(
+                self._tz
+            ):
                 await self._check_event(event_id)
 
     async def _check_event(self, event_id: str) -> None:
@@ -101,9 +119,12 @@ class HLTVScheduler:
         schedule = self._events.setdefault(event_id, _Schedule(now))
         state = get_event_state(sub, now, self._end_grace_days)
         if state == "NOT_ONGOING":
-            start_at = self._tz.localize(datetime.combine(
-                date.fromisoformat(sub.start_date), time.min,
-            ))
+            start_at = self._tz.localize(
+                datetime.combine(
+                    date.fromisoformat(sub.start_date),
+                    time.min,
+                )
+            )
             schedule.next_check_at = start_at - timedelta(hours=UPCOMING_WINDOW_HOURS)
             return
         if state not in ("ONGOING", "UPCOMING"):
@@ -123,7 +144,8 @@ class HLTVScheduler:
             schedule.last_live_seen_at = result.live_seen_at
         in_grace = (
             schedule.last_live_seen_at is not None
-            and now - schedule.last_live_seen_at <= timedelta(minutes=POST_LIVE_GRACE_MINUTES)
+            and now - schedule.last_live_seen_at
+            <= timedelta(minutes=POST_LIVE_GRACE_MINUTES)
         )
         watching_mvp = sub.mvp_status == "watching"
         # 本轮看到直播时 last_live_seen_at 刚更新，也落在宽限期里
@@ -134,7 +156,8 @@ class HLTVScheduler:
         else:
             minutes = next(
                 (
-                    interval for upper, interval in ADAPTIVE_INTERVAL_TABLE
+                    interval
+                    for upper, interval in ADAPTIVE_INTERVAL_TABLE
                     if result.next_minutes_hint <= upper
                 ),
                 360,
@@ -143,9 +166,12 @@ class HLTVScheduler:
         schedule.next_check_at = now + timedelta(minutes=minutes, seconds=jitter)
         if result.retry_at:
             schedule.next_check_at = max(
-                schedule.next_check_at, datetime.fromtimestamp(result.retry_at, self._tz),
+                schedule.next_check_at,
+                datetime.fromtimestamp(result.retry_at, self._tz),
             )
-        logger.debug(f"[HLTV] 赛事 {event_id} 下次检查：{schedule.next_check_at.isoformat()}")
+        logger.debug(
+            f"[HLTV] 赛事 {event_id} 下次检查：{schedule.next_check_at.isoformat()}"
+        )
 
     async def daily_maintenance(self) -> None:
         # 和周期检查共用轮次锁：维护要等这一轮跑完，维护期间的检查拍直接跳过

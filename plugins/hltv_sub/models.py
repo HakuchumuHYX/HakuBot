@@ -209,7 +209,9 @@ class MatchStats:
     team2_vrs: VrsChange | None = None
     team1_vrs_forecast: VrsForecast | None = None  # 赛前/赛中有；未上榜的队为 None
     team2_vrs_forecast: VrsForecast | None = None
-    vrs_invites: list[VrsInvite] = field(default_factory=list)  # 赛前/赛中、且有邀请悬念时才有
+    vrs_invites: list[VrsInvite] = field(
+        default_factory=list
+    )  # 赛前/赛中、且有邀请悬念时才有
 
 
 @dataclass

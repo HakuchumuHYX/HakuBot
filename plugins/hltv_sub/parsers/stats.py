@@ -10,12 +10,24 @@ from bs4 import BeautifulSoup, Tag
 from nonebot import logger
 
 from plugins.hltv_sub.models import (
-    HalfScore, InviteChance, MapStats, MatchStats, PlayerStats,
-    VrsChange, VrsForecast, VrsInvite,
+    HalfScore,
+    InviteChance,
+    MapStats,
+    MatchStats,
+    PlayerStats,
+    VrsChange,
+    VrsForecast,
+    VrsInvite,
 )
 from plugins.hltv_sub.parsers.common import (
-    absolute_url, extract_id_from_url, flag_of, format_date,
-    is_grand_final_text, is_third_place_text, pick_logo, text_of,
+    absolute_url,
+    extract_id_from_url,
+    flag_of,
+    format_date,
+    is_grand_final_text,
+    is_third_place_text,
+    pick_logo,
+    text_of,
 )
 
 
@@ -28,7 +40,11 @@ def _parse_player_table(table: Tag, team: str) -> list[PlayerStats]:
 
     def column(name: str, exclude: str = "") -> int:
         return next(
-            (i for i, h in enumerate(headers) if name in h and not (exclude and exclude in h)),
+            (
+                i
+                for i, h in enumerate(headers)
+                if name in h and not (exclude and exclude in h)
+            ),
             -1,
         )
 
@@ -39,7 +55,8 @@ def _parse_player_table(table: Tag, team: str) -> list[PlayerStats]:
 
     players: list[PlayerStats] = []
     rows = [
-        r for r in table.find_all("tr")
+        r
+        for r in table.find_all("tr")
         if not r.find("th") and "header-row" not in (r.get("class") or [])
     ]
     for row in rows[:5]:  # 每队最多5人
@@ -83,14 +100,11 @@ def _parse_halves(map_holder: Tag) -> list[HalfScore]:
     if not holder:
         return []
     digits = [
-        span for span in holder.find_all("span")
-        if span.get_text(strip=True).isdigit()
+        span for span in holder.find_all("span") if span.get_text(strip=True).isdigit()
     ]
     halves: list[HalfScore] = []
     for first, second in zip(digits[::2], digits[1::2]):
-        side = next(
-            (c for c in (first.get("class") or []) if c in ("ct", "t")), ""
-        )
+        side = next((c for c in (first.get("class") or []) if c in ("ct", "t")), "")
         halves.append(
             HalfScore(
                 score1=first.get_text(strip=True),
@@ -113,7 +127,11 @@ def _parse_team_box(soup: BeautifulSoup, index: int) -> tuple[str, str, str]:
 def _vrs_container(soup: BeautifulSoup, header: str) -> Tag | None:
     """同一个容器赛后是 result（before / result），赛前赛中是 forecast（current / if wins / if loses），按中栏 header 区分。"""
     container = soup.select_one(".vrs-forecast-container")
-    middle = container.select_one(".vrs-forecast-middle .vrs-forecast-header") if container else None
+    middle = (
+        container.select_one(".vrs-forecast-middle .vrs-forecast-header")
+        if container
+        else None
+    )
     if middle is None or header not in middle.get_text(" ", strip=True).lower():
         return None
     return container
@@ -123,9 +141,13 @@ def _vrs_column(container: Tag, selector: str) -> list[tuple[int, int] | None]:
     """一栏两行依次是 team1、team2，每行 (积分, 排名)；未上榜的行只有 Unranked 或 –、没有排名元素，记 None。"""
     rows: list[tuple[int, int] | None] = []
     for wrapper in container.select(f"{selector} .vrs-forecast-numbers-wrapper"):
-        points = re.search(r"[+-]?\d+", text_of(wrapper.select_one(".vrs-forecast-points")))
+        points = re.search(
+            r"[+-]?\d+", text_of(wrapper.select_one(".vrs-forecast-points"))
+        )
         rank = re.search(r"\d+", text_of(wrapper.select_one(".vrs-forecast-ranking")))
-        rows.append((int(points.group()), int(rank.group())) if points and rank else None)
+        rows.append(
+            (int(points.group()), int(rank.group())) if points and rank else None
+        )
     return rows
 
 
@@ -139,27 +161,41 @@ def _parse_vrs_result(soup: BeautifulSoup) -> tuple[VrsChange | None, VrsChange 
     if len(before) != 2 or len(after) != 2 or None in before + after:
         return None, None
     team1, team2 = (
-        VrsChange(points_before=b[0], rank_before=b[1], points_delta=a[0], rank_after=a[1])
+        VrsChange(
+            points_before=b[0], rank_before=b[1], points_delta=a[0], rank_after=a[1]
+        )
         for b, a in zip(before, after)
     )
     return team1, team2
 
 
-def _parse_vrs_forecast(soup: BeautifulSoup) -> tuple[VrsForecast | None, VrsForecast | None]:
+def _parse_vrs_forecast(
+    soup: BeautifulSoup,
+) -> tuple[VrsForecast | None, VrsForecast | None]:
     container = _vrs_container(soup, "team wins")
     if container is None:
         return None, None
     columns = [
         _vrs_column(container, selector)
-        for selector in (".vrs-forecast-left-numbers", ".vrs-forecast-middle", ".vrs-forecast-right")
+        for selector in (
+            ".vrs-forecast-left-numbers",
+            ".vrs-forecast-middle",
+            ".vrs-forecast-right",
+        )
     ]
     if any(len(column) != 2 for column in columns):
         return None, None
     team1, team2 = (
         VrsForecast(
-            points=current[0], rank=current[1],
-            win_delta=win[0], win_rank=win[1], lose_delta=lose[0], lose_rank=lose[1],
-        ) if current and win and lose else None
+            points=current[0],
+            rank=current[1],
+            win_delta=win[0],
+            win_rank=win[1],
+            lose_delta=lose[0],
+            lose_rank=lose[1],
+        )
+        if current and win and lose
+        else None
         for current, win, lose in zip(*columns)
     )
     return team1, team2
@@ -192,17 +228,21 @@ def _parse_vrs_invites(soup: BeautifulSoup) -> list[VrsInvite]:
         title = block.select_one(".vrs-invite-stakes-title")
         chances = [
             _invite_chance(row)
-            for row in block.select(".vrs-invite-stakes-row:not(.vrs-invite-stakes-labels)")
+            for row in block.select(
+                ".vrs-invite-stakes-row:not(.vrs-invite-stakes-labels)"
+            )
         ]
         if title is None or len(chances) != 2 or None in chances:
             logger.warning(f"[HLTV] 跳过结构不明的 VRS 邀请: {text_of(title)!r}")
             continue
-        invites.append(VrsInvite(
-            event=text_of(title),
-            logo=pick_logo(title.find_all("img")),
-            team1=chances[0],
-            team2=chances[1],
-        ))
+        invites.append(
+            VrsInvite(
+                event=text_of(title),
+                logo=pick_logo(title.find_all("img")),
+                team1=chances[0],
+                team2=chances[1],
+            )
+        )
     return invites
 
 
@@ -263,16 +303,19 @@ def parse_match_stats(
         vetos.extend(line for line in lines if not line.startswith("*"))
 
     maps = [
-        map_info for map_info in map(_parse_map, soup.find_all("div", class_="mapholder"))
+        map_info
+        for map_info in map(_parse_map, soup.find_all("div", class_="mapholder"))
         if map_info is not None
     ]
     # 单图数据在 {mapstatsid}-content 里，没打完的图没有
     map_stats_details = {}
     for map_info in maps:
-        if map_info.stats_id and (players := _parse_team_tables(
-            soup.find("div", id=f"{map_info.stats_id}-content"),
-            re.compile(r"stats-table|totalstats"),
-        )):
+        if map_info.stats_id and (
+            players := _parse_team_tables(
+                soup.find("div", id=f"{map_info.stats_id}-content"),
+                re.compile(r"stats-table|totalstats"),
+            )
+        ):
             map_stats_details[map_info.map_name] = players
 
     return MatchStats(
@@ -332,7 +375,9 @@ def _parse_map(map_holder: Tag) -> MapStats | None:
         score_team1=score(left),
         score_team2=score(right),
         stats_id=(
-            re.search(r"mapstatsid/(\d+)", stats_link["href"]).group(1) if stats_link else ""
+            re.search(r"mapstatsid/(\d+)", stats_link["href"]).group(1)
+            if stats_link
+            else ""
         ),
         halves=_parse_halves(map_holder),
         image=absolute_url(minimap.get("src", "")) if minimap else "",

@@ -27,7 +27,7 @@ from plugins.buaa_msm.config import DATA_DIR, REFRESH_HOURS, with_site_link
 from plugins.buaa_msm.gamedata import MsmError
 
 require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler  # noqa: E402
+from nonebot_plugin_apscheduler import scheduler
 
 UPLOAD_WAIT_SECONDS = 600
 # QQ 跑在容器里，私聊文件给的是容器内路径，映射到宿主机上的挂载目录

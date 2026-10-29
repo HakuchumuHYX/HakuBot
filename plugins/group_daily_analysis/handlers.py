@@ -9,22 +9,22 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.permission import SUPERUSER
 
 require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler  # noqa: E402
+from nonebot_plugin_apscheduler import scheduler
 
-from core.access import is_enabled, switch_rule  # noqa: E402
-from utils.logging import get_exc_desc  # noqa: E402
-from utils.onebot.media import image_segment  # noqa: E402
-from plugins.group_daily_analysis.analysis import analyze  # noqa: E402
-from plugins.group_daily_analysis.config import plugin_config  # noqa: E402
-from plugins.group_daily_analysis.models import (  # noqa: E402
+from core.access import is_enabled, switch_rule
+from utils.logging import get_exc_desc
+from utils.onebot.media import image_segment
+from plugins.group_daily_analysis.analysis import analyze
+from plugins.group_daily_analysis.config import plugin_config
+from plugins.group_daily_analysis.models import (
     AnalysisResult,
     GoldenQuote,
     SummaryTopic,
     UserTitle,
 )
-from plugins.group_daily_analysis.recorder import fetch_messages  # noqa: E402
-from plugins.group_daily_analysis.render import render_report  # noqa: E402
-from plugins.group_daily_analysis.transcript import (  # noqa: E402
+from plugins.group_daily_analysis.recorder import fetch_messages
+from plugins.group_daily_analysis.render import render_report
+from plugins.group_daily_analysis.transcript import (
     MESSAGE_TYPES,
     load_faces,
     read_messages,

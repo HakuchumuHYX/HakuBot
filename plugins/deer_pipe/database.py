@@ -237,4 +237,3 @@ async def attend_past(
         logger.debug(f"用户 {user_id} 补签成功: {now.month}月{day}日")
 
         return (True, deer_map)
-

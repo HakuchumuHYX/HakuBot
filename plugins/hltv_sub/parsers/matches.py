@@ -8,10 +8,17 @@ from bs4 import BeautifulSoup
 from nonebot import logger
 
 from plugins.hltv_sub.models import (
-    EventMatchesMeta, EventMatchesPage, MatchInfo, MatchTimeHint,
+    EventMatchesMeta,
+    EventMatchesPage,
+    MatchInfo,
+    MatchTimeHint,
 )
 from plugins.hltv_sub.parsers.common import (
-    is_grand_final_text, is_third_place_text, parse_start_time, pick_logo, text_of,
+    is_grand_final_text,
+    is_third_place_text,
+    parse_start_time,
+    pick_logo,
+    text_of,
 )
 
 
@@ -25,7 +32,10 @@ def _extract_maps_format(wrapper) -> str:
 
 
 def _parse_matches(
-    wrappers, tz, *, include_partial_tbd: bool = False,
+    wrappers,
+    tz,
+    *,
+    include_partial_tbd: bool = False,
 ) -> tuple[list[MatchInfo], list[MatchTimeHint]]:
     """默认只要两队都已确定的比赛；include_partial_tbd 时再加上一方是 winner 占位的。"""
     matches: list[MatchInfo] = []
@@ -34,7 +44,9 @@ def _parse_matches(
     for wrapper in wrappers:
         match_id = wrapper.get("data-match-id", "")
         if not match_id:
-            logger.warning(f"[HLTV] 跳过没有比赛 ID 的 match-wrapper: {text_of(wrapper)[:80]!r}")
+            logger.warning(
+                f"[HLTV] 跳过没有比赛 ID 的 match-wrapper: {text_of(wrapper)[:80]!r}"
+            )
             continue
         team1_id = wrapper.get("team1", "")
         team2_id = wrapper.get("team2", "")
@@ -42,10 +54,17 @@ def _parse_matches(
         is_live = wrapper.get("live", "false") == "true"
         # 待定的比赛没有开赛时间
         time_elem = wrapper.find("div", class_="match-time")
-        start_time = parse_start_time(time_elem.get("data-unix", "") if time_elem else "", tz)
-        hints.append(MatchTimeHint(
-            match_id=match_id, start_time=start_time, is_live=is_live, is_tbd=not decided,
-        ))
+        start_time = parse_start_time(
+            time_elem.get("data-unix", "") if time_elem else "", tz
+        )
+        hints.append(
+            MatchTimeHint(
+                match_id=match_id,
+                start_time=start_time,
+                is_live=is_live,
+                is_tbd=not decided,
+            )
+        )
 
         if not decided and not (include_partial_tbd and (team1_id or team2_id)):
             continue
@@ -53,7 +72,9 @@ def _parse_matches(
         if not decided and not _is_winner_placeholder(team2 if team1_id else team1):
             continue
         if not team1 or not team2:
-            logger.warning(f"[HLTV] 跳过缺队名的比赛 {match_id}: {team1!r} vs {team2!r}")
+            logger.warning(
+                f"[HLTV] 跳过缺队名的比赛 {match_id}: {team1!r} vs {team2!r}"
+            )
             continue
 
         stars = wrapper.get("data-stars", "")
@@ -103,8 +124,12 @@ def _analyze_matches_meta(
 
 
 def parse_event_matches_page(
-    html: str, final_url: str, event_id: str, tz,
-    *, include_partial_tbd: bool = False,
+    html: str,
+    final_url: str,
+    event_id: str,
+    tz,
+    *,
+    include_partial_tbd: bool = False,
 ) -> EventMatchesPage:
     soup = BeautifulSoup(html, "lxml")
     wrappers = soup.find_all("div", class_="match-wrapper")
@@ -117,7 +142,9 @@ def parse_event_matches_page(
         )
         return EventMatchesPage([], [], meta)
 
-    matches, hints = _parse_matches(wrappers, tz, include_partial_tbd=include_partial_tbd)
+    matches, hints = _parse_matches(
+        wrappers, tz, include_partial_tbd=include_partial_tbd
+    )
     logger.debug(
         f"[HLTV] 获取到 {len(matches)} 场比赛 (filtered) / {len(hints)} 条时间提示 (raw), "
         f"event={event_id}, wrappers={len(wrappers)}"
@@ -154,7 +181,8 @@ def _team_names(wrapper) -> tuple[str, str]:
     team1 = team2 = ""
     for index, block in enumerate(wrapper.find_all("div", class_="match-team")):
         name = text_of(
-            block.find("div", class_="match-teamname") or block.find("div", class_="team")
+            block.find("div", class_="match-teamname")
+            or block.find("div", class_="team")
         )
         classes = block.get("class", [])
         if "team1" in classes:

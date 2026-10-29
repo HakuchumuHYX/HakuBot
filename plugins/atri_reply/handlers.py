@@ -1,8 +1,9 @@
 import random
 
-from nonebot import on_message, logger
+from nonebot import on_command, on_message, logger
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.rule import Rule
+from nonebot.permission import SUPERUSER
+from nonebot.rule import Rule, to_me
 from core.access import switch_rule
 from core.settings import ConfigModel, load_config, reload_plugin_config
 from utils.logging import get_exc_desc
@@ -42,10 +43,6 @@ async def handle_call_reply(event: MessageEvent):
 
 
 # 重新加载配置的命令（可选功能）
-from nonebot import on_command
-from nonebot.permission import SUPERUSER
-from nonebot.rule import to_me
-
 reload_config = on_command(
     "重载配置", permission=SUPERUSER, rule=to_me(), priority=5, block=True
 )

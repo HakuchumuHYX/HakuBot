@@ -29,7 +29,7 @@ def parse_sign_text(text: str) -> dict:
     if not text:
         return {"is_empty": True}
 
-    lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
+    lines = [line.strip() for line in text.strip().split("\n") if line.strip()]
     if not lines:
         return {"is_empty": True}
 

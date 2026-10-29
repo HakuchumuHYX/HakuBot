@@ -27,9 +27,7 @@ from plugins.hltv_sub.parsers.stats import parse_match_stats
 
 
 class HLTVFetchError(Exception):
-    def __init__(
-        self, reason: str, *, retry_at: float = 0, recoverable: bool = False
-    ):
+    def __init__(self, reason: str, *, retry_at: float = 0, recoverable: bool = False):
         self.reason = reason
         self.retry_at = retry_at
         self.recoverable = recoverable
@@ -93,7 +91,11 @@ class HLTVClient:
         return parse_big_events(page.text, self._tz)
 
     async def get_event_info(
-        self, event_id: str, event_title: str = "", *, max_age: int = 3600,
+        self,
+        event_id: str,
+        event_title: str = "",
+        *,
+        max_age: int = 3600,
     ) -> EventInfo:
         """获取赛事详细信息"""
         title_slug = event_title.lower().replace(" ", "-") if event_title else "event"
@@ -104,13 +106,19 @@ class HLTVClient:
         return parse_event_info(page.text, event_id=event_id, tz=self._tz)
 
     async def get_event_results(
-        self, event_id: str, max_results: int = 20,
-        *, force_refresh: bool = False, max_age: int = 120,
+        self,
+        event_id: str,
+        max_results: int = 20,
+        *,
+        force_refresh: bool = False,
+        max_age: int = 120,
     ) -> list[ResultInfo]:
         """获取赛事的已结束比赛结果"""
         url = f"{self.BASE_URL}/results?event={event_id}"
         page = await self._fetch(
-            url, cache_key=f"results:{event_id}", ttl=max_age,
+            url,
+            cache_key=f"results:{event_id}",
+            ttl=max_age,
             force_refresh=force_refresh,
         )
 
@@ -171,14 +179,22 @@ class HLTVClient:
         )
 
     async def get_event_matches(
-        self, event_id: str, *, include_partial_tbd: bool = False, max_age: int = 120,
+        self,
+        event_id: str,
+        *,
+        include_partial_tbd: bool = False,
+        max_age: int = 120,
     ) -> EventMatchesPage:
         page = await self._fetch(
             f"{self.BASE_URL}/events/{event_id}/matches",
-            cache_key=f"matches:{event_id}", ttl=max_age,
+            cache_key=f"matches:{event_id}",
+            ttl=max_age,
         )
         return parse_event_matches_page(
-            page.text, page.final_url, event_id, self._tz,
+            page.text,
+            page.final_url,
+            event_id,
+            self._tz,
             include_partial_tbd=include_partial_tbd,
         )
 
@@ -196,9 +212,7 @@ class HLTVClient:
 
     def _pause(self, reason: str) -> HLTVFetchError:
         self._blocks += 1
-        delay = min(
-            self._cooldown * 2 ** min(self._blocks - 1, 20), self._max_cooldown
-        )
+        delay = min(self._cooldown * 2 ** min(self._blocks - 1, 20), self._max_cooldown)
         self._blocked_until = time.time() + delay
         self._save_state()
         logger.warning(f"[HLTV] 暂停访问 reason={reason} seconds={delay}")
@@ -317,7 +331,9 @@ class HLTVClient:
                         raise
                     await self._replace_session()
                     result = await self._request(url, key)
-                    logger.info(f"[HLTV] 换会话重试成功 page={key} first_reason={exc.reason}")
+                    logger.info(
+                        f"[HLTV] 换会话重试成功 page={key} first_reason={exc.reason}"
+                    )
             except HLTVFetchError as exc:
                 raise self._pause(exc.reason) from None
             if self._blocked_until:
@@ -357,8 +373,12 @@ class HLTVClient:
             if any(
                 marker in message
                 for marker in (
-                    "tab crashed", "invalid session id", "disconnected",
-                    "no such window", "chrome not reachable", "not connected to devtools",
+                    "tab crashed",
+                    "invalid session id",
+                    "disconnected",
+                    "no such window",
+                    "chrome not reachable",
+                    "not connected to devtools",
                 )
             ):
                 raise HLTVFetchError("浏览器崩溃或断连", recoverable=True)
@@ -392,8 +412,10 @@ class HLTVClient:
             f"session={self._session_id}"
         )
         data = await self._call(
-            "request.get", session=self._session_id,
-            url=url, maxTimeout=self._timeout * 1000,
+            "request.get",
+            session=self._session_id,
+            url=url,
+            maxTimeout=self._timeout * 1000,
         )
         solution = data.get("solution")
         if not isinstance(solution, dict):
@@ -415,15 +437,21 @@ class HLTVClient:
         soup = BeautifulSoup(html, "lxml")
         title = soup.title.get_text(" ", strip=True).lower() if soup.title else ""
         heading = soup.h1.get_text(" ", strip=True).lower() if soup.h1 else ""
-        blocked = any(
-            marker in title or marker in heading
-            for marker in (
-                "just a moment", "access denied", "sorry, you have been blocked",
+        blocked = (
+            any(
+                marker in title or marker in heading
+                for marker in (
+                    "just a moment",
+                    "access denied",
+                    "sorry, you have been blocked",
+                )
             )
-        ) or soup.select_one(
-            "#challenge-form, #cf-challenge-running, #cf-please-wait, "
-            "#challenge-spinner, #turnstile-wrapper, .cf-error-details"
-        ) is not None
+            or soup.select_one(
+                "#challenge-form, #cf-challenge-running, #cf-please-wait, "
+                "#challenge-spinner, #turnstile-wrapper, .cf-error-details"
+            )
+            is not None
+        )
         if blocked:
             raise HLTVFetchError("页面仍为挑战或拒绝访问页", recoverable=True)
         if "hltv.org" not in title or any(

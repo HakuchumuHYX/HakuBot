@@ -131,12 +131,14 @@ async def handle_event_subscribe(args: Message = CommandArg()):
         await event_subscribe.finish("订阅失败，HLTV 可能暂时无法访问")
 
     try:
-        created = data_manager.subscribe_event(EventSubscription(
-            event_id=event_id,
-            event_title=event_info.title,
-            start_date=event_info.start_date,
-            end_date=event_info.end_date,
-        ))
+        created = data_manager.subscribe_event(
+            EventSubscription(
+                event_id=event_id,
+                event_title=event_info.title,
+                start_date=event_info.start_date,
+                end_date=event_info.end_date,
+            )
+        )
     except OSError:
         logger.exception("订阅时保存数据失败")
         await event_subscribe.finish("订阅未完成：保存数据失败，请查看日志")
@@ -226,7 +228,9 @@ async def handle_matches_list():
         pages = {}
         for sub in _by_event_id(subscriptions):
             page = await hltv_client.get_event_matches(
-                sub.event_id, include_partial_tbd=True, max_age=LIST_MAX_AGE_SECONDS,
+                sub.event_id,
+                include_partial_tbd=True,
+                max_age=LIST_MAX_AGE_SECONDS,
             )
             if page.matches:
                 pages[f"#{sub.event_id} {sub.event_title}"] = page.matches
@@ -237,7 +241,9 @@ async def handle_matches_list():
         await matches_list.finish("暂无比赛")
     all_matches = [m for matches in matches_by_event.values() for m in matches]
     live_count = sum(m.is_live for m in all_matches)
-    img = await render_matches(matches_by_event, live_count, len(all_matches) - live_count)
+    img = await render_matches(
+        matches_by_event, live_count, len(all_matches) - live_count
+    )
     await matches_list.finish(image_segment(img))
 
 
@@ -264,7 +270,8 @@ async def handle_results_list():
         pages = {}
         for sub in _by_event_id(subscriptions):
             results = await hltv_client.get_event_results(
-                sub.event_id, max_age=LIST_MAX_AGE_SECONDS,
+                sub.event_id,
+                max_age=LIST_MAX_AGE_SECONDS,
             )
             if results:
                 pages[f"#{sub.event_id} {sub.event_title}"] = results
@@ -285,11 +292,15 @@ async def handle_stats(args: Message = CommandArg()):
     match_id = args.extract_plain_text().strip()
     if match_id:
         await stats_cmd.send(f"正在获取比赛 #{match_id} 的数据...")
-        stats = await _fetch(stats_cmd, "比赛数据", hltv_client.get_match_stats(match_id))
+        stats = await _fetch(
+            stats_cmd, "比赛数据", hltv_client.get_match_stats(match_id)
+        )
     else:
         subscriptions = hltv_handler.active_subscriptions()
         if not subscriptions:
-            await stats_cmd.finish(f"{NO_ACTIVE_HINT}\n或提供比赛ID，例如：stats 2370931")
+            await stats_cmd.finish(
+                f"{NO_ACTIVE_HINT}\n或提供比赛ID，例如：stats 2370931"
+            )
         await stats_cmd.send("正在获取最新比赛数据...")
 
         async def latest():

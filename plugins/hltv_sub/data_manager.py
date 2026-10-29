@@ -52,14 +52,19 @@ class DataManager:
 
     def _save(self, *, groups=None, subscriptions=None, notified=None) -> None:
         groups = self._groups if groups is None else groups
-        subscriptions = self._global_subscriptions if subscriptions is None else subscriptions
+        subscriptions = (
+            self._global_subscriptions if subscriptions is None else subscriptions
+        )
         notified = self._notified if notified is None else notified
         # 只有写入成功才发布内存状态；失败交给调用方报告。
-        atomic_write_json(self._data_file, {
-            "groups": [asdict(g) for g in groups.values()],
-            "global_subscriptions": [asdict(s) for s in subscriptions],
-            "scheduler_state": {f"notified_{k}": v for k, v in notified.items()},
-        })
+        atomic_write_json(
+            self._data_file,
+            {
+                "groups": [asdict(g) for g in groups.values()],
+                "global_subscriptions": [asdict(s) for s in subscriptions],
+                "scheduler_state": {f"notified_{k}": v for k, v in notified.items()},
+            },
+        )
         self._groups = groups
         self._global_subscriptions = subscriptions
         self._notified = notified
@@ -102,47 +107,71 @@ class DataManager:
         return [g.group_id for g in self._groups.values() if g.enabled]
 
     def get_subscription(self, event_id: str) -> EventSubscription | None:
-        return next((s for s in self._global_subscriptions if s.event_id == event_id), None)
+        return next(
+            (s for s in self._global_subscriptions if s.event_id == event_id), None
+        )
 
     def update_subscription_meta(
-        self, event_id: str, *, event_title: str,
-        start_date: str, end_date: str,
+        self,
+        event_id: str,
+        *,
+        event_title: str,
+        start_date: str,
+        end_date: str,
     ) -> None:
         current = self.get_subscription(event_id)
         if current is not None:
-            self._replace_subscription(replace(
-                current, event_title=event_title,
-                start_date=start_date, end_date=end_date,
-            ))
+            self._replace_subscription(
+                replace(
+                    current,
+                    event_title=event_title,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            )
 
     def set_mvp_status(self, event_id: str, status: str) -> None:
         current = self.get_subscription(event_id)
         if current is None:
             return
-        since = datetime.now().isoformat() if status == "watching" else current.mvp_watch_since
-        self._replace_subscription(replace(current, mvp_status=status, mvp_watch_since=since))
+        since = (
+            datetime.now().isoformat()
+            if status == "watching"
+            else current.mvp_watch_since
+        )
+        self._replace_subscription(
+            replace(current, mvp_status=status, mvp_watch_since=since)
+        )
 
     def _replace_subscription(self, updated: EventSubscription) -> None:
         if updated == self.get_subscription(updated.event_id):
             return
-        self._save(subscriptions=[
-            updated if s.event_id == updated.event_id else s
-            for s in self._global_subscriptions
-        ])
+        self._save(
+            subscriptions=[
+                updated if s.event_id == updated.event_id else s
+                for s in self._global_subscriptions
+            ]
+        )
 
     def is_notified(self, kind: NotifiedKind, item_id: str) -> bool:
         return item_id in self._notified[kind]
 
     def mark_notified(self, kind: NotifiedKind, item_id: str) -> None:
-        self._save(notified={
-            **self._notified,
-            kind: {**self._notified[kind], item_id: datetime.now().isoformat()},
-        })
+        self._save(
+            notified={
+                **self._notified,
+                kind: {**self._notified[kind], item_id: datetime.now().isoformat()},
+            }
+        )
 
     def cleanup_notified_state(self, ttl_days: int) -> int:
         cutoff = datetime.now() - timedelta(days=max(1, ttl_days))
         kept = {
-            kind: {key: ts for key, ts in records.items() if datetime.fromisoformat(ts) >= cutoff}
+            kind: {
+                key: ts
+                for key, ts in records.items()
+                if datetime.fromisoformat(ts) >= cutoff
+            }
             for kind, records in self._notified.items()
         }
         removed = sum(map(len, self._notified.values())) - sum(map(len, kept.values()))

@@ -38,6 +38,16 @@ dependencies = [
     "onnxruntime>=1.24.3",
 ]
 
+[tool.ruff]
+# pjskprofile_snowybot 已废弃，只留作纪念，不再检查
+extend-exclude = ["plugins/pjskprofile_snowybot"]
+
+[tool.ruff.lint]
+# 写死规则集：不写的话用的是 ruff 当前版本的默认集，升级就会变（0.17 默认开了 776 条）
+select = ["E4", "E7", "E9", "F"]
+# NoneBot 要先 require() 依赖插件才能 import；包末尾 import 命令模块来注册也是有意的
+ignore = ["E402"]
+
 [tool.nonebot]
 plugin_dirs = ["plugins"]
 builtin_plugins = []

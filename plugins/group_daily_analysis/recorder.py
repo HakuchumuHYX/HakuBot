@@ -21,12 +21,12 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 
 require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler  # noqa: E402
+from nonebot_plugin_apscheduler import scheduler
 
-from core.access import switch_rule  # noqa: E402
-from core.lifecycle import on_plugin_startup  # noqa: E402
-from utils.logging import get_exc_desc  # noqa: E402
-from plugins.group_daily_analysis.config import DATA_DIR, plugin_config  # noqa: E402
+from core.access import switch_rule
+from core.lifecycle import on_plugin_startup
+from utils.logging import get_exc_desc
+from plugins.group_daily_analysis.config import DATA_DIR, plugin_config
 
 DB_PATH = DATA_DIR / "messages.db"
 RETENTION_DAYS = 7

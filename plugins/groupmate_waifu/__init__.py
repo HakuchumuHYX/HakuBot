@@ -26,4 +26,4 @@ async def handle_reset_command():
     await reset_command.finish("娶群友记录已重置。")
 
 
-from plugins.groupmate_waifu import marry, protect, yinpa  # noqa: E402, F401
+from plugins.groupmate_waifu import marry, protect, yinpa  # noqa: F401

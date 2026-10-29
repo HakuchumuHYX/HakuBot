@@ -1,9 +1,10 @@
 import random
 import re
 
-from nonebot import on_message, logger
+from nonebot import on_command, on_message, logger
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.rule import Rule
+from nonebot.permission import SUPERUSER
+from nonebot.rule import Rule, to_me
 
 from core.access import switch_rule
 from core.settings import ConfigModel, load_config, reload_plugin_config
@@ -199,10 +200,6 @@ async def handle_two_choice(event: MessageEvent):
 
 
 # 重新加载配置的命令
-from nonebot import on_command
-from nonebot.permission import SUPERUSER
-from nonebot.rule import to_me
-
 reload_config = on_command(
     "重载二择配置", permission=SUPERUSER, rule=to_me(), priority=5, block=True
 )

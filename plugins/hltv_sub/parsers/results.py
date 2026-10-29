@@ -11,7 +11,10 @@ from nonebot import logger
 
 from plugins.hltv_sub.models import ResultInfo
 from plugins.hltv_sub.parsers.common import (
-    extract_id_from_url, format_date, pick_logo, text_of,
+    extract_id_from_url,
+    format_date,
+    pick_logo,
+    text_of,
 )
 
 
@@ -29,7 +32,9 @@ def parse_event_results(html: str, tz, max_results: int = 20) -> list[ResultInfo
 def _parse_result(container, tz) -> ResultInfo | None:
     link = container.find("a", href=re.compile(r"/matches/\d+/"))
     if link is None:
-        logger.warning(f"[HLTV] 跳过没有比赛链接的结果节点: {text_of(container)[:80]!r}")
+        logger.warning(
+            f"[HLTV] 跳过没有比赛链接的结果节点: {text_of(container)[:80]!r}"
+        )
         return None
     match_id = extract_id_from_url(link["href"])
 

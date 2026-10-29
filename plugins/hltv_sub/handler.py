@@ -16,8 +16,14 @@ from plugins.hltv_sub.client import HLTVFetchError, hltv_client
 from plugins.hltv_sub.config import plugin_config
 from plugins.hltv_sub.data_manager import EventSubscription, data_manager
 from plugins.hltv_sub.models import (
-    EventCheckResult, EventMatchesMeta, EventMatchesPage, EventMvp,
-    MapStats, MatchInfo, MatchStats, ResultInfo,
+    EventCheckResult,
+    EventMatchesMeta,
+    EventMatchesPage,
+    EventMvp,
+    MapStats,
+    MatchInfo,
+    MatchStats,
+    ResultInfo,
 )
 from plugins.hltv_sub.render import render_mvp, render_reminder, render_stats
 
@@ -55,9 +61,9 @@ def get_event_state(
         return "UNKNOWN"
     tz = now.tzinfo
     start_at = tz.localize(datetime.combine(start, time.min))
-    expires_at = tz.localize(datetime.combine(
-        end + timedelta(days=end_grace_days + 1), time.min
-    ))
+    expires_at = tz.localize(
+        datetime.combine(end + timedelta(days=end_grace_days + 1), time.min)
+    )
     if now >= expires_at:
         return "ENDED"
     if now >= start_at:
@@ -94,7 +100,9 @@ def has_complete_map_details(stats: MatchStats, map_info: MapStats) -> bool:
     return {"team1", "team2"} <= {player.team for player in players}
 
 
-def get_result_stats_push_block_reason(result: ResultInfo, stats: MatchStats) -> str | None:
+def get_result_stats_push_block_reason(
+    result: ResultInfo, stats: MatchStats
+) -> str | None:
     """结果页先出比分，match 页的单图比分和选手数据会晚几分钟；没同步完就等下一轮。"""
     score = (int(result.score1), int(result.score2))
     # BO1 的结果页写的是回合比分
@@ -117,7 +125,8 @@ def get_result_stats_push_block_reason(result: ResultInfo, stats: MatchStats) ->
         return f"stats 未更新完整: expected_maps={expected_maps}, played_maps={len(played)}"
     unfinished = [
         f"{m.map_name}({m.score_team1}-{m.score_team2})"
-        for m in played if not _is_map_finished(m)
+        for m in played
+        if not _is_map_finished(m)
     ]
     if unfinished:
         return f"单图比分未达到终局: unfinished_maps={unfinished}"
@@ -195,8 +204,10 @@ class HLTVHandler:
         """与调度器一致：只抓进行中或 UPCOMING_WINDOW_HOURS 内开赛的赛事，远期赛事每抓一次都要排队 15 秒以上。"""
         now = datetime.now(self._tz)
         return [
-            sub for sub in data_manager.get_subscribed_events()
-            if get_event_state(sub, now, self._end_grace_days) in ("ONGOING", "UPCOMING")
+            sub
+            for sub in data_manager.get_subscribed_events()
+            if get_event_state(sub, now, self._end_grace_days)
+            in ("ONGOING", "UPCOMING")
         ]
 
     def cleanup_unsubscribed(self) -> None:
@@ -281,15 +292,21 @@ class HLTVHandler:
 
         # 已 LIVE、没给时间、或开赛时间已过但还在 30 分钟内的，发开赛提醒
         due = [
-            match for match in snapshot.matches
-            if not data_manager.is_notified("starts", match.id) and (
+            match
+            for match in snapshot.matches
+            if not data_manager.is_notified("starts", match.id)
+            and (
                 match.is_live
                 or match.start_time is None
-                or 0 < (now - match.start_time).total_seconds() <= OVERDUE_THRESHOLD_MINUTES * 60
+                or 0
+                < (now - match.start_time).total_seconds()
+                <= OVERDUE_THRESHOLD_MINUTES * 60
             )
         ]
         for match in due:
-            logger.debug(f"[HLTV] 开赛提醒触发: match_id={match.id}, live={match.is_live}")
+            logger.debug(
+                f"[HLTV] 开赛提醒触发: match_id={match.id}, live={match.is_live}"
+            )
         return due
 
     async def _completed_maps(
@@ -300,11 +317,17 @@ class HLTVHandler:
             if not match.is_live or match.maps not in {"3", "5"}:
                 continue
             stats = await hltv_client.get_match_stats(
-                match.id, team1=match.team1, team2=match.team2, event_title=sub.event_title,
+                match.id,
+                team1=match.team1,
+                team2=match.team2,
+                event_title=sub.event_title,
             )
             completed.extend(
-                candidate for candidate in build_completed_map_results(match, stats)
-                if not data_manager.is_notified("map_results", candidate.notification_id)
+                candidate
+                for candidate in build_completed_map_results(match, stats)
+                if not data_manager.is_notified(
+                    "map_results", candidate.notification_id
+                )
             )
         return completed
 
@@ -320,7 +343,9 @@ class HLTVHandler:
                 data_manager.mark_notified("results", r.id)
                 count += 1
         self._initialized_events.add(event_id)
-        logger.debug(f"[HLTV] 订阅初始化：已标记 {count} 条现有结果为已推送 (event {event_id})")
+        logger.debug(
+            f"[HLTV] 订阅初始化：已标记 {count} 条现有结果为已推送 (event {event_id})"
+        )
 
     async def _try_refresh_subscription_meta(self, event_id: str) -> bool:
         """尝试补全 UNKNOWN 赛事元信息（start/end/title）"""
@@ -348,12 +373,16 @@ class HLTVHandler:
         for event_id in sorted(data_manager.get_all_subscribed_event_ids()):
             try:
                 sub = data_manager.get_subscription(event_id)
-                state = get_event_state(sub, datetime.now(self._tz), self._end_grace_days)
+                state = get_event_state(
+                    sub, datetime.now(self._tz), self._end_grace_days
+                )
                 if state == "UNKNOWN":
                     if not await self._try_refresh_subscription_meta(event_id):
                         continue
                     sub = data_manager.get_subscription(event_id)
-                    state = get_event_state(sub, datetime.now(self._tz), self._end_grace_days)
+                    state = get_event_state(
+                        sub, datetime.now(self._tz), self._end_grace_days
+                    )
                 if state != "ENDED":
                     if state == "UNKNOWN":
                         logger.warning(f"[HLTV] 赛事 {event_id} 日期仍无效，保留订阅")
@@ -361,7 +390,9 @@ class HLTVHandler:
 
                 bot = get_bot()
                 results = await hltv_client.get_event_results(
-                    event_id, max_results=10, force_refresh=True,
+                    event_id,
+                    max_results=10,
+                    force_refresh=True,
                 )
                 # 未识别到结果不能证明已发完；保留订阅待下次维护。
                 if not results:
@@ -398,14 +429,18 @@ class HLTVHandler:
         added = [
             f"#{event.id} {event.title}"
             for event in events
-            if data_manager.subscribe_event(EventSubscription(
-                event_id=event.id,
-                event_title=event.title,
-                start_date=event.start_date,
-                end_date=event.end_date,
-            ))
+            if data_manager.subscribe_event(
+                EventSubscription(
+                    event_id=event.id,
+                    event_title=event.title,
+                    start_date=event.start_date,
+                    end_date=event.end_date,
+                )
+            )
         ]
-        logger.info("[HLTV] 自动订阅完成: " + (", ".join(added) if added else "无新赛事"))
+        logger.info(
+            "[HLTV] 自动订阅完成: " + (", ".join(added) if added else "无新赛事")
+        )
         return added
 
     async def _broadcast(
@@ -422,7 +457,9 @@ class HLTVHandler:
                 sent = True
                 logger.info(f"[HLTV] 已发送{desc}到群 {group_id}")
             except Exception as e:
-                logger.warning(f"[HLTV] 发送{desc}到群 {group_id} 失败: {get_exc_desc(e)}")
+                logger.warning(
+                    f"[HLTV] 发送{desc}到群 {group_id} 失败: {get_exc_desc(e)}"
+                )
         if not sent:
             logger.info(f"[HLTV] {desc}没有发送成功，不标记为已推送，下轮将重试")
         return sent
@@ -432,7 +469,10 @@ class HLTVHandler:
     ) -> None:
         # 队标（matches 页的只有 50px）、赛段、决赛/季军赛、VRS forecast 都按 match 页的来；开赛后查单图结果会命中同一份缓存。
         stats = await hltv_client.get_match_stats(
-            match.id, team1=match.team1, team2=match.team2, event_title=sub.event_title,
+            match.id,
+            team1=match.team1,
+            team2=match.team2,
+            event_title=sub.event_title,
         )
 
         # 远程图片超时已在 render 里降级成无图版；走到这里的是渲染本身出错，不标记已推送，下轮重试
@@ -441,27 +481,38 @@ class HLTVHandler:
         except Exception as e:
             logger.exception(f"[HLTV] 渲染比赛提醒 {match.id} 失败，下轮将重试: {e}")
             return
-        if await self._broadcast(bot, sub.event_id, msg, f"比赛提醒 {match.team1} vs {match.team2}"):
+        if await self._broadcast(
+            bot, sub.event_id, msg, f"比赛提醒 {match.team1} vs {match.team2}"
+        ):
             data_manager.mark_notified("starts", match.id)
 
     async def send_match_result(
-        self, bot: Bot, sub: EventSubscription, result: ResultInfo,
-        *, check: EventCheckResult | None = None,
+        self,
+        bot: Bot,
+        sub: EventSubscription,
+        result: ResultInfo,
+        *,
+        check: EventCheckResult | None = None,
     ) -> None:
         # 一场出错只跳过这一场；暂停访问要往上抛，停掉本轮
         try:
             stats = await hltv_client.get_match_stats(
-                result.id, team1=result.team1, team2=result.team2, event_title=sub.event_title,
+                result.id,
+                team1=result.team1,
+                team2=result.team2,
+                event_title=sub.event_title,
             )
             if block_reason := get_result_stats_push_block_reason(result, stats):
                 logger.info(
                     f"[HLTV] match {result.id} stats 未准备好：{block_reason}，跳过本次推送等待下次轮询"
                 )
                 return
-            score_line = f"{result.team1} {result.score1}:{result.score2} {result.team2}"
-            msg = MessageSegment.text(f"🏁 比赛已结束\n{score_line}\n\n") + image_segment(
-                await render_stats(stats)
+            score_line = (
+                f"{result.team1} {result.score1}:{result.score2} {result.team2}"
             )
+            msg = MessageSegment.text(
+                f"🏁 比赛已结束\n{score_line}\n\n"
+            ) + image_segment(await render_stats(stats))
         except HLTVFetchError:
             raise
         except Exception as e:
@@ -483,17 +534,25 @@ class HLTVHandler:
         watched = datetime.now() - datetime.fromisoformat(sub.mvp_watch_since)
         if watched > timedelta(hours=MVP_WATCH_HOURS):
             data_manager.set_mvp_status(sub.event_id, "expired")
-            logger.info(f"[HLTV] 决赛后 {MVP_WATCH_HOURS} 小时未见 MVP，停止等待 (event={sub.event_id})")
+            logger.info(
+                f"[HLTV] 决赛后 {MVP_WATCH_HOURS} 小时未见 MVP，停止等待 (event={sub.event_id})"
+            )
             return
-        info = await hltv_client.get_event_info(sub.event_id, sub.event_title, max_age=120)
+        info = await hltv_client.get_event_info(
+            sub.event_id, sub.event_title, max_age=120
+        )
         if info.mvp is not None:
             await self.send_event_mvp(bot, sub, info.mvp)
 
-    async def send_event_mvp(self, bot: Bot, sub: EventSubscription, mvp: EventMvp) -> None:
+    async def send_event_mvp(
+        self, bot: Bot, sub: EventSubscription, mvp: EventMvp
+    ) -> None:
         try:
             img = await render_mvp(sub.event_title, mvp)
         except Exception as e:
-            logger.exception(f"[HLTV] 渲染赛事 MVP {sub.event_id} 失败，下轮将重试: {e}")
+            logger.exception(
+                f"[HLTV] 渲染赛事 MVP {sub.event_id} 失败，下轮将重试: {e}"
+            )
             return
         msg = MessageSegment.text(
             f"🏆 {sub.event_title} MVP：{mvp.nickname}\n\n"
@@ -506,13 +565,13 @@ class HLTVHandler:
         self, bot: Bot, event_id: str, completed: CompletedMapResult
     ) -> None:
         match = completed.match
-        score_line = (
-            f"{match.team1} {completed.score1_after_map}:{completed.score2_after_map} {match.team2}"
-        )
+        score_line = f"{match.team1} {completed.score1_after_map}:{completed.score2_after_map} {match.team2}"
         try:
             img = await render_stats(completed.single_map_stats)
         except Exception as e:
-            logger.exception(f"[HLTV] 渲染单图结果 {completed.notification_id} 失败: {e}")
+            logger.exception(
+                f"[HLTV] 渲染单图结果 {completed.notification_id} 失败: {e}"
+            )
             return
         msg = MessageSegment.text(
             f"🗺️ 地图已结束 · BO{match.maps} 图{completed.map_index}\n{score_line}\n\n"

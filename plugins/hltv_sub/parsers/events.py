@@ -12,7 +12,12 @@ from nonebot import logger
 
 from plugins.hltv_sub.models import EventInfo, EventMvp, MvpStat
 from plugins.hltv_sub.parsers.common import (
-    absolute_url, extract_id_from_url, flag_of, format_date, pick_logo, text_of,
+    absolute_url,
+    extract_id_from_url,
+    flag_of,
+    format_date,
+    pick_logo,
+    text_of,
 )
 
 
@@ -26,7 +31,9 @@ def parse_big_events(html: str, tz) -> list[EventInfo]:
     """解析 /events 页面：正在进行的赛事 + 前两组 big-events。"""
     soup = BeautifulSoup(html, "lxml")
     ongoing_section = soup.find("div", class_="ongoing-events-holder")
-    ongoing = ongoing_section.find_all("a", class_="ongoing-event") if ongoing_section else []
+    ongoing = (
+        ongoing_section.find_all("a", class_="ongoing-event") if ongoing_section else []
+    )
     upcoming = [
         elem
         for section in soup.find_all("div", class_="big-events")[:2]

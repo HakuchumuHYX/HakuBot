@@ -11,7 +11,13 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from utils.rendering.engine import render_template
 
 from plugins.hltv_sub.config import plugin_config
-from plugins.hltv_sub.models import EventInfo, EventMvp, MatchInfo, ResultInfo, MatchStats
+from plugins.hltv_sub.models import (
+    EventInfo,
+    EventMvp,
+    MatchInfo,
+    ResultInfo,
+    MatchStats,
+)
 
 # 模板目录
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -31,8 +37,12 @@ async def _render(template_name: str, context: dict, width: int) -> bytes:
     }
     try:
         return await render_template(
-            TEMPLATE_DIR, template_name, width=width,
-            timeout=IMAGE_TIMEOUT_MS, show_images=True, **context,
+            TEMPLATE_DIR,
+            template_name,
+            width=width,
+            timeout=IMAGE_TIMEOUT_MS,
+            show_images=True,
+            **context,
         )
     except PlaywrightTimeoutError:
         logger.warning(f"[HLTV] {template_name} 远程图片加载超时，改为渲染无图版本")
@@ -48,11 +58,13 @@ def _veto_steps(stats: MatchStats) -> list[dict]:
     for line in stats.vetos:
         if match := VETO_PATTERN.match(line):
             team, action, map_name = match.groups()
-            steps.append({
-                "action": "pick" if action == "picked" else "ban",
-                "side": sides.get(team.lower(), ""),
-                "map": map_name,
-            })
+            steps.append(
+                {
+                    "action": "pick" if action == "picked" else "ban",
+                    "side": sides.get(team.lower(), ""),
+                    "map": map_name,
+                }
+            )
         elif match := LEFTOVER_PATTERN.match(line):
             steps.append({"action": "left", "side": "", "map": match.group(1)})
         else:
@@ -133,7 +145,9 @@ async def render_results(results_by_event: dict[str, list[ResultInfo]]) -> bytes
 
 async def render_stats(stats: MatchStats) -> bytes:
     """渲染比赛数据图片"""
-    played_maps = [m for m in stats.maps if m.score_team1 != "-" and m.score_team2 != "-"]
+    played_maps = [
+        m for m in stats.maps if m.score_team1 != "-" and m.score_team2 != "-"
+    ]
     has_single_map_details = (
         len(played_maps) == 1 and played_maps[0].map_name in stats.map_stats_details
     )
@@ -145,7 +159,9 @@ async def render_stats(stats: MatchStats) -> bytes:
     return await _render("stats.html", {"stats": stats_dict}, width=1040)
 
 
-async def render_reminder(match: MatchInfo, stats: MatchStats, event_title: str) -> bytes:
+async def render_reminder(
+    match: MatchInfo, stats: MatchStats, event_title: str
+) -> bytes:
     """渲染比赛已开始的提醒；队名、BO、星级取 matches 页卡片，其余取 match 页。"""
     return await _render(
         "reminder.html",

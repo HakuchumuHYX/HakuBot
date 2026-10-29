@@ -33,7 +33,10 @@ def is_grand_final_text(text: str) -> bool:
 
 
 THIRD_PLACE_MARKERS = (
-    "3rd place decider", "third place decider", "3rd place match", "third place match",
+    "3rd place decider",
+    "third place decider",
+    "3rd place match",
+    "third place match",
 )
 
 
@@ -48,9 +51,7 @@ def pick_logo(imgs) -> str:
     imgs = list(imgs)
     if not imgs:
         return ""
-    img = next(
-        (i for i in imgs if "night-only" in (i.get("class") or [])), imgs[0]
-    )
+    img = next((i for i in imgs if "night-only" in (i.get("class") or [])), imgs[0])
     # 截图按 2 倍缩放，srcset 里的 2x 图更清晰。
     srcset = img.get("srcset", "")
     return absolute_url(srcset.split()[0] if srcset else img.get("src", ""))

@@ -19,7 +19,6 @@ STORY_DIR = moesekai_hub_dir() / "story" / "detail"
 MASTER_DIR = sekai_master_dir() / "master"
 
 
-
 class Config(ConfigModel):
     # 游戏资源站基址不进代码，只放在 config.json
     asset_base: str
@@ -28,6 +27,7 @@ class Config(ConfigModel):
 ASSET_BASE: str = load_config("pjsk_event_summary", Config).asset_base.rstrip("/")
 
 # masterdata 只有日文名
+# fmt: off
 CHAR_CN = {
     1: "星乃一歌", 2: "天马咲希", 3: "望月穗波", 4: "日野森志步",
     5: "花里实乃里", 6: "桐谷遥", 7: "桃井爱莉", 8: "日野森雫",
@@ -37,6 +37,7 @@ CHAR_CN = {
     21: "初音未来", 22: "镜音铃", 23: "镜音连", 24: "巡音流歌",
     25: "MEIKO", 26: "KAITO",
 }
+# fmt: on
 UNIT_NAME = {
     "light_sound": "Leo/need",
     "idol": "MORE MORE JUMP!",
@@ -46,7 +47,11 @@ UNIT_NAME = {
     "piapro": "VIRTUAL SINGER",
     "none": "混活",
 }
-TYPE_NAME = {"marathon": "马拉松", "cheerful_carnival": "5v5", "world_bloom": "World Link"}
+TYPE_NAME = {
+    "marathon": "马拉松",
+    "cheerful_carnival": "5v5",
+    "world_bloom": "World Link",
+}
 MIKU = "#33ccbb"
 MIXED_UNIT_COLOR = "#9aa0b4"
 CST = timezone(timedelta(hours=8))
@@ -75,14 +80,22 @@ class _Master:
 
     def __init__(self):
         self.events = {e["id"]: e for e in _read(MASTER_DIR / "events.json")}
-        self.stories = {s["eventId"]: s for s in _read(MASTER_DIR / "eventStories.json")}
-        self.char_units = {g["id"]: g for g in _read(MASTER_DIR / "gameCharacterUnits.json")}
-        self.unit_color = {u["unit"]: u["colorCode"] for u in _read(MASTER_DIR / "unitProfiles.json")}
+        self.stories = {
+            s["eventId"]: s for s in _read(MASTER_DIR / "eventStories.json")
+        }
+        self.char_units = {
+            g["id"]: g for g in _read(MASTER_DIR / "gameCharacterUnits.json")
+        }
+        self.unit_color = {
+            u["unit"]: u["colorCode"] for u in _read(MASTER_DIR / "unitProfiles.json")
+        }
         # VIRTUAL SINGER 官方团色是纯白，做主色没法用
         self.unit_color["piapro"] = MIKU
         # 每个角色的本团应援色（id 1-26 是不带支援团的原始组合）
         self.char_color = {
-            g["gameCharacterId"]: g["colorCode"] for g in self.char_units.values() if g["id"] <= 26
+            g["gameCharacterId"]: g["colorCode"]
+            for g in self.char_units.values()
+            if g["id"] <= 26
         }
         self.blooms: dict[int, list[int]] = {}
         for w in _read(MASTER_DIR / "worldBlooms.json"):
@@ -91,7 +104,9 @@ class _Master:
 
     def meta(self, event_id: int) -> EventMeta:
         event = self.events[event_id]
-        banner = self.char_units.get(self.stories[event_id].get("bannerGameCharacterUnitId"))
+        banner = self.char_units.get(
+            self.stories[event_id].get("bannerGameCharacterUnitId")
+        )
         # World Link 按各章角色、主色取团色（混活用初音色）；其余按 Banner 角色取色
         if event_id in self.blooms:
             char_ids = self.blooms[event_id]
@@ -122,7 +137,9 @@ class _Master:
             end=_date(event["aggregateAt"]),
             logo=f"{ASSET_BASE}/event/{asset}/logo/logo.webp",
             # World Link 没有单人立绘
-            character="" if event_id in self.blooms else f"{ASSET_BASE}/event/{asset}/screen/character.webp",
+            character=""
+            if event_id in self.blooms
+            else f"{ASSET_BASE}/event/{asset}/screen/character.webp",
         )
 
     def episode_image(self, event_id: int, chapter_no: int) -> str:
