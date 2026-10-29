@@ -1,4 +1,5 @@
 # video_to_gif.py
+import asyncio
 import json
 import os
 import random
@@ -13,12 +14,16 @@ from plugins.image_processor.utils import (
     IMAGE_PROCESSOR_VIDEO_DOWNLOAD_TIMEOUT,
     UserInputError,
     download_temp,
+    output_path,
     run_command,
 )
-from utils.files import ensure_output_dir, safe_delete_file
+from utils.files import safe_delete_file
 
 VIDEO_MAX_DURATION = 60
 FFMPEG_TIMEOUT = 120
+# 两个长视频同时转会抢 2 个核、一起撞超时，转码排队；
+# 和 HEAVY_LOCK 分开，免得一个长转码堵住图片命令
+VIDEO_LOCK = asyncio.Lock()
 
 
 @on_plugin_startup(get_driver(), "image_processor:video_to_gif")
@@ -69,15 +74,16 @@ async def get_video_info(video_path: str) -> tuple[float, float, int, int]:
 def gif_parameters(
     duration: float, fps: float, width: int, height: int
 ) -> tuple[float, int]:
-    """返回 (帧率, 目标长边)；越长的视频帧率越低、尺寸越小，控制 GIF 体积"""
+    """返回 (帧率, 目标长边)；越长的视频帧率越低、尺寸越小，控制 GIF 体积。
+    帧率不低于 10：8fps 时动作画面看着卡，宁可体积大一些"""
     if duration <= 5:
-        fps_cap = 15
+        fps_cap = 20
     elif duration <= 15:
-        fps_cap = 12
+        fps_cap = 15
     elif duration <= 30:
-        fps_cap = 8
+        fps_cap = 12
     else:
-        fps_cap = 5
+        fps_cap = 10
     target_fps = max(1, min(fps_cap, fps)) if fps > 0 else fps_cap
 
     max_side = max(width, height)
@@ -104,8 +110,7 @@ async def convert_video_to_gif(
         headers["Referer"] = "https://qun.qq.com/"
         video_url = _fix_ftn_url(video_url, file_name)
 
-    output_dir = ensure_output_dir("nonebot_video_to_gif")
-    output_path = output_dir / f"video_gif_{os.urandom(4).hex()}.gif"
+    result_path = output_path("video_gif", "gif")
 
     async with download_temp(
         video_url,
@@ -142,24 +147,25 @@ async def convert_video_to_gif(
             "[b][p]paletteuse=dither=sierra2:diff_mode=rectangle"
         )
         try:
-            await run_command(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-i",
-                    video_path,
-                    "-filter_complex",
-                    video_filter,
-                    "-y",
-                    str(output_path),
-                ],
-                timeout=FFMPEG_TIMEOUT,
-                label="ffmpeg 转码",
-            )
+            async with VIDEO_LOCK:
+                await run_command(
+                    [
+                        "ffmpeg",
+                        "-v",
+                        "error",
+                        "-i",
+                        video_path,
+                        "-filter_complex",
+                        video_filter,
+                        "-y",
+                        str(result_path),
+                    ],
+                    timeout=FFMPEG_TIMEOUT,
+                    label="ffmpeg 转码",
+                )
         except BaseException:
-            safe_delete_file(output_path)
+            safe_delete_file(result_path)
             raise
 
-    logger.debug(f"视频转GIF成功: {output_path}, 大小: {os.path.getsize(output_path)}")
-    return str(output_path)
+    logger.debug(f"视频转GIF成功: {result_path}, 大小: {os.path.getsize(result_path)}")
+    return str(result_path)

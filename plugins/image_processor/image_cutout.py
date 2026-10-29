@@ -1,6 +1,5 @@
 # image_cutout.py
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -10,13 +9,16 @@ from nonebot import get_driver, logger
 from PIL import Image
 
 from core.lifecycle import on_plugin_startup
-from utils.files import ensure_output_dir, safe_delete_file
+from utils.files import safe_delete_file
 from utils.network.http import download_to_file
+from utils.paths import project_root
 from plugins.image_processor.utils import (
+    HEAVY_LOCK,
     UserInputError,
     download_image,
     load_gif_frames,
     open_static_image,
+    output_path,
     run_command,
     save_gif,
 )
@@ -59,24 +61,16 @@ MAX_FOREGROUND_RATIO = 0.98
 EXISTING_ALPHA_TRANSPARENT_RATIO = 0.01
 
 # GIF 逐帧只走传统算法，帧数限制避免拖垮 bot
-CUTOUT_GIF_MAX_FRAMES = int(os.getenv("HAKUBOT_CUTOUT_GIF_MAX_FRAMES", "80"))
+CUTOUT_GIF_MAX_FRAMES = 80
 
 # ========= 模型 =========
 # 换模型要同步改 isnet_worker.py 的预处理参数
-MODEL_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "data"
-    / "shared"
-    / "rembg_models"
-    / "isnet-anime.onnx"
-)
+MODEL_PATH = project_root() / "data/shared/rembg_models/isnet-anime.onnx"
 MODEL_URL = (
     "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-anime.onnx"
 )
 WORKER_PATH = Path(__file__).parent / "isnet_worker.py"
 ISNET_TIMEOUT = 60
-# 每次推理峰值约 1GB，小机器上同时只跑一个，后来的请求排队
-_ISNET_LOCK = asyncio.Lock()
 
 
 # 挂在 cutout 功能上：下载失败只让抠图不可用，bot 照常启动
@@ -281,12 +275,12 @@ def _cutout_frame(img: Image.Image) -> Image.Image | None:
     return _existing_alpha(img) or _solid_bg_cutout(img)
 
 
-def _cutout_static_file(image_path: str, output_path: Path) -> bool:
+def _cutout_static_file(image_path: str, result_path: Path) -> bool:
     """传统算法能处理就写出结果；返回 False 表示要交给模型"""
     result = _cutout_frame(open_static_image(image_path))
     if result is None:
         return False
-    result.save(output_path, "PNG")
+    result.save(result_path, "PNG")
     return True
 
 
@@ -302,42 +296,39 @@ def _cutout_gif_file(image_path: str) -> str:
             raise UserInputError("GIF 背景不是纯色，无法抠图")
         results.append(result)
 
-    output_dir = ensure_output_dir("nonebot_image_cutout")
-    output_path = output_dir / f"cutout_gif_{os.urandom(4).hex()}.gif"
-    save_gif(results, output_path, durations=durations, loop=int(meta["loop"]))
-    return str(output_path)
+    path = output_path("cutout", "gif")
+    save_gif(results, path, durations=durations, loop=meta["loop"])
+    return str(path)
 
 
-async def _isnet_cutout(image_path: str, output_path: Path) -> None:
-    async with _ISNET_LOCK:
-        logger.debug("抠图: 走 isnet-anime 模型推理")
-        await run_command(
-            [
-                sys.executable,
-                str(WORKER_PATH),
-                str(MODEL_PATH),
-                image_path,
-                str(output_path),
-            ],
-            timeout=ISNET_TIMEOUT,
-            label="模型推理",
-        )
+async def _isnet_cutout(image_path: str, result_path: Path) -> None:
+    logger.debug("抠图: 走 isnet-anime 模型推理")
+    await run_command(
+        [
+            sys.executable,
+            str(WORKER_PATH),
+            str(MODEL_PATH),
+            image_path,
+            str(result_path),
+        ],
+        timeout=ISNET_TIMEOUT,
+        label="模型推理",
+    )
 
 
 async def remove_background(image_url: str) -> str:
     """主抠图函数：静态图 已有透明 → 纯色背景 → isnet-anime；GIF 只走前两步"""
-    async with download_image(image_url) as (image_path, animated):
+    async with download_image(image_url) as (image_path, animated), HEAVY_LOCK:
         if animated:
             return await asyncio.to_thread(_cutout_gif_file, image_path)
 
-        output_dir = ensure_output_dir("nonebot_image_cutout")
-        output_path = output_dir / f"cutout_{os.urandom(4).hex()}.png"
+        result_path = output_path("cutout", "png")
         try:
             if not await asyncio.to_thread(
-                _cutout_static_file, image_path, output_path
+                _cutout_static_file, image_path, result_path
             ):
-                await _isnet_cutout(image_path, output_path)
+                await _isnet_cutout(image_path, result_path)
         except BaseException:
-            safe_delete_file(output_path)
+            safe_delete_file(result_path)
             raise
-        return str(output_path)
+        return str(result_path)

@@ -1,3 +1,5 @@
+import math
+
 from nonebot import on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageEvent
 from nonebot.params import Command, CommandArg, CommandWhitespace
@@ -9,13 +11,15 @@ from utils.files import safe_delete_file
 from utils.onebot.media import image_segment
 from utils.onebot.messages import reply_image_segments
 from utils.onebot.rules import command_boundary
-from plugins.image_processor.gif_reverse import reverse_gif
-from plugins.image_processor.gif_speed import change_gif_speed
 from plugins.image_processor.image_cutout import remove_background
-from plugins.image_processor.image_mirror import process_image_mirror
 from plugins.image_processor.image_rotate import process_image_rotate
-from plugins.image_processor.image_symmetry import process_image_symmetry
-from plugins.image_processor.utils import UserInputError
+from plugins.image_processor.transforms import (
+    change_gif_speed,
+    mirror_image,
+    reverse_gif,
+    symmetry_image,
+)
+from plugins.image_processor.utils import ProcessingError, UserInputError
 from plugins.image_processor.video_to_gif import convert_video_to_gif
 
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".webm", ".mkv", ".flv", ".wmv")
@@ -50,6 +54,21 @@ async def _speed_arg_rule(
     return arg.extract_plain_text()[:1].isdigit()
 
 
+async def _parse_speed(matcher, text: str, low: float, high: float) -> float:
+    """解析倍速，越界钳到 [low, high] 并提示"""
+    try:
+        speed = float(text)
+    except ValueError:
+        speed = math.nan
+    # float() 认 "nan"、"inf"，而 nan 和谁比较都是 False，范围检查拦不住
+    if not math.isfinite(speed):
+        await matcher.finish(f"请输入有效的数字作为倍速，范围 {low:g}～{high:g}")
+    clamped = min(max(speed, low), high)
+    if clamped != speed:
+        await matcher.send(f"倍速范围 {low:g}～{high:g}，已自动调整为 {clamped:g} 倍速")
+    return clamped
+
+
 async def _check_cooldown(matcher, event: MessageEvent, feature: str, label: str):
     remaining = cooldown_remaining(f"image_processor:{feature}", event)
     if remaining > 0:
@@ -75,9 +94,15 @@ async def _run_job(matcher, event: MessageEvent, feature: str, label: str, job):
     except UserInputError as e:
         logger.info(f"{label}未处理（素材不合要求）: {e}")
         await matcher.finish(f"{label}失败：{e}")
-    except Exception as e:
-        logger.exception(f"{label}失败")
+    except ProcessingError as e:
+        # 下载失败、子进程超时不打 traceback，带上底层原因就够排查
+        cause = e.__cause__ or e.__context__
+        logger.warning(f"{label}失败: {e}" + (f"（{cause!r}）" if cause else ""))
         await matcher.finish(f"{label}失败：{e}")
+    except Exception:
+        # 内部异常的原文可能带路径、库内部信息，不回群
+        logger.exception(f"{label}失败")
+        await matcher.finish(f"{label}失败，请稍后再试")
     finally:
         safe_delete_file(result_path)
     mark_cooldown(f"image_processor:{feature}", event)
@@ -135,7 +160,7 @@ async def handle_symmetry(event: MessageEvent, cmd: tuple[str, ...] = Command())
         event,
         "symmetry",
         label,
-        lambda url: process_image_symmetry(url, symmetry_type),
+        lambda url: symmetry_image(url, symmetry_type),
     )
 
 
@@ -156,7 +181,7 @@ async def handle_mirror(event: MessageEvent, cmd: tuple[str, ...] = Command()):
         event,
         "mirror",
         label,
-        lambda url: process_image_mirror(url, direction),
+        lambda url: mirror_image(url, direction),
     )
 
 
@@ -175,15 +200,7 @@ async def handle_gif_speed(event: MessageEvent, cmd_arg: Message = CommandArg())
     args = cmd_arg.extract_plain_text().strip()
     if not args:
         await gif_speed_handler.finish("请指定倍速倍数，例如：imgx 2")
-    try:
-        speed = float(args)
-    except ValueError:
-        await gif_speed_handler.finish("请输入有效的数字作为倍速倍数")
-    if speed <= 0:
-        await gif_speed_handler.finish("倍速倍数必须大于0")
-    if speed > 5:
-        speed = 5.0
-        await gif_speed_handler.send("倍速倍数最高为5，已自动调整为5倍速")
+    speed = await _parse_speed(gif_speed_handler, args, 0.1, 5)
 
     url = await _reply_image_url(gif_speed_handler, event, "GIF倍速")
     await _run_job(
@@ -214,18 +231,8 @@ async def handle_rotate(
     direction, action_name = ROTATE_COMMANDS[cmd[0]]
 
     args = cmd_arg.extract_plain_text().strip()
-    speed = 1.0
-    if args:
-        try:
-            speed = float(args)
-        except ValueError:
-            await rotate_handler.finish("请输入有效的数字作为倍速，例如：img旋转 2")
-    if speed > 5:
-        speed = 5.0
-        await rotate_handler.send("转速太快啦！最高只能5倍速哦，已自动调整。")
-    elif speed < 0.1:
-        speed = 0.1
-        await rotate_handler.send("转速太慢啦！最低0.1倍速，已自动调整。")
+    # 下限 0.2：每圈最多 200 帧，再慢也只是同一个效果
+    speed = await _parse_speed(rotate_handler, args, 0.2, 5) if args else 1.0
 
     url = await _reply_image_url(rotate_handler, event, action_name)
     await _run_job(

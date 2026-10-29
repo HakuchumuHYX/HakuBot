@@ -1,7 +1,7 @@
 # image_rotate.py
-import asyncio
+import bisect
+import itertools
 import math
-import os
 
 from nonebot import logger
 from PIL import Image
@@ -10,12 +10,16 @@ from plugins.image_processor.utils import (
     download_image,
     load_gif_frames,
     open_static_image,
+    output_path,
+    run_heavy,
     save_gif,
 )
-from utils.files import ensure_output_dir
 
 # 转圈图不需要原图分辨率，大图逐帧旋转又慢又大（1280² 原来要 30 秒、19MB）
 ROTATE_MAX_SIDE = 400
+ROTATE_FRAME_MS = 50
+# 每圈帧数和总帧数共用的上限：200 帧 568² 的 RGBA 约 260MB
+ROTATE_MAX_FRAMES = 200
 
 
 def make_square_canvas(img: Image.Image) -> Image.Image:
@@ -34,43 +38,57 @@ def make_square_canvas(img: Image.Image) -> Image.Image:
 def _process_rotate_file(
     image_path: str, animated: bool, direction: str, speed: float
 ) -> str:
-    frames_per_circle = max(4, min(200, int(40 / speed)))
+    frames_per_circle = max(4, min(ROTATE_MAX_FRAMES, int(40 / speed)))
     step_angle = 360.0 / frames_per_circle
     if direction == "clockwise":
         step_angle = -step_angle
-
-    logger.debug(
-        f"旋转参数: 倍速{speed}, 总帧数{frames_per_circle}, 步进{step_angle:.2f}度"
-    )
+    circle_ms = frames_per_circle * ROTATE_FRAME_MS
 
     if animated:
-        original_frames, _, _ = load_gif_frames(image_path)
+        source_frames, durations, _ = load_gif_frames(image_path)
     else:
-        original_frames = [open_static_image(image_path)]
+        # 静态图当成一帧、正好转一圈的动图
+        source_frames, durations = [open_static_image(image_path)], [circle_ms]
 
-    # 预乘 alpha 后再插值，否则透明角落的黑色会混进边缘
-    canvases = [make_square_canvas(frame).convert("RGBa") for frame in original_frames]
-    output_frames = [
-        canvases[i % len(canvases)]
-        .rotate(i * step_angle, resample=Image.Resampling.BICUBIC)
-        .convert("RGBA")
-        for i in range(frames_per_circle)
-    ]
+    # 动图按时间线取帧：输出第 i 帧显示原图在 i×50ms 时刻的那一帧，
+    # 原图放完一遍要转几圈就转几圈（整圈，首尾才接得上），总帧数封顶
+    total_ms = sum(durations)
+    circles = max(
+        1,
+        min(math.ceil(total_ms / circle_ms), ROTATE_MAX_FRAMES // frames_per_circle),
+    )
+    frame_ends = list(itertools.accumulate(durations))
 
-    output_dir = ensure_output_dir("nonebot_image_rotate")
-    output_path = output_dir / f"rotate_{direction}_{speed}x_{os.urandom(4).hex()}.gif"
+    logger.debug(
+        f"旋转参数: 倍速{speed}, 每圈{frames_per_circle}帧, {circles}圈, "
+        f"步进{step_angle:.2f}度, 原图{len(source_frames)}帧/{total_ms}ms"
+    )
+
+    # 预乘 alpha 后再插值，否则透明角落的黑色会混进边缘；只给用到的源帧做画布
+    canvases: dict[int, Image.Image] = {}
+    output_frames = []
+    for i in range(circles * frames_per_circle):
+        index = bisect.bisect_right(frame_ends, (i * ROTATE_FRAME_MS) % total_ms)
+        if index not in canvases:
+            canvases[index] = make_square_canvas(source_frames[index]).convert("RGBa")
+        output_frames.append(
+            canvases[index]
+            .rotate(i * step_angle, resample=Image.Resampling.BICUBIC)
+            .convert("RGBA")
+        )
+
+    path = output_path(f"rotate_{direction}", "gif")
     save_gif(
         output_frames,
-        output_path,
-        durations=[50] * len(output_frames),
+        path,
+        durations=[ROTATE_FRAME_MS] * len(output_frames),
         loop=0,
-        optimize_rgb=False,
     )
-    return str(output_path)
+    return str(path)
 
 
 async def process_image_rotate(image_url: str, direction: str, speed: float) -> str:
     async with download_image(image_url) as (image_path, animated):
-        return await asyncio.to_thread(
+        return await run_heavy(
             _process_rotate_file, image_path, animated, direction, speed
         )

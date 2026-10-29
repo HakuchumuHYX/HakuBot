@@ -237,7 +237,7 @@ def image_segment(
 
 
 def outbound_media_path(name: str) -> Path:
-    """共享目录内的路径；视频等非图片媒体要直接下载到这里，OneBot 容器才读得到。"""
+    """共享目录内的路径；要直接写到这里的文件（视频、本地生成的图）用它，OneBot 容器才读得到。"""
     return _outbound_media_dir() / name
 
 
