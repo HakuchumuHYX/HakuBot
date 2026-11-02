@@ -4,6 +4,7 @@
     "proxy": null,
     "timeout": 60.0,
     "tavily_api_key": "YOUR_TAVILY_API_KEY",
+    "deepseek_api_key": "YOUR_DEEPSEEK_API_KEY",
     "chat": {
         "model": "gpt-3.5-turbo",
         "max_tokens": 65536,

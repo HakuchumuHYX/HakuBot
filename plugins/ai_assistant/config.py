@@ -39,8 +39,11 @@ class PluginConfig(ConfigModel):
     base_url: str
     proxy: str | None
     timeout: float
-    # Tavily: https://tavily.com/
+    # Tavily: https://tavily.com/ ，生图联网找参考图（DeepSeek 搜索不返回图片）
     tavily_api_key: str
+    # DeepSeek 开放平台: https://platform.deepseek.com/ ，联网搜索的网页结果；
+    # 留空或不写时网页结果也走 Tavily
+    deepseek_api_key: str = ""
 
     chat: ChatConfig
     image: ImageConfig
