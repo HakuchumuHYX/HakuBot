@@ -282,12 +282,13 @@ def parse_match_stats(
     match_date = format_date(date_elem["data-unix"], tz) if date_elem else ""
     event_title = event_title or text_of(soup.select_one(".timeAndEvent .event a"))
 
-    # 第一个 veto-box 是赛制说明（"Best of 3 (LAN)" + "* Semi-final"），其后才是 BP。
+    # 带 preformatted-text 的 veto-box 是赛制说明（"Best of 3 (LAN)" + "* Semi-final"），其余是 BP。
+    # 未完赛的页面另有一套 Veto simulation，veto-box 和 mapholder 跟真实的同名，要排除。
     vetos: list[str] = []
     format_line = ""
     stage = ""
     is_grand_final = False
-    for box in soup.find_all("div", class_="veto-box"):
+    for box in soup.select("div.veto-box:not(.simulated-veto-only)"):
         lines = [
             line.strip() for line in box.get_text("\n").split("\n") if line.strip()
         ]
@@ -304,7 +305,9 @@ def parse_match_stats(
 
     maps = [
         map_info
-        for map_info in map(_parse_map, soup.find_all("div", class_="mapholder"))
+        for map_info in map(
+            _parse_map, soup.select("div.mapholder:not(.simulated-map)")
+        )
         if map_info is not None
     ]
     # 单图数据在 {mapstatsid}-content 里，没打完的图没有
