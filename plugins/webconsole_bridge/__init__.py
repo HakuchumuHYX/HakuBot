@@ -1,6 +1,8 @@
-"""把 HakuBot 的响应、WARNING 起的日志和 Bot 在线状态写进 webconsole 的库，webconsole 只读不写
+"""和 webconsole 对接，两个方向：
 
-记录口径（什么算失败、什么留完整诊断）见 capture.py。
+- 把 HakuBot 的响应、WARNING 起的日志和 Bot 在线状态写进 webconsole 的库，webconsole 对库只读不写；
+  记录口径（什么算失败、什么留完整诊断）见 capture.py。
+- webconsole 通过 api.py 的接口改命令等级覆写，状态归 core.levels。
 """
 
 from pathlib import Path
@@ -12,11 +14,11 @@ from nonebot.adapters import Bot, Event
 from nonebot.adapters.onebot.v11 import HeartbeatMetaEvent
 from nonebot.matcher import Matcher, current_matcher
 from nonebot.message import event_postprocessor, run_postprocessor, run_preprocessor
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 from core.lifecycle import on_plugin_shutdown
 from core.settings import ConfigModel, load_config
-from plugins.webconsole_bridge import capture, store
+from plugins.webconsole_bridge import api, capture, store
 
 PLUGIN_ID = "webconsole_bridge"
 RUN_KEY = "_webconsole_bridge_run"
@@ -25,6 +27,8 @@ RUN_KEY = "_webconsole_bridge_run"
 class Config(ConfigModel):
     # 与 webconsole 共用的库
     database_path: Path
+    # webconsole 调 api.py 接口时带的 Bearer token
+    api_token: str = Field(min_length=16)
 
     @field_validator("database_path")
     @classmethod
@@ -36,6 +40,7 @@ class Config(ConfigModel):
 
 config = load_config(PLUGIN_ID, Config)
 store.open_database(config.database_path)
+api.mount(config.api_token)
 driver = get_driver()
 
 

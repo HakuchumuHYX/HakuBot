@@ -3,7 +3,7 @@
 import asyncio
 from nonebot import logger
 from utils.paths import project_root
-from core import access, cooldown
+from core import access, cooldown, levels
 from core.lifecycle import runtime
 
 
@@ -15,6 +15,7 @@ def configure(driver):
             PluginPaths(directory.name).data.mkdir(parents=True, exist_ok=True)
     access.load()
     cooldown.load()
+    levels.load()
     from utils.network.http import close_sessions
     from utils.rendering.browser import browser_pool
 
@@ -43,6 +44,8 @@ def configure(driver):
 
 def finalize(driver):
     """NoneBot 按注册的逆序执行关闭钩子，这里最后注册，所以最先停掉产生任务的一方"""
+
+    levels.warn_unknown_overrides()
 
     @driver.on_shutdown
     async def cancel_background_work():
