@@ -103,7 +103,6 @@ async def _ask(
     section: str,
     messages: list[dict],
     item_model: type[ItemT],
-    temperature: float,
     usage: TokenUsage,
 ) -> tuple[list[ItemT], dict]:
     """输出无效或被截断时重试一次；网络错误由 client 重试"""
@@ -123,7 +122,6 @@ async def _ask(
         result = await chat_completion(
             config,
             messages,
-            temperature=temperature,
             response_format={"type": "json_object"},
         )
         usage.prompt_tokens += result.usage.prompt_tokens
@@ -170,7 +168,6 @@ async def _topics(
         SECTION_NAMES["topics"],
         _with_transcript(transcript_text, prompt),
         SummaryTopic,
-        0.3,
         usage,
     )
     for topic in items:
@@ -196,7 +193,6 @@ async def _golden_quotes(
         SECTION_NAMES["golden_quotes"],
         _with_transcript(transcript_text, prompt),
         GoldenQuote,
-        1.1,
         usage,
     )
 
@@ -250,7 +246,6 @@ async def _user_titles(users: dict[str, UserFeature], limit: int, usage: TokenUs
         SECTION_NAMES["user_titles"],
         [{"role": "user", "content": prompt}],
         UserTitle,
-        0.7,
         usage,
     )
 

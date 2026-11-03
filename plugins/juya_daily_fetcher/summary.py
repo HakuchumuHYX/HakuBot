@@ -55,7 +55,6 @@ async def summarize(issue: Issue) -> str:
         result = await chat_completion(
             LLMClientConfig(**plugin_config.llm.model_dump()),
             [{"role": "user", "content": _prompt(issue)}],
-            temperature=0.7,
         )
     except Exception as exc:
         logger.warning(f"导语生成失败，将只发送长图: {get_exc_desc(exc)}")
