@@ -22,7 +22,7 @@ class DownloadedImage:
 async def fetch_image(
     url,
     *,
-    max_bytes=10 * 1024 * 1024,
+    max_bytes=20 * 1024 * 1024,
     timeout=15,
     allowed_formats=("jpg", "png", "gif", "webp"),
     **options,
