@@ -17,7 +17,6 @@ from plugins.juya_daily_fetcher.summary import summarize
 from utils.json_io import atomic_write_json
 from utils.logging import get_exc_desc
 from utils.network.http import (
-    INSECURE_SSL,
     HttpError,
     get_client_session,
     get_effective_proxy,
@@ -57,7 +56,6 @@ async def _fetch_feed(state: dict) -> tuple[bytes, dict] | None:
         plugin_config.feed_url,
         headers=headers,
         proxy=get_effective_proxy(),
-        ssl=False if INSECURE_SSL else None,
     ) as response:
         if response.status == 304:
             return None

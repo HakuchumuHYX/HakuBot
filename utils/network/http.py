@@ -10,11 +10,6 @@ import aiohttp
 from PIL import Image
 
 DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=120, connect=30, sock_read=120)
-INSECURE_SSL = os.environ.get("HAKUBOT_INSECURE_SSL", "").strip() in (
-    "1",
-    "true",
-    "yes",
-)
 _sessions = {}
 
 
@@ -126,7 +121,6 @@ async def download_bytes(
                     url,
                     headers=headers,
                     proxy=get_effective_proxy(proxy),
-                    ssl=False if INSECURE_SSL else None,
                     timeout=aiohttp.ClientTimeout(total=timeout),
                 ) as response:
                     if response.status != 200:
@@ -170,7 +164,6 @@ async def download_to_file(url, path, **options):
                 async with session.get(
                     url,
                     proxy=get_effective_proxy(proxy),
-                    ssl=False if INSECURE_SSL else None,
                     timeout=aiohttp.ClientTimeout(total=timeout),
                     **options,
                 ) as response:
