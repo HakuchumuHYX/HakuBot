@@ -48,6 +48,7 @@ FEATURES = (
     FeatureSpec("ai_assistant:imagen", "AI 生图", cooldown=True),
     FeatureSpec("recall", "撤回插件"),
     FeatureSpec("recall:self_recall", "自我撤回"),
+    FeatureSpec("emoji_like", "贴表情"),
     FeatureSpec("lunabot_imgexp", "搜图插件"),
     FeatureSpec("lunabot_imgexp:search", "搜图功能", cooldown=True),
     FeatureSpec("lunabot_imgexp:ximg", "推特图片", cooldown=True),
