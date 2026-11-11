@@ -33,11 +33,15 @@ PERSONA = """你在一个 CS 玩家群里，是那个打了很多年、眼光毒
 CAREER_FOCUS = "- roast 80～160 字，讲这人长期是个什么样的玩家：打法、偏好、最近的状态。"
 MATCH_FOCUS = (
     "- roast 60～120 字，只讲这一局：carry 还是白给，有没有戏剧性的地方"
-    "（被同一个人反复击杀、闪到队友、翻盘或被翻盘之类）。"
+    "（被同一个人反复击杀、翻盘或被翻盘之类）。"
 )
 
 CAREER_PROMPT = PERSONA.format(scope="生涯战绩", title_scope="这个人的打法", focus=CAREER_FOCUS)
 MATCH_PROMPT = PERSONA.format(scope="某一局比赛", title_scope="他在这局的表现", focus=MATCH_FOCUS)
+
+# 闪到队友多在 CS 里很正常（人闪同出、给队友前顶），单看次数分不出是配合还是乱扔，拿来锐评只会显得不懂。
+# 卡片照常显示，只是不给 LLM；后一条是完美官匹趣味标签里的同义项（按 message 匹配）
+NOT_FOR_ROAST = {"闪到队友", "闪光弹致盲队友次数"}
 
 
 def _trend_text(trend: dict | None, label: str) -> str | None:
@@ -77,7 +81,7 @@ def _expand(items: list[dict]) -> dict:
             result.update({f"{prefix} 1v{i}": v for i, v in enumerate(values, 1)})
         else:
             result[item["label"]] = item["value"]
-    return result
+    return {k: v for k, v in result.items() if k not in NOT_FOR_ROAST}
 
 
 def career_input(view: dict) -> dict:
@@ -145,10 +149,12 @@ def match_input(view: dict) -> dict:
         data["杀他最多的对手"] = f"{view['top_killer'][0]}，杀了他 {view['top_killer'][1]} 次"
     if view["rounds"]:
         data["逐回合（本方视角）"] = "".join("胜" if r == "win" else "负" for r in view["rounds"])
-    if view["firsts"]:
-        data["本局在队内排第一的指标"] = view["firsts"]
-    if view["interests"]:
-        data["平台趣味标签"] = [f"{i['name']}（{i['message']} {i['value']}）" for i in view["interests"]]
+    firsts = [f for f in view["firsts"] if f not in NOT_FOR_ROAST]
+    if firsts:
+        data["本局在队内排第一的指标"] = firsts
+    interests = [i for i in view["interests"] if i["message"] not in NOT_FOR_ROAST]
+    if interests:
+        data["平台趣味标签"] = [f"{i['name']}（{i['message']} {i['value']}）" for i in interests]
     if view.get("honors"):
         data["平台荣誉"] = view["honors"]
     return data
