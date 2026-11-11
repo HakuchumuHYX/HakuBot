@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+{% include "5e_base.css" %}
+.info { margin-top: 16px; }
+.info td { font-size: 15px; font-weight: 600; }
+.photo { width: 104px; padding: 6px !important; text-align: center; vertical-align: middle; }
+.photo img, .photo .blank { width: 90px; height: 110px; object-fit: cover; display: block; margin: 0 auto; background: #dde7f3; }
+.photo .blank { display: flex; align-items: center; justify-content: center; font-size: 34px; font-weight: 900; color: var(--pencil); }
+
+.grade-row { margin-top: 16px; display: flex; gap: 14px; align-items: stretch; }
+.grade { position: relative; width: 150px; flex: none; border: 1.5px solid var(--ink); background: var(--cell); text-align: center; padding: 8px 0 6px; }
+.grade-label { font-size: 13px; color: var(--pencil); }
+.grade-letter { font-size: 68px; font-weight: 900; line-height: 1.05; color: var(--red); transform: rotate(-4deg); }
+.grade .pen-circle { left: 28px; top: 20px; width: 96px; height: 82px; }
+.total { width: 150px; flex: none; border: 1.5px solid var(--ink); background: var(--cell); text-align: center; padding: 8px 0; }
+.total-num { margin-top: 10px; font-size: 40px; font-weight: 900; }
+.total-sub { font-size: 13px; color: var(--pencil); }
+.chart { flex: 1; border: 1.5px solid var(--ink); background: var(--cell); padding: 8px 12px; }
+.chart-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--pencil); }
+.chart svg { display: block; margin-top: 4px; }
+
+.scores td { width: 25%; font-size: 17px; font-weight: 800; text-align: center; }
+.scores th { width: 25%; }
+
+.recent th { font-size: 12px; }
+.recent td { text-align: center; font-size: 15px; }
+.mark { font-size: 20px; font-weight: 900; color: var(--red); line-height: 1; }
+.elo-change { color: var(--red); font-weight: 800; font-size: 16px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="letterhead"><span class="crest">5E</span><span>5E 对战平台　优先排位</span></div>
+  <div class="doc-title">成绩报告单</div>
+
+  <table class="form info">
+    <tr>
+      <th>姓名</th><td>{{ v.nickname }}</td>
+      <th>5E ID</th><td>{{ v.account_id }}</td>
+      <td class="photo" rowspan="2">
+        {% if show_images and v.avatar %}<img src="{{ v.avatar }}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">{% endif %}
+        <div class="blank" {% if show_images and v.avatar %}style="display:none"{% endif %}>{{ v.nickname[:1] }}</div>
+      </td>
+    </tr>
+    <tr>
+      <th>出勤</th><td>{{ v.scope }}</td>
+      <th>最佳赛季</th><td>{{ v.best_season or '无' }}</td>
+    </tr>
+  </table>
+
+  <div class="grade-row">
+    <div class="grade">
+      <div class="grade-label">段位</div>
+      <div class="grade-letter">{{ v.score.level or '?' }}</div>
+      <svg class="pen-circle" viewBox="0 0 96 82"><path d="M18 22 C30 4, 82 2, 90 34 C97 62, 56 80, 30 74 C6 68, 2 40, 22 20 C30 13, 44 10, 56 11"/></svg>
+    </div>
+    <div class="total">
+      <div class="grade-label">总分 ELO</div>
+      <div class="total-num">{{ v.score.value }}</div>
+    </div>
+    {% if v.trend %}
+    <div class="chart">
+      <div class="chart-head"><span>{{ v.trend_label }}</span><span>最低 {{ '%g' % v.trend.low }}，最高 {{ '%g' % v.trend.high }}</span></div>
+      <svg width="100%" height="76" viewBox="0 0 300 56" preserveAspectRatio="none">
+        <polyline points="{{ v.trend.points }}" fill="none" stroke="var(--red)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      </svg>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="block-title">各科成绩</div>
+  {% set items = v.core + v.details %}
+  <table class="form scores">
+    {% for row in items | batch(2) %}
+    <tr>{% for item in row %}<th>{{ item.label }}</th><td>{{ item.value }}</td>{% endfor %}</tr>
+    {% endfor %}
+  </table>
+
+  {% if v.recent %}
+  <div class="block-title">最近几次测验</div>
+  <table class="form recent">
+    <tr><th>批改</th><th>时间</th><th>地图</th><th>比分</th><th>击杀/死亡</th><th>Rating</th><th>ELO</th></tr>
+    {% for r in v.recent %}
+    <tr>
+      <td><span class="mark">{{ {'胜': '✓', '负': '✗', '平': '○'}[r.outcome] }}</span></td>
+      <td class="pencil">{{ r.time }}</td>
+      <td>{{ r.map }}</td>
+      <td><b>{{ r.score }}</b></td>
+      <td>{{ r.kda }}</td>
+      <td><b>{{ r.rating }}</b></td>
+      <td class="elo-change">{{ '%+d' % r.change }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if roast %}
+  <div class="remark">
+    <span class="seal">{{ roast.title }}</span>
+    <div class="remark-head red">班主任评语</div>
+    <div class="remark-text">{{ roast.roast }}</div>
+  </div>
+  {% endif %}
+</div>
+<div class="footer"><span>{{ watermark_text }}</span><span>{{ generated_at }}</span></div>
+</body>
+</html>

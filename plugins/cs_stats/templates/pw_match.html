@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+{% include "pw_base.css" %}
+.hero { padding-top: 120px; display: flex; align-items: flex-end; gap: 14px; }
+.map-logo { width: 72px; height: 72px; object-fit: contain; flex: none; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6)); }
+.info { flex: 1; min-width: 0; }
+.map { font-size: 30px; font-weight: 800; line-height: 1.15; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); }
+.meta { margin-top: 6px; display: flex; gap: 12px; font-size: 14px; color: #c9d2dc; }
+.meta b { color: var(--text); }
+.result { flex: none; text-align: right; }
+.result .num { font-size: 72px; line-height: 0.9; text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55); }
+.result-sub { margin-top: 6px; font-size: 13px; color: #c9d2dc; }
+
+.rounds { margin-top: 18px; padding: 10px 14px; display: flex; align-items: center; gap: 3px; }
+.rounds-label { font-size: 13px; color: var(--dim); margin-right: 10px; flex: none; }
+.r { flex: 1; max-width: 22px; height: 16px; background: var(--loss); }
+.r.win { background: var(--win); }
+.r.half { margin-left: 10px; }
+
+.facts { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fact { font-size: 14px; padding: 6px 12px; background: var(--glass); border: 1px solid var(--rule); }
+.fact .num { font-size: 18px; }
+.feed .killer { color: var(--loss); font-weight: 700; }
+.feed .skull { font-size: 15px; }
+.feed .times { font-size: 18px; margin-left: 4px; }
+.fun { font-size: 13px; padding: 5px 10px; border: 1px dashed rgba(255, 255, 255, 0.25); color: #c9d2dc; }
+.fun b { color: var(--text); }
+.first { font-size: 13px; padding: 5px 10px; background: rgba(217, 163, 58, 0.18); color: var(--plate); font-weight: 700; }
+
+.team { margin-top: 14px; }
+.team-head { display: flex; align-items: baseline; gap: 10px; padding: 0 2px 6px; }
+.team-head .label { font-size: 16px; font-weight: 800; }
+.team-head .num { font-size: 26px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--glass); border: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 400; color: var(--dim); text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); }
+th:first-child { text-align: left; padding-left: 12px; }
+td { text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); }
+td.num { font-size: 17px; }
+tr:last-child td { border-bottom: none; }
+td.player { text-align: left; padding-left: 12px; }
+.player-inner { display: flex; align-items: center; gap: 8px; max-width: 200px; }
+.player-inner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tr.self td { background: rgba(217, 163, 58, 0.16); }
+tr.self td.player { box-shadow: inset 4px 0 0 var(--plate); font-weight: 700; }
+.mvp { font-size: 11px; padding: 0 5px; background: var(--plate); color: #10161e; font-weight: 700; flex: none; }
+</style>
+</head>
+<body class="mode-{{ v.mode }}">
+<div class="stage">
+  {% if show_images and v.backdrop %}<div class="backdrop" style="background-image:url('{{ v.backdrop }}')"></div>{% endif %}
+
+  <div class="hero" {% if not (show_images and v.backdrop) %}style="padding-top: 28px"{% endif %}>
+    {% if show_images and v.map_logo %}<img class="map-logo" src="{{ v.map_logo }}" onerror="this.remove()">{% endif %}
+    <div class="info">
+      <div class="map">{{ v.map_name }}</div>
+      <div class="meta"><b>{{ v.mode_label }}</b><span>{{ v.time }}</span><span>{{ v.duration }}</span></div>
+    </div>
+    <div class="result">
+      <div class="num {{ {'胜': 'win', '负': 'loss', '平': ''}[v.outcome] }}">{{ v.score }}</div>
+      <div class="result-sub">{{ v.halves }}</div>
+    </div>
+  </div>
+
+  {% if v.rounds %}
+  <div class="rounds panel">
+    <span class="rounds-label">逐回合</span>
+    {% for r in v.rounds %}<div class="r {{ 'win' if r == 'win' }} {{ 'half' if loop.index0 == 12 }}"></div>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="facts">
+    <span class="fact">{{ v.me.name }} 的 Rating 全场第 <b class="num">{{ v.my_rank }}</b></span>
+    {% if v.top_killer %}
+    <span class="feed"><span class="killer">{{ v.top_killer[0] }}</span><span class="skull">☠</span><span>{{ v.me.name }}</span><span class="times num">×{{ v.top_killer[1] }}</span></span>
+    {% endif %}
+    {% for item in v.firsts %}<span class="first">{{ item }}队内第一</span>{% endfor %}
+    {% for item in v.interests %}<span class="fun">{{ item.name }}：{{ item.message }} <b>{{ item.value }}</b></span>{% endfor %}
+  </div>
+
+  {% if roast %}
+  <div class="caption">
+    <div class="caption-title">{{ roast.title }}</div>
+    <div class="caption-text">{{ roast.roast }}</div>
+  </div>
+  {% endif %}
+
+  {% for team in v.teams %}
+  <div class="team">
+    <div class="team-head">
+      <span class="label">{{ team.label }}</span>
+      <span class="num {{ 'win' if team.win else ('' if v.outcome == '平' else 'loss') }}">{{ team.score }}</span>
+    </div>
+    <table>
+      <tr>
+        <th>玩家</th><th>击杀</th><th>死亡</th><th>助攻</th><th>ADR</th><th>Rating</th><th>爆头</th><th>首杀/首死</th>
+        {% if v.mode == 'mm' %}<th>KAST</th>{% endif %}
+        <th>3K/4K/5K</th>
+        {% if v.mode == 'pvp' %}<th>天梯分</th>{% endif %}
+      </tr>
+      {% for p in team.players %}
+      <tr class="{{ 'self' if p.is_self }}">
+        <td class="player"><div class="player-inner">
+          <span>{{ p.name }}</span>{% if p.mvp %}<span class="mvp">MVP</span>{% endif %}
+        </div></td>
+        <td class="num">{{ p.k }}</td>
+        <td class="num">{{ p.d }}</td>
+        <td class="num">{{ p.a }}</td>
+        <td class="num">{{ p.adr }}</td>
+        <td class="num">{{ p.rating }}</td>
+        <td class="num">{{ p.hs }}</td>
+        <td class="num">{{ p.fk }}/{{ p.fd }}</td>
+        {% if v.mode == 'mm' %}<td class="num">{{ p.kast }}</td>{% endif %}
+        <td class="num">{{ p.multi }}</td>
+        {% if v.mode == 'pvp' %}<td class="num {{ 'win' if p.score_change > 0 else 'loss' if p.score_change < 0 else 'dim' }}">{{ '%+d' % p.score_change }}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+</div>
+<div class="footer"><span>{{ watermark_text }}</span><span>{{ generated_at }}</span></div>
+</body>
+</html>

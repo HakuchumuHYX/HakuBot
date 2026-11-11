@@ -1,0 +1,58 @@
+/* 5E：成绩报告单。5E 的段位本来就是字母等级，锐评就是班主任评语。
+   练习本的蓝横线 + 红边线做纸，印刷字用蓝黑墨，老师批改用红笔；5E 橙只出现在校徽位置。不随昼夜切换。 */
+:root {
+  --paper: #f5f8fc;
+  --rule: #d5e1ef;
+  --margin: #eaa5a5;
+  --ink: #1d2a45;
+  --pencil: #66748c;
+  --red: #cf2a2a;
+  --brand: #ff6a00;
+  --cell: rgba(255, 255, 255, 0.72);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  width: 720px;
+  color: var(--ink);
+  font-family: Haku, sans-serif;
+  font-size: 15px;
+  background:
+    linear-gradient(90deg, transparent 47px, var(--margin) 47px, var(--margin) 49px, transparent 49px),
+    repeating-linear-gradient(180deg, transparent 0 31px, var(--rule) 31px 32px),
+    var(--paper);
+}
+.sheet { padding: 26px 30px 0 66px; }
+.red { color: var(--red); }
+.pencil { color: var(--pencil); }
+
+.letterhead { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--pencil); }
+.crest { width: 26px; height: 26px; background: var(--brand); color: #fff; font-weight: 900; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+.doc-title { margin-top: 10px; text-align: center; font-size: 28px; font-weight: 900; letter-spacing: 8px; }
+
+/* 表格线：报告单的格子 */
+.form { width: 100%; border-collapse: collapse; background: var(--cell); }
+.form td, .form th { border: 1.5px solid var(--ink); padding: 7px 10px; }
+.form th { font-weight: 600; font-size: 13px; color: var(--pencil); background: rgba(29, 42, 69, 0.04); text-align: center; white-space: nowrap; }
+
+/* 红笔：手画的圈和划线 */
+.pen-circle { position: absolute; pointer-events: none; overflow: visible; }
+.pen-circle path { fill: none; stroke: var(--red); stroke-width: 3; stroke-linecap: round; }
+
+.block-title { margin: 18px 0 8px; font-size: 16px; font-weight: 800; }
+
+/* 评语和印章 */
+.remark { margin-top: 34px; border: 1.5px solid var(--ink); background: var(--cell); padding: 12px 18px 16px; position: relative; }
+.remark-head { font-size: 16px; font-weight: 800; }
+.remark-text { margin-top: 6px; font-size: 15.5px; line-height: 32px; }
+.seal {
+  position: absolute; right: 18px; top: -16px; transform: rotate(-6deg);
+  padding: 5px 12px; border: 3px solid var(--red); color: var(--red); background: rgba(245, 248, 252, 0.85);
+  font-size: 17px; font-weight: 900; letter-spacing: 2px;
+  box-shadow: inset 0 0 0 2px rgba(245, 248, 252, 0.85), inset 0 0 0 4px var(--red);
+}
+
+.footer {
+  margin: 18px 30px 0 66px; padding-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end;
+  font-size: 11px; color: var(--pencil); white-space: pre-line; line-height: 1.5;
+}

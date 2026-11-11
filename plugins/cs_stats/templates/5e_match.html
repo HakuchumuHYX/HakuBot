@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+{% include "5e_base.css" %}
+.paper-head { margin-top: 12px; display: flex; align-items: flex-end; gap: 16px; }
+.paper-title { flex: 1; }
+.paper-title .map { font-size: 30px; font-weight: 900; letter-spacing: 2px; }
+.paper-title .meta { margin-top: 4px; display: flex; gap: 14px; font-size: 14px; color: var(--pencil); }
+.score-box { position: relative; flex: none; width: 210px; height: 96px; text-align: center; }
+.score-box .label { font-size: 13px; color: var(--pencil); }
+.score-box .score { font-size: 54px; font-weight: 900; color: var(--red); line-height: 1.1; transform: rotate(-3deg); }
+.score-box .score span { font-size: 26px; margin-left: 6px; }
+.score-box .pen-circle { left: 6px; top: 16px; width: 198px; height: 84px; }
+.halves { margin-top: 2px; font-size: 13px; color: var(--pencil); text-align: right; }
+
+.comment { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 15px; }
+.comment .red { font-weight: 900; font-size: 18px; }
+.stamp { padding: 2px 10px; border: 2.5px solid var(--red); color: var(--red); font-weight: 900; font-size: 15px; transform: rotate(-4deg); background: rgba(245, 248, 252, 0.8); }
+
+.team-head { margin: 18px 0 8px; display: flex; align-items: baseline; gap: 10px; }
+.team-head .label { font-size: 16px; font-weight: 800; }
+.team-head .num { font-size: 22px; font-weight: 900; }
+.roster th { font-size: 12px; padding: 6px 4px; }
+.roster td { text-align: center; padding: 6px 4px; font-size: 15px; }
+.roster td.player { text-align: left; }
+.player-inner { display: flex; align-items: center; gap: 8px; max-width: 180px; }
+.player-inner img, .player-inner .dot { width: 26px; height: 26px; flex: none; object-fit: cover; background: #dde7f3; }
+.player-inner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tr.self td { font-weight: 800; background: rgba(207, 42, 42, 0.07); }
+tr.self td.player span.name { color: var(--red); }
+.mvp { font-size: 11px; padding: 0 4px; border: 1.5px solid var(--red); color: var(--red); font-weight: 900; flex: none; }
+.elo-change { color: var(--red); font-weight: 800; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="letterhead"><span class="crest">5E</span><span>5E 对战平台　{{ v.mode_label.replace('5E ', '') }}</span></div>
+
+  <div class="paper-head">
+    <div class="paper-title">
+      <div class="map">{{ v.map_name }}</div>
+      <div class="meta"><span>{{ v.time }}</span><span>用时 {{ v.duration }}</span></div>
+    </div>
+    <div>
+      <div class="score-box">
+        <div class="label">卷面</div>
+        <div class="score">{{ v.score }}<span>{{ v.outcome }}</span></div>
+        <svg class="pen-circle" viewBox="0 0 198 84"><path d="M30 18 C70 2, 170 0, 190 30 C205 62, 120 84, 60 78 C10 72, -4 40, 30 18 C46 9, 70 6, 96 6"/></svg>
+      </div>
+      <div class="halves">{{ v.halves }}</div>
+    </div>
+  </div>
+
+  <div class="comment">
+    <span>{{ v.me.name }} 本局 Rating 全场第 <span class="red">{{ v.my_rank }}</span> 名</span>
+    {% if v.me.score_change is not none %}<span>ELO <span class="red">{{ '%+d' % v.me.score_change }}</span></span>{% endif %}
+    {% for h in v.honors %}<span class="stamp">{{ h }}</span>{% endfor %}
+  </div>
+
+  {% if roast %}
+  <div class="remark">
+    <span class="seal">{{ roast.title }}</span>
+    <div class="remark-head red">老师批语</div>
+    <div class="remark-text">{{ roast.roast }}</div>
+  </div>
+  {% endif %}
+
+  {% for team in v.teams %}
+  <div class="team-head">
+    <span class="label">{{ team.label }}</span>
+    <span class="num {{ 'red' if team.win }}">{{ team.score }}</span>
+  </div>
+  <table class="form roster">
+    <tr><th>姓名</th><th>击杀</th><th>死亡</th><th>助攻</th><th>ADR</th><th>Rating</th><th>爆头</th><th>首杀/首死</th><th>KAST</th><th>ELO</th></tr>
+    {% for p in team.players %}
+    <tr class="{{ 'self' if p.is_self }}">
+      <td class="player"><div class="player-inner">
+        {% if show_images and p.avatar %}<img src="{{ p.avatar }}" onerror="this.style.visibility='hidden'">{% else %}<div class="dot"></div>{% endif %}
+        <span class="name">{{ p.name }}</span>{% if p.mvp %}<span class="mvp">MVP</span>{% endif %}
+      </div></td>
+      <td>{{ p.k }}</td><td>{{ p.d }}</td><td>{{ p.a }}</td><td>{{ p.adr }}</td>
+      <td><b>{{ p.rating }}</b></td><td>{{ p.hs }}</td><td>{{ p.fk }}/{{ p.fd }}</td><td>{{ p.kast }}</td>
+      <td class="elo-change">{{ '%+d' % p.score_change }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endfor %}
+</div>
+<div class="footer"><span>{{ watermark_text }}</span><span>{{ generated_at }}</span></div>
+</body>
+</html>

@@ -63,6 +63,9 @@ FEATURES = (
     FeatureSpec("pjsk_guess_card", "PJSK猜卡面"),
     FeatureSpec("pixiv_id_fetcher", "Pixiv ID取图", cooldown=True),
     FeatureSpec("juya_daily_fetcher", "橘鸦 AI 早报", default=False),
+    FeatureSpec("cs_stats", "CS 战绩"),
+    FeatureSpec("cs_stats:query", "CS 战绩查询", cooldown=True),
+    FeatureSpec("cs_stats:roast", "CS 锐评", cooldown=True),
 )
 
 FEATURES_BY_ID = {item.id: item for item in FEATURES}

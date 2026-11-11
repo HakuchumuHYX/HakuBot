@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+{% include "pw_base.css" %}
+.hero { padding-top: 132px; display: flex; align-items: flex-end; gap: 16px; }
+.avatar { width: 86px; height: 86px; object-fit: cover; flex: none; border: 2px solid rgba(255, 255, 255, 0.85); background: #1b2531; }
+.avatar-fallback { display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 800; }
+.who { flex: 1; min-width: 0; padding-bottom: 2px; }
+.name { font-size: 30px; font-weight: 800; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); }
+.meta { margin-top: 6px; display: flex; gap: 12px; font-size: 14px; color: #c9d2dc; flex-wrap: wrap; }
+.mode { font-weight: 700; color: var(--text); }
+.title-tag { font-size: 13px; padding: 1px 8px; border: 1px solid var(--plate); color: var(--plate); }
+.rank { flex: none; text-align: right; }
+.rank-label { font-size: 13px; color: #c9d2dc; margin-bottom: 6px; }
+
+.board { margin-top: 18px; display: flex; }
+.col { flex: 1; padding: 12px 0 10px; text-align: center; border-left: 1px solid var(--rule); }
+.col:first-child { border-left: none; flex: 1.35; background: var(--glass-hi); }
+.col-head { font-size: 12px; color: var(--dim); }
+.col-value { margin-top: 2px; font-size: 30px; line-height: 1.05; }
+.col:first-child .col-value { font-size: 38px; color: var(--plate); }
+
+.bars-wrap { padding: 14px 16px 10px; }
+.bars-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--dim); }
+.bars { position: relative; height: 92px; margin-top: 10px; padding-left: 34px; display: flex; align-items: flex-end; gap: 4px; }
+.bar { flex: 1; background: var(--loss); opacity: 0.9; }
+.bar.good { background: var(--win); }
+.bar:last-child { outline: 2px solid var(--text); outline-offset: 1px; }
+.baseline { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255, 255, 255, 0.45); }
+.baseline span { position: absolute; left: 0; top: -9px; padding-right: 6px; font-size: 13px; line-height: 1; color: var(--dim); background: rgb(22, 30, 40); }
+.line-wrap { margin-top: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 16px; }
+.line-wrap .label { font-size: 13px; color: var(--dim); flex: none; white-space: nowrap; }
+.line-wrap svg { flex: 1; display: block; }
+.line-wrap .ends { flex: none; font-size: 20px; text-align: right; }
+
+.split { display: flex; gap: 12px; }
+.split > div { flex: 1; min-width: 0; }
+.map-row { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--rule); font-size: 14px; }
+.map-row:first-child { border-top: none; }
+.map-row img { width: 26px; height: 26px; object-fit: contain; flex: none; }
+.map-name { width: 76px; flex: none; overflow: hidden; white-space: nowrap; }
+.track { flex: 1; height: 6px; background: rgba(255, 255, 255, 0.08); }
+.fill { height: 100%; background: var(--text); }
+.map-rate { width: 46px; text-align: right; font-size: 18px; flex: none; }
+.map-count { width: 34px; text-align: right; font-size: 12px; color: var(--dim); flex: none; }
+.feeds { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.feeds .feed { justify-content: space-between; height: 36px; }
+.feed-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.feed-left img { width: 54px; object-fit: contain; }
+.feed-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-kills { font-size: 20px; }
+.feed-hs { font-size: 12px; color: var(--dim); margin-left: 6px; }
+
+.facts { display: flex; gap: 12px; align-items: stretch; }
+.radar { flex: none; width: 200px; padding: 6px; display: flex; align-items: center; justify-content: center; }
+.radar text { font-size: 11px; fill: #c9d2dc; font-family: Haku, sans-serif; }
+.kv { flex: 1; display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+.kv-item { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 14px; border-top: 1px solid var(--rule); font-size: 14px; }
+.kv-item:nth-child(-n+2) { border-top: none; }
+.kv-item:nth-child(odd) { border-right: 1px solid var(--rule); }
+.kv-item .num { font-size: 19px; }
+</style>
+</head>
+<body class="mode-{{ v.mode }}">
+<div class="stage">
+  {% if show_images and v.maps and v.maps[0].image %}<div class="backdrop" style="background-image:url('{{ v.maps[0].image }}')"></div>{% endif %}
+
+  <div class="hero" {% if not (show_images and v.maps and v.maps[0].image) %}style="padding-top: 28px"{% endif %}>
+    {% if show_images and v.avatar %}<img class="avatar" src="{{ v.avatar }}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">{% endif %}
+    <div class="avatar avatar-fallback" {% if show_images and v.avatar %}style="display:none"{% endif %}>{{ v.nickname[:1] }}</div>
+    <div class="who">
+      <div class="name">{{ v.nickname }}</div>
+      <div class="meta">
+        <span class="mode">{{ v.mode_label }}</span>
+        <span>{{ v.scope }}</span>
+        {% if v.badge %}<span class="title-tag">{{ v.badge }}</span>{% endif %}
+      </div>
+    </div>
+    {% if v.score %}
+    <div class="rank {{ 'tier-%d' % v.score.tier if v.score.tier is defined }}">
+      <div class="rank-label">{{ v.score.label }}</div>
+      <div class="plate"><span class="num">{{ "{:,}".format(v.score.value) }}</span></div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="board panel {{ 'tier-%d' % v.score.tier if v.score and v.score.tier is defined }}">
+    {% for item in v.core %}
+    <div class="col"><div class="col-head">{{ item.label }}</div><div class="col-value num">{{ item.value }}</div></div>
+    {% endfor %}
+  </div>
+
+  {% if roast %}
+  <div class="caption {{ 'tier-%d' % v.score.tier if v.score and v.score.tier is defined }}">
+    <div class="caption-title">{{ roast.title }}</div>
+    <div class="caption-text">{{ roast.roast }}</div>
+  </div>
+  {% endif %}
+
+  {% if v.bars %}
+  <div class="block-title">最近 {{ v.bars.count }} 场 Rating，最右是最新一场</div>
+  <div class="bars-wrap panel">
+    <div class="bars">
+      <div class="baseline" style="bottom: {{ v.bars.baseline }}%"><span>1.0</span></div>
+      {% for b in v.bars['items'] %}<div class="bar {{ 'good' if b.good }}" style="height: {{ b.pct }}%"></div>{% endfor %}
+    </div>
+    <div class="bars-head" style="margin-top:8px"><span>打出 1.0 以上 <b class="num win" style="font-size:16px">{{ v.bars['items'] | selectattr('good') | list | length }}</b> 场</span><span>最新一场 <b class="num" style="font-size:16px">{{ v.bars['items'][-1].value }}</b></span></div>
+  </div>
+  {% endif %}
+
+  {% if v.trend2 %}
+  <div class="line-wrap panel">
+    <span class="label">{{ v.trend2_label }}</span>
+    <svg height="40" viewBox="0 0 300 56" preserveAspectRatio="none">
+      <polyline points="{{ v.trend2.points }}" fill="none" stroke="var(--text)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <span class="ends num"><span class="dim" style="font-size:15px">{{ '%g' % v.trend2.first }} 到 </span>{{ '%g' % v.trend2.last }}</span>
+  </div>
+  {% endif %}
+
+  {% if v.maps or v.weapons %}
+  <div class="split">
+    {% if v.maps %}
+    <div>
+      <div class="block-title">常打的图</div>
+      <div class="panel">
+        {% for m in v.maps %}
+        <div class="map-row">
+          {% if show_images and m.logo %}<img src="{{ m.logo }}" onerror="this.style.visibility='hidden'">{% endif %}
+          <span class="map-name">{{ m.name }}</span>
+          <div class="track"><div class="fill" style="width: {{ m.win_rate }}"></div></div>
+          <span class="map-rate num">{{ m.win_rate }}</span>
+          <span class="map-count">{{ m.matches }} 场</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if v.weapons %}
+    <div>
+      <div class="block-title">击杀最多的枪</div>
+      <div class="feeds">
+        {% for w in v.weapons %}
+        <div class="feed">
+          <span class="feed-left">{% if show_images and w.image %}<img src="{{ w.image }}" onerror="this.remove()">{% endif %}<span class="feed-name">{{ w.name }}</span></span>
+          <span><span class="feed-kills num">{{ w.kills }}</span><span class="feed-hs">爆头 {{ w.hs_rate }}</span></span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="block-title">细项</div>
+  <div class="facts">
+    {% if v.radar %}
+    <div class="radar panel">
+      <svg width="{{ v.radar.size + 40 }}" height="{{ v.radar.size + 16 }}" viewBox="-20 -8 {{ v.radar.size + 40 }} {{ v.radar.size + 16 }}">
+        {% for ring in v.radar.rings %}<polygon points="{{ ring }}" fill="none" stroke="rgba(255,255,255,.12)"/>{% endfor %}
+        {% for a in v.radar.axes %}<line x1="{{ v.radar.center }}" y1="{{ v.radar.center }}" x2="{{ a.x2 }}" y2="{{ a.y2 }}" stroke="rgba(255,255,255,.12)"/>{% endfor %}
+        <polygon points="{{ v.radar.points }}" fill="rgba(217,163,58,.28)" stroke="var(--plate)" stroke-width="2"/>
+        {% for a in v.radar.axes %}<text x="{{ a.lx }}" y="{{ a.ly }}" text-anchor="middle" dominant-baseline="middle">{{ a.label }} {{ a.value }}</text>{% endfor %}
+      </svg>
+    </div>
+    {% endif %}
+    <div class="kv panel">
+      {% for item in v.details %}
+      <div class="kv-item"><span class="dim">{{ item.label }}</span><span class="num">{{ item.value }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<div class="footer"><span>{{ watermark_text }}</span><span>{{ generated_at }}</span></div>
+</body>
+</html>
