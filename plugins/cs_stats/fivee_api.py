@@ -16,7 +16,10 @@ AVATAR_BASE = "https://oss-arena.5eplay.com/"
 # 优先排位；arena 接口不带这个参数时返回的是别的模式
 MATCH_TYPE = 9
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    ),
     "X-Requested-With": "XMLHttpRequest",
 }
 
