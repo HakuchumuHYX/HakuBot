@@ -89,13 +89,15 @@ header { display: flex; justify-content: space-between; align-items: center; }
 
 .empty { padding: 70px 0 60px; text-align: center; }
 
-.empty .seal { margin: 0 auto 28px; color: var(--muted); border-color: var(--muted); }
+.empty .seal { width: max-content; margin: 0 auto 28px; color: var(--muted); border-color: var(--muted); }
 
 .empty p { font-size: 16px; line-height: 2; color: var(--sub); }
 
 footer {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
     margin-top: 22px;
     font-size: 12px;
     color: var(--muted);
