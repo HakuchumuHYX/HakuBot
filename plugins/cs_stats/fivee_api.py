@@ -4,8 +4,6 @@
 只用来补 player_career 没有的字段（闪光、KAST、残局、下包拆包、近 10 场走势）。
 """
 
-import asyncio
-
 import httpx
 
 from plugins.cs_stats.config import plugin_config
@@ -86,6 +84,7 @@ async def matches(uuid: str) -> list[dict]:
 
 
 async def arena(domain: str) -> dict:
+    """返回整个响应：生涯卡要用顶层的 data 和 recent_match 两块"""
     data = await _request(
         "GET", f"{ARENA}/api/data/player/{domain}", params={"match_type": MATCH_TYPE}
     )
@@ -97,8 +96,3 @@ async def arena(domain: str) -> dict:
 async def match_detail(match_id: str) -> dict:
     data = await _request("GET", f"{GATE}/crane/http/api/data/match/{match_id}")
     return _gate_data(data, "5E 单局详情")
-
-
-async def profile_bundle(domain: str, uuid: str) -> tuple[dict, list[dict], dict]:
-    """生涯卡要的三份数据并发拉"""
-    return await asyncio.gather(career(uuid), matches(uuid), arena(domain))

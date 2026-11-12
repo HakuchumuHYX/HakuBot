@@ -57,7 +57,7 @@ def _map_extremes(maps: list[dict]) -> str | None:
     played = [m for m in maps if m["matches"] >= 3]
     if len(played) < 2:
         return None
-    by_rate = sorted(played, key=lambda m: float(m["win_rate"].rstrip("%")))
+    by_rate = sorted(played, key=lambda m: m["wins"] / m["matches"])
     worst, best = by_rate[0], by_rate[-1]
     return f"最强图 {best['name']}（{best['matches']} 场胜率 {best['win_rate']}），最弱图 {worst['name']}（{worst['matches']} 场胜率 {worst['win_rate']}）"
 
@@ -70,17 +70,10 @@ def _weapon_share(weapons: list[dict]) -> str | None:
 
 
 def _expand(items: list[dict]) -> dict:
-    """卡片上「首杀/首死 73/76」这种合并写法拆成单独的键，LLM 读合并值容易张冠李戴"""
+    """卡片上「首杀/首死 73/76」这种合并格子按 parts 拆成单独的键，LLM 读合并值容易张冠李戴"""
     result = {}
     for item in items:
-        labels, values = item["label"].split("/"), str(item["value"]).split("/")
-        if len(labels) > 1 and len(labels) == len(values):
-            result.update(zip(labels, values))
-        elif "1v1~1v5" in item["label"] and len(values) == 5:
-            prefix = item["label"].replace("1v1~1v5", "").strip()
-            result.update({f"{prefix} 1v{i}": v for i, v in enumerate(values, 1)})
-        else:
-            result[item["label"]] = item["value"]
+        result.update(item.get("parts") or {item["label"]: item["value"]})
     return {k: v for k, v in result.items() if k not in NOT_FOR_ROAST}
 
 
@@ -175,6 +168,10 @@ async def generate(kind: str, view: dict) -> dict | None:
         )
     except Exception as exc:
         logger.warning(f"[cs_stats] 锐评生成失败: {get_exc_desc(exc)}")
+        return None
+    # json_repair 会把截断的 JSON 补成合法的，不先拦住就会存下半句话
+    if result.finish_reason == "length":
+        logger.warning(f"[cs_stats] 锐评输出被 max_tokens 截断: {(result.content or '')[:200]}")
         return None
     parsed = json_repair.loads(result.content or "")
     if not isinstance(parsed, dict) or not str(parsed.get("title") or "").strip() or not str(parsed.get("roast") or "").strip():

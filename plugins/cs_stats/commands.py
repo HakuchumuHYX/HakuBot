@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import httpx
 from nonebot import get_driver, logger, on_command
-from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent, Message, MessageEvent
+from nonebot.adapters.onebot.v11 import GROUP, Bot, GroupMessageEvent, Message
 from nonebot.matcher import Matcher
 from nonebot.params import ArgPlainText, CommandArg
 from nonebot.permission import SUPERUSER
@@ -28,8 +28,9 @@ from utils.onebot.media import image_segment
 from utils.onebot.messages import mentioned_users
 from utils.onebot.rules import command_boundary
 
-PLATFORM_WORD = {"pw": "完美", "5e": "5e"}
-MODE_WORD = {"pvp": "完美", "mm": "官匹", "5e": "5e"}
+# 第一个是主命令词，其余是别名
+MODE_WORDS = {"pvp": ("完美",), "mm": ("官匹",), "5e": ("5e", "5E")}
+PLATFORM_WORDS = {"pw": ("完美", "官匹"), "5e": ("5e", "5E")}
 MODE_PLATFORM = {"pvp": "pw", "mm": "pw", "5e": "5e"}
 MAX_CANDIDATES = 5
 # 完美对局列表一页最多拉这么多，最近第 N 局的 N 不超过它
@@ -37,24 +38,26 @@ MAX_NTH = 20
 
 
 class QueryError(Exception):
-    """参数或绑定不对，文案直接回给用户"""
+    """参数、绑定或数据不足，文案直接回给用户"""
 
 
-def _aliases(word: str, suffix: str) -> set[str]:
-    return {f"5E{suffix}"} if word == "5e" else set()
-
-
-def _command(name: str, word: str, suffix: str, feature: str, **kwargs):
-    aliases = _aliases(word, suffix) | kwargs.pop("aliases", set())
+def _command(words: tuple[str, ...], suffix: str, feature: str):
+    name, *aliases = (word + suffix for word in words)
     return on_command(
         name,
-        aliases=aliases,
+        aliases=set(aliases),
         rule=command_boundary & switch_rule(feature),
         permission=GROUP,
         priority=5,
         block=True,
-        **kwargs,
     )
+
+
+def _account_index(token: str) -> int | None:
+    """「#2」→ 1；不是 #序号 返回 None。是否越界由调用方按绑定数判断"""
+    if token.startswith("#") and token[1:].isdecimal() and int(token[1:]) >= 1:
+        return int(token[1:]) - 1
+    return None
 
 
 @dataclass
@@ -66,29 +69,33 @@ class QueryArgs:
     refresh: bool
 
 
-def parse_args(bot: Bot, event: GroupMessageEvent, arg: Message, *, allow_nth: bool) -> QueryArgs:
+def parse_args(
+    bot: Bot, event: GroupMessageEvent, arg: Message, *, allow_nth: bool, allow_refresh: bool
+) -> QueryArgs:
     index, nth, refresh = 0, 1, False
     for token in arg.extract_plain_text().split():
-        if token.startswith("#") and token[1:].isdecimal() and int(token[1:]) >= 1:
-            index = int(token[1:]) - 1
-        elif token in ("-r", "刷新"):
+        if (account_index := _account_index(token)) is not None:
+            index = account_index
+        elif allow_refresh and token in ("-r", "刷新"):
             refresh = True
         elif allow_nth and token.isdecimal() and 1 <= int(token) <= MAX_NTH:
             nth = int(token)
         else:
             raise QueryError(f"看不懂参数「{token}」")
+    # @bot 和回复 bot 的消息都不算指定了对象
     mentioned = [qq for qq in mentioned_users(arg) if str(qq) != bot.self_id]
+    reply_user = event.reply and event.reply.sender.user_id
     if mentioned:
         target = str(mentioned[0])
-    elif event.reply and event.reply.sender.user_id:
-        target = str(event.reply.sender.user_id)
+    elif reply_user and str(reply_user) != bot.self_id:
+        target = str(reply_user)
     else:
         target = str(event.user_id)
     return QueryArgs(target, target == str(event.user_id), index, nth, refresh)
 
 
 def pick_account(args: QueryArgs, platform: str) -> dict:
-    word = PLATFORM_WORD[platform]
+    word = PLATFORM_WORDS[platform][0]
     accounts = store.accounts(args.target, platform)
     if not accounts:
         if args.is_self:
@@ -116,6 +123,8 @@ async def _fetch(matcher: type[Matcher], bot: Bot, coro):
     """外部接口出错时直接结束命令"""
     try:
         return await coro
+    except QueryError as exc:
+        await matcher.finish(str(exc))
     except pw_api.PWTokenInvalid as exc:
         if exc.newly:
             await _notify_token_invalid(bot)
@@ -142,7 +151,9 @@ async def _render(matcher: type[Matcher], coro) -> bytes:
 async def load_profile(mode: str, account: dict) -> tuple[dict, str]:
     """返回（生涯 view, 生涯锐评的水位）"""
     if mode == "5e":
-        career, recent, arena = await fivee_api.profile_bundle(account["id"], account["uuid"])
+        career, recent, arena = await asyncio.gather(
+            fivee_api.career(account["uuid"]), fivee_api.matches(account["uuid"]), fivee_api.arena(account["id"])
+        )
         view = render.fivee_profile_view(career, recent, arena, account)
         latest = recent[0]["match_id"] if recent else ""
         return view, f"{career.get('match_total')}:{latest}"
@@ -151,14 +162,14 @@ async def load_profile(mode: str, account: dict) -> tuple[dict, str]:
         stats_call(account["id"]), pw_api.match_list(account["id"], mode, size=5), pw_api.steam_avatar(account["id"])
     )
     if not public:
-        raise pw_api.PWError("对方没有公开完美战绩")
+        raise QueryError("对方没有公开完美战绩")
     latest = (stats.get("historyDates") or [""])[0]
     if mode == "pvp":
         if not int(stats.get("cnt") or 0):
-            raise pw_api.PWError(f"近 {plugin_config.pvp_season_lookback + 1} 个赛季都没有完美天梯记录")
+            raise QueryError(f"近 {plugin_config.pvp_season_lookback + 1} 个赛季都没有完美天梯记录")
         return render.pvp_profile_view(stats, recent, account, avatar), f"{stats['seasonId']}:{stats['cnt']}:{latest}"
     if not int(stats.get("cnt") or 0):
-        raise pw_api.PWError("完美上没有官匹记录")
+        raise QueryError("完美上没有官匹记录")
     return render.mm_profile_view(stats, recent, account, avatar), f"{stats['cnt']}:{latest}"
 
 
@@ -166,14 +177,14 @@ async def load_match(mode: str, account: dict, nth: int) -> dict:
     if mode == "5e":
         items = await fivee_api.matches(account["uuid"])
         if nth > len(items):
-            raise fivee_api.FiveEError(f"5E 只能查到最近 {len(items)} 局")
+            raise QueryError(f"5E 只能查到最近 {len(items)} 局")
         detail = await fivee_api.match_detail(items[nth - 1]["match_id"])
         return render.fivee_match_view(detail, account["uuid"])
-    public, items = await pw_api.match_list(account["id"], mode, size=max(nth, 5))
+    public, items = await pw_api.match_list(account["id"], mode, size=nth)
     if not public:
-        raise pw_api.PWError("对方没有公开完美战绩")
+        raise QueryError("对方没有公开完美战绩")
     if nth > len(items):
-        raise pw_api.PWError(f"最近只有 {len(items)} 局{MODE_WORD[mode]}记录")
+        raise QueryError(f"最近只有 {len(items)} 局{MODE_WORDS[mode][0]}记录")
     detail = await pw_api.match_detail(str(items[nth - 1]["matchId"]), mode)
     return render.pw_match_view(detail, account["id"], mode)
 
@@ -182,21 +193,45 @@ def _roast_key(mode: str, account: dict) -> str:
     return f"5e:{account['uuid']}" if mode == "5e" else f"pw:{account['id']}:{mode}"
 
 
+async def _check_query_cd(matcher: type[Matcher], event: GroupMessageEvent) -> None:
+    remaining = cooldown_remaining(QUERY_ID, event)
+    if remaining:
+        await matcher.finish(f"查询冷却中，还剩 {remaining} 秒")
+
+
+async def _roast(
+    matcher: type[Matcher], kind: str, key: str, watermark: str | None, view: dict, refresh: bool, event
+) -> dict | None:
+    """存储里有就直接用；要生成时才检查和扣锐评 CD。返回锐评或 None（生成失败）"""
+    stored = store.get_roast(kind, key)
+    if stored and (watermark is None or stored["watermark"] == watermark) and not refresh:
+        return stored
+    remaining = cooldown_remaining(ROAST_ID, event)
+    if remaining:
+        await matcher.finish(f"锐评冷却中，还剩 {remaining} 秒")
+    await matcher.send("锐评生成中…")
+    roast = await generate(kind, view)
+    if roast:
+        store.save_roast(kind, key, {**roast, "watermark": watermark} if watermark else roast)
+        mark_cooldown(ROAST_ID, event)
+    return roast
+
+
 # ============== 查询命令 ==============
 
 
 def _register_queries(mode: str) -> None:
-    word = MODE_WORD[mode]
+    words = MODE_WORDS[mode]
     platform = MODE_PLATFORM[mode]
 
-    profile = _command(f"{word}战绩", word, "战绩", QUERY_ID)
-    single = _command(f"{word}单局", word, "单局", QUERY_ID)
-    career_roast = _command(f"{word}锐评", word, "锐评", ROAST_ID)
-    match_roast = _command(f"{word}单局锐评", word, "单局锐评", ROAST_ID)
+    profile = _command(words, "战绩", QUERY_ID)
+    single = _command(words, "单局", QUERY_ID)
+    career_roast = _command(words, "锐评", ROAST_ID)
+    match_roast = _command(words, "单局锐评", ROAST_ID)
 
-    async def _args(matcher, bot, event, arg, *, allow_nth):
+    async def _args(matcher, bot, event, arg, *, allow_nth, allow_refresh):
         try:
-            args = parse_args(bot, event, arg, allow_nth=allow_nth)
+            args = parse_args(bot, event, arg, allow_nth=allow_nth, allow_refresh=allow_refresh)
             account = pick_account(args, platform)
         except QueryError as exc:
             await matcher.finish(str(exc))
@@ -204,14 +239,9 @@ def _register_queries(mode: str) -> None:
             await matcher.finish("只有 bot 主能强制重新生成锐评")
         return args, account
 
-    async def _check_query_cd(matcher, event):
-        remaining = cooldown_remaining(QUERY_ID, event)
-        if remaining:
-            await matcher.finish(f"查询冷却中，还剩 {remaining} 秒")
-
     @profile.handle()
     async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
-        args, account = await _args(profile, bot, event, arg, allow_nth=False)
+        args, account = await _args(profile, bot, event, arg, allow_nth=False, allow_refresh=False)
         await _check_query_cd(profile, event)
         view, _watermark = await _fetch(profile, bot, load_profile(mode, account))
         image = await _render(profile, render.render_profile(view))
@@ -220,49 +250,35 @@ def _register_queries(mode: str) -> None:
 
     @single.handle()
     async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
-        args, account = await _args(single, bot, event, arg, allow_nth=True)
+        args, account = await _args(single, bot, event, arg, allow_nth=True, allow_refresh=False)
         await _check_query_cd(single, event)
         view = await _fetch(single, bot, load_match(mode, account, args.nth))
         image = await _render(single, render.render_match(view))
         await single.send(image_segment(image))
         mark_cooldown(QUERY_ID, event)
 
-    async def _roast(matcher, kind: str, key: str, watermark: str | None, view: dict, args, event):
-        """存储里有就直接用；要生成时才检查和扣锐评 CD。返回锐评或 None（生成失败）"""
-        stored = store.get_roast(kind, key)
-        if stored and (watermark is None or stored["watermark"] == watermark) and not args.refresh:
-            return stored
-        remaining = cooldown_remaining(ROAST_ID, event)
-        if remaining:
-            await matcher.finish(f"锐评冷却中，还剩 {remaining} 秒")
-        await matcher.send("锐评生成中…")
-        roast = await generate(kind, view)
-        if roast:
-            store.save_roast(kind, key, {**roast, "watermark": watermark} if watermark else roast)
-            mark_cooldown(ROAST_ID, event)
-        return roast
-
     @career_roast.handle()
     async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
-        args, account = await _args(career_roast, bot, event, arg, allow_nth=False)
+        args, account = await _args(career_roast, bot, event, arg, allow_nth=False, allow_refresh=True)
         view, watermark = await _fetch(career_roast, bot, load_profile(mode, account))
-        roast = await _roast(career_roast, "career", _roast_key(mode, account), watermark, view, args, event)
+        key = _roast_key(mode, account)
+        roast = await _roast(career_roast, "career", key, watermark, view, args.refresh, event)
         image = await _render(career_roast, render.render_profile(view, roast))
         message = image_segment(image) + ("" if roast else "锐评生成失败，先看数据吧")
         await career_roast.send(message)
 
     @match_roast.handle()
     async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
-        args, account = await _args(match_roast, bot, event, arg, allow_nth=True)
+        args, account = await _args(match_roast, bot, event, arg, allow_nth=True, allow_refresh=True)
         view = await _fetch(match_roast, bot, load_match(mode, account, args.nth))
         key = f"{_roast_key(mode, account)}:{view['match_id']}"
-        roast = await _roast(match_roast, "match", key, None, view, args, event)
+        roast = await _roast(match_roast, "match", key, None, view, args.refresh, event)
         image = await _render(match_roast, render.render_match(view, roast))
         message = image_segment(image) + ("" if roast else "锐评生成失败，先看数据吧")
         await match_roast.send(message)
 
 
-for _mode in MODE_WORD:
+for _mode in MODE_WORDS:
     _register_queries(_mode)
 
 
@@ -294,7 +310,7 @@ async def search_candidates(platform: str, keyword: str) -> list[dict]:
 
 
 def _choose(candidates: list[dict], reply: str) -> dict | None:
-    if len(candidates) == 1 and reply in ("确认", "1"):
+    if len(candidates) == 1 and reply == "确认":
         return candidates[0]
     if reply.isdecimal() and 1 <= int(reply) <= len(candidates):
         return candidates[int(reply) - 1]
@@ -312,13 +328,13 @@ def _account_line(platform: str, index: int, account: dict) -> str:
 
 
 def _register_accounts(platform: str) -> None:
-    word = PLATFORM_WORD[platform]
-    extra = (lambda suffix: {f"官匹{suffix}"}) if platform == "pw" else (lambda suffix: set())
+    words = PLATFORM_WORDS[platform]
+    word = words[0]
 
-    bind = _command(f"{word}绑定", word, "绑定", PLUGIN_ID, aliases=extra("绑定"))
-    unbind = _command(f"{word}解绑", word, "解绑", PLUGIN_ID, aliases=extra("解绑"))
-    listing = _command(f"{word}账号", word, "账号", PLUGIN_ID, aliases=extra("账号"))
-    main = _command(f"{word}主号", word, "主号", PLUGIN_ID, aliases=extra("主号"))
+    bind = _command(words, "绑定", PLUGIN_ID)
+    unbind = _command(words, "解绑", PLUGIN_ID)
+    listing = _command(words, "账号", PLUGIN_ID)
+    main = _command(words, "主号", PLUGIN_ID)
     id_hint = "SteamID64" if platform == "pw" else "5E 个人主页 ID"
 
     @bind.handle()
@@ -356,14 +372,14 @@ def _register_accounts(platform: str) -> None:
 
     @unbind.handle()
     async def _(event: GroupMessageEvent, arg: Message = CommandArg()):
-        text = arg.extract_plain_text().strip() or "#1"
+        index = _account_index(arg.extract_plain_text().strip() or "#1")
         qq = str(event.user_id)
         bound = store.accounts(qq, platform)
-        if not (text.startswith("#") and text[1:].isdecimal() and 1 <= int(text[1:]) <= len(bound)):
+        if index is None or index >= len(bound):
             await unbind.finish(f"用法：{word}解绑 [#序号]，发「{word}账号」查看序号" if bound else f"你没有绑定{word}账号")
-        removed = store.remove_account(qq, platform, int(text[1:]) - 1)
+        removed = store.remove_account(qq, platform, index)
         rest = store.accounts(qq, platform)
-        tail = f"，现在的主号是 {rest[0]['nickname']}" if rest and text == "#1" else ""
+        tail = f"，现在的主号是 {rest[0]['nickname']}" if rest and index == 0 else ""
         await unbind.finish(f"已解绑 {removed['nickname']}{tail}")
 
     @listing.handle()
@@ -376,23 +392,23 @@ def _register_accounts(platform: str) -> None:
 
     @main.handle()
     async def _(event: GroupMessageEvent, arg: Message = CommandArg()):
-        text = arg.extract_plain_text().strip()
+        index = _account_index(arg.extract_plain_text().strip())
         qq = str(event.user_id)
         bound = store.accounts(qq, platform)
-        if not (text.startswith("#") and text[1:].isdecimal() and 1 <= int(text[1:]) <= len(bound)):
+        if index is None or index >= len(bound):
             await main.finish(f"用法：{word}主号 #序号，发「{word}账号」查看序号")
-        store.set_main(qq, platform, int(text[1:]) - 1)
+        store.set_main(qq, platform, index)
         await main.finish(f"主号已设为 {store.accounts(qq, platform)[0]['nickname']}")
 
 
-for _platform in PLATFORM_WORD:
+for _platform in PLATFORM_WORDS:
     _register_accounts(_platform)
 
 
 # ============== SU 命令 ==============
 
 su_query = on_command("cs查询", rule=command_boundary, permission=SUPERUSER, priority=5, block=True)
-SU_MODES = {"完美": "pvp", "官匹": "mm", "5e": "5e", "5E": "5e"}
+SU_MODES = {word: mode for mode, words in MODE_WORDS.items() for word in words}
 
 
 async def _su_show(bot: Bot, mode: str, account: dict) -> None:
@@ -429,7 +445,7 @@ pw_reload = on_command("完美重载", rule=command_boundary, permission=SUPERUS
 
 
 @pw_reload.handle()
-async def _(event: MessageEvent):
+async def _():
     reload_plugin_config(PLUGIN_ID, plugin_config)
     pw_api.reset_token_state()
     await pw_reload.finish("已重新读取 cs_stats 配置，完美查询恢复")

@@ -1,7 +1,8 @@
 """接口数据 → 模板上下文 → 图片。
 
-三种模式（完美天梯 pvp、官匹 mm、5E）各有一个生涯 view 和单局 view 构造函数，
-产出同一种形状，模板只认这个形状；锐评的输入也从 view 里取，卡片上看到的就是 LLM 看到的。
+三种模式（完美天梯 pvp、官匹 mm、5E）各有一个生涯 view 和单局 view 构造函数。
+共用字段同名同义，锐评只读共用字段；各平台模板专用的字段（如 5E 的 honors、best_season）只出现在各自的 view 里。
+锐评的输入从 view 里取，卡片上看到的就是 LLM 看到的。
 """
 
 import math
@@ -32,6 +33,12 @@ RANK_FIELDS = {
 
 def _f(value, digits: int = 2) -> str:
     return f"{float(value or 0):.{digits}f}"
+
+
+def _group(label: str, parts: dict) -> dict:
+    """「首杀/首死 73/76」这种合并显示的格子；parts 给锐评按单项读"""
+    parts = {key: str(value) for key, value in parts.items()}
+    return {"label": label, "value": "/".join(parts.values()), "parts": parts}
 
 
 def _pct(ratio) -> str:
@@ -130,6 +137,7 @@ def _pw_maps(stats: dict) -> list[dict]:
             "logo": m.get("mapLogo") or "",
             "image": m.get("mapImage") or "",
             "matches": int(m.get("totalMatch") or 0),
+            "wins": int(m.get("winCount") or 0),
             "win_rate": _pct(int(m.get("winCount") or 0) / max(int(m.get("totalMatch") or 0), 1)),
         }
         for m in maps
@@ -157,9 +165,7 @@ def pvp_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str
         "mode_label": MODE_LABEL["pvp"],
         "nickname": stats.get("name") or account["nickname"],
         "avatar": avatar,
-        "account_tag": f"SteamID …{account['id'][-4:]}",
         "scope": f"{stats.get('seasonId')} 赛季 {count} 场",
-        "empty": count == 0,
         "score": {"label": "天梯分", "value": int(stats.get("pvpScore") or 0)},
         "badge": stats.get("summary") or "",
         "core": [
@@ -173,14 +179,14 @@ def pvp_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str
         "details": [
             {"label": "爆头率", "value": _pct(stats.get("headShotRatio"))},
             {"label": "首杀率", "value": _pct(stats.get("entryKillRatio"))},
-            {"label": "击杀/死亡/助攻", "value": f"{stats.get('kills')}/{stats.get('deaths')}/{stats.get('assists')}"},
+            _group("击杀/死亡/助攻", {"击杀": stats.get("kills"), "死亡": stats.get("deaths"), "助攻": stats.get("assists")}),
             {"label": "MVP", "value": str(stats.get("mvpCount") or 0)},
-            {"label": "2K/3K/4K/5K", "value": f"{stats.get('k2')}/{stats.get('k3')}/{stats.get('k4')}/{stats.get('k5')}"},
-            {"label": "残局胜 1v1~1v5", "value": "/".join(str(stats.get(f"vs{i}") or 0) for i in range(1, 6))},
+            _group("2K/3K/4K/5K", {f"{n}K": stats.get(f"k{n}") for n in range(2, 6)}),
+            _group("残局胜 1v1~1v5", {f"残局胜 1v{i}": stats.get(f"vs{i}") or 0 for i in range(1, 6)}),
             {"label": "1v1 胜率", "value": _pct(stats.get("vs1WinRate"))},
             {"label": "平均 WE", "value": _f(stats.get("avgWe"), 1)},
         ],
-        "radar": _radar(stats) if count else None,
+        "radar": _radar(stats),
         "trend": _sparkline(list(reversed(stats.get("historyPwRatings") or stats.get("historyRatings") or []))[-20:]),
         "bars": _bars(list(reversed(stats.get("historyPwRatings") or stats.get("historyRatings") or []))[-20:]),
         "trend_label": "近期完美 Rating",
@@ -200,9 +206,7 @@ def mm_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str)
         "mode_label": MODE_LABEL["mm"],
         "nickname": stats.get("nickName") or account["nickname"],
         "avatar": avatar,
-        "account_tag": f"SteamID …{account['id'][-4:]}",
         "scope": f"最近 {stats.get('cnt')} 局，游戏时长 {stats.get('hours')} 小时",
-        "empty": int(stats.get("cnt") or 0) == 0,
         "score": {"label": "Premier", "value": premier, "tier": premier_tier(premier)} if premier else None,
         "badge": "",
         "core": [
@@ -218,8 +222,8 @@ def mm_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str)
             {"label": "首杀率", "value": _pct(stats.get("entryKillRatio"))},
             {"label": "狙杀占比", "value": _pct(stats.get("awpKillRatio"))},
             {"label": "闪光成功率", "value": _pct(stats.get("flashSuccessRatio"))},
-            {"label": "击杀/死亡/助攻", "value": f"{stats.get('kills')}/{stats.get('deaths')}/{stats.get('assists')}"},
-            {"label": "3K/4K/5K", "value": f"{stats.get('k3')}/{stats.get('k4')}/{stats.get('k5')}"},
+            _group("击杀/死亡/助攻", {"击杀": stats.get("kills"), "死亡": stats.get("deaths"), "助攻": stats.get("assists")}),
+            _group("3K/4K/5K", {f"{n}K": stats.get(f"k{n}") for n in range(3, 6)}),
             {"label": "残局胜利", "value": str(stats.get("endingWin") or 0)},
             {"label": "历史胜场", "value": str(stats.get("historyWinCount") or 0)},
         ],
@@ -264,11 +268,9 @@ def fivee_profile_view(career: dict, recent: list[dict], arena: dict, account: d
         "mode_label": MODE_LABEL["5e"],
         "nickname": account["nickname"],
         "avatar": account.get("avatar") or "",
-        "account_tag": f"5E ID {account['id']}",
         "account_id": account["id"],
         "best_season": career.get("best_season") or "",
         "scope": f"生涯 {total} 场，胜 {career.get('win_total')} 平 {career.get('tie_total')} 负 {career.get('loss_total')}",
-        "empty": total == 0,
         "score": {"label": "ELO", "value": round(float(career.get("elo_9") or 0)), "level": level or ""},
         "badge": f"最佳赛季 {career['best_season']}" if career.get("best_season") else "",
         "core": [
@@ -281,17 +283,16 @@ def fivee_profile_view(career: dict, recent: list[dict], arena: dict, account: d
         ],
         "details": [
             {"label": "爆头率", "value": _pct(extra.get("per_headshot"))},
-            {"label": "首杀/首死", "value": f"{extra.get('first_kill')}/{extra.get('first_death')}"},
-            {"label": "2K/3K/4K/5K", "value": f"{extra.get('kill_2')}/{extra.get('kill_3')}/{extra.get('kill_4')}/{extra.get('kill_5')}"},
-            {"label": "残局胜 1v1~1v5", "value": "/".join(str(extra.get(f"end_1v{i}") or 0) for i in range(1, 6))},
-            {"label": "闪到敌人/闪到队友", "value": f"{extra.get('flash_enemy')}/{extra.get('flash_team')}"},
-            {"label": "下包/拆包", "value": f"{extra.get('planted_bomb')}/{extra.get('defused_bomb')}"},
+            _group("首杀/首死", {"首杀": extra.get("first_kill"), "首死": extra.get("first_death")}),
+            _group("2K/3K/4K/5K", {f"{n}K": extra.get(f"kill_{n}") for n in range(2, 6)}),
+            _group("残局胜 1v1~1v5", {f"残局胜 1v{i}": extra.get(f"end_1v{i}") or 0 for i in range(1, 6)}),
+            _group("闪到敌人/闪到队友", {"闪到敌人": extra.get("flash_enemy"), "闪到队友": extra.get("flash_team")}),
+            _group("下包/拆包", {"下包": extra.get("planted_bomb"), "拆包": extra.get("defused_bomb")}),
             {"label": "狙杀", "value": str(extra.get("awp_kill") or 0)},
             {"label": "最长连胜", "value": str(career.get("win_streak") or 0)},
         ],
         "radar": None,
         "trend": _sparkline(list(reversed(chart.get("y") or []))),
-        "bars": _bars(list(reversed(chart.get("y") or []))),
         "trend_label": "近 10 场 Rating",
         "trend2": None,
         "trend2_label": "",
@@ -310,6 +311,30 @@ def _pw_hs(player: dict, mode: str) -> float:
 def _ranked(players: list[dict], self_id: str) -> int:
     order = sorted(players, key=lambda p: -float(p["rating"]))
     return next(i for i, p in enumerate(order, 1) if p["id"] == self_id)
+
+
+def _match_result(players: list[dict], my_team: int, score: dict, first_half: dict, winner: int) -> dict:
+    """两个单局 view 共用：双方阵容（按 Rating 排序）、比分、胜负、上下半场"""
+    enemy = 2 if my_team == 1 else 1
+    teams = [
+        {
+            "label": "我方" if team == my_team else "对方",
+            "score": score[team],
+            "win": winner == team,
+            "players": sorted((p for p in players if p["team"] == team), key=lambda p: -float(p["rating"])),
+        }
+        for team in (my_team, enemy)
+    ]
+    second_half = {team: score[team] - first_half[team] for team in (1, 2)}
+    return {
+        "score": f"{score[my_team]}:{score[enemy]}",
+        "outcome": "平" if score[1] == score[2] else ("胜" if winner == my_team else "负"),
+        "halves": (
+            f"上半场 {first_half[my_team]}:{first_half[enemy]}，"
+            f"下半场 {second_half[my_team]}:{second_half[enemy]}"
+        ),
+        "teams": teams,
+    }
 
 
 def pw_match_view(detail: dict, steam_id: str, mode: str) -> dict:
@@ -336,9 +361,6 @@ def pw_match_view(detail: dict, steam_id: str, mode: str) -> dict:
         })
     me = next(p for p in players if p["is_self"])
     my_team = me["team"]
-    score = {1: int(base["score1"]), 2: int(base["score2"])}
-    half = {1: int(base["halfScore1"]), 2: int(base["halfScore2"])}
-    enemy_team = 2 if my_team == 1 else 1
     rounds = []
     if mode == "mm" and base.get("team1round") and base.get("team2round"):
         mine = base["team1round"] if my_team == 1 else base["team2round"]
@@ -348,16 +370,6 @@ def pw_match_view(detail: dict, steam_id: str, mode: str) -> dict:
         ((p["name"], int((p["raw"].get("killMap") or {}).get(steam_id) or 0)) for p in players if p["team"] != my_team),
         key=lambda x: -x[1],
     )
-    winner = int(base["winTeam"])
-    teams = []
-    for team in (my_team, enemy_team):
-        members = sorted((p for p in players if p["team"] == team), key=lambda p: -float(p["rating"]))
-        teams.append({
-            "label": "我方" if team == my_team else "对方",
-            "score": score[team],
-            "win": winner == team,
-            "players": members,
-        })
     raw = me["raw"]
     interests = [
         {"name": item.get("name"), "message": item.get("message"), "value": item.get("value")}
@@ -372,10 +384,13 @@ def pw_match_view(detail: dict, steam_id: str, mode: str) -> dict:
         "backdrop": base.get("mapUrl") or "",
         "time": str(base.get("startTime") or "")[:16],
         "duration": f"{base.get('duration')} 分钟",
-        "score": f"{score[my_team]}:{score[enemy_team]}",
-        "outcome": "平" if score[1] == score[2] else ("胜" if winner == my_team else "负"),
-        "halves": f"上半场 {half[my_team]}:{half[enemy_team]}，下半场 {score[my_team] - half[my_team]}:{score[enemy_team] - half[enemy_team]}",
-        "teams": teams,
+        **_match_result(
+            players,
+            my_team,
+            score={1: int(base["score1"]), 2: int(base["score2"])},
+            first_half={1: int(base["halfScore1"]), 2: int(base["halfScore2"])},
+            winner=int(base["winTeam"]),
+        ),
         "rounds": rounds,
         "me": me,
         "my_rank": _ranked(players, steam_id),
@@ -412,20 +427,6 @@ def fivee_match_view(detail: dict, uuid: str) -> dict:
                 "raw": fight,
             })
     me = next(p for p in players if p["is_self"])
-    my_team = me["team"]
-    enemy_team = 2 if my_team == 1 else 1
-    score = {g: int(main[f"group{g}_all_score"]) for g in (1, 2)}
-    first_half = {g: int(main[f"group{g}_fh_score"]) for g in (1, 2)}
-    winner = int(main.get("match_winner") or 0)
-    teams = []
-    for team in (my_team, enemy_team):
-        members = sorted((p for p in players if p["team"] == team), key=lambda p: -float(p["rating"]))
-        teams.append({
-            "label": "我方" if team == my_team else "对方",
-            "score": score[team],
-            "win": winner == team,
-            "players": members,
-        })
     raw = me["raw"]
     honors = [
         label
@@ -443,10 +444,13 @@ def fivee_match_view(detail: dict, uuid: str) -> dict:
         "map_logo": "",
         "time": _ts(main["start_time"]),
         "duration": f"{(int(main['end_time']) - int(main['start_time'])) // 60} 分钟",
-        "score": f"{score[my_team]}:{score[enemy_team]}",
-        "outcome": "平" if score[1] == score[2] else ("胜" if winner == my_team else "负"),
-        "halves": f"上半场 {first_half[my_team]}:{first_half[enemy_team]}，下半场 {score[my_team] - first_half[my_team]}:{score[enemy_team] - first_half[enemy_team]}",
-        "teams": teams,
+        **_match_result(
+            players,
+            me["team"],
+            score={g: int(main[f"group{g}_all_score"]) for g in (1, 2)},
+            first_half={g: int(main[f"group{g}_fh_score"]) for g in (1, 2)},
+            winner=int(main.get("match_winner") or 0),
+        ),
         "rounds": [],
         "me": me,
         "my_rank": _ranked(players, uuid),

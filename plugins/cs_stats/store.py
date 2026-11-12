@@ -56,9 +56,9 @@ def set_main(qq: str, platform: str, index: int) -> None:
 
 
 def get_roast(kind: str, key: str) -> dict | None:
-    return roasts.setdefault(kind, {}).get(key)
+    return roasts[kind].get(key)
 
 
 def save_roast(kind: str, key: str, roast: dict) -> None:
-    roasts.setdefault(kind, {})[key] = {**roast, "created_at": _now()}
+    roasts[kind][key] = {**roast, "created_at": _now()}
     atomic_write_json(ROASTS_FILE, roasts)

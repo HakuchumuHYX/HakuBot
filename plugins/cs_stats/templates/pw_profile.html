@@ -65,6 +65,7 @@
 </style>
 </head>
 <body class="mode-{{ v.mode }}">
+{% set tier = 'tier-%d' % v.score.tier if v.score and v.score.tier is defined else '' %}
 <div class="stage">
   {% if show_images and v.maps and v.maps[0].image %}<div class="backdrop" style="background-image:url('{{ v.maps[0].image }}')"></div>{% endif %}
 
@@ -80,21 +81,21 @@
       </div>
     </div>
     {% if v.score %}
-    <div class="rank {{ 'tier-%d' % v.score.tier if v.score.tier is defined }}">
+    <div class="rank {{ tier }}">
       <div class="rank-label">{{ v.score.label }}</div>
       <div class="plate"><span class="num">{{ "{:,}".format(v.score.value) }}</span></div>
     </div>
     {% endif %}
   </div>
 
-  <div class="board panel {{ 'tier-%d' % v.score.tier if v.score and v.score.tier is defined }}">
+  <div class="board panel {{ tier }}">
     {% for item in v.core %}
     <div class="col"><div class="col-head">{{ item.label }}</div><div class="col-value num">{{ item.value }}</div></div>
     {% endfor %}
   </div>
 
   {% if roast %}
-  <div class="caption {{ 'tier-%d' % v.score.tier if v.score and v.score.tier is defined }}">
+  <div class="caption {{ tier }}">
     <div class="caption-title">{{ roast.title }}</div>
     <div class="caption-text">{{ roast.roast }}</div>
   </div>
