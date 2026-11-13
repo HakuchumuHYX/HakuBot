@@ -77,6 +77,10 @@ def _expand(items: list[dict]) -> dict:
     return {k: v for k, v in result.items() if k not in NOT_FOR_ROAST}
 
 
+def _rank_text(name: str, stars: int | None) -> str:
+    return name if stars is None else f"{name} {stars} 星"
+
+
 def career_input(view: dict) -> dict:
     data = {
         "模式": view["mode_label"],
@@ -84,8 +88,16 @@ def career_input(view: dict) -> dict:
         "核心数据": {item["label"]: item["value"] for item in view["core"]},
         "细项": _expand(view["details"]),
     }
-    if view["score"]:
-        data[view["score"]["label"]] = view["score"]["value"]
+    score = view["score"]
+    if score:
+        # 5E 定级中没有 ELO
+        if score["value"] is not None:
+            data[score["label"]] = score["value"]
+        if score["name"]:
+            data["段位"] = _rank_text(score["name"], score["stars"])
+    if view.get("best"):
+        best = view["best"]
+        data["最佳赛季"] = f"{best['season']} {_rank_text(best['name'], best['stars'])}，ELO {best['value']}"
     if view["badge"]:
         data["平台给的标签"] = view["badge"]
     if view["radar"]:
@@ -94,9 +106,9 @@ def career_input(view: dict) -> dict:
         data["常用地图"] = [f"{m['name']} {m['matches']} 场 胜率 {m['win_rate']}" for m in view["maps"]]
     if view["weapons"]:
         data["常用武器"] = [f"{w['name']} {w['kills']} 杀 爆头率 {w['hs_rate']}" for w in view["weapons"]]
-    if view["recent"]:
-        data["最近对局（新→旧）"] = [
-            f"{r['map']} {r['outcome']} 比分 {r['score']} 击杀/死亡(/助攻) {r['kda']} Rating {r['rating']}" for r in view["recent"]
+    if view["history"]:
+        data[f"最近 {len(view['history'])} 场（新→旧）"] = [
+            f"{r['map']} {r['outcome']} 比分 {r['score']} 击杀/死亡(/助攻) {r['kda']} Rating {r['rating']}" for r in view["history"]
         ]
     derived = [
         _trend_text(view["trend"], view["trend_label"]),
@@ -136,7 +148,9 @@ def match_input(view: dict) -> dict:
     }
     if me["kast"]:
         data["本人"]["KAST"] = me["kast"]
-    if me["score_change"] is not None:
+    if me["stars"] is not None:
+        data["本人"]["S 段星数"] = me["stars"]
+    elif me["score_change"] is not None:
         data["本人"]["分数变化"] = me["score_change"]
     if view["top_killer"]:
         data["杀他最多的对手"] = f"{view['top_killer'][0]}，杀了他 {view['top_killer'][1]} 次"

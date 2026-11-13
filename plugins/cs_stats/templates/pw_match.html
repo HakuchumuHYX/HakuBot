@@ -35,17 +35,13 @@
 .team-head { display: flex; align-items: baseline; gap: 10px; padding: 0 2px 6px; }
 .team-head .label { font-size: 16px; font-weight: 800; }
 .team-head .num { font-size: 26px; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--glass); border: 1px solid var(--rule); }
-th { font-size: 12px; font-weight: 400; color: var(--dim); text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); }
 th:first-child { text-align: left; padding-left: 12px; }
-td { text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); }
-td.num { font-size: 17px; }
-tr:last-child td { border-bottom: none; }
 td.player { text-align: left; padding-left: 12px; }
 .player-inner { display: flex; align-items: center; gap: 8px; max-width: 200px; }
 .player-inner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 tr.self td { background: rgba(217, 163, 58, 0.16); }
 tr.self td.player { box-shadow: inset 4px 0 0 var(--plate); font-weight: 700; }
+td.stars { color: var(--plate); }
 .mvp { font-size: 11px; padding: 0 5px; background: var(--plate); color: #10161e; font-weight: 700; flex: none; }
 </style>
 </head>
@@ -115,7 +111,10 @@ tr.self td.player { box-shadow: inset 4px 0 0 var(--plate); font-weight: 700; }
         <td class="num">{{ p.fk }}/{{ p.fd }}</td>
         {% if v.mode == 'mm' %}<td class="num">{{ p.kast }}</td>{% endif %}
         <td class="num">{{ p.multi }}</td>
-        {% if v.mode == 'pvp' %}<td class="num {{ 'win' if p.score_change > 0 else 'loss' if p.score_change < 0 else 'dim' }}">{{ '%+d' % p.score_change }}</td>{% endif %}
+        {% if v.mode == 'pvp' %}
+        {% if p.stars is not none %}<td class="num stars">★{{ p.stars }}</td>
+        {% else %}<td class="num {{ 'win' if p.score_change > 0 else 'loss' if p.score_change < 0 else 'dim' }}">{{ '%+d' % p.score_change }}</td>{% endif %}
+        {% endif %}
       </tr>
       {% endfor %}
     </table>

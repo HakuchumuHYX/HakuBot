@@ -22,6 +22,11 @@
 .tier-4 { --plate: #f03cff; }
 .tier-5 { --plate: #eb4b4b; }
 .tier-6 { --plate: #fed700; }
+/* 完美 S 段四档：青铜、黄金、钻石、魔王 */
+.s-tier-0 { --plate: #c98a5e; }
+.s-tier-1 { --plate: #f2c14e; }
+.s-tier-2 { --plate: #7fd6ff; }
+.s-tier-3 { --plate: #ff4b4b; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -58,6 +63,12 @@ body {
 
 .panel { background: var(--glass); border: 1px solid var(--rule); }
 .block-title { font-size: 13px; color: var(--dim); margin: 18px 0 8px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--glass); border: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 400; color: var(--dim); text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); }
+td { text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); }
+td.num { font-size: 17px; }
+tr:last-child td { border-bottom: none; }
 
 /* 击杀信息条：游戏右上角那种 */
 .feed {

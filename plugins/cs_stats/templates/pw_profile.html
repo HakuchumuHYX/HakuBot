@@ -15,6 +15,8 @@
 .title-tag { font-size: 13px; padding: 1px 8px; border: 1px solid var(--plate); color: var(--plate); }
 .rank { flex: none; text-align: right; }
 .rank-label { font-size: 13px; color: #c9d2dc; margin-bottom: 6px; }
+.rank-name { font-size: 18px; font-weight: 800; color: var(--plate); margin-right: 6px; }
+.rank-stars { font-size: 20px; color: var(--plate); margin-right: 10px; }
 
 .board { margin-top: 18px; display: flex; }
 .col { flex: 1; padding: 12px 0 10px; text-align: center; border-left: 1px solid var(--rule); }
@@ -35,6 +37,7 @@
 .line-wrap .label { font-size: 13px; color: var(--dim); flex: none; white-space: nowrap; }
 .line-wrap svg { flex: 1; display: block; }
 .line-wrap .ends { flex: none; font-size: 20px; text-align: right; }
+td.outcome { font-weight: 800; }
 
 .split { display: flex; gap: 12px; }
 .split > div { flex: 1; min-width: 0; }
@@ -65,7 +68,7 @@
 </style>
 </head>
 <body class="mode-{{ v.mode }}">
-{% set tier = 'tier-%d' % v.score.tier if v.score and v.score.tier is defined else '' %}
+{% set tier = v.score.plate if v.score else '' %}
 <div class="stage">
   {% if show_images and v.maps and v.maps[0].image %}<div class="backdrop" style="background-image:url('{{ v.maps[0].image }}')"></div>{% endif %}
 
@@ -82,7 +85,10 @@
     </div>
     {% if v.score %}
     <div class="rank {{ tier }}">
-      <div class="rank-label">{{ v.score.label }}</div>
+      <div class="rank-label">
+        {% if v.score.name %}<span class="rank-name">{{ v.score.name }}</span>{% if v.score.stars is not none %}<span class="rank-stars num">★{{ v.score.stars }}</span>{% endif %}{% endif %}
+        {{ v.score.label }}
+      </div>
       <div class="plate"><span class="num">{{ "{:,}".format(v.score.value) }}</span></div>
     </div>
     {% endif %}
@@ -110,6 +116,30 @@
     </div>
     <div class="bars-head" style="margin-top:8px"><span>打出 1.0 以上 <b class="num win" style="font-size:16px">{{ v.bars['items'] | selectattr('good') | list | length }}</b> 场</span><span>最新一场 <b class="num" style="font-size:16px">{{ v.bars['items'][-1].value }}</b></span></div>
   </div>
+  {% endif %}
+
+  {% if v.recent %}
+  <div class="block-title">最近 {{ v.recent | length }} 场</div>
+  <table>
+    <tr>
+      <th>结果</th><th>时间</th><th>地图</th><th>比分</th><th>K/D/A</th><th>Rating</th>
+      {% if v.mode == 'pvp' %}<th>天梯分</th>{% endif %}
+    </tr>
+    {% for r in v.recent %}
+    <tr>
+      <td class="outcome {{ {'胜': 'win', '负': 'loss', '平': 'dim'}[r.outcome] }}">{{ r.outcome }}</td>
+      <td class="num dim">{{ r.time }}</td>
+      <td>{{ r.map }}</td>
+      <td class="num">{{ r.score }}</td>
+      <td class="num">{{ r.kda }}</td>
+      <td class="num">{{ r.rating }}</td>
+      {% if v.mode == 'pvp' %}
+      {% if r.change is none %}<td class="num dim">-</td>
+      {% else %}<td class="num {{ 'win' if r.change > 0 else 'loss' if r.change < 0 else 'dim' }}">{{ '★' if r.star }}{{ '%+d' % r.change }}</td>{% endif %}
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
   {% endif %}
 
   {% if v.trend2 %}

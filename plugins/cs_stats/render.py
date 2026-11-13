@@ -1,8 +1,8 @@
 """接口数据 → 模板上下文 → 图片。
 
 三种模式（完美天梯 pvp、官匹 mm、5E）各有一个生涯 view 和单局 view 构造函数。
-共用字段同名同义，锐评只读共用字段；各平台模板专用的字段（如 5E 的 honors、best_season）只出现在各自的 view 里。
-锐评的输入从 view 里取，卡片上看到的就是 LLM 看到的。
+共用字段同名同义，锐评只读共用字段；各平台模板专用的字段（如 5E 的 honors、best）只出现在各自的 view 里。
+锐评的输入从 view 里取；最近对局只有前 RECENT_ROWS 场（recent）画在卡片上，锐评读完整的 history。
 """
 
 import math
@@ -12,13 +12,19 @@ from nonebot import logger
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from plugins.cs_stats.config import TEMPLATE_DIR, plugin_config
-from plugins.cs_stats.fivee_api import avatar_url
+from plugins.cs_stats.fivee_api import avatar_url, level_icon, level_name
 from utils.rendering.engine import render_template
 
 WIDTH = 720
 # 头像、地图、武器图都是远程资源；等不到就渲染无图版，不退回文字
 IMAGE_TIMEOUT_MS = 15_000
 MODE_LABEL = {"pvp": "完美天梯", "mm": "官方匹配", "5e": "5E 优先排位"}
+# 完美生涯卡的柱状图和锐评看最近这么多场；卡片的逐场列表只画前几场，再长图就太长了
+HISTORY_MATCHES = 20
+RECENT_ROWS = 5
+# 完美天梯 2401 分起是 S 段，S 段内按星数分四档（0/10/25/50 星），接口的 slevel 就是档位
+PW_S_SCORE = 2401
+PW_S_TIERS = {0: "青铜", 1: "黄金", 2: "钻石", 3: "魔王"}
 RADAR_LABELS = (("shot", "枪法"), ("victory", "致胜"), ("breach", "突破"), ("snipe", "狙击"), ("prop", "道具"))
 # 完美单局的 first 列出本人在本队排第一的指标（second、third 是第二、第三，没用到）；不是全场排名
 RANK_FIELDS = {
@@ -109,14 +115,48 @@ def premier_tier(score: int) -> int:
     return min(max(score, 0) // 5000, 6)
 
 
+def _score(label: str, value: int | None, *, name=None, stars=None, icon="", plate="", position=None) -> dict:
+    """三个生涯 view 的 score 同形：段位名、星数、段位图标、分数牌颜色 class、排名，没有的留空"""
+    return {
+        "label": label, "value": value, "name": name, "stars": stars,
+        "icon": icon, "plate": plate, "position": position,
+    }
+
+
+def _pw_s(score) -> bool:
+    return int(score or 0) >= PW_S_SCORE
+
+
+def _pvp_score(stats: dict) -> dict:
+    """S 段的 pvpScore 锁在 2401；隐藏分、星数、S 段档位在 scoreList 最新一条"""
+    score = int(stats.get("pvpScore") or 0)
+    if not _pw_s(score):
+        return _score("天梯分", score)
+    latest = stats["scoreList"][0]
+    slevel = int(latest.get("slevel") or 0)
+    return _score(
+        "天梯分",
+        int(latest["score"]),
+        name=f"{PW_S_TIERS.get(slevel, '')} S".strip(),
+        stars=int(stats.get("stars") or 0),
+        plate=f"s-tier-{slevel}",
+    )
+
+
 def _pw_recent(items: list[dict], mode: str) -> list[dict]:
     result = []
-    for item in items[:5]:
+    for i, item in enumerate(items):
         team = int(item["team"])
         mine, theirs = (item["score1"], item["score2"]) if team == 1 else (item["score2"], item["score1"])
         outcome = "平" if mine == theirs else ("胜" if team == int(item["winTeam"]) else "负")
         rating = item["pwRating"] if mode == "pvp" and float(item.get("pwRating") or 0) else item["rating"]
-        change = int(item.get("pvpScoreChange") or 0) if mode == "pvp" else None
+        star = mode == "pvp" and _pw_s(item.get("pvpScore"))
+        if star:
+            # S 段每局的分数变化都是 0，只给打完后的星数；和更早一局相减，最早那局算不出
+            older = items[i + 1] if i + 1 < len(items) else None
+            change = int(item.get("pvpStars") or 0) - int(older.get("pvpStars") or 0) if older else None
+        else:
+            change = int(item.get("pvpScoreChange") or 0) if mode == "pvp" else None
         result.append({
             "map": item.get("mapName") or "",
             "outcome": outcome,
@@ -125,6 +165,7 @@ def _pw_recent(items: list[dict], mode: str) -> list[dict]:
             "rating": _f(rating),
             "time": str(item.get("startTime") or "")[5:16],
             "change": change,
+            "star": star,
         })
     return result
 
@@ -159,6 +200,7 @@ def _pw_weapons(stats: dict) -> list[dict]:
 
 def pvp_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str) -> dict:
     count = int(stats.get("cnt") or 0)
+    history = _pw_recent(recent, "pvp")
     return {
         "platform": "pw",
         "mode": "pvp",
@@ -166,7 +208,7 @@ def pvp_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str
         "nickname": stats.get("name") or account["nickname"],
         "avatar": avatar,
         "scope": f"{stats.get('seasonId')} 赛季 {count} 场",
-        "score": {"label": "天梯分", "value": int(stats.get("pvpScore") or 0)},
+        "score": _pvp_score(stats),
         "badge": stats.get("summary") or "",
         "core": [
             {"label": "完美 Rating", "value": _f(stats.get("pwRating"))},
@@ -187,19 +229,21 @@ def pvp_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str
             {"label": "平均 WE", "value": _f(stats.get("avgWe"), 1)},
         ],
         "radar": _radar(stats),
-        "trend": _sparkline(list(reversed(stats.get("historyPwRatings") or stats.get("historyRatings") or []))[-20:]),
-        "bars": _bars(list(reversed(stats.get("historyPwRatings") or stats.get("historyRatings") or []))[-20:]),
+        "trend": _sparkline(list(reversed(stats.get("historyPwRatings") or stats.get("historyRatings") or []))[-HISTORY_MATCHES:]),
+        "bars": _bars(list(reversed(stats.get("historyPwRatings") or stats.get("historyRatings") or []))[-HISTORY_MATCHES:]),
         "trend_label": "近期完美 Rating",
-        "trend2": _sparkline(list(reversed(stats.get("historyScores") or []))[-20:]),
+        "trend2": _sparkline(list(reversed(stats.get("historyScores") or []))[-HISTORY_MATCHES:]),
         "trend2_label": "天梯分走势",
         "maps": _pw_maps(stats),
         "weapons": _pw_weapons(stats),
-        "recent": _pw_recent(recent, "pvp"),
+        "recent": history[:RECENT_ROWS],
+        "history": history,
     }
 
 
 def mm_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str) -> dict:
     premier = int(stats.get("rank") or 0)
+    history = _pw_recent(recent, "mm")
     return {
         "platform": "pw",
         "mode": "mm",
@@ -207,7 +251,7 @@ def mm_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str)
         "nickname": stats.get("nickName") or account["nickname"],
         "avatar": avatar,
         "scope": f"最近 {stats.get('cnt')} 局，游戏时长 {stats.get('hours')} 小时",
-        "score": {"label": "Premier", "value": premier, "tier": premier_tier(premier)} if premier else None,
+        "score": _score("Premier", premier, plate=f"tier-{premier_tier(premier)}") if premier else None,
         "badge": "",
         "core": [
             {"label": "Rating", "value": _f(stats.get("rating"))},
@@ -228,20 +272,21 @@ def mm_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str)
             {"label": "历史胜场", "value": str(stats.get("historyWinCount") or 0)},
         ],
         "radar": None,
-        "trend": _sparkline(list(reversed(stats.get("historyRatings") or []))[-20:]),
-        "bars": _bars(list(reversed(stats.get("historyRatings") or []))[-20:]),
+        "trend": _sparkline(list(reversed(stats.get("historyRatings") or []))[-HISTORY_MATCHES:]),
+        "bars": _bars(list(reversed(stats.get("historyRatings") or []))[-HISTORY_MATCHES:]),
         "trend_label": "近期 Rating",
         "trend2": _sparkline([v for v in reversed(stats.get("historyComprehensiveScores") or []) if v]),
         "trend2_label": "Premier 走势",
         "maps": _pw_maps(stats),
         "weapons": _pw_weapons(stats),
-        "recent": _pw_recent(recent, "mm"),
+        "recent": history[:RECENT_ROWS],
+        "history": history,
     }
 
 
 def _fivee_recent(items: list[dict]) -> list[dict]:
     result = []
-    for item in items[:5]:
+    for item in items:
         outcome = "平" if item.get("is_tie") else ("胜" if item.get("is_win") else "负")
         # 列表里不写本人在哪一方，按胜负把大比分放前面
         high, low = sorted([int(item["group1_all_score"]), int(item["group2_all_score"])], reverse=True)
@@ -257,11 +302,67 @@ def _fivee_recent(items: list[dict]) -> list[dict]:
     return result
 
 
-def fivee_profile_view(career: dict, recent: list[dict], arena: dict, account: dict) -> dict:
+def _fivee_detail_row(match: dict) -> dict:
+    """gate 列表之外更早的几场，用单局 view 拼成和 _fivee_recent 同样的行"""
+    me = match["me"]
+    return {
+        "map": match["map_name"],
+        "outcome": match["outcome"],
+        "score": match["score"],
+        "kda": f"{me['k']}/{me['d']}",
+        "rating": me["rating"],
+        "time": match["time"],
+        "change": me["score_change"],
+    }
+
+
+def _fivee_stars(name: str, stars) -> int | None:
+    """只有 S 级段位有星数"""
+    return int(stars or 0) if name.startswith("S") else None
+
+
+def fivee_current(home: dict, recent: list[dict]) -> dict:
+    """当前赛季。match_status 3 是定级中，这时 level_id 可能没有，有也只是暂定"""
+    season = home["elo_info"]["modes"]["9"]
+    level_type = int(season.get("level_type") or 2)
+    if season.get("match_status") == 3 or not season.get("level_id"):
+        return _score("本赛季 ELO", None, name="定级中", icon=level_icon(level_type, None))
+    level_id = int(season["level_id"])
+    name = level_name(level_type, level_id)
+    # 当前赛季接口不带星数，读最近一局打完时的
+    stars = _fivee_stars(name, (recent[0].get("level_info") or {}).get("star_num")) if recent else None
+    return _score(
+        "本赛季 ELO",
+        round(float(season["elo"])),
+        name=name,
+        stars=stars,
+        icon=level_icon(level_type, level_id),
+        position=int(season.get("rank") or 0) or None,
+    )
+
+
+def _fivee_best(home: dict) -> dict | None:
+    career = home["career"]
+    if not career.get("level_id"):
+        return None
+    level_type, level_id = int(career["level_type"]), int(career["level_id"])
+    name = level_name(level_type, level_id)
+    return {
+        "season": career.get("best_season") or "",
+        "name": name,
+        "stars": _fivee_stars(name, career.get("star_num")),
+        "value": round(float(career.get("elo") or 0)),
+        "icon": level_icon(level_type, level_id),
+    }
+
+
+def fivee_profile_view(
+    career: dict, home: dict, recent: list[dict], arena: dict, older: list[dict], account: dict
+) -> dict:
+    """career 取生涯统计，home 取当前赛季和最佳赛季的段位；older 是 gate 列表之外更早几场的单局详情"""
     extra = arena["data"]
-    level = (recent[0].get("level_info") or {}).get("level_name") if recent else ""
-    chart = (arena.get("recent_match") or {}).get("chart") or {}
     total = int(career.get("match_total") or 0)
+    history = _fivee_recent(recent) + [_fivee_detail_row(fivee_match_view(d, account["uuid"])) for d in older]
     return {
         "platform": "5e",
         "mode": "5e",
@@ -269,10 +370,10 @@ def fivee_profile_view(career: dict, recent: list[dict], arena: dict, account: d
         "nickname": account["nickname"],
         "avatar": account.get("avatar") or "",
         "account_id": account["id"],
-        "best_season": career.get("best_season") or "",
         "scope": f"生涯 {total} 场，胜 {career.get('win_total')} 平 {career.get('tie_total')} 负 {career.get('loss_total')}",
-        "score": {"label": "ELO", "value": round(float(career.get("elo_9") or 0)), "level": level or ""},
-        "badge": f"最佳赛季 {career['best_season']}" if career.get("best_season") else "",
+        "score": fivee_current(home, recent),
+        "best": _fivee_best(home),
+        "badge": "",
         "core": [
             {"label": "Rating", "value": _f(career.get("rating"))},
             {"label": "ADR", "value": _f(career.get("adr"), 1)},
@@ -292,13 +393,14 @@ def fivee_profile_view(career: dict, recent: list[dict], arena: dict, account: d
             {"label": "最长连胜", "value": str(career.get("win_streak") or 0)},
         ],
         "radar": None,
-        "trend": _sparkline(list(reversed(chart.get("y") or []))),
-        "trend_label": "近 10 场 Rating",
+        "trend": _sparkline([float(r["rating"]) for r in reversed(history)]),
+        "trend_label": f"近 {len(history)} 场 Rating",
         "trend2": None,
         "trend2_label": "",
         "maps": [],
         "weapons": [],
-        "recent": _fivee_recent(recent),
+        "recent": history[:RECENT_ROWS],
+        "history": history,
     }
 
 
@@ -355,6 +457,8 @@ def pw_match_view(detail: dict, steam_id: str, mode: str) -> dict:
             "kast": f"{float(p['kast']):.0f}%" if mode == "mm" else None,
             "mvp": bool(p.get("mvp")),
             "score_change": int(p.get("pvpScoreChange") or 0) if mode == "pvp" else None,
+            # S 段单局只给赛后星数，算不出变化，卡片直接显示星数
+            "stars": int(p.get("pvpStars") or 0) if mode == "pvp" and _pw_s(p.get("pvpScore")) else None,
             "multi": f"{p.get('threeKill') or 0}/{p.get('fourKill') or 0}/{p.get('fiveKill') or 0}",
             "is_self": str(p["playerId"]) == steam_id,
             "raw": p,
@@ -422,6 +526,7 @@ def fivee_match_view(detail: dict, uuid: str) -> dict:
                 "kast": _pct(fight.get("kast")),
                 "mvp": str(fight.get("is_mvp")) == "1",
                 "score_change": round(float((p.get("sts") or {}).get("change_elo") or 0)),
+                "stars": None,
                 "multi": f"{fight.get('kill_3')}/{fight.get('kill_4')}/{fight.get('kill_5')}",
                 "is_self": user["uuid"] == uuid,
                 "raw": fight,

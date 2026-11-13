@@ -33,7 +33,7 @@ MODE_WORDS = {"pvp": ("完美",), "mm": ("官匹",), "5e": ("5e", "5E")}
 PLATFORM_WORDS = {"pw": ("完美", "官匹"), "5e": ("5e", "5E")}
 MODE_PLATFORM = {"pvp": "pw", "mm": "pw", "5e": "5e"}
 MAX_CANDIDATES = 5
-# 完美对局列表一页最多拉这么多，最近第 N 局的 N 不超过它
+# 最近第 N 局的 N 上限（完美对局列表一页实测能拉 50 场）
 MAX_NTH = 20
 
 
@@ -151,15 +151,22 @@ async def _render(matcher: type[Matcher], coro) -> bytes:
 async def load_profile(mode: str, account: dict) -> tuple[dict, str]:
     """返回（生涯 view, 生涯锐评的水位）"""
     if mode == "5e":
-        career, recent, arena = await asyncio.gather(
-            fivee_api.career(account["uuid"]), fivee_api.matches(account["uuid"]), fivee_api.arena(account["id"])
+        career, home, recent, arena = await asyncio.gather(
+            fivee_api.career(account["uuid"]),
+            fivee_api.home(account["uuid"]),
+            fivee_api.matches(account["uuid"]),
+            fivee_api.arena(account["id"]),
         )
-        view = render.fivee_profile_view(career, recent, arena, account)
+        # gate 列表只有 5 场；arena 有 10 场的对局号，但它的 Rating 是 1.0 版，缺的几场另调 gate 单局详情
+        known = {m["match_id"] for m in recent}
+        older_ids = [m["match_code"] for m in arena.get("match") or [] if m["match_code"] not in known]
+        older = await asyncio.gather(*(fivee_api.match_detail(match_id) for match_id in older_ids))
+        view = render.fivee_profile_view(career, home, recent, arena, older, account)
         latest = recent[0]["match_id"] if recent else ""
         return view, f"{career.get('match_total')}:{latest}"
     stats_call = pw_api.pvp_stats if mode == "pvp" else pw_api.official_stats
     stats, (public, recent), avatar = await asyncio.gather(
-        stats_call(account["id"]), pw_api.match_list(account["id"], mode, size=5), pw_api.steam_avatar(account["id"])
+        stats_call(account["id"]), pw_api.match_list(account["id"], mode, size=render.HISTORY_MATCHES), pw_api.steam_avatar(account["id"])
     )
     if not public:
         raise QueryError("对方没有公开完美战绩")
@@ -296,17 +303,18 @@ async def search_candidates(platform: str, keyword: str) -> list[dict]:
         ]
     found = (await fivee_api.search(keyword))[:MAX_CANDIDATES]
     uuids = await asyncio.gather(*(fivee_api.uuid_of(c["id"]) for c in found))
-    careers = await asyncio.gather(*(fivee_api.career(uuid) for uuid in uuids))
-    return [
-        {
+    homes = await asyncio.gather(*(fivee_api.home(uuid) for uuid in uuids))
+    candidates = []
+    for c, uuid, home in zip(found, uuids, homes):
+        current = render.fivee_current(home, [])
+        candidates.append({
             **c,
             "uuid": uuid,
-            "score_label": "ELO",
-            "score": round(float(career.get("elo_9") or 0)) or "-",
-            "extra": f"生涯 {career.get('match_total') or 0} 场",
-        }
-        for c, uuid, career in zip(found, uuids, careers)
-    ]
+            "score_label": "本赛季 ELO",
+            "score": current["value"] or current["name"],
+            "extra": f"生涯 {home['career'].get('match_total') or 0} 场",
+        })
+    return candidates
 
 
 def _choose(candidates: list[dict], reply: str) -> dict | None:

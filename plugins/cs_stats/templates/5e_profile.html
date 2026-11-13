@@ -19,6 +19,18 @@
 .total { width: 150px; flex: none; border: 1.5px solid var(--ink); background: var(--cell); text-align: center; padding: 8px 0; }
 .total-num { margin-top: 10px; font-size: 40px; font-weight: 900; }
 .total-sub { font-size: 13px; color: var(--pencil); }
+.total-num.pending { font-size: 30px; margin-top: 18px; color: var(--pencil); }
+.grade-icon { margin-top: 2px; }
+.grade-icon img { height: 80px; display: block; margin: 0 auto; }
+.grade-name { font-size: 15px; font-weight: 900; color: var(--red); }
+.grade-fallback { position: relative; }
+.grade-letter.len-2 { font-size: 54px; }
+.grade-letter.len-3 { font-size: 42px; line-height: 1.6; }
+.grade-fallback .pen-circle { top: 0; }
+.best { display: inline-flex; align-items: center; gap: 6px; }
+.best img { height: 30px; }
+.best > span { white-space: nowrap; }
+.best-elo { display: block; }
 .chart { flex: 1; border: 1.5px solid var(--ink); background: var(--cell); padding: 8px 12px; }
 .chart-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--pencil); }
 .chart svg { display: block; margin-top: 4px; }
@@ -48,19 +60,42 @@
     </tr>
     <tr>
       <th>出勤</th><td>{{ v.scope }}</td>
-      <th>最佳赛季</th><td>{{ v.best_season or '无' }}</td>
+      <th>最佳赛季</th>
+      <td>
+        {% if v.best %}
+        <span class="best">
+          {% if show_images %}<img src="{{ v.best.icon }}" onerror="this.remove()">{% endif %}
+          <span>{{ v.best.season }} {{ v.best.name }}{% if v.best.stars is not none %} ★{{ v.best.stars }}{% endif %}<span class="pencil best-elo">ELO {{ v.best.value }}</span></span>
+        </span>
+        {% else %}无{% endif %}
+      </td>
     </tr>
   </table>
 
   <div class="grade-row">
     <div class="grade">
-      <div class="grade-label">段位</div>
-      <div class="grade-letter">{{ v.score.level or '?' }}</div>
-      <svg class="pen-circle" viewBox="0 0 96 82"><path d="M18 22 C30 4, 82 2, 90 34 C97 62, 56 80, 30 74 C6 68, 2 40, 22 20 C30 13, 44 10, 56 11"/></svg>
+      <div class="grade-label">本赛季段位</div>
+      {% if show_images %}
+      <div class="grade-icon">
+        <img src="{{ v.score.icon }}" onerror="this.parentNode.style.display='none';this.parentNode.nextElementSibling.style.display='block'">
+        <div class="grade-name">{{ v.score.name }}{% if v.score.stars is not none %} ★{{ v.score.stars }}{% endif %}</div>
+      </div>
+      {% endif %}
+      {# 无图版和图标加载失败时用红笔圈字母 #}
+      <div class="grade-fallback" {% if show_images %}style="display:none"{% endif %}>
+        {% set letter = '?' if v.score.value is none else v.score.name %}
+        <div class="grade-letter len-{{ letter | length }}">{{ letter }}</div>
+        <svg class="pen-circle" viewBox="0 0 96 82"><path d="M18 22 C30 4, 82 2, 90 34 C97 62, 56 80, 30 74 C6 68, 2 40, 22 20 C30 13, 44 10, 56 11"/></svg>
+      </div>
     </div>
     <div class="total">
-      <div class="grade-label">总分 ELO</div>
+      <div class="grade-label">本赛季 ELO</div>
+      {% if v.score.value is none %}
+      <div class="total-num pending">定级中</div>
+      {% else %}
       <div class="total-num">{{ v.score.value }}</div>
+      {% if v.score.position %}<div class="total-sub">全服第 {{ v.score.position }} 名</div>{% endif %}
+      {% endif %}
     </div>
     {% if v.trend %}
     <div class="chart">
