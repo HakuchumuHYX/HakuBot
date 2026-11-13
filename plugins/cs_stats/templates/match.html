@@ -4,52 +4,56 @@
 <meta charset="utf-8">
 <style>
 {{ font_css | safe }}
-{% include "pw_base.css" %}
-.hero { padding-top: 120px; display: flex; align-items: flex-end; gap: 14px; }
+{% include "base.css" %}
+.hero { padding-top: 112px; display: flex; align-items: flex-end; gap: 14px; }
+.bare .hero { padding-top: 26px; }
 .map-logo { width: 72px; height: 72px; object-fit: contain; flex: none; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6)); }
 .info { flex: 1; min-width: 0; }
 .map { font-size: 30px; font-weight: 800; line-height: 1.15; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); }
-.meta { margin-top: 6px; display: flex; gap: 12px; font-size: 14px; color: #c9d2dc; }
+.meta { margin-top: 6px; display: flex; gap: 12px; font-size: 14px; color: var(--soft); }
 .meta b { color: var(--text); }
 .result { flex: none; text-align: right; }
-.result .num { font-size: 72px; line-height: 0.9; text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55); }
-.result-sub { margin-top: 6px; font-size: 13px; color: #c9d2dc; }
+.result .num { font-size: 76px; line-height: 0.9; text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55); }
+.result-sub { margin-top: 6px; font-size: 13px; color: var(--soft); }
 
 .rounds { margin-top: 18px; padding: 10px 14px; display: flex; align-items: center; gap: 3px; }
 .rounds-label { font-size: 13px; color: var(--dim); margin-right: 10px; flex: none; }
-.r { flex: 1; max-width: 22px; height: 16px; background: var(--loss); }
+.r { flex: 1; max-width: 22px; height: 14px; background: var(--loss); opacity: 0.85; }
 .r.win { background: var(--win); }
 .r.half { margin-left: 10px; }
 
-.facts { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.fact { font-size: 14px; padding: 6px 12px; background: var(--glass); border: 1px solid var(--rule); }
-.fact .num { font-size: 18px; }
+.facts { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fact { font-size: 15px; padding: 6px 12px; background: var(--glass); border: 1px solid var(--rule); }
+.fact .num { font-size: 20px; margin: 0 2px; }
+.feed {
+  display: inline-flex; align-items: center; gap: 8px; height: 37px; padding: 0 12px;
+  background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(240, 100, 90, 0.55);
+}
 .feed .killer { color: var(--loss); font-weight: 700; }
-.feed .skull { font-size: 15px; }
-.feed .times { font-size: 18px; margin-left: 4px; }
-.fun { font-size: 13px; padding: 5px 10px; border: 1px dashed rgba(255, 255, 255, 0.25); color: #c9d2dc; }
-.fun b { color: var(--text); }
-.first { font-size: 13px; padding: 5px 10px; background: rgba(217, 163, 58, 0.18); color: var(--plate); font-weight: 700; }
+.feed .times { font-size: 18px; }
 
-.team { margin-top: 14px; }
+.team { margin-top: 16px; }
 .team-head { display: flex; align-items: baseline; gap: 10px; padding: 0 2px 6px; }
 .team-head .label { font-size: 16px; font-weight: 800; }
 .team-head .num { font-size: 26px; }
-th:first-child { text-align: left; padding-left: 12px; }
-td.player { text-align: left; padding-left: 12px; }
-.player-inner { display: flex; align-items: center; gap: 8px; max-width: 200px; }
+th:first-child { width: 196px; text-align: left; padding-left: 12px; }
+td.player { text-align: left; padding-left: 12px; color: var(--text); }
+.player-inner { display: flex; align-items: center; gap: 8px; max-width: 170px; }
+.player-inner img { width: 24px; height: 24px; flex: none; object-fit: cover; background: #1b2531; }
 .player-inner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-tr.self td { background: rgba(217, 163, 58, 0.16); }
+tr.self td { background: color-mix(in srgb, var(--plate) 14%, transparent); }
 tr.self td.player { box-shadow: inset 4px 0 0 var(--plate); font-weight: 700; }
 td.stars { color: var(--plate); }
 .mvp { font-size: 11px; padding: 0 5px; background: var(--plate); color: #10161e; font-weight: 700; flex: none; }
 </style>
 </head>
 <body class="mode-{{ v.mode }}">
-<div class="stage">
-  {% if show_images and v.backdrop %}<div class="backdrop" style="background-image:url('{{ v.backdrop }}')"></div>{% endif %}
+{% set backdrop = v.backdrop if show_images and v.backdrop else '' %}
+{% set change_label = {'pvp': '天梯分', '5e': 'ELO'}.get(v.mode) %}
+<div class="stage {{ '' if backdrop else 'bare' }}">
+  {% if backdrop %}<div class="backdrop" style="background-image:url('{{ backdrop }}')"></div>{% endif %}
 
-  <div class="hero" {% if not (show_images and v.backdrop) %}style="padding-top: 28px"{% endif %}>
+  <div class="hero">
     {% if show_images and v.map_logo %}<img class="map-logo" src="{{ v.map_logo }}" onerror="this.remove()">{% endif %}
     <div class="info">
       <div class="map">{{ v.map_name }}</div>
@@ -69,12 +73,14 @@ td.stars { color: var(--plate); }
   {% endif %}
 
   <div class="facts">
-    <span class="fact">{{ v.me.name }} 的 Rating 全场第 <b class="num">{{ v.my_rank }}</b></span>
+    <span class="fact">{{ v.me.name }} 的 Rating 全场第<b class="num">{{ v.my_rank }}</b></span>
+    {% if v.mode == '5e' %}<span class="fact">ELO<b class="num {{ 'win' if v.me.score_change > 0 else 'loss' if v.me.score_change < 0 else 'dim' }}">{{ '%+d' % v.me.score_change }}</b></span>{% endif %}
     {% if v.top_killer %}
-    <span class="feed"><span class="killer">{{ v.top_killer[0] }}</span><span class="skull">☠</span><span>{{ v.me.name }}</span><span class="times num">×{{ v.top_killer[1] }}</span></span>
+    <span class="feed"><span class="killer">{{ v.top_killer[0] }}</span><span>☠</span><span>{{ v.me.name }}</span><span class="times num">×{{ v.top_killer[1] }}</span></span>
     {% endif %}
-    {% for item in v.firsts %}<span class="first">{{ item }}队内第一</span>{% endfor %}
-    {% for item in v.interests %}<span class="fun">{{ item.name }}：{{ item.message }} <b>{{ item.value }}</b></span>{% endfor %}
+    {% for h in v.honors %}<span class="chip hot">{{ h }}</span>{% endfor %}
+    {% for item in v.firsts %}<span class="chip hot">{{ item }}队内第一</span>{% endfor %}
+    {% for item in v.interests %}<span class="chip">{{ item.name }}：{{ item.message }} <b>{{ item.value }}</b></span>{% endfor %}
   </div>
 
   {% if roast %}
@@ -93,27 +99,28 @@ td.stars { color: var(--plate); }
     <table>
       <tr>
         <th>玩家</th><th>击杀</th><th>死亡</th><th>助攻</th><th>ADR</th><th>Rating</th><th>爆头</th><th>首杀/首死</th>
-        {% if v.mode == 'mm' %}<th>KAST</th>{% endif %}
+        {% if v.me.kast is not none %}<th>KAST</th>{% endif %}
         <th>3K/4K/5K</th>
-        {% if v.mode == 'pvp' %}<th>天梯分</th>{% endif %}
+        {% if change_label %}<th>{{ change_label }}</th>{% endif %}
       </tr>
       {% for p in team.players %}
       <tr class="{{ 'self' if p.is_self }}">
         <td class="player"><div class="player-inner">
+          {% if show_images and p.avatar %}<img src="{{ p.avatar }}" onerror="this.style.visibility='hidden'">{% endif %}
           <span>{{ p.name }}</span>{% if p.mvp %}<span class="mvp">MVP</span>{% endif %}
         </div></td>
         <td class="num">{{ p.k }}</td>
         <td class="num">{{ p.d }}</td>
         <td class="num">{{ p.a }}</td>
         <td class="num">{{ p.adr }}</td>
-        <td class="num">{{ p.rating }}</td>
+        <td class="num key">{{ p.rating }}</td>
         <td class="num">{{ p.hs }}</td>
         <td class="num">{{ p.fk }}/{{ p.fd }}</td>
-        {% if v.mode == 'mm' %}<td class="num">{{ p.kast }}</td>{% endif %}
+        {% if v.me.kast is not none %}<td class="num">{{ p.kast }}</td>{% endif %}
         <td class="num">{{ p.multi }}</td>
-        {% if v.mode == 'pvp' %}
+        {% if change_label %}
         {% if p.stars is not none %}<td class="num stars">★{{ p.stars }}</td>
-        {% else %}<td class="num {{ 'win' if p.score_change > 0 else 'loss' if p.score_change < 0 else 'dim' }}">{{ '%+d' % p.score_change }}</td>{% endif %}
+        {% else %}<td class="num {{ 'win' if p.score_change > 0 else 'loss' if p.score_change < 0 else 'faint' }}">{{ '%+d' % p.score_change }}</td>{% endif %}
         {% endif %}
       </tr>
       {% endfor %}

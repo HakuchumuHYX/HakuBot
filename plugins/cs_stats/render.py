@@ -212,13 +212,13 @@ def pvp_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str
         "badge": stats.get("summary") or "",
         "core": [
             {"label": "完美 Rating", "value": _f(stats.get("pwRating"))},
-            {"label": "Rating", "value": _f(stats.get("rating"))},
             {"label": "ADR", "value": _f(stats.get("adr"), 1)},
             {"label": "RWS", "value": _f(stats.get("rws"), 1)},
             {"label": "K/D", "value": _f(stats.get("kd"))},
             {"label": "胜率", "value": _pct(stats.get("winRate"))},
         ],
         "details": [
+            {"label": "Rating", "value": _f(stats.get("rating"))},
             {"label": "爆头率", "value": _pct(stats.get("headShotRatio"))},
             {"label": "首杀率", "value": _pct(stats.get("entryKillRatio"))},
             _group("击杀/死亡/助攻", {"击杀": stats.get("kills"), "死亡": stats.get("deaths"), "助攻": stats.get("assists")}),
@@ -258,10 +258,10 @@ def mm_profile_view(stats: dict, recent: list[dict], account: dict, avatar: str)
             {"label": "ADR", "value": _f(stats.get("adr"), 1)},
             {"label": "KAST", "value": f"{stats.get('kast')}%"},
             {"label": "RWS", "value": _f(stats.get("rws"), 1)},
-            {"label": "K/D", "value": _f(stats.get("kd"))},
             {"label": "胜率", "value": _pct(stats.get("winRate"))},
         ],
         "details": [
+            {"label": "K/D", "value": _f(stats.get("kd"))},
             {"label": "爆头率", "value": _pct(stats.get("headShotRatio"))},
             {"label": "首杀率", "value": _pct(stats.get("entryKillRatio"))},
             {"label": "狙杀占比", "value": _pct(stats.get("awpKillRatio"))},
@@ -378,11 +378,11 @@ def fivee_profile_view(
             {"label": "Rating", "value": _f(career.get("rating"))},
             {"label": "ADR", "value": _f(career.get("adr"), 1)},
             {"label": "RWS", "value": _f(career.get("rws"), 1)},
-            {"label": "KPR", "value": _f(career.get("kpr"))},
             {"label": "KAST", "value": _pct(extra.get("kast"))},
             {"label": "胜率", "value": _pct(career.get("per_win_match"))},
         ],
         "details": [
+            {"label": "KPR", "value": _f(career.get("kpr"))},
             {"label": "爆头率", "value": _pct(extra.get("per_headshot"))},
             _group("首杀/首死", {"首杀": extra.get("first_kill"), "首死": extra.get("first_death")}),
             _group("2K/3K/4K/5K", {f"{n}K": extra.get(f"kill_{n}") for n in range(2, 6)}),
@@ -394,6 +394,7 @@ def fivee_profile_view(
         ],
         "radar": None,
         "trend": _sparkline([float(r["rating"]) for r in reversed(history)]),
+        "bars": _bars([r["rating"] for r in reversed(history)]),
         "trend_label": f"近 {len(history)} 场 Rating",
         "trend2": None,
         "trend2_label": "",
@@ -580,11 +581,11 @@ async def _render(template: str, **context) -> bytes:
 
 
 async def render_profile(view: dict, roast: dict | None = None) -> bytes:
-    return await _render(f"{view['platform']}_profile.html", v=view, roast=roast)
+    return await _render("profile.html", v=view, roast=roast)
 
 
 async def render_match(view: dict, roast: dict | None = None) -> bytes:
-    return await _render(f"{view['platform']}_match.html", v=view, roast=roast)
+    return await _render("match.html", v=view, roast=roast)
 
 
 async def render_candidates(platform: str, candidates: list[dict], purpose: str) -> bytes:

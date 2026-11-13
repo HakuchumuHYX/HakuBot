@@ -4,39 +4,26 @@
 <meta charset="utf-8">
 <style>
 {{ font_css | safe }}
-{% if platform == 'pw' %}{% include "pw_base.css" %}{% else %}{% include "5e_base.css" %}{% endif %}
-.wrap { padding: 24px 24px 0; }
-.sheet { padding-bottom: 0; }
+{% include "base.css" %}
+.wrap { padding: 24px 24px 0; border-top: 4px solid var(--plate); }
 .head { font-size: 22px; font-weight: 800; }
-.hint { margin-top: 4px; font-size: 14px; }
+.hint { margin-top: 4px; font-size: 14px; color: var(--dim); }
 .list { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
-.item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; }
-.no { width: 36px; flex: none; font-size: 30px; text-align: center; }
-.avatar { width: 54px; height: 54px; object-fit: cover; flex: none; }
+.item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--glass); border: 1px solid var(--rule); }
+.no { width: 36px; flex: none; font-size: 30px; text-align: center; color: var(--plate); }
+.avatar { width: 54px; height: 54px; object-fit: cover; flex: none; background: #1b2531; border: 1px solid rgba(255, 255, 255, 0.4); }
 .avatar-fallback { display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; }
 .who { flex: 1; min-width: 0; }
 .name { font-size: 18px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.id { margin-top: 2px; font-size: 13px; }
+.id { margin-top: 2px; font-size: 13px; color: var(--dim); }
 .score { text-align: right; flex: none; }
-.score-label { font-size: 12px; }
+.score-label { font-size: 12px; color: var(--dim); }
 .score-value { font-size: 24px; }
-/* 完美：HUD 选人列表 */
-.pw .item { background: var(--glass); border: 1px solid var(--rule); }
-.pw .no { color: var(--plate); }
-.pw .avatar { background: #1b2531; border: 1px solid rgba(255, 255, 255, 0.4); }
-.pw .id, .pw .hint, .pw .score-label { color: var(--dim); }
-/* 5E：核对学籍的表格 */
-.fivee .item { background: var(--cell); border: 1.5px solid var(--ink); }
-.fivee .no { color: var(--red); font-weight: 900; }
-.fivee .avatar { background: #dde7f3; }
-.fivee .id, .fivee .hint, .fivee .score-label { color: var(--pencil); }
-.fivee .score-value { font-weight: 900; }
 </style>
 </head>
-<body class="{{ 'pw' if platform == 'pw' else 'fivee' }}">
-<div class="{{ 'wrap' if platform == 'pw' else 'sheet' }}">
-  {% if platform != 'pw' %}<div class="letterhead"><span class="crest">5E</span><span>5E 对战平台</span></div>{% endif %}
-  <div class="head" {% if platform != 'pw' %}style="margin-top:10px"{% endif %}>{{ purpose }}哪个{{ '完美' if platform == 'pw' else ' 5E ' }}账号？</div>
+<body class="mode-{{ 'pvp' if platform == 'pw' else '5e' }}">
+<div class="wrap">
+  <div class="head">{{ purpose }}哪个{{ '完美' if platform == 'pw' else ' 5E ' }}账号？</div>
   <div class="hint">{{ '看看是不是这个号' if candidates | length == 1 else '搜到 %d 个号，回复序号选一个' % (candidates | length) }}</div>
   <div class="list">
     {% for c in candidates %}

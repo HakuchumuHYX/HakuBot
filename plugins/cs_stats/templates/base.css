@@ -1,19 +1,23 @@
-/* 完美 / 官匹：赛后 HUD。地图实拍做背景，Barlow Condensed 写数字，Premier 分段色做军衔牌。
-   游戏 HUD 本来就是暗色，不随昼夜切换。 */
+/* CS2 赛后 HUD，完美和 5E 共用：地图实拍做背景，Barlow Condensed 写数字，段位牌用 CS2 的斜切造型。
+   游戏 HUD 本来就是暗色，不随昼夜切换。
+   层级：段位牌 / 大比分是唯一用段位色的大块；结论信息放面板、白字；参考信息不放面板、用浅色。 */
 @font-face { font-family: "Barlow"; src: url("fonts/BarlowCondensed-SemiBold.ttf"); font-weight: 600; }
 @font-face { font-family: "Barlow"; src: url("fonts/BarlowCondensed-Bold.ttf"); font-weight: 700; }
 
 :root {
   --void: #10161e;
   --glass: rgba(20, 28, 38, 0.88);
-  --glass-hi: rgba(255, 255, 255, 0.06);
+  --glass-hi: rgba(255, 255, 255, 0.05);
   --rule: rgba(255, 255, 255, 0.09);
   --text: #eef2f5;
+  --soft: #c3ccd6;
   --dim: #8e9aa8;
+  --faint: #5c6876;
   --win: #6fd08c;
   --loss: #f0645a;
   --plate: #d9a33a;
 }
+.mode-5e { --plate: #ff6a00; }
 /* CS2 Premier 分段色，每 5000 一档 */
 .tier-0 { --plate: #b0c3d9; }
 .tier-1 { --plate: #8cc6ff; }
@@ -38,44 +42,46 @@ body {
 }
 .num { font-family: "Barlow", Haku, sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; }
 .dim { color: var(--dim); }
+.faint { color: var(--faint); }
 .win { color: var(--win); }
 .loss { color: var(--loss); }
 
-/* 顶部地图实拍，向下融进底色 */
+/* 顶部地图实拍，向下融进底色；没有实拍时顶上留一道段位色 */
 .stage { position: relative; padding: 0 24px; }
 .backdrop {
-  position: absolute; inset: 0 0 auto 0; height: 300px;
+  position: absolute; inset: 0 0 auto 0; height: 260px;
   background-size: cover; background-position: center 40%;
 }
 .backdrop::after {
   content: ""; position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(16, 22, 30, 0.35) 0%, rgba(16, 22, 30, 0.7) 55%, var(--void) 100%);
+  background: linear-gradient(180deg, rgba(16, 22, 30, 0.45) 0%, rgba(16, 22, 30, 0.8) 60%, var(--void) 100%);
 }
+.stage.bare { border-top: 4px solid var(--plate); }
 .stage > :not(.backdrop) { position: relative; }
 
-/* 军衔牌：CS2 段位牌的斜切造型 */
+/* 段位牌：CS2 段位牌的斜切造型 */
 .plate {
   display: inline-flex; align-items: center; height: 58px; padding: 0 26px 0 22px;
   background: var(--plate); color: #10161e;
   clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
 }
-.plate .num { font-size: 46px; line-height: 1; letter-spacing: 0.5px; }
+.plate .num { font-size: 48px; line-height: 1; letter-spacing: 0.5px; }
 
 .panel { background: var(--glass); border: 1px solid var(--rule); }
-.block-title { font-size: 13px; color: var(--dim); margin: 18px 0 8px; }
+.block-title { font-size: 13px; color: var(--dim); margin: 20px 0 8px; }
 
+/* 表格：只有 .key 列（Rating）用白色粗体，其余数字半粗、浅色 */
 table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--glass); border: 1px solid var(--rule); }
-th { font-size: 12px; font-weight: 400; color: var(--dim); text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); }
-td { text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); }
-td.num { font-size: 17px; }
+th { font-size: 12px; font-weight: 400; color: var(--faint); text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+td { text-align: center; padding: 7px 4px; border-bottom: 1px solid var(--rule); color: var(--soft); }
+td.num { font-size: 16px; font-weight: 600; }
+td.key { font-size: 18px; font-weight: 700; color: var(--text); }
 tr:last-child td { border-bottom: none; }
 
-/* 击杀信息条：游戏右上角那种 */
-.feed {
-  display: inline-flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px;
-  background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(240, 100, 90, 0.55);
-}
-.feed img { height: 20px; filter: brightness(0) invert(1); }
+/* 平台给的小签：荣誉、队内第一、趣味标签 */
+.chip { font-size: 13px; padding: 4px 10px; background: var(--glass-hi); border: 1px solid var(--rule); color: var(--soft); white-space: nowrap; }
+.chip b { color: var(--text); }
+.chip.hot { background: color-mix(in srgb, var(--plate) 18%, transparent); border-color: transparent; color: var(--plate); font-weight: 700; }
 
 .caption {
   margin-top: 16px; padding: 14px 18px; background: var(--glass); border-left: 4px solid var(--plate);
@@ -85,5 +91,5 @@ tr:last-child td { border-bottom: none; }
 
 .footer {
   padding: 16px 24px 18px; display: flex; justify-content: space-between; align-items: flex-end;
-  font-size: 11px; color: var(--dim); white-space: pre-line; line-height: 1.5;
+  font-size: 11px; color: var(--faint); white-space: pre-line; line-height: 1.5;
 }

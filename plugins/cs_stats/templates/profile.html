@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+{% include "base.css" %}
+.hero { padding-top: 108px; display: flex; align-items: flex-end; gap: 16px; }
+.bare .hero { padding-top: 26px; }
+.avatar { width: 86px; height: 86px; object-fit: cover; flex: none; border: 2px solid rgba(255, 255, 255, 0.85); background: #1b2531; }
+.avatar-fallback { display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 800; }
+.who { flex: 1; min-width: 0; padding-bottom: 2px; }
+.name { font-size: 30px; font-weight: 800; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); }
+.meta { margin-top: 6px; display: flex; gap: 12px; font-size: 14px; color: var(--soft); flex-wrap: wrap; align-items: center; }
+.mode { font-weight: 700; color: var(--text); }
+.title-tag { font-size: 13px; padding: 1px 8px; border: 1px solid var(--plate); color: var(--plate); }
+
+.rank { flex: none; text-align: right; }
+.plate-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.rank-icon { height: 76px; margin: -10px 0; }
+.rank-label { font-size: 13px; color: var(--soft); margin-bottom: 6px; }
+.rank-name { font-size: 18px; font-weight: 800; color: var(--plate); margin-right: 6px; }
+.rank-stars { font-size: 20px; color: var(--plate); margin-right: 8px; }
+.plate .pending { font-size: 28px; font-weight: 800; }
+.rank-sub { margin-top: 6px; font-size: 13px; color: var(--dim); display: flex; align-items: center; justify-content: flex-end; gap: 6px; white-space: nowrap; }
+.rank-sub img { height: 22px; }
+.rank-sub b { color: var(--soft); }
+.rank-sub svg { display: block; }
+
+/* 主 Rating 和逐场柱子是一件事，放在同一块 */
+.board { margin-top: 18px; }
+.board-top { display: flex; align-items: stretch; }
+.lead { width: 200px; flex: none; padding: 14px 18px 12px; border-right: 1px solid var(--rule); }
+.lead-label { font-size: 13px; color: var(--dim); }
+.lead-value { font-size: 64px; line-height: 0.95; margin-top: 4px; }
+.minor { flex: 1; display: flex; align-items: center; }
+.minor > div { flex: 1; text-align: center; }
+.minor-label { font-size: 12px; color: var(--dim); }
+.minor-value { margin-top: 6px; font-size: 28px; line-height: 1; }
+.strip { padding: 12px 18px 10px; border-top: 1px solid var(--rule); }
+.bars { position: relative; height: 56px; padding-left: 30px; display: flex; align-items: flex-end; gap: 4px; }
+.bar { flex: 1; background: var(--loss); }
+.bar.good { background: var(--win); }
+.bar:last-child { outline: 2px solid var(--text); outline-offset: 1px; }
+.baseline { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255, 255, 255, 0.4); }
+.baseline span { position: absolute; left: 0; top: -8px; padding-right: 6px; font-size: 12px; line-height: 1; color: var(--dim); background: rgb(22, 30, 40); }
+.strip-foot { margin-top: 8px; display: flex; justify-content: space-between; font-size: 13px; color: var(--dim); }
+.strip-foot b { font-size: 16px; color: var(--text); margin: 0 2px; }
+.strip-foot b.win { color: var(--win); }
+td.outcome { font-weight: 800; }
+
+/* 参考信息：不放面板，浅色 */
+.split { display: flex; gap: 28px; }
+.split > div { flex: 1; min-width: 0; }
+.ref-row { display: flex; align-items: center; gap: 10px; height: 38px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--soft); }
+.ref-row:first-child { border-top: none; }
+.ref-row img { flex: none; object-fit: contain; }
+.map-logo { width: 24px; height: 24px; }
+.map-name { width: 72px; flex: none; overflow: hidden; white-space: nowrap; }
+.track { flex: 1; height: 4px; background: rgba(255, 255, 255, 0.07); }
+.fill { height: 100%; background: var(--dim); }
+.ref-num { font-size: 18px; font-weight: 600; color: var(--text); flex: none; text-align: right; }
+.map-rate { width: 44px; }
+.ref-unit { font-size: 12px; color: var(--faint); flex: none; }
+.map-count { width: 34px; text-align: right; }
+.gun { width: 52px; height: 22px; filter: brightness(0) invert(1); opacity: 0.55; }
+.gun-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.facts { display: flex; gap: 20px; align-items: center; }
+.radar { flex: none; width: 190px; display: flex; justify-content: center; }
+.radar text { font-size: 11px; fill: var(--soft); font-family: Haku, sans-serif; }
+.kv { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; }
+.kv-item { padding: 9px 0 8px; border-top: 1px solid var(--rule); }
+.kv-item:nth-child(-n+3) { border-top: none; }
+.kv-label { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.kv-value { margin-top: 3px; font-size: 19px; font-weight: 600; white-space: nowrap; }
+</style>
+</head>
+<body class="mode-{{ v.mode }}">
+{% set tier = v.score.plate if v.score else '' %}
+{% set backdrop = v.maps[0].image if show_images and v.maps and v.maps[0].image else '' %}
+<div class="stage {{ '' if backdrop else 'bare' }}">
+  {% if backdrop %}<div class="backdrop" style="background-image:url('{{ backdrop }}')"></div>{% endif %}
+
+  <div class="hero">
+    {% if show_images and v.avatar %}<img class="avatar" src="{{ v.avatar }}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">{% endif %}
+    <div class="avatar avatar-fallback" {% if show_images and v.avatar %}style="display:none"{% endif %}>{{ v.nickname[:1] }}</div>
+    <div class="who">
+      <div class="name">{{ v.nickname }}</div>
+      <div class="meta">
+        <span class="mode">{{ v.mode_label }}</span>
+        <span>{{ v.scope }}</span>
+        {% if v.account_id %}<span class="dim">5E ID {{ v.account_id }}</span>{% endif %}
+        {% if v.badge %}<span class="title-tag">{{ v.badge }}</span>{% endif %}
+      </div>
+    </div>
+    {% if v.score %}
+    <div class="rank {{ tier }}">
+      <div class="rank-label">
+        {% if v.score.name and v.score.value is not none %}<span class="rank-name">{{ v.score.name }}</span>{% if v.score.stars is not none %}<span class="rank-stars num">★{{ v.score.stars }}</span>{% endif %}{% endif %}
+        {{ v.score.label }}
+      </div>
+      <div class="plate-row">
+        {% if show_images and v.score.icon %}<img class="rank-icon" src="{{ v.score.icon }}" onerror="this.remove()">{% endif %}
+        {% if v.score.value is none %}
+        <div class="plate"><span class="pending">定级中</span></div>
+        {% else %}
+        <div class="plate"><span class="num">{{ "{:,}".format(v.score.value) }}</span></div>
+        {% endif %}
+      </div>
+      {% if v.score.position %}<div class="rank-sub">全服第 <b class="num">{{ v.score.position }}</b> 名</div>{% endif %}
+      {% if v.trend2 %}
+      <div class="rank-sub">
+        <svg width="130" height="24" viewBox="0 0 300 56" preserveAspectRatio="none">
+          <polyline points="{{ v.trend2.points }}" fill="none" stroke="var(--plate)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <span>近 {{ v.trend2.count }} 场，起点 <b class="num">{{ '%g' % v.trend2.first }}</b></span>
+      </div>
+      {% endif %}
+      {% if v.best %}
+      <div class="rank-sub">
+        最佳赛季 {{ v.best.season }}
+        {% if show_images %}<img src="{{ v.best.icon }}" onerror="this.remove()">{% endif %}
+        <b>{{ v.best.name }}{% if v.best.stars is not none %} ★{{ v.best.stars }}{% endif %}</b>
+        ELO <b class="num">{{ v.best.value }}</b>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% set lead = v.core[0] %}
+  <div class="board panel">
+    <div class="board-top">
+      <div class="lead">
+        <div class="lead-label">{{ lead.label }}</div>
+        <div class="lead-value num">{{ lead.value }}</div>
+      </div>
+      <div class="minor">
+        {% for item in v.core[1:] %}
+        <div><div class="minor-label">{{ item.label }}</div><div class="minor-value num">{{ item.value }}</div></div>
+        {% endfor %}
+      </div>
+    </div>
+    {% if v.bars %}
+    <div class="strip">
+      <div class="bars">
+        <div class="baseline" style="bottom: {{ v.bars.baseline }}%"><span>1.0</span></div>
+        {% for b in v.bars['items'] %}<div class="bar {{ 'good' if b.good }}" style="height: {{ b.pct }}%"></div>{% endfor %}
+      </div>
+      <div class="strip-foot">
+        <span>近 {{ v.bars.count }} 场 Rating，最右是最新一场</span>
+        <span>1.0 以上<b class="num win">{{ v.bars['items'] | selectattr('good') | list | length }}</b>场，最新一场<b class="num">{{ v.bars['items'][-1].value }}</b></span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if roast %}
+  <div class="caption {{ tier }}">
+    <div class="caption-title">{{ roast.title }}</div>
+    <div class="caption-text">{{ roast.roast }}</div>
+  </div>
+  {% endif %}
+
+  {% if v.recent %}
+  {% set change_label = {'pvp': '天梯分', '5e': 'ELO'}.get(v.mode) %}
+  <div class="block-title">最近 {{ v.recent | length }} 场</div>
+  <table>
+    <tr>
+      <th>结果</th><th>时间</th><th>地图</th><th>比分</th><th>{{ 'K/D' if v.mode == '5e' else 'K/D/A' }}</th><th>Rating</th>
+      {% if change_label %}<th>{{ change_label }}</th>{% endif %}
+    </tr>
+    {% for r in v.recent %}
+    <tr>
+      <td class="outcome {{ {'胜': 'win', '负': 'loss', '平': 'dim'}[r.outcome] }}">{{ r.outcome }}</td>
+      <td class="num faint">{{ r.time }}</td>
+      <td>{{ r.map }}</td>
+      <td class="num">{{ r.score }}</td>
+      <td class="num">{{ r.kda }}</td>
+      <td class="num key">{{ r.rating }}</td>
+      {% if change_label %}
+      {% if r.change is none %}<td class="num faint">-</td>
+      {% else %}<td class="num {{ 'win' if r.change > 0 else 'loss' if r.change < 0 else 'faint' }}">{{ '★' if r.star }}{{ '%+d' % r.change }}</td>{% endif %}
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if v.maps or v.weapons %}
+  <div class="split">
+    {% if v.maps %}
+    <div>
+      <div class="block-title">常打的图</div>
+      {% for m in v.maps %}
+      <div class="ref-row">
+        {% if show_images and m.logo %}<img class="map-logo" src="{{ m.logo }}" onerror="this.style.visibility='hidden'">{% endif %}
+        <span class="map-name">{{ m.name }}</span>
+        <div class="track"><div class="fill" style="width: {{ m.win_rate }}"></div></div>
+        <span class="ref-num num map-rate">{{ m.win_rate }}</span>
+        <span class="ref-unit map-count">{{ m.matches }} 场</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if v.weapons %}
+    <div>
+      <div class="block-title">击杀最多的枪</div>
+      {% for w in v.weapons %}
+      <div class="ref-row">
+        {% if show_images and w.image %}<img class="gun" src="{{ w.image }}" onerror="this.style.visibility='hidden'">{% endif %}
+        <span class="gun-name">{{ w.name }}</span>
+        <span class="ref-num num">{{ w.kills }}</span>
+        <span class="ref-unit">杀，爆头 {{ w.hs_rate }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="block-title">细项</div>
+  <div class="facts">
+    {% if v.radar %}
+    <div class="radar">
+      <svg width="{{ v.radar.size + 40 }}" height="{{ v.radar.size + 16 }}" viewBox="-20 -8 {{ v.radar.size + 40 }} {{ v.radar.size + 16 }}">
+        {% for ring in v.radar.rings %}<polygon points="{{ ring }}" fill="none" stroke="rgba(255,255,255,.1)"/>{% endfor %}
+        {% for a in v.radar.axes %}<line x1="{{ v.radar.center }}" y1="{{ v.radar.center }}" x2="{{ a.x2 }}" y2="{{ a.y2 }}" stroke="rgba(255,255,255,.1)"/>{% endfor %}
+        <polygon points="{{ v.radar.points }}" fill="rgba(142,154,168,.22)" stroke="var(--soft)" stroke-width="1.5"/>
+        {% for a in v.radar.axes %}<text x="{{ a.lx }}" y="{{ a.ly }}" text-anchor="middle" dominant-baseline="middle">{{ a.label }} {{ a.value }}</text>{% endfor %}
+      </svg>
+    </div>
+    {% endif %}
+    <div class="kv">
+      {% for item in v.details %}
+      <div class="kv-item"><div class="kv-label">{{ item.label }}</div><div class="kv-value num">{{ item.value }}</div></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<div class="footer"><span>{{ watermark_text }}</span><span>{{ generated_at }}</span></div>
+</body>
+</html>
